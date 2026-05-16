@@ -155,6 +155,15 @@ body {
 /* Stats */
 .stats-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 18px; }
 .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; position: relative; overflow: hidden; box-shadow: var(--shadow-sm); }
+.stat-card.clickable { cursor: pointer; transition: all 0.15s; }
+.stat-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-color: var(--accent); }
+.stat-card.clickable:hover::after {
+  content: '👆 点击筛选';
+  position: absolute; bottom: 4px; right: 8px;
+  font-size: 9.5px; color: var(--accent); font-weight: 600;
+  opacity: 0.85;
+}
+.stat-card.clickable:active { transform: translateY(0); }
 .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--accent); opacity: 0.6; }
 .stat-card.producing::before { background: var(--status-producing); }
 .stat-card.shipped::before { background: var(--status-shipped); }
@@ -1336,11 +1345,11 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       <div class="fb-list" id="ordersFbList"></div>
     </div>
     <div class="stats-bar">
-      <div class="stat-card"><div class="label">活跃订单</div><div class="value mono"><span id="oActive">0</span><span class="unit">单</span></div><div class="sub" id="oActiveSub">未交付/取消</div></div>
-      <div class="stat-card producing"><div class="label">生产中</div><div class="value mono"><span id="oProducing">0</span><span class="unit">单</span></div><div class="sub">等供应商</div></div>
-      <div class="stat-card shipped"><div class="label">在途</div><div class="value mono"><span id="oShipped">0</span><span class="unit">单</span></div><div class="sub">已发货</div></div>
-      <div class="stat-card success"><div class="label">本月到货</div><div class="value mono"><span id="oArrived">0</span><span class="unit">单</span></div><div class="sub">已入仓</div></div>
-      <div class="stat-card danger"><div class="label">逾期 / 今日</div><div class="value mono" style="font-size: 22px;"><span id="oOverdue">0</span> / <span id="oToday">0</span></div><div class="sub" id="oUrgentSub">需处理</div></div>
+      <div class="stat-card clickable" onclick="quickFilterOrders('active')" title="点击查看：活跃中的订单"><div class="label">活跃订单</div><div class="value mono"><span id="oActive">0</span><span class="unit">单</span></div><div class="sub" id="oActiveSub">未交付/取消</div></div>
+      <div class="stat-card producing clickable" onclick="quickFilterOrders('producing')" title="点击查看：生产中的订单"><div class="label">生产中</div><div class="value mono"><span id="oProducing">0</span><span class="unit">单</span></div><div class="sub">等供应商</div></div>
+      <div class="stat-card shipped clickable" onclick="quickFilterOrders('shipped')" title="点击查看：在途订单"><div class="label">在途</div><div class="value mono"><span id="oShipped">0</span><span class="unit">单</span></div><div class="sub">已发货</div></div>
+      <div class="stat-card success clickable" onclick="quickFilterOrders('arrived')" title="点击查看：已到货的订单"><div class="label">本月到货</div><div class="value mono"><span id="oArrived">0</span><span class="unit">单</span></div><div class="sub">已入仓</div></div>
+      <div class="stat-card danger clickable" onclick="quickFilterOrders('overdue')" title="点击查看：逾期订单"><div class="label">逾期 / 今日</div><div class="value mono" style="font-size: 22px;"><span id="oOverdue">0</span> / <span id="oToday">0</span></div><div class="sub" id="oUrgentSub">需处理</div></div>
     </div>
     <div class="toolbar">
       <div class="search-box"><input type="text" id="oSearch" placeholder="搜索订单号、产品、供应商..." oninput="renderOrders()"></div>
@@ -1392,11 +1401,11 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       <div class="fb-list" id="asFbList"></div>
     </div>
     <div class="stats-bar">
-      <div class="stat-card repairing"><div class="label">待处理</div><div class="value mono"><span id="asUnresolved">0</span><span class="unit">单</span></div><div class="sub">未解决</div></div>
-      <div class="stat-card"><div class="label">本月新增</div><div class="value mono"><span id="asThisMonth">0</span><span class="unit">单</span></div><div class="sub" id="asThisMonthSub">售后比例</div></div>
-      <div class="stat-card success"><div class="label">本月解决</div><div class="value mono"><span id="asResolved">0</span><span class="unit">单</span></div><div class="sub">已处理</div></div>
-      <div class="stat-card warning"><div class="label">本月今日</div><div class="value mono"><span id="asTodayCount">0</span><span class="unit">单</span></div><div class="sub">今天新增</div></div>
-      <div class="stat-card danger"><div class="label">逾期</div><div class="value mono"><span id="asOverdue">0</span><span class="unit">单</span></div><div class="sub">需紧急</div></div>
+      <div class="stat-card repairing clickable" onclick="quickFilterAfter('active')" title="点击查看：未解决的售后"><div class="label">待处理</div><div class="value mono"><span id="asUnresolved">0</span><span class="unit">单</span></div><div class="sub">未解决</div></div>
+      <div class="stat-card clickable" onclick="quickFilterAfter('thismonth')" title="点击查看：本月新增"><div class="label">本月新增</div><div class="value mono"><span id="asThisMonth">0</span><span class="unit">单</span></div><div class="sub" id="asThisMonthSub">售后比例</div></div>
+      <div class="stat-card success clickable" onclick="quickFilterAfter('resolved')" title="点击查看：已解决"><div class="label">本月解决</div><div class="value mono"><span id="asResolved">0</span><span class="unit">单</span></div><div class="sub">已处理</div></div>
+      <div class="stat-card warning clickable" onclick="quickFilterAfter('today')" title="点击查看：今天新增"><div class="label">本月今日</div><div class="value mono"><span id="asTodayCount">0</span><span class="unit">单</span></div><div class="sub">今天新增</div></div>
+      <div class="stat-card danger clickable" onclick="quickFilterAfter('overdue')" title="点击查看：逾期"><div class="label">逾期</div><div class="value mono"><span id="asOverdue">0</span><span class="unit">单</span></div><div class="sub">需紧急</div></div>
     </div>
     
     <!-- 月度统计区 -->
@@ -1448,11 +1457,11 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 <div class="tab-content" data-tab="issues">
   <div class="section-block">
     <div class="stats-bar">
-      <div class="stat-card warning"><div class="label">待沟通</div><div class="value mono"><span id="isPending">0</span><span class="unit">项</span></div><div class="sub">未开始</div></div>
-      <div class="stat-card producing"><div class="label">沟通中</div><div class="value mono"><span id="isInProgress">0</span><span class="unit">项</span></div><div class="sub">进行中</div></div>
-      <div class="stat-card purple"><div class="label">已升级</div><div class="value mono"><span id="isEscalated">0</span><span class="unit">项</span></div><div class="sub">找老板</div></div>
-      <div class="stat-card success"><div class="label">已解决</div><div class="value mono"><span id="isResolved">0</span><span class="unit">项</span></div><div class="sub">关闭</div></div>
-      <div class="stat-card danger"><div class="label">沟通≥3次</div><div class="value mono"><span id="isStuck">0</span><span class="unit">项</span></div><div class="sub">考虑升级</div></div>
+      <div class="stat-card warning clickable" onclick="quickFilterIssues('pending')" title="点击查看：待沟通的问题"><div class="label">待沟通</div><div class="value mono"><span id="isPending">0</span><span class="unit">项</span></div><div class="sub">未开始</div></div>
+      <div class="stat-card producing clickable" onclick="quickFilterIssues('in_progress')" title="点击查看：沟通中的问题"><div class="label">沟通中</div><div class="value mono"><span id="isInProgress">0</span><span class="unit">项</span></div><div class="sub">进行中</div></div>
+      <div class="stat-card purple clickable" onclick="quickFilterIssues('escalated')" title="点击查看：已升级的问题"><div class="label">已升级</div><div class="value mono"><span id="isEscalated">0</span><span class="unit">项</span></div><div class="sub">找老板</div></div>
+      <div class="stat-card success clickable" onclick="quickFilterIssues('resolved')" title="点击查看：已解决的问题"><div class="label">已解决</div><div class="value mono"><span id="isResolved">0</span><span class="unit">项</span></div><div class="sub">关闭</div></div>
+      <div class="stat-card danger clickable" onclick="quickFilterIssues('stuck')" title="点击查看：沟通 3 次以上的问题"><div class="label">沟通≥3次</div><div class="value mono"><span id="isStuck">0</span><span class="unit">项</span></div><div class="sub">考虑升级</div></div>
     </div>
     <div class="toolbar">
       <div class="search-box"><input type="text" id="isSearch" placeholder="搜索供应商、要求..." oninput="renderIssues()"></div>
@@ -2282,7 +2291,7 @@ const DATA = {
     this._cache.agents = cfg.agents || this._cache.agents;
     this._cache.config.suppliers = cfg.suppliers || this._cache.config.suppliers;
     this._cache.config.sites = cfg.sites || this._cache.config.sites;
-    this._debounce('config', 600, () => this._syncConfigAndAgents());
+    this._debounce('config', 250, () => this._syncConfigAndAgents());
   },
 
   getCurrentAgent() { return CURRENT_AGENT; },
@@ -2292,28 +2301,28 @@ const DATA = {
   getOrders(agent) { return this._cache.ordersByAgent[agent] || []; },
   saveOrders(agent, arr) {
     this._cache.ordersByAgent[agent] = arr;
-    this._debounce('orders_' + agent, 600, () => fullSyncOrders(agent));
+    this._debounce('orders_' + agent, 250, () => fullSyncOrders(agent));
   },
 
   // 售后
   getAftersales(agent) { return this._cache.aftersalesByAgent[agent] || []; },
   saveAftersales(agent, arr) {
     this._cache.aftersalesByAgent[agent] = arr;
-    this._debounce('after_' + agent, 600, () => fullSyncAftersales(agent));
+    this._debounce('after_' + agent, 250, () => fullSyncAftersales(agent));
   },
 
   // 供应商问题
   getIssues(agent) { return this._cache.issuesByAgent[agent] || []; },
   saveIssues(agent, arr) {
     this._cache.issuesByAgent[agent] = arr;
-    this._debounce('issues_' + agent, 600, () => fullSyncIssues(agent));
+    this._debounce('issues_' + agent, 250, () => fullSyncIssues(agent));
   },
 
   // 找灯
   getMissingLights() { return this._cache.missingLights; },
   saveMissingLights(arr) {
     this._cache.missingLights = arr;
-    this._debounce('missing', 600, () => fullSyncMissing());
+    this._debounce('missing', 250, () => fullSyncMissing());
   },
 
   // 评分规则
@@ -2322,7 +2331,7 @@ const DATA = {
   },
   saveScoreRules(rules) {
     if (this._cache.config) this._cache.config.score_rules = rules;
-    this._debounce('rules', 600, () => this._syncScoreRules(rules));
+    this._debounce('rules', 250, () => this._syncScoreRules(rules));
   },
   defaultScoreRules() {
     return {
@@ -2356,15 +2365,58 @@ const DATA = {
   },
 
   // ============ 内部同步（防抖）============
+  _pendingFns: {},
   _debounce(key, ms, fn) {
     if (_isBootstrapping) return;
     clearTimeout(this._syncTimers[key]);
+    this._pendingFns[key] = fn;
     this._syncTimers[key] = setTimeout(() => {
-      fn().catch(err => {
+      const f = this._pendingFns[key];
+      delete this._pendingFns[key];
+      delete this._syncTimers[key];
+      if (f) f().catch(err => {
         console.error('Sync error', key, err);
         if (typeof toast === 'function') toast('云端同步失败：' + (err.message || err), 'err');
       });
     }, ms);
+  },
+  
+  _cancelDebounce(key) {
+    clearTimeout(this._syncTimers[key]);
+    delete this._syncTimers[key];
+    delete this._pendingFns[key];
+  },
+  
+  // 立即推送（不 debounce）：用于"明确提交动作"如加跟进、删除、状态切换等
+  async saveAndSyncOrders(agent) {
+    this._cancelDebounce('orders_' + agent);
+    return fullSyncOrders(agent);
+  },
+  async saveAndSyncAftersales(agent) {
+    this._cancelDebounce('after_' + agent);
+    return fullSyncAftersales(agent);
+  },
+  async saveAndSyncIssues(agent) {
+    this._cancelDebounce('issues_' + agent);
+    return fullSyncIssues(agent);
+  },
+  async saveAndSyncMissing() {
+    this._cancelDebounce('missing');
+    return fullSyncMissing();
+  },
+  
+  // 立即执行所有 pending 的同步（关闭 modal 时调用，保证数据落库）
+  flushPending() {
+    Object.keys(this._pendingFns).forEach(key => {
+      clearTimeout(this._syncTimers[key]);
+      const f = this._pendingFns[key];
+      delete this._pendingFns[key];
+      delete this._syncTimers[key];
+      if (f) f().catch(err => {
+        console.error('Flush sync error', key, err);
+        if (typeof toast === 'function') toast('云端同步失败：' + (err.message || err), 'err');
+      });
+    });
   },
 
   async _syncConfigAndAgents() {
@@ -3904,7 +3956,65 @@ function addOrder() {
   openOrderModal(newOrder._id, CURRENT_AGENT);
 }
 
-function quickCompleteOrder(id, agent) {
+// ============================================================
+// 快捷筛选：点击统计卡片自动切到对应状态
+// ============================================================
+function quickFilterOrders(type) {
+  const filter = document.getElementById('oFilterStatus');
+  if (!filter) return;
+  filter.value = type;
+  renderOrders();
+  toast(`已切换：${filter.options[filter.selectedIndex].text}`);
+}
+
+function quickFilterAfter(type) {
+  const filter = document.getElementById('asFilterStatus');
+  if (!filter) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const thisMonth = today.slice(0, 7);
+  
+  // 特殊筛选用搜索框临时实现，或切对应选项
+  if (type === 'thismonth') {
+    // 显示本月新增
+    filter.value = 'all';
+    renderAftersales();
+    toast('显示全部售后（本月新增已在统计中）');
+    return;
+  }
+  if (type === 'today') {
+    filter.value = 'all';
+    renderAftersales();
+    toast('显示全部售后');
+    return;
+  }
+  if (type === 'overdue') {
+    filter.value = 'active';
+    renderAftersales();
+    toast('显示未解决（含逾期）');
+    return;
+  }
+  filter.value = type;
+  renderAftersales();
+  toast(`已切换：${filter.options[filter.selectedIndex].text}`);
+}
+
+function quickFilterIssues(type) {
+  const filter = document.getElementById('isFilterStatus');
+  if (!filter) return;
+  
+  if (type === 'stuck') {
+    // 沟通 ≥3 次的未解决问题
+    filter.value = 'active';
+    renderIssues();
+    toast('显示未解决问题（含沟通 3 次以上）');
+    return;
+  }
+  filter.value = type;
+  renderIssues();
+  toast(`已切换：${filter.options[filter.selectedIndex].text}`);
+}
+
+async function quickCompleteOrder(id, agent) {
   const ownerAgent = agent || CURRENT_AGENT;
   const arr = DATA.getOrders(ownerAgent);
   const o = arr.find(x => x._id === id);
@@ -3919,13 +4029,11 @@ function quickCompleteOrder(id, agent) {
   
   let nextStatus, dateField, nextLabel, msg;
   if (o.status === 'shipped') {
-    // 已发货 → 已到货
     nextStatus = 'arrived';
     dateField = 'arrivedDate';
     nextLabel = '已到货';
     msg = `订单 ${o.orderNo || '(无单号)'} 已经收到货？\n\n会标记为：✓ 已到货\n到货日期：${today}`;
   } else {
-    // 待发货/生产中/紧急 → 已发货
     nextStatus = 'shipped';
     dateField = 'shippedDate';
     nextLabel = '已发货';
@@ -3938,10 +4046,21 @@ function quickCompleteOrder(id, agent) {
   if (!o[dateField]) o[dateField] = today;
   o.updatedAt = new Date().toISOString();
   
-  DATA.saveOrders(ownerAgent, arr);
+  // 立即更新本地 cache + UI
+  DATA._cache.ordersByAgent[ownerAgent] = arr;
   loadAllData();
   renderActiveTab();
-  toast(`✓ 订单已标记「${nextLabel}」`);
+  toast('正在同步到云端...', 'info', 8000);
+  
+  // 立即推送到云端（不等 debounce），避免刷新时看到旧数据
+  try {
+    DATA._cancelDebounce && DATA._cancelDebounce('orders_' + ownerAgent);
+    await fullSyncOrders(ownerAgent);
+    toast(`✓ 订单已标记「${nextLabel}」并已同步`);
+  } catch (err) {
+    console.error('同步失败:', err);
+    toast('本地已更新，云端同步失败：' + (err.message || err), 'err');
+  }
 }
 
 function delOrderRow(id, agent) {
@@ -4042,7 +4161,7 @@ function currentOrder() {
   return arr.find(o => o._id === _currentItemId);
 }
 
-function persistCurrentOrder(updater) {
+function persistCurrentOrder(updater, immediate = false) {
   const agent = window._currentItemAgent || CURRENT_AGENT;
   const arr = DATA.getOrders(agent);
   const idx = arr.findIndex(o => o._id === _currentItemId);
@@ -4051,6 +4170,9 @@ function persistCurrentOrder(updater) {
   arr[idx].updatedAt = new Date().toISOString();
   DATA.saveOrders(agent, arr);
   loadAllData();
+  if (immediate) {
+    DATA.saveAndSyncOrders(agent).catch(err => { console.error(err); toast('同步失败:' + (err.message || err), 'err'); });
+  }
 }
 
 function onOrderField(field, value) {
@@ -4065,10 +4187,9 @@ function onOrderField(field, value) {
   refreshOrdersFb();
 }
 
-function setOrderStatus(st) {
+async function setOrderStatus(st) {
   persistCurrentOrder(o => {
     o.status = st;
-    // 切到"已发货"自动记录时间（隐藏字段，用于绩效计算）
     if (st === 'shipped' && !o.shippedDate) {
       o.shippedDate = new Date().toISOString().slice(0, 10);
     }
@@ -4080,6 +4201,11 @@ function setOrderStatus(st) {
   renderOrders();
   updateOrderStats();
   refreshOrdersFb();
+  // 立即推送云端，避免刷新看到旧状态
+  const agent = window._currentItemAgent || CURRENT_AGENT;
+  DATA._cancelDebounce('orders_' + agent);
+  try { await fullSyncOrders(agent); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
 }
 
 function deleteCurrentOrder() {
@@ -4124,7 +4250,7 @@ function addOrderFollowup() {
       o.status = 'arrived';
       if (!o.arrivedDate) o.arrivedDate = date;
     }
-  });
+  }, true);
   
   document.getElementById('omNewNote').value = '';
   document.getElementById('omFuThumbs').innerHTML = '';
@@ -4138,14 +4264,14 @@ function addOrderFollowup() {
 
 function delOrderFollowup(idx) {
   if (!confirm('删除这条跟进？')) return;
-  persistCurrentOrder(o => o.followups.splice(idx, 1));
+  persistCurrentOrder(o => o.followups.splice(idx, 1), true);
   renderOrderModalContent();
   renderOrders();
   refreshOrdersFb();
 }
 
 function rmOrderOrig(i) {
-  persistCurrentOrder(o => o.screenshots.splice(i, 1));
+  persistCurrentOrder(o => o.screenshots.splice(i, 1), true);
   renderOrderModalContent();
 }
 
@@ -4669,7 +4795,7 @@ function addAftersales() {
   openAfterModal(newA._id, CURRENT_AGENT);
 }
 
-function quickCompleteAfter(id, agent) {
+async function quickCompleteAfter(id, agent) {
   const ownerAgent = agent || CURRENT_AGENT;
   const arr = DATA.getAftersales(ownerAgent);
   const a = arr.find(x => x._id === id);
@@ -4687,10 +4813,19 @@ function quickCompleteAfter(id, agent) {
   a.status = 'resolved';
   if (!a.resolvedDate) a.resolvedDate = today;
   
-  DATA.saveAftersales(ownerAgent, arr);
+  DATA._cache.aftersalesByAgent[ownerAgent] = arr;
   loadAllData();
   renderActiveTab();
-  toast(`✓ 售后已标记「已解决」`);
+  toast('正在同步到云端...', 'info', 8000);
+  
+  try {
+    DATA._cancelDebounce && DATA._cancelDebounce('after_' + ownerAgent);
+    await fullSyncAftersales(ownerAgent);
+    toast(`✓ 售后已标记「已解决」并已同步`);
+  } catch (err) {
+    console.error('同步失败:', err);
+    toast('本地已更新，云端同步失败：' + (err.message || err), 'err');
+  }
 }
 
 function delAfterRow(id, agent) {
@@ -4787,7 +4922,7 @@ function currentAfter() {
   return DATA.getAftersales(agent).find(a => a._id === _currentItemId);
 }
 
-function persistCurrentAfter(updater) {
+function persistCurrentAfter(updater, immediate = false) {
   const agent = window._currentItemAgent || CURRENT_AGENT;
   const arr = DATA.getAftersales(agent);
   const idx = arr.findIndex(a => a._id === _currentItemId);
@@ -4795,6 +4930,9 @@ function persistCurrentAfter(updater) {
   updater(arr[idx]);
   DATA.saveAftersales(agent, arr);
   loadAllData();
+  if (immediate) {
+    DATA.saveAndSyncAftersales(agent).catch(err => { console.error(err); toast('同步失败:' + (err.message || err), 'err'); });
+  }
 }
 
 function onAfterField(field, value) {
@@ -4814,7 +4952,7 @@ function setAfterReason(r) {
   renderAfterReport();
 }
 
-function setAfterStatus(st) {
+async function setAfterStatus(st) {
   persistCurrentAfter(a => {
     a.status = st;
     if (st === 'resolved' && !a.resolvedDate) {
@@ -4826,6 +4964,10 @@ function setAfterStatus(st) {
   renderAftersales();
   updateAfterStats();
   refreshAsFb();
+  const agent = window._currentItemAgent || CURRENT_AGENT;
+  DATA._cancelDebounce('after_' + agent);
+  try { await fullSyncAftersales(agent); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
 }
 
 function deleteCurrentAfter() {
@@ -4853,7 +4995,7 @@ function addAfterFollowup() {
   persistCurrentAfter(a => {
     if (!a.followups) a.followups = [];
     a.followups.push({ date, time: new Date().toTimeString().slice(0, 5), note, screenshots: [..._newScreenshots_fu] });
-  });
+  }, true);
   document.getElementById('asmNewNote').value = '';
   document.getElementById('asmFuThumbs').innerHTML = '';
   _newScreenshots_fu = [];
@@ -4865,13 +5007,13 @@ function addAfterFollowup() {
 
 function delAfterFollowup(idx) {
   if (!confirm('删除这条记录？')) return;
-  persistCurrentAfter(a => a.followups.splice(idx, 1));
+  persistCurrentAfter(a => a.followups.splice(idx, 1), true);
   renderAfterModalContent();
   renderAftersales();
 }
 
 function rmAfterOrig(i) {
-  persistCurrentAfter(a => a.screenshots.splice(i, 1));
+  persistCurrentAfter(a => a.screenshots.splice(i, 1), true);
   renderAfterModalContent();
 }
 
@@ -5045,14 +5187,48 @@ function exportAfterReport() {
   const thisMonth = new Date().toISOString().slice(0, 7);
   const data = AFTERSALES.filter(a => a.createdDate && a.createdDate.startsWith(thisMonth));
   if (data.length === 0) { toast('本月无售后', 'warn'); return; }
-  const headers = ['#','订单号','产品','供应商','售后原因','原因详情','发起日','状态','解决日','跟单员','下次跟进'];
+  
+  const choice = confirm('选择导出格式：\n\n确定 = 📄 图文报告（HTML，含图片，发供应商用）\n取消 = 📊 Excel 表格');
+  if (choice) {
+    // 用通用 HTML 导出
+    exportAsHTML(`${thisMonth} 售后汇总`, data, [
+      { key: 'orderNo', label: '订单号', site: true },
+      { key: 'product', label: '产品' },
+      { key: 'supplier', label: '供应商' },
+      { key: 'reason', label: '原因' },
+      { key: 'reasonDetail', label: '详情' },
+      { key: 'statusLabel', label: '状态', val: a => AFTER_STATUS_LABELS[a.status] || '' },
+      { key: 'dates', label: '日期', val: a => `发起 ${a.createdDate||'—'}${a.resolvedDate?'<br>解决 '+a.resolvedDate:''}` },
+      { key: 'followupsList', label: '跟进', val: a => {
+        const fu = a.followups || [];
+        if (fu.length === 0) return '<span style="color:#999;">无</span>';
+        return fu.map(f => `[${f.date}] ${escapeHtml(f.note || '')}`).join('<br>');
+      }},
+      { key: 'images', label: '图片', isImage: true },
+    ]);
+    return;
+  }
+  
+  const headers = ['#','订单号','网站','产品','供应商','售后原因','原因详情','发起日','状态','解决日','跟单员','下次跟进','截图链接','所有跟进'];
   const rows = data.map((a, i) => [
-    i + 1, a.orderNo, a.product, a.supplier, a.reason, a.reasonDetail,
-    a.createdDate, AFTER_STATUS_LABELS[a.status], a.resolvedDate, a._agent, a.nextFollow,
+    i + 1, a.orderNo || '', a.site || '', a.product || '', a.supplier || '',
+    a.reason || '', a.reasonDetail || '',
+    a.createdDate || '', AFTER_STATUS_LABELS[a.status] || '', a.resolvedDate || '',
+    a._agent || '', a.nextFollow || '',
+    [...(a.screenshots || []), ...((a.followups || []).flatMap(f => f.screenshots || []))].join('\n'),
+    (a.followups || []).map(f => `[${f.date}] ${f.note || ''}`).join('\n'),
   ]);
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  ws['!cols'] = [{wch:5},{wch:14},{wch:20},{wch:14},{wch:12},{wch:30},{wch:11},{wch:10},{wch:11},{wch:10},{wch:11}];
+  for (let i = 0; i < rows.length; i++) {
+    const a = data[i];
+    const firstImg = (a.screenshots && a.screenshots[0]) || (a.followups && a.followups[0] && a.followups[0].screenshots && a.followups[0].screenshots[0]);
+    if (firstImg) {
+      const cellRef = XLSX.utils.encode_cell({ r: i + 1, c: 12 });
+      if (ws[cellRef]) ws[cellRef].l = { Target: firstImg, Tooltip: '点击查看第一张图片' };
+    }
+  }
+  ws['!cols'] = [{wch:5},{wch:14},{wch:8},{wch:20},{wch:14},{wch:12},{wch:30},{wch:11},{wch:10},{wch:11},{wch:10},{wch:11},{wch:30},{wch:50}];
   XLSX.utils.book_append_sheet(wb, ws, '本月售后汇总');
   XLSX.writeFile(wb, `售后汇总_${thisMonth}.xlsx`);
   toast(`✓ 已导出 ${data.length} 条`);
@@ -5192,7 +5368,7 @@ function addIssue() {
   openIssueModal(newIt._id, CURRENT_AGENT);
 }
 
-function quickResolveIssue(id, agent) {
+async function quickResolveIssue(id, agent) {
   const ownerAgent = (IS_ADMIN && agent) ? agent : CURRENT_AGENT;
   const arr = DATA.getIssues(ownerAgent);
   const it = arr.find(x => x._id === id);
@@ -5207,10 +5383,20 @@ function quickResolveIssue(id, agent) {
   if (!confirm(msg)) return;
   
   it.status = 'resolved';
-  DATA.saveIssues(ownerAgent, arr);
+  
+  DATA._cache.issuesByAgent[ownerAgent] = arr;
   loadAllData();
   renderActiveTab();
-  toast(`✓ 已标记「已解决」`);
+  toast('正在同步到云端...', 'info', 8000);
+  
+  try {
+    DATA._cancelDebounce && DATA._cancelDebounce('issues_' + ownerAgent);
+    await fullSyncIssues(ownerAgent);
+    toast(`✓ 问题已标记「已解决」并已同步`);
+  } catch (err) {
+    console.error('同步失败:', err);
+    toast('本地已更新，云端同步失败：' + (err.message || err), 'err');
+  }
 }
 
 function delIssueRow(id, agent) {
@@ -5289,7 +5475,7 @@ function currentIssue() {
   return DATA.getIssues(agent).find(i => i._id === _currentItemId);
 }
 
-function persistCurrentIssue(updater) {
+function persistCurrentIssue(updater, immediate = false) {
   const agent = window._currentItemAgent || CURRENT_AGENT;
   const arr = DATA.getIssues(agent);
   const idx = arr.findIndex(i => i._id === _currentItemId);
@@ -5297,6 +5483,9 @@ function persistCurrentIssue(updater) {
   updater(arr[idx]);
   DATA.saveIssues(agent, arr);
   loadAllData();
+  if (immediate) {
+    DATA.saveAndSyncIssues(agent).catch(err => { console.error(err); toast('同步失败:' + (err.message || err), 'err'); });
+  }
 }
 
 function onIssueField(field, value) {
@@ -5306,11 +5495,15 @@ function onIssueField(field, value) {
   updateIssueStats();
 }
 
-function setIssueStatus(st) {
+async function setIssueStatus(st) {
   persistCurrentIssue(it => it.status = st);
   renderIssueModalContent();
   renderIssues();
   updateIssueStats();
+  const agent = window._currentItemAgent || CURRENT_AGENT;
+  DATA._cancelDebounce('issues_' + agent);
+  try { await fullSyncIssues(agent); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
 }
 
 function deleteCurrentIssue() {
@@ -5338,7 +5531,7 @@ function addIssueFollowup() {
     it.followups.push({ date, time: new Date().toTimeString().slice(0, 5), note, screenshots: [..._newScreenshots_fu] });
     // 第一次沟通自动切到"沟通中"
     if (it.status === 'pending') it.status = 'in_progress';
-  });
+  }, true);
   document.getElementById('ismNewNote').value = '';
   document.getElementById('ismFuThumbs').innerHTML = '';
   _newScreenshots_fu = [];
@@ -5350,7 +5543,7 @@ function addIssueFollowup() {
 
 function delIssueFollowup(idx) {
   if (!confirm('删除这条记录？')) return;
-  persistCurrentIssue(it => it.followups.splice(idx, 1));
+  persistCurrentIssue(it => it.followups.splice(idx, 1), true);
   renderIssueModalContent();
   renderIssues();
 }
@@ -6968,14 +7161,14 @@ async function uploadScreenshotToStorage(dataURL) {
 
 function attachScreenshot(dataURL, target) {
   if (target === 'order_orig') {
-    persistCurrentOrder(o => { if (!o.screenshots) o.screenshots = []; o.screenshots.push(dataURL); });
+    persistCurrentOrder(o => { if (!o.screenshots) o.screenshots = []; o.screenshots.push(dataURL); }, true);
     renderOrderModalContent();
     renderOrders();
   } else if (target === 'order_fu') {
     _newScreenshots_fu.push(dataURL);
     renderTempThumbs('omFuThumbs', _newScreenshots_fu, 'fu');
   } else if (target === 'after_orig') {
-    persistCurrentAfter(a => { if (!a.screenshots) a.screenshots = []; a.screenshots.push(dataURL); });
+    persistCurrentAfter(a => { if (!a.screenshots) a.screenshots = []; a.screenshots.push(dataURL); }, true);
     renderAfterModalContent();
     renderAftersales();
   } else if (target === 'after_fu') {
@@ -6990,6 +7183,7 @@ function attachScreenshot(dataURL, target) {
       if (!m.screenshots) m.screenshots = [];
       m.screenshots.push(dataURL);
       DATA.saveMissingLights(MISSING_LIGHTS);
+      DATA.saveAndSyncMissing().catch(err => console.error(err));
       renderMissingModalContent();
       renderMissing();
     }
@@ -7527,63 +7721,234 @@ function exportCurrentTab() {
 
 function exportOrders() {
   if (ORDERS.length === 0) { toast('没有数据可导出', 'err'); return; }
-  const headers = ['#','订单号','产品','供应商','状态','下单日','承诺发货','已催次数','跟单员','跟进总数','备注','最新跟进'];
+  // 询问导出格式
+  const choice = confirm('选择导出格式：\n\n确定 = 📄 图文报告（HTML，含图片，发供应商用）\n取消 = 📊 Excel 表格（含图片链接）');
+  if (choice) return exportOrdersHTML();
+  
+  // Excel 导出（含图片 URL 列）
+  const headers = ['#','订单号','网站','产品','供应商','状态','下单日','承诺发货','发货日','到货日','已催次数','跟单员','跟进总数','备注','最新跟进','截图链接（可点击）'];
   const rows = ORDERS.map((o, i) => {
     const last = o.followups && o.followups.length > 0 ? o.followups[o.followups.length - 1] : null;
     const chaseCount = (o.followups || []).filter(f => f.type === 'chase').length;
-    return [i + 1, o.orderNo, o.product, o.supplier, ORDER_STATUS_LABELS[getOrderEffStatus(o)] || '逾期',
-      o.orderDate, o.promisedDate, chaseCount,
-      o._agent, (o.followups || []).length, o.notes,
-      last ? `[${last.date}] ${last.note}` : ''];
+    const allImgs = [...(o.screenshots || []), ...((o.followups || []).flatMap(f => f.screenshots || []))];
+    return [i + 1, o.orderNo || '', o.site || '', o.product || '', o.supplier || '',
+      ORDER_STATUS_LABELS[getOrderEffStatus(o)] || '逾期',
+      o.orderDate || '', o.promisedDate || '', o.shippedDate || '', o.arrivedDate || '',
+      chaseCount, o._agent || '', (o.followups || []).length, o.notes || '',
+      last ? `[${last.date}] ${last.note || ''}` : '',
+      allImgs.join('\n')];
   });
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  ws['!cols'] = [{wch:5},{wch:14},{wch:24},{wch:14},{wch:10},{wch:11},{wch:11},{wch:8},{wch:10},{wch:8},{wch:20},{wch:40}];
+  // 给图片 URL 列加超链接
+  for (let i = 0; i < rows.length; i++) {
+    const o = ORDERS[i];
+    const firstImg = (o.screenshots && o.screenshots[0]) || (o.followups && o.followups[0] && o.followups[0].screenshots && o.followups[0].screenshots[0]);
+    if (firstImg) {
+      const cellRef = XLSX.utils.encode_cell({ r: i + 1, c: headers.length - 1 });
+      if (ws[cellRef]) ws[cellRef].l = { Target: firstImg, Tooltip: '点击在浏览器打开第一张图片' };
+    }
+  }
+  ws['!cols'] = [{wch:5},{wch:14},{wch:8},{wch:24},{wch:14},{wch:10},{wch:11},{wch:11},{wch:11},{wch:11},{wch:8},{wch:10},{wch:8},{wch:20},{wch:40},{wch:30}];
   XLSX.utils.book_append_sheet(wb, ws, '催单');
   XLSX.writeFile(wb, `催单_${new Date().toISOString().slice(0, 10)}.xlsx`);
   toast(`✓ 已导出 ${ORDERS.length} 条`);
 }
 
+function exportOrdersHTML() {
+  exportAsHTML('催单清单', ORDERS, [
+    { key: 'orderNo', label: '订单号', site: true },
+    { key: 'product', label: '产品' },
+    { key: 'supplier', label: '供应商' },
+    { key: 'statusLabel', label: '状态', val: o => ORDER_STATUS_LABELS[getOrderEffStatus(o)] || '' },
+    { key: 'dates', label: '日期', val: o => `下单 ${o.orderDate||'—'}<br>承诺 ${o.promisedDate||'—'}<br>${o.shippedDate?'发货 '+o.shippedDate:''}` },
+    { key: 'chaseInfo', label: '催单记录', val: o => {
+      const chases = (o.followups||[]).filter(f => f.type === 'chase');
+      if (chases.length === 0) return '<span style="color:#999;">未催</span>';
+      return `<b style="color:#b91c1c;">已催 ${chases.length} 次</b><br>` + chases.map(c => `[${c.date}] ${escapeHtml(c.note || '')}`).join('<br>');
+    }},
+    { key: 'notes', label: '备注' },
+    { key: 'images', label: '图片', isImage: true },
+  ]);
+}
+
 function exportIssues() {
   if (ISSUES.length === 0) { toast('没有数据', 'err'); return; }
-  const headers = ['#','供应商','问题类型','要求','状态','沟通次数','跟单员','最后沟通'];
+  const choice = confirm('选择导出格式：\n\n确定 = 📄 图文报告（HTML）\n取消 = 📊 Excel 表格');
+  if (choice) return exportIssuesHTML();
+  
+  const headers = ['#','供应商','问题类型','要求','状态','沟通次数','跟单员','最后沟通','所有沟通记录'];
   const rows = ISSUES.map((it, i) => [
-    i + 1, it.supplier, it.issueType, it.requirement, ISSUE_STATUS_LABELS[it.status],
-    (it.followups || []).length, it._agent,
+    i + 1, it.supplier || '', it.issueType || '', it.requirement || '',
+    ISSUE_STATUS_LABELS[it.status],
+    (it.followups || []).length, it._agent || '',
     (it.followups || []).length > 0 ? it.followups[it.followups.length - 1].date : '',
+    (it.followups || []).map(f => `[${f.date}] ${f.note || ''}`).join('\n'),
   ]);
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  ws['!cols'] = [{wch:5},{wch:14},{wch:10},{wch:50},{wch:10},{wch:8},{wch:10},{wch:11}];
+  ws['!cols'] = [{wch:5},{wch:14},{wch:10},{wch:50},{wch:10},{wch:8},{wch:10},{wch:11},{wch:60}];
   XLSX.utils.book_append_sheet(wb, ws, '供应商问题');
   XLSX.writeFile(wb, `供应商问题_${new Date().toISOString().slice(0, 10)}.xlsx`);
   toast(`✓ 已导出 ${ISSUES.length} 条`);
 }
 
+function exportIssuesHTML() {
+  exportAsHTML('供应商问题清单', ISSUES, [
+    { key: 'supplier', label: '供应商' },
+    { key: 'issueType', label: '类型' },
+    { key: 'requirement', label: '具体要求' },
+    { key: 'statusLabel', label: '状态', val: it => ISSUE_STATUS_LABELS[it.status] || '' },
+    { key: 'communications', label: '沟通记录', val: it => {
+      const fu = it.followups || [];
+      if (fu.length === 0) return '<span style="color:#999;">无</span>';
+      return `<b>共 ${fu.length} 次</b><br>` + fu.map(f => `[${f.date}] ${escapeHtml(f.note || '')}`).join('<br>');
+    }},
+    { key: 'images', label: '图片', isImage: true, getImgs: it => (it.followups || []).flatMap(f => f.screenshots || []) },
+  ]);
+}
+
 function exportMissing() {
   if (MISSING_LIGHTS.length === 0) { toast('没有数据', 'err'); return; }
-  const headers = ['#','灯具描述','客户订单号','发起人','状态','创建日','评论数','所有评论'];
+  const choice = confirm('选择导出格式：\n\n确定 = 📄 图文报告（HTML，含图片）\n取消 = 📊 Excel 表格');
+  if (choice) return exportMissingHTML();
+  
+  const headers = ['#','灯具描述','规格','客户订单号','发起人','状态','创建日','评论数','所有评论','图片链接'];
   const rows = MISSING_LIGHTS.map((m, i) => [
-    i + 1, m.description, m.customerOrderNo, m.creator, MISSING_STATUS_LABELS[m.status],
+    i + 1, m.description || '', m.specs || '', m.customerOrderNo || '', m.creator || '',
+    MISSING_STATUS_LABELS[m.status] || '',
     (m.createdAt || '').slice(0, 10), (m.comments || []).length,
     (m.comments || []).map(c => `[${c.user} ${c.date}]${c.suggestedSupplier ? '推荐:' + c.suggestedSupplier : ''} ${c.content}`).join(' || '),
+    (m.screenshots || []).join('\n'),
   ]);
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  ws['!cols'] = [{wch:5},{wch:40},{wch:14},{wch:10},{wch:10},{wch:11},{wch:8},{wch:80}];
+  for (let i = 0; i < rows.length; i++) {
+    const m = MISSING_LIGHTS[i];
+    if (m.screenshots && m.screenshots[0]) {
+      const cellRef = XLSX.utils.encode_cell({ r: i + 1, c: headers.length - 1 });
+      if (ws[cellRef]) ws[cellRef].l = { Target: m.screenshots[0], Tooltip: '点击查看第一张图片' };
+    }
+  }
+  ws['!cols'] = [{wch:5},{wch:40},{wch:20},{wch:14},{wch:10},{wch:10},{wch:11},{wch:8},{wch:60},{wch:30}];
   XLSX.utils.book_append_sheet(wb, ws, '找灯');
   XLSX.writeFile(wb, `找灯_${new Date().toISOString().slice(0, 10)}.xlsx`);
   toast(`✓ 已导出 ${MISSING_LIGHTS.length} 条`);
 }
 
+function exportMissingHTML() {
+  exportAsHTML('找灯需求清单', MISSING_LIGHTS, [
+    { key: 'description', label: '灯具描述' },
+    { key: 'specs', label: '规格' },
+    { key: 'creator', label: '发起人' },
+    { key: 'statusLabel', label: '状态', val: m => MISSING_STATUS_LABELS[m.status] || '' },
+    { key: 'createdAt', label: '创建', val: m => (m.createdAt||'').slice(0,10) },
+    { key: 'comments', label: '建议', val: m => {
+      const cs = m.comments || [];
+      if (cs.length === 0) return '<span style="color:#999;">无</span>';
+      return cs.map(c => `<b>${escapeHtml(c.user || '')}</b>${c.suggestedSupplier ? ` 👍 推荐: <b style="color:#2563eb">${escapeHtml(c.suggestedSupplier)}</b>` : ''}<br>${escapeHtml(c.content || '')}`).join('<hr style="border:0;border-top:1px dashed #ddd;margin:6px 0;">');
+    }},
+    { key: 'images', label: '图片', isImage: true },
+  ]);
+}
+
+// ============================================================
+// 通用：导出图文 HTML 报告（内嵌图片，可直接发供应商）
+// ============================================================
+function exportAsHTML(title, data, columns) {
+  if (!data || data.length === 0) { toast('没有数据', 'err'); return; }
+  
+  const dateStr = new Date().toLocaleString('zh-CN');
+  
+  const rowsHtml = data.map((item, i) => {
+    const cells = columns.map(col => {
+      if (col.isImage) {
+        const imgs = col.getImgs ? col.getImgs(item) : [...(item.screenshots || []), ...((item.followups || []).flatMap(f => f.screenshots || []))];
+        if (imgs.length === 0) return '<td><span style="color:#aaa; font-size:11px;">无图</span></td>';
+        return `<td><div class="images">${imgs.map(s => `<a href="${s}" target="_blank"><img src="${s}" loading="lazy"></a>`).join('')}</div></td>`;
+      }
+      let val;
+      if (col.val) val = col.val(item);
+      else val = item[col.key] || '';
+      // 订单号要带网站徽章
+      if (col.site && item.site) {
+        val = `<b style="font-family: 'JetBrains Mono', monospace;">${escapeHtml(val)}</b> <span style="background: #2563eb; color: white; padding: 1px 6px; border-radius: 3px; font-size: 10px;">${escapeHtml(item.site)}</span>`;
+      } else if (typeof val === 'string' && !val.includes('<')) {
+        val = escapeHtml(val);
+      }
+      return `<td>${val}</td>`;
+    }).join('');
+    const agentBadge = item._agent ? `<div style="font-size:10px; color:#999; margin-top:2px;">👤 ${escapeHtml(item._agent)}</div>` : '';
+    return `<tr><td style="text-align:center; color:#666;"><b>${i + 1}</b>${agentBadge}</td>${cells}</tr>`;
+  }).join('');
+  
+  const headerCells = ['<th style="width: 40px;">#</th>', ...columns.map(c => `<th>${escapeHtml(c.label)}</th>`)].join('');
+  
+  const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>${escapeHtml(title)} · ${dateStr}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; max-width: 1400px; margin: 0 auto; padding: 24px; background: #fafaf9; color: #1c1917; }
+  .header { background: white; padding: 20px 28px; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .header h1 { margin: 0; font-size: 22px; color: #1c1917; }
+  .header .meta { color: #78716c; font-size: 13px; margin-top: 6px; }
+  .summary { display: inline-flex; gap: 16px; margin-top: 12px; }
+  .summary span { background: #f5f5f4; padding: 6px 12px; border-radius: 6px; font-size: 12.5px; }
+  table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  th, td { border: 1px solid #e7e5e4; padding: 10px 14px; text-align: left; vertical-align: top; font-size: 13px; }
+  th { background: #f5f5f4; color: #1c1917; font-weight: 600; font-size: 12px; }
+  td { line-height: 1.5; }
+  tr:hover td { background: #fafaf9; }
+  .images { display: flex; flex-wrap: wrap; gap: 6px; max-width: 280px; }
+  .images img { width: 90px; height: 90px; object-fit: cover; border-radius: 6px; border: 1px solid #e7e5e4; cursor: zoom-in; transition: transform 0.15s; }
+  .images img:hover { transform: scale(1.1); box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-color: #2563eb; }
+  .footer { text-align: center; padding: 20px; color: #a8a29e; font-size: 11px; }
+  @media print { body { background: white; } .images img { width: 80px; height: 80px; } }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>${escapeHtml(title)}</h1>
+    <div class="meta">导出时间：${dateStr}</div>
+    <div class="summary">
+      <span>📊 共 <b>${data.length}</b> 条记录</span>
+      <span>💼 由跟单工作台导出</span>
+    </div>
+  </div>
+  <table>
+    <thead><tr>${headerCells}</tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  <div class="footer">本报告由跟单工作台自动生成 · 点击图片可放大查看 · 可直接发送给供应商</div>
+</body>
+</html>`;
+  
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${title}_${new Date().toISOString().slice(0, 10)}.html`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(`✓ 已导出图文报告 ${data.length} 条`);
+}
+
 function closeModal(id) {
+  // 强制把待发送的数据立即推送云端，避免关 modal 后刷新看到旧数据
+  if (DATA && DATA.flushPending) DATA.flushPending();
   document.getElementById(id).classList.remove('show');
   if (id !== 'agentModal') _pasteTarget = null;
 }
 
 document.querySelectorAll('.modal-bg').forEach(bg => {
   bg.addEventListener('click', e => {
-    if (e.target === bg && bg.id !== 'agentModal') bg.classList.remove('show');
+    if (e.target === bg && bg.id !== 'agentModal') {
+      // 同样 flush
+      if (DATA && DATA.flushPending) DATA.flushPending();
+      bg.classList.remove('show');
+    }
   });
 });
 
