@@ -195,11 +195,44 @@ body {
 
 /* 催单表格 */
 #ordersBody .record-row, .orders-header {
-  grid-template-columns: 44px 100px minmax(280px, 1.6fr) 180px 140px 70px 40px;
+  grid-template-columns: 44px 100px minmax(280px, 1.6fr) 180px 140px 130px;
 }
 #ordersBody .after-row { align-items: start; padding: 14px 18px; }
 #ordersBody .after-row > div { padding-top: 2px; }
-#ordersBody .after-row .row-del { align-self: start; margin-top: 4px; }
+
+/* 操作按钮组 */
+.row-actions {
+  display: flex; gap: 4px; align-items: center; justify-content: flex-end;
+  align-self: start; margin-top: 2px;
+}
+.action-btn {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); background: var(--bg-card);
+  border-radius: 5px; cursor: pointer;
+  font-size: 13px; font-weight: 600; padding: 0;
+  transition: all 0.15s;
+}
+.action-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.action-btn.done {
+  background: rgba(21,128,61,0.08);
+  border-color: rgba(21,128,61,0.3);
+  color: var(--success);
+}
+.action-btn.done:hover {
+  background: var(--success);
+  color: white;
+  border-color: var(--success);
+}
+.action-btn.delete {
+  color: var(--danger);
+  opacity: 0.5;
+}
+.action-btn.delete:hover {
+  background: rgba(185,28,28,0.08);
+  border-color: rgba(185,28,28,0.3);
+  opacity: 1;
+}
 
 /* 催单历史框 */
 .chase-history {
@@ -244,11 +277,10 @@ body {
 .date-line.empty { color: var(--text-tertiary); }
 /* 售后表格 */
 #aftersalesBody .record-row, .aftersales-header {
-  grid-template-columns: 44px 100px minmax(280px, 1.6fr) 180px 130px 70px 40px;
+  grid-template-columns: 44px 100px minmax(280px, 1.6fr) 180px 130px 130px;
 }
 #aftersalesBody .after-row { align-items: start; padding: 14px 18px; }
 #aftersalesBody .after-row > div { padding-top: 2px; }
-#aftersalesBody .after-row .row-del { align-self: start; margin-top: 4px; }
 
 .after-row .cell-main { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .after-row .order-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -799,6 +831,52 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .agent-toggle { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
 .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag-item { background: var(--bg-elevated); border: 1px solid var(--border); padding: 5px 10px; border-radius: 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
+
+/* 回收站 */
+.trash-tabs {
+  display: flex; gap: 4px; margin-top: 14px;
+  padding: 4px; background: var(--bg-elevated); border-radius: 10px;
+  width: fit-content;
+}
+.trash-tab-btn {
+  padding: 8px 14px; border: none; background: transparent;
+  border-radius: 7px; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--text-secondary);
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: all 0.15s;
+}
+.trash-tab-btn:hover { color: var(--text-primary); }
+.trash-tab-btn.active { background: var(--bg-card); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.trash-tab-count {
+  background: var(--bg-elevated); color: var(--text-tertiary);
+  padding: 1px 7px; border-radius: 10px;
+  font-size: 11px; font-family: 'JetBrains Mono', monospace; font-weight: 700;
+}
+.trash-tab-btn.active .trash-tab-count { background: rgba(37,99,235,0.1); color: var(--accent); }
+
+.trash-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: var(--bg-card);
+  transition: all 0.15s;
+}
+.trash-row:hover { background: var(--bg-elevated); box-shadow: var(--shadow-sm); }
+.trash-info { flex: 1; min-width: 0; }
+.trash-title { 
+  font-size: 13px; font-weight: 700; color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+}
+.trash-subtitle { 
+  font-size: 12px; color: var(--text-secondary); margin-top: 3px;
+}
+.trash-meta {
+  font-size: 10.5px; color: var(--text-tertiary); margin-top: 5px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.trash-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .tag-item.is-hot { background: rgba(37,99,235,0.08); border-color: rgba(37,99,235,0.3); }
 .tag-item.is-hot::before { content: '🔥'; }
 .tag-item.has-issue { background: rgba(185,28,28,0.06); border-color: rgba(185,28,28,0.3); }
@@ -1219,6 +1297,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <div class="name" id="curName">未登录</div>
         <span class="arrow">⎋</span>
       </div>
+      <button class="btn ghost" onclick="openTrash()" title="回收站">🗑</button>
       <button class="btn ghost" onclick="openSettings()">⚙</button>
       <button class="btn ghost" onclick="exportCurrentTab()">⬇ Excel</button>
     </div>
@@ -1289,7 +1368,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="records-card" id="ordersCard">
       <div class="records-header orders-header">
         <div>#</div><div>状态</div><div>订单 · 产品 · 催单历史</div>
-        <div>截图</div><div>日期</div><div>跟进</div><div></div>
+        <div>截图</div><div>日期</div><div style="text-align: right;">操作</div>
       </div>
       <div id="ordersBody"></div>
       <div class="add-row" onclick="addOrder()">+ 新增订单</div>
@@ -1356,7 +1435,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="records-card">
       <div class="records-header aftersales-header">
         <div>#</div><div>状态</div><div>订单 · 产品 · 原因</div>
-        <div>截图</div><div>日期</div><div>跟进</div><div></div>
+        <div>截图</div><div>日期</div><div style="text-align: right;">操作</div>
       </div>
       <div id="aftersalesBody"></div>
       <div class="add-row" onclick="addAftersales()">+ 新增售后单</div>
@@ -1929,6 +2008,28 @@ HOGO
   </div>
 </div>
 
+<!-- ========== 回收站 Modal ========== -->
+<div class="modal-bg" id="trashModal">
+  <div class="modal" style="width: 900px; max-height: 85vh;">
+    <button class="modal-close" onclick="closeModal('trashModal')">✕</button>
+    <h2>🗑 回收站</h2>
+    <p class="desc">误删的数据可在此恢复。<b style="color: var(--danger);">"彻底删除"无法找回</b>，请谨慎操作。</p>
+    
+    <div class="trash-tabs">
+      <button class="trash-tab-btn active" data-trash-tab="orders" onclick="switchTrashTab('orders')">📋 催单 <span class="trash-tab-count" id="tcOrders">0</span></button>
+      <button class="trash-tab-btn" data-trash-tab="aftersales" onclick="switchTrashTab('aftersales')">🔧 售后 <span class="trash-tab-count" id="tcAfter">0</span></button>
+      <button class="trash-tab-btn" data-trash-tab="issues" onclick="switchTrashTab('issues')">⚠ 问题 <span class="trash-tab-count" id="tcIssues">0</span></button>
+      <button class="trash-tab-btn" data-trash-tab="missing" onclick="switchTrashTab('missing')">🔍 找灯 <span class="trash-tab-count" id="tcMissing">0</span></button>
+    </div>
+    
+    <div id="trashContent" style="margin-top: 14px; max-height: 50vh; overflow-y: auto;"></div>
+    
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('trashModal')">关闭</button>
+    </div>
+  </div>
+</div>
+
 <!-- ========== Settings Modal ========== -->
 <div class="modal-bg" id="settingsModal">
   <div class="modal" style="width: 600px;">
@@ -2075,6 +2176,7 @@ const DATA = {
       notes: r.notes || '',
       screenshots: r.screenshots || [], followups: r.followups || [],
       createdAt: r.created_at, updatedAt: r.updated_at,
+      deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
     };
   },
   _fromDbAfter(r) {
@@ -2087,6 +2189,7 @@ const DATA = {
       createdDate: r.created_date || '', nextFollow: r.next_follow || '', resolvedDate: r.resolved_date || '',
       screenshots: r.screenshots || [], followups: r.followups || [],
       createdAt: r.created_at,
+      deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
     };
   },
   _fromDbIssue(r) {
@@ -2095,6 +2198,7 @@ const DATA = {
       supplier: r.supplier || '', issueType: r.issue_type || '',
       requirement: r.requirement || '', status: r.status || 'pending',
       followups: r.followups || [], createdAt: r.created_at,
+      deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
     };
   },
   _fromDbMissing(r) {
@@ -2107,6 +2211,7 @@ const DATA = {
       screenshots: r.screenshots || [], comments: r.comments || [],
       adoptedHelper: r.adopted_helper || '', foundAt: r.found_at,
       createdAt: r.created_at,
+      deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
     };
   },
 
@@ -2122,6 +2227,7 @@ const DATA = {
       shipped_date: o.shippedDate || null, arrived_date: o.arrivedDate || null,
       next_follow: o.nextFollow || null, notes: o.notes || '',
       screenshots: o.screenshots || [], followups: o.followups || [],
+      deleted_at: o.deletedAt || null, deleted_by: o.deletedBy || null,
     };
   },
   _toDbAfter(a, userId) {
@@ -2134,6 +2240,7 @@ const DATA = {
       status: a.status || 'pending',
       created_date: a.createdDate || null, next_follow: a.nextFollow || null, resolved_date: a.resolvedDate || null,
       screenshots: a.screenshots || [], followups: a.followups || [],
+      deleted_at: a.deletedAt || null, deleted_by: a.deletedBy || null,
     };
   },
   _toDbIssue(i, userId) {
@@ -2143,6 +2250,7 @@ const DATA = {
       supplier: i.supplier || '', issue_type: i.issueType || '',
       requirement: i.requirement || '', status: i.status || 'pending',
       followups: i.followups || [],
+      deleted_at: i.deletedAt || null, deleted_by: i.deletedBy || null,
     };
   },
   _toDbMissing(m, userId, userName) {
@@ -2156,6 +2264,7 @@ const DATA = {
       screenshots: m.screenshots || [], comments: m.comments || [],
       adopted_helper: m.adoptedHelper || null,
       found_at: m.foundAt || null,
+      deleted_at: m.deletedAt || null, deleted_by: m.deletedBy || null,
     };
   },
 
@@ -3352,15 +3461,15 @@ function applyModuleVisibility() {
 
 function loadAllData() {
   if (IS_ADMIN) {
-    ORDERS = DATA.getAllOrders();
-    AFTERSALES = DATA.getAllAftersales();
-    ISSUES = DATA.getAllIssues();
+    ORDERS = DATA.getAllOrders().filter(o => !o.deletedAt);
+    AFTERSALES = DATA.getAllAftersales().filter(a => !a.deletedAt);
+    ISSUES = DATA.getAllIssues().filter(i => !i.deletedAt);
   } else {
-    ORDERS = DATA.getOrders(CURRENT_AGENT).map(o => ({ ...o, _agent: CURRENT_AGENT }));
-    AFTERSALES = DATA.getAftersales(CURRENT_AGENT).map(o => ({ ...o, _agent: CURRENT_AGENT }));
-    ISSUES = DATA.getIssues(CURRENT_AGENT).map(o => ({ ...o, _agent: CURRENT_AGENT }));
+    ORDERS = DATA.getOrders(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
+    AFTERSALES = DATA.getAftersales(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
+    ISSUES = DATA.getIssues(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
   }
-  MISSING_LIGHTS = DATA.getMissingLights();
+  MISSING_LIGHTS = DATA.getMissingLights().filter(m => !m.deletedAt);
   refreshAllSupplierDropdowns();
   updateBadges();
 }
@@ -3761,8 +3870,11 @@ function renderOrderRow(o, i) {
       </div>
       <div class="thumbs-cell">${thumbsHtml}</div>
       <div class="dates-cell">${datesHtml || '<span class="no-img">—</span>'}</div>
-      <div><button class="followup-btn ${fuCount > 0 ? 'has-followups' : ''}" onclick="event.stopPropagation(); openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')">${fuCount > 0 ? `📋${fuCount}` : '📋'}</button></div>
-      <button class="row-del" onclick="event.stopPropagation(); delOrderRow('${o._id}', '${escapeHtml(o._agent || '')}')">🗑</button>
+      <div class="row-actions">
+        ${o.status !== 'arrived' ? `<button class="action-btn done" title="一键完成（${o.status === 'shipped' ? '已发货 → 已到货' : '标为已发货'}）" onclick="event.stopPropagation(); quickCompleteOrder('${o._id}', '${escapeHtml(o._agent || '')}')">✓</button>` : '<span style="width: 28px;"></span>'}
+        <button class="followup-btn ${fuCount > 0 ? 'has-followups' : ''}" onclick="event.stopPropagation(); openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')">${fuCount > 0 ? `📋${fuCount}` : '📋'}</button>
+        <button class="action-btn delete" title="删除" onclick="event.stopPropagation(); delOrderRow('${o._id}', '${escapeHtml(o._agent || '')}')">🗑</button>
+      </div>
     </div>
   `;
 }
@@ -3789,18 +3901,58 @@ function addOrder() {
   openOrderModal(newOrder._id, CURRENT_AGENT);
 }
 
-function delOrderRow(id, agent) {
-  if (!confirm('确定删除这个订单？')) return;
-  if (IS_ADMIN && agent && agent !== CURRENT_AGENT) {
-    const arr = DATA.getOrders(agent).filter(o => o._id !== id);
-    DATA.saveOrders(agent, arr);
-  } else {
-    const arr = DATA.getOrders(CURRENT_AGENT).filter(o => o._id !== id);
-    DATA.saveOrders(CURRENT_AGENT, arr);
+function quickCompleteOrder(id, agent) {
+  const ownerAgent = agent || CURRENT_AGENT;
+  const arr = DATA.getOrders(ownerAgent);
+  const o = arr.find(x => x._id === id);
+  if (!o) return;
+  
+  const today = new Date().toISOString().slice(0, 10);
+  
+  if (o.status === 'arrived') {
+    toast('该订单已是「已到货」状态', 'warn');
+    return;
   }
+  
+  let nextStatus, dateField, nextLabel, msg;
+  if (o.status === 'shipped') {
+    // 已发货 → 已到货
+    nextStatus = 'arrived';
+    dateField = 'arrivedDate';
+    nextLabel = '已到货';
+    msg = `订单 ${o.orderNo || '(无单号)'} 已经收到货？\n\n会标记为：✓ 已到货\n到货日期：${today}`;
+  } else {
+    // 待发货/生产中/紧急 → 已发货
+    nextStatus = 'shipped';
+    dateField = 'shippedDate';
+    nextLabel = '已发货';
+    msg = `订单 ${o.orderNo || '(无单号)'} 已经发货？\n\n会标记为：✓ 已发货\n发货日期：${today}\n\n(再点一次可标记为「已到货」)`;
+  }
+  
+  if (!confirm(msg)) return;
+  
+  o.status = nextStatus;
+  if (!o[dateField]) o[dateField] = today;
+  o.updatedAt = new Date().toISOString();
+  
+  DATA.saveOrders(ownerAgent, arr);
   loadAllData();
   renderActiveTab();
-  toast('已删除');
+  toast(`✓ 订单已标记「${nextLabel}」`);
+}
+
+function delOrderRow(id, agent) {
+  if (!confirm('确定删除这个订单？\n\n（删除后会进回收站，30 天内可恢复）')) return;
+  const ownerAgent = (IS_ADMIN && agent) ? agent : CURRENT_AGENT;
+  const arr = DATA.getOrders(ownerAgent);
+  const o = arr.find(x => x._id === id);
+  if (!o) return;
+  o.deletedAt = new Date().toISOString();
+  o.deletedBy = CURRENT_AGENT;
+  DATA.saveOrders(ownerAgent, arr);
+  loadAllData();
+  renderActiveTab();
+  toast('已移入回收站');
 }
 
 function openOrderModal(id, agent) {
@@ -3928,16 +4080,20 @@ function setOrderStatus(st) {
 }
 
 function deleteCurrentOrder() {
-  if (!confirm('确定删除这个订单？所有跟进记录都会删除。')) return;
+  if (!confirm('确定删除这个订单？\n\n（删除后会进回收站，30 天内可恢复）')) return;
   const agent = window._currentItemAgent || CURRENT_AGENT;
-  const arr = DATA.getOrders(agent).filter(o => o._id !== _currentItemId);
+  const arr = DATA.getOrders(agent);
+  const o = arr.find(x => x._id === _currentItemId);
+  if (!o) return;
+  o.deletedAt = new Date().toISOString();
+  o.deletedBy = CURRENT_AGENT;
   DATA.saveOrders(agent, arr);
   closeModal('orderModal');
   loadAllData();
   renderOrders();
   updateOrderStats();
   refreshOrdersFb();
-  toast('已删除');
+  toast('已移入回收站');
 }
 
 function setOmFuType(t) {
@@ -4477,8 +4633,11 @@ function renderAftersales() {
           ${a.nextFollow ? `<div class="date-line"><span class="lbl">⏰ 下次</span>${formatShortDate(a.nextFollow)}</div>` : ''}
           ${a.resolvedDate ? `<div class="date-line"><span class="lbl resolved">✓ 解决</span>${formatShortDate(a.resolvedDate)}</div>` : ''}
         </div>
-        <div><button class="followup-btn ${fuCount > 0 ? 'has-followups' : ''}" onclick="event.stopPropagation(); openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}')">${fuCount > 0 ? `📋${fuCount}` : '📋'}</button></div>
-        <button class="row-del" onclick="event.stopPropagation(); delAfterRow('${a._id}', '${escapeHtml(a._agent || '')}')">🗑</button>
+        <div class="row-actions">
+          ${a.status !== 'resolved' && a.status !== 'cancelled' ? `<button class="action-btn done" title="一键标记为已解决" onclick="event.stopPropagation(); quickCompleteAfter('${a._id}', '${escapeHtml(a._agent || '')}')">✓</button>` : '<span style="width: 28px;"></span>'}
+          <button class="followup-btn ${fuCount > 0 ? 'has-followups' : ''}" onclick="event.stopPropagation(); openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}')">${fuCount > 0 ? `📋${fuCount}` : '📋'}</button>
+          <button class="action-btn delete" title="删除" onclick="event.stopPropagation(); delAfterRow('${a._id}', '${escapeHtml(a._agent || '')}')">🗑</button>
+        </div>
       </div>
     `;
   }).join('');
@@ -4506,14 +4665,42 @@ function addAftersales() {
   openAfterModal(newA._id, CURRENT_AGENT);
 }
 
+function quickCompleteAfter(id, agent) {
+  const ownerAgent = agent || CURRENT_AGENT;
+  const arr = DATA.getAftersales(ownerAgent);
+  const a = arr.find(x => x._id === id);
+  if (!a) return;
+  
+  if (a.status === 'resolved') {
+    toast('该售后单已是「已解决」状态', 'warn');
+    return;
+  }
+  
+  const today = new Date().toISOString().slice(0, 10);
+  const msg = `售后 ${a.orderNo || '(无单号)'} 已经解决？\n\n会标记为：✓ 已解决\n解决日期：${today}`;
+  if (!confirm(msg)) return;
+  
+  a.status = 'resolved';
+  if (!a.resolvedDate) a.resolvedDate = today;
+  
+  DATA.saveAftersales(ownerAgent, arr);
+  loadAllData();
+  renderActiveTab();
+  toast(`✓ 售后已标记「已解决」`);
+}
+
 function delAfterRow(id, agent) {
-  if (!confirm('确定删除？')) return;
-  const owner = agent || CURRENT_AGENT;
-  const arr = DATA.getAftersales(owner).filter(a => a._id !== id);
+  if (!confirm('确定删除？\n\n（删除后会进回收站，30 天内可恢复）')) return;
+  const owner = (IS_ADMIN && agent) ? agent : CURRENT_AGENT;
+  const arr = DATA.getAftersales(owner);
+  const a = arr.find(x => x._id === id);
+  if (!a) return;
+  a.deletedAt = new Date().toISOString();
+  a.deletedBy = CURRENT_AGENT;
   DATA.saveAftersales(owner, arr);
   loadAllData();
   renderActiveTab();
-  toast('已删除');
+  toast('已移入回收站');
 }
 
 function openAfterModal(id, agent) {
@@ -4638,9 +4825,13 @@ function setAfterStatus(st) {
 }
 
 function deleteCurrentAfter() {
-  if (!confirm('确定删除？')) return;
+  if (!confirm('确定删除？\n\n（删除后会进回收站，30 天内可恢复）')) return;
   const agent = window._currentItemAgent || CURRENT_AGENT;
-  const arr = DATA.getAftersales(agent).filter(a => a._id !== _currentItemId);
+  const arr = DATA.getAftersales(agent);
+  const a = arr.find(x => x._id === _currentItemId);
+  if (!a) return;
+  a.deletedAt = new Date().toISOString();
+  a.deletedBy = CURRENT_AGENT;
   DATA.saveAftersales(agent, arr);
   closeModal('aftersalesModal');
   loadAllData();
@@ -4648,7 +4839,7 @@ function deleteCurrentAfter() {
   updateAfterStats();
   refreshAsFb();
   renderAfterReport();
-  toast('已删除');
+  toast('已移入回收站');
 }
 
 function addAfterFollowup() {
@@ -4994,13 +5185,17 @@ function addIssue() {
 }
 
 function delIssueRow(id, agent) {
-  if (!confirm('确定删除？')) return;
-  const owner = agent || CURRENT_AGENT;
-  const arr = DATA.getIssues(owner).filter(i => i._id !== id);
+  if (!confirm('确定删除？\n\n（删除后会进回收站，30 天内可恢复）')) return;
+  const owner = (IS_ADMIN && agent) ? agent : CURRENT_AGENT;
+  const arr = DATA.getIssues(owner);
+  const it = arr.find(x => x._id === id);
+  if (!it) return;
+  it.deletedAt = new Date().toISOString();
+  it.deletedBy = CURRENT_AGENT;
   DATA.saveIssues(owner, arr);
   loadAllData();
   renderActiveTab();
-  toast('已删除');
+  toast('已移入回收站');
 }
 
 function openIssueModal(id, agent) {
@@ -5090,15 +5285,19 @@ function setIssueStatus(st) {
 }
 
 function deleteCurrentIssue() {
-  if (!confirm('确定删除？')) return;
+  if (!confirm('确定删除？\n\n（删除后会进回收站，30 天内可恢复）')) return;
   const agent = window._currentItemAgent || CURRENT_AGENT;
-  const arr = DATA.getIssues(agent).filter(i => i._id !== _currentItemId);
+  const arr = DATA.getIssues(agent);
+  const it = arr.find(x => x._id === _currentItemId);
+  if (!it) return;
+  it.deletedAt = new Date().toISOString();
+  it.deletedBy = CURRENT_AGENT;
   DATA.saveIssues(agent, arr);
   closeModal('issueModal');
   loadAllData();
   renderIssues();
   updateIssueStats();
-  toast('已删除');
+  toast('已移入回收站');
 }
 
 function addIssueFollowup() {
@@ -5297,29 +5496,30 @@ async function exportMissingCollage() {
   toast('正在生成截图，请稍候...', 'warn');
   
   try {
-    // 加载所有图片
+    // 加载所有图片（多图任务展开成多个卡片，让每张图都大）
     const items = [];
     for (const m of target) {
       const imgs = [];
       if (m.screenshots && m.screenshots.length > 0) {
-        // 加载所有图（最多 4 张/项目）
-        for (const src of m.screenshots.slice(0, 4)) {
+        for (const src of m.screenshots.slice(0, 9)) {
           try { imgs.push(await loadImageEl(src)); } catch (e) { /* skip */ }
         }
       }
       items.push({ m, imgs });
     }
     
-    // 布局参数
-    const cardW = 320, imgAreaH = 240, footerH = 96;
+    // 布局参数：放大尺寸 + 更少列数
+    const cardW = 460;
+    const imgAreaH = 380;
+    const footerH = 110;
     const cardH = imgAreaH + footerH;
     const gap = 16;
     const padding = 32;
     const headerH = 100;
     const pageFooterH = 50;
     
-    // 决定列数
-    const cols = Math.min(4, Math.max(2, items.length <= 4 ? items.length : (items.length <= 9 ? 3 : 4)));
+    // 决定列数：1-3 列（保持每张图大）
+    const cols = items.length === 1 ? 1 : items.length <= 4 ? 2 : 3;
     const rows = Math.ceil(items.length / cols);
     
     const canvasW = padding * 2 + cols * cardW + (cols - 1) * gap;
@@ -5389,76 +5589,127 @@ async function exportMissingCollage() {
         ctx.fillText('无图片', x + cardW / 2, y + imgAreaH / 2 + 30);
         ctx.textBaseline = 'top';
       } else if (imgs.length === 1) {
-        // 单图：居中显示
+        // 单图：占满整个图片区
         const img = imgs[0];
         const ratio = Math.min(cardW / img.width, imgAreaH / img.height);
         const drawW = img.width * ratio;
         const drawH = img.height * ratio;
-        const drawX = x + (cardW - drawW) / 2;
-        const drawY = y + (imgAreaH - drawH) / 2;
-        ctx.drawImage(img, drawX, drawY, drawW, drawH);
-      } else {
-        // 多图：2x2 网格
-        const slots = imgs.slice(0, 4);
-        const slotW = cardW / 2, slotH = imgAreaH / 2;
-        for (let k = 0; k < slots.length; k++) {
-          const sx = x + (k % 2) * slotW;
-          const sy = y + Math.floor(k / 2) * slotH;
-          const img = slots[k];
-          const ratio = Math.min(slotW / img.width, slotH / img.height);
+        ctx.drawImage(img, x + (cardW - drawW) / 2, y + (imgAreaH - drawH) / 2, drawW, drawH);
+      } else if (imgs.length === 2) {
+        // 2 张图：上下排列（大）
+        const slotH = (imgAreaH - 2) / 2;
+        for (let k = 0; k < 2; k++) {
+          const img = imgs[k];
+          const sy = y + k * (slotH + 2);
+          const ratio = Math.min(cardW / img.width, slotH / img.height);
           const drawW = img.width * ratio;
           const drawH = img.height * ratio;
-          ctx.drawImage(img, sx + (slotW - drawW) / 2, sy + (slotH - drawH) / 2, drawW, drawH);
+          ctx.drawImage(img, x + (cardW - drawW) / 2, sy + (slotH - drawH) / 2, drawW, drawH);
         }
-        // 分隔线
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(x, y + slotH); ctx.lineTo(x + cardW, y + slotH);
-        ctx.moveTo(x + slotW, y); ctx.lineTo(x + slotW, y + imgAreaH);
+        ctx.moveTo(x, y + slotH + 1); ctx.lineTo(x + cardW, y + slotH + 1);
+        ctx.stroke();
+      } else if (imgs.length === 3) {
+        // 3 张图：左大右两小
+        const leftW = cardW / 2;
+        const rightW = cardW - leftW;
+        const rightH = (imgAreaH - 2) / 2;
+        // 左：大图
+        const im0 = imgs[0];
+        const r0 = Math.min(leftW / im0.width, imgAreaH / im0.height);
+        ctx.drawImage(im0, x + (leftW - im0.width * r0) / 2, y + (imgAreaH - im0.height * r0) / 2, im0.width * r0, im0.height * r0);
+        // 右上 + 右下
+        for (let k = 1; k < 3; k++) {
+          const img = imgs[k];
+          const sx = x + leftW + 2;
+          const sy = y + (k - 1) * (rightH + 2);
+          const ratio = Math.min((rightW - 2) / img.width, rightH / img.height);
+          ctx.drawImage(img, sx + (rightW - 2 - img.width * ratio) / 2, sy + (rightH - img.height * ratio) / 2, img.width * ratio, img.height * ratio);
+        }
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x + leftW + 1, y); ctx.lineTo(x + leftW + 1, y + imgAreaH);
+        ctx.moveTo(x + leftW, y + rightH + 1); ctx.lineTo(x + cardW, y + rightH + 1);
+        ctx.stroke();
+      } else if (imgs.length === 4) {
+        // 4 张图：2x2
+        const slots = imgs.slice(0, 4);
+        const slotW = (cardW - 2) / 2, slotH = (imgAreaH - 2) / 2;
+        for (let k = 0; k < slots.length; k++) {
+          const sx = x + (k % 2) * (slotW + 2);
+          const sy = y + Math.floor(k / 2) * (slotH + 2);
+          const img = slots[k];
+          const ratio = Math.min(slotW / img.width, slotH / img.height);
+          ctx.drawImage(img, sx + (slotW - img.width * ratio) / 2, sy + (slotH - img.height * ratio) / 2, img.width * ratio, img.height * ratio);
+        }
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, y + slotH + 1); ctx.lineTo(x + cardW, y + slotH + 1);
+        ctx.moveTo(x + slotW + 1, y); ctx.lineTo(x + slotW + 1, y + imgAreaH);
+        ctx.stroke();
+      } else {
+        // 5-9 张：3x3 网格
+        const slots = imgs.slice(0, 9);
+        const slotW = (cardW - 4) / 3, slotH = (imgAreaH - 4) / 3;
+        for (let k = 0; k < slots.length; k++) {
+          const sx = x + (k % 3) * (slotW + 2);
+          const sy = y + Math.floor(k / 3) * (slotH + 2);
+          const img = slots[k];
+          const ratio = Math.min(slotW / img.width, slotH / img.height);
+          ctx.drawImage(img, sx + (slotW - img.width * ratio) / 2, sy + (slotH - img.height * ratio) / 2, img.width * ratio, img.height * ratio);
+        }
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 1; i < 3; i++) {
+          ctx.moveTo(x, y + i * (slotH + 2) - 1); ctx.lineTo(x + cardW, y + i * (slotH + 2) - 1);
+          ctx.moveTo(x + i * (slotW + 2) - 1, y); ctx.lineTo(x + i * (slotW + 2) - 1, y + imgAreaH);
+        }
         ctx.stroke();
       }
       
       // 编号徽章（左上角）
       ctx.fillStyle = '#2563eb';
-      ctx.fillRect(x, y, 40, 26);
+      ctx.fillRect(x, y, 52, 32);
       ctx.fillStyle = '#ffffff';
-      ctx.font = `bold 13px ${cnFont}`;
+      ctx.font = `bold 16px ${cnFont}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`#${i + 1}`, x + 20, y + 13);
+      ctx.fillText(`#${i + 1}`, x + 26, y + 16);
       ctx.textBaseline = 'top';
       ctx.textAlign = 'left';
       
       // 多图数量徽章（右下）
       if (it.m.screenshots && it.m.screenshots.length > 1) {
-        ctx.fillStyle = 'rgba(0,0,0,0.65)';
-        const badge = `${it.m.screenshots.length} 张`;
-        ctx.font = `bold 11px ${cnFont}`;
-        const w = ctx.measureText(badge).width + 12;
-        ctx.fillRect(x + cardW - w - 8, y + imgAreaH - 24, w, 18);
+        ctx.fillStyle = 'rgba(0,0,0,0.75)';
+        const badge = `共 ${it.m.screenshots.length} 张`;
+        ctx.font = `bold 13px ${cnFont}`;
+        const w = ctx.measureText(badge).width + 16;
+        ctx.fillRect(x + cardW - w - 10, y + imgAreaH - 30, w, 22);
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
-        ctx.fillText(badge, x + cardW - w/2 - 8, y + imgAreaH - 19);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badge, x + cardW - w/2 - 10, y + imgAreaH - 19);
         ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
       }
       
       // 文字区域
       const m = it.m;
-      let textY = y + imgAreaH + 12;
+      let textY = y + imgAreaH + 14;
       
       // 描述（最多 2 行）
       ctx.fillStyle = '#1c1917';
-      ctx.font = `bold 14px ${cnFont}`;
+      ctx.font = `bold 16px ${cnFont}`;
       const desc = m.description || '(无描述)';
-      drawWrappedText(ctx, desc, x + 12, textY, cardW - 24, 18, 2);
-      textY += 38;
+      drawWrappedText(ctx, desc, x + 14, textY, cardW - 28, 22, 2);
+      textY += 48;
       
-      // 规格 / 数量 / 要求（可选，最多 2 行）
+      // 规格（最多 2 行）
       if (m.specs && m.specs.trim()) {
-        ctx.font = `12px ${cnFont}`;
+        ctx.font = `13px ${cnFont}`;
         ctx.fillStyle = '#2563eb';
-        drawWrappedText(ctx, '📏 ' + m.specs, x + 12, textY, cardW - 24, 16, 2);
+        drawWrappedText(ctx, '📏 ' + m.specs, x + 14, textY, cardW - 28, 18, 2);
       }
       // 不再显示订单号，仅显示提交人
     }
@@ -5544,15 +5795,18 @@ function addMissing() {
 }
 
 function delMissingRow(id) {
-  const m = MISSING_LIGHTS.find(x => x._id === id);
+  // 找到原始 missing（包括已删除的）
+  const m = DATA.getMissingLights().find(x => x._id === id);
   if (!m) return;
   if (m.creator !== CURRENT_AGENT && !IS_ADMIN) { toast('只能删自己发起的任务', 'err'); return; }
-  if (!confirm('确定删除这个找灯任务？')) return;
-  MISSING_LIGHTS = MISSING_LIGHTS.filter(x => x._id !== id);
-  DATA.saveMissingLights(MISSING_LIGHTS);
+  if (!confirm('确定删除这个找灯任务？\n\n（删除后会进回收站，30 天内可恢复）')) return;
+  m.deletedAt = new Date().toISOString();
+  m.deletedBy = CURRENT_AGENT;
+  DATA.saveMissingLights(DATA.getMissingLights());
+  loadAllData();
   renderMissing();
   updateMissingStats();
-  toast('已删除');
+  toast('已移入回收站');
 }
 
 function openMissingModal(id) {
@@ -5632,16 +5886,18 @@ function onMissingField(field, value) {
 }
 
 function deleteCurrentMissing() {
-  const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
+  const m = DATA.getMissingLights().find(x => x._id === _currentItemId);
   if (!m) return;
   if (m.creator !== CURRENT_AGENT && !IS_ADMIN) { toast('只能删自己发起的任务', 'err'); return; }
-  if (!confirm('确定删除这个任务？')) return;
-  MISSING_LIGHTS = MISSING_LIGHTS.filter(x => x._id !== _currentItemId);
-  DATA.saveMissingLights(MISSING_LIGHTS);
+  if (!confirm('确定删除这个任务？\n\n（删除后会进回收站，30 天内可恢复）')) return;
+  m.deletedAt = new Date().toISOString();
+  m.deletedBy = CURRENT_AGENT;
+  DATA.saveMissingLights(DATA.getMissingLights());
   closeModal('missingModal');
+  loadAllData();
   renderMissing();
   updateMissingStats();
-  toast('已删除');
+  toast('已移入回收站');
 }
 
 function addMissingComment() {
@@ -7058,6 +7314,174 @@ function removeAgent(name) {
   DATA.saveConfig(CONFIG);
   ['orders', 'aftersales', 'issues'].forEach(k => localStorage.removeItem(`po_${k}_${name}`));
   renderSettings();
+}
+
+// ============================================================
+// 🗑 回收站
+// ============================================================
+let _trashTab = 'orders';
+
+function openTrash() {
+  _trashTab = 'orders';
+  document.querySelectorAll('.trash-tab-btn').forEach(t => t.classList.toggle('active', t.dataset.trashTab === 'orders'));
+  document.getElementById('trashModal').classList.add('show');
+  renderTrash();
+}
+
+function switchTrashTab(tab) {
+  _trashTab = tab;
+  document.querySelectorAll('.trash-tab-btn').forEach(t => t.classList.toggle('active', t.dataset.trashTab === tab));
+  renderTrash();
+}
+
+function _getTrashItems(type) {
+  // 直接从 _cache 取所有（含已删除），过滤 deletedAt
+  if (type === 'orders') {
+    const all = [];
+    Object.entries(DATA._cache.ordersByAgent).forEach(([agent, arr]) => {
+      arr.forEach(o => o.deletedAt && all.push({ ...o, _agent: agent }));
+    });
+    return all;
+  }
+  if (type === 'aftersales') {
+    const all = [];
+    Object.entries(DATA._cache.aftersalesByAgent).forEach(([agent, arr]) => {
+      arr.forEach(o => o.deletedAt && all.push({ ...o, _agent: agent }));
+    });
+    return all;
+  }
+  if (type === 'issues') {
+    const all = [];
+    Object.entries(DATA._cache.issuesByAgent).forEach(([agent, arr]) => {
+      arr.forEach(o => o.deletedAt && all.push({ ...o, _agent: agent }));
+    });
+    return all;
+  }
+  if (type === 'missing') {
+    return DATA._cache.missingLights.filter(m => m.deletedAt);
+  }
+  return [];
+}
+
+function renderTrash() {
+  // 更新计数
+  document.getElementById('tcOrders').textContent = _getTrashItems('orders').length;
+  document.getElementById('tcAfter').textContent = _getTrashItems('aftersales').length;
+  document.getElementById('tcIssues').textContent = _getTrashItems('issues').length;
+  document.getElementById('tcMissing').textContent = _getTrashItems('missing').length;
+  
+  const items = _getTrashItems(_trashTab);
+  // 按删除时间倒序
+  items.sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
+  
+  const el = document.getElementById('trashContent');
+  if (items.length === 0) {
+    el.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--text-tertiary);">✓ 这个分类的回收站是空的</div>`;
+    return;
+  }
+  
+  el.innerHTML = items.map(item => {
+    const days = item.deletedAt ? Math.floor((new Date() - new Date(item.deletedAt)) / 86400000) : 0;
+    let title = '';
+    let subtitle = '';
+    if (_trashTab === 'orders') {
+      title = (item.orderNo || '(无单号)') + (item.site ? ' [' + item.site + ']' : '');
+      subtitle = `📦 ${item.product || '—'} · 🏭 ${item.supplier || '—'}`;
+    } else if (_trashTab === 'aftersales') {
+      title = (item.orderNo || '(无单号)') + (item.site ? ' [' + item.site + ']' : '');
+      subtitle = `${item.reason || '—'} · 📦 ${item.product || '—'} · 🏭 ${item.supplier || '—'}`;
+    } else if (_trashTab === 'issues') {
+      title = '🏭 ' + (item.supplier || '(未填供应商)') + (item.issueType ? ' · ' + item.issueType : '');
+      subtitle = (item.requirement || '').slice(0, 80);
+    } else if (_trashTab === 'missing') {
+      title = item.description || '(无描述)';
+      subtitle = item.specs ? '📏 ' + item.specs : '';
+    }
+    
+    return `
+      <div class="trash-row">
+        <div class="trash-info">
+          <div class="trash-title">${escapeHtml(title)}</div>
+          ${subtitle ? `<div class="trash-subtitle">${escapeHtml(subtitle)}</div>` : ''}
+          <div class="trash-meta">
+            🕐 ${(item.deletedAt || '').slice(0, 16).replace('T', ' ')} （${days} 天前）· 👤 ${escapeHtml(item.deletedBy || '—')} 删除
+            ${_trashTab !== 'missing' && item._agent ? ` · 归属：${escapeHtml(item._agent)}` : ''}
+          </div>
+        </div>
+        <div class="trash-actions">
+          <button class="btn primary sm" onclick="restoreTrashItem('${_trashTab}', '${item._id}', '${escapeHtml(item._agent || '')}')">↩ 恢复</button>
+          <button class="btn danger-text sm" onclick="permanentDeleteTrashItem('${_trashTab}', '${item._id}', '${escapeHtml(item._agent || '')}')">🔥 彻底删除</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function restoreTrashItem(type, id, agent) {
+  let arr, item;
+  if (type === 'orders') {
+    arr = DATA._cache.ordersByAgent[agent] || [];
+    item = arr.find(x => x._id === id);
+  } else if (type === 'aftersales') {
+    arr = DATA._cache.aftersalesByAgent[agent] || [];
+    item = arr.find(x => x._id === id);
+  } else if (type === 'issues') {
+    arr = DATA._cache.issuesByAgent[agent] || [];
+    item = arr.find(x => x._id === id);
+  } else if (type === 'missing') {
+    arr = DATA._cache.missingLights;
+    item = arr.find(x => x._id === id);
+  }
+  if (!item) return;
+  
+  item.deletedAt = null;
+  item.deletedBy = null;
+  
+  // 触发同步
+  if (type === 'orders') DATA.saveOrders(agent, arr);
+  else if (type === 'aftersales') DATA.saveAftersales(agent, arr);
+  else if (type === 'issues') DATA.saveIssues(agent, arr);
+  else if (type === 'missing') DATA.saveMissingLights(arr);
+  
+  loadAllData();
+  renderTrash();
+  renderActiveTab();
+  toast('✓ 已恢复');
+}
+
+async function permanentDeleteTrashItem(type, id, agent) {
+  if (!confirm('⚠️ 彻底删除后无法找回！\n\n确定要永久删除这条记录吗？')) return;
+  
+  // 直接调 Supabase 删除
+  try {
+    let tableName = '';
+    if (type === 'orders') tableName = 'orders';
+    else if (type === 'aftersales') tableName = 'aftersales';
+    else if (type === 'issues') tableName = 'issues';
+    else if (type === 'missing') tableName = 'missing_lights';
+    
+    if (id && !id.startsWith('O') && !id.startsWith('A') && !id.startsWith('I') && !id.startsWith('M')) {
+      const { error } = await sb.from(tableName).delete().eq('id', id);
+      if (error) throw error;
+    }
+    
+    // 从 _cache 也移除
+    if (type === 'orders') {
+      DATA._cache.ordersByAgent[agent] = (DATA._cache.ordersByAgent[agent] || []).filter(x => x._id !== id);
+    } else if (type === 'aftersales') {
+      DATA._cache.aftersalesByAgent[agent] = (DATA._cache.aftersalesByAgent[agent] || []).filter(x => x._id !== id);
+    } else if (type === 'issues') {
+      DATA._cache.issuesByAgent[agent] = (DATA._cache.issuesByAgent[agent] || []).filter(x => x._id !== id);
+    } else if (type === 'missing') {
+      DATA._cache.missingLights = DATA._cache.missingLights.filter(x => x._id !== id);
+    }
+    
+    renderTrash();
+    toast('已彻底删除');
+  } catch (err) {
+    console.error(err);
+    toast('删除失败：' + (err.message || err), 'err');
+  }
 }
 
 function resetAll() {
