@@ -1737,7 +1737,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 // ============================================================
 const SUPABASE_URL = 'https://pyfmuknvjqfwcqvbrsvw.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_dFjk1WN_Hc0Te6IhXZysZg_SXvKQU4C';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let CURRENT_USER_ID = null;     // auth.uid
 let CURRENT_USER_EMAIL = null;
@@ -1765,11 +1765,11 @@ const DATA = {
   // ============ 异步加载 ============
   async loadAll() {
     // 配置
-    const { data: cfg } = await supabase.from('config').select('*').eq('id', 1).single();
+    const { data: cfg } = await sb.from('config').select('*').eq('id', 1).single();
     if (cfg) this._cache.config = cfg;
 
     // Agents
-    const { data: agentRows } = await supabase.from('agents').select('*');
+    const { data: agentRows } = await sb.from('agents').select('*');
     this._cache.agents = (agentRows || []).map(a => ({
       _userId: a.user_id,
       name: a.name,
@@ -1780,10 +1780,10 @@ const DATA = {
 
     // Orders / Aftersales / Issues 都按 agent 分组（RLS 自动过滤：跟单只能看自己，主管能看所有）
     const [ordersR, aftersR, issuesR, missingR] = await Promise.all([
-      supabase.from('orders').select('*').order('created_at', { ascending: false }),
-      supabase.from('aftersales').select('*').order('created_at', { ascending: false }),
-      supabase.from('issues').select('*').order('created_at', { ascending: false }),
-      supabase.from('missing_lights').select('*').order('created_at', { ascending: false }),
+      sb.from('orders').select('*').order('created_at', { ascending: false }),
+      sb.from('aftersales').select('*').order('created_at', { ascending: false }),
+      sb.from('issues').select('*').order('created_at', { ascending: false }),
+      sb.from('missing_lights').select('*').order('created_at', { ascending: false }),
     ]);
 
     // 按 agent_id 分组
@@ -2004,14 +2004,14 @@ const DATA = {
 
   async _syncConfigAndAgents() {
     if (!IS_ADMIN) return;
-    await supabase.from('config').update({
+    await sb.from('config').update({
       suppliers: this._cache.config.suppliers,
       sites: this._cache.config.sites,
     }).eq('id', 1);
     // 同步每个 agent 的 sites / modules / isAdmin
     for (const a of this._cache.agents) {
       if (a._userId) {
-        await supabase.from('agents').update({
+        await sb.from('agents').update({
           name: a.name,
           is_admin: a.isAdmin,
           sites: a.sites || [],
@@ -2023,7 +2023,7 @@ const DATA = {
 
   async _syncScoreRules(rules) {
     if (!IS_ADMIN) return;
-    await supabase.from('config').update({ score_rules: rules }).eq('id', 1);
+    await sb.from('config').update({ score_rules: rules }).eq('id', 1);
   },
 };
 
@@ -2036,24 +2036,24 @@ async function fullSyncOrders(agentName) {
   const userId = a._userId;
   const arr = DATA._cache.ordersByAgent[agentName] || [];
 
-  const { data: existing } = await supabase.from('orders').select('id').eq('agent_id', userId);
+  const { data: existing } = await sb.from('orders').select('id').eq('agent_id', userId);
   const existingIds = new Set((existing || []).map(o => o.id));
   const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('O')));
 
   const toDelete = [...existingIds].filter(id => !localIds.has(id));
   if (toDelete.length > 0) {
-    await supabase.from('orders').delete().in('id', toDelete);
+    await sb.from('orders').delete().in('id', toDelete);
   }
 
   const inserts = arr.filter(o => !o._id || o._id.startsWith('O')).map(o => DATA._toDbOrder(o, userId));
   const updates = arr.filter(o => o._id && !o._id.startsWith('O')).map(o => DATA._toDbOrder(o, userId));
 
   if (updates.length > 0) {
-    const { error } = await supabase.from('orders').upsert(updates);
+    const { error } = await sb.from('orders').upsert(updates);
     if (error) throw error;
   }
   if (inserts.length > 0) {
-    const { data, error } = await supabase.from('orders').insert(inserts).select();
+    const { data, error } = await sb.from('orders').insert(inserts).select();
     if (error) throw error;
     // 回填真实 UUID
     let i = 0;
@@ -2071,24 +2071,24 @@ async function fullSyncAftersales(agentName) {
   const userId = a._userId;
   const arr = DATA._cache.aftersalesByAgent[agentName] || [];
 
-  const { data: existing } = await supabase.from('aftersales').select('id').eq('agent_id', userId);
+  const { data: existing } = await sb.from('aftersales').select('id').eq('agent_id', userId);
   const existingIds = new Set((existing || []).map(o => o.id));
   const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('A')));
 
   const toDelete = [...existingIds].filter(id => !localIds.has(id));
   if (toDelete.length > 0) {
-    await supabase.from('aftersales').delete().in('id', toDelete);
+    await sb.from('aftersales').delete().in('id', toDelete);
   }
 
   const inserts = arr.filter(o => !o._id || o._id.startsWith('A')).map(o => DATA._toDbAfter(o, userId));
   const updates = arr.filter(o => o._id && !o._id.startsWith('A')).map(o => DATA._toDbAfter(o, userId));
 
   if (updates.length > 0) {
-    const { error } = await supabase.from('aftersales').upsert(updates);
+    const { error } = await sb.from('aftersales').upsert(updates);
     if (error) throw error;
   }
   if (inserts.length > 0) {
-    const { data, error } = await supabase.from('aftersales').insert(inserts).select();
+    const { data, error } = await sb.from('aftersales').insert(inserts).select();
     if (error) throw error;
     let i = 0;
     for (const o of arr) {
@@ -2105,24 +2105,24 @@ async function fullSyncIssues(agentName) {
   const userId = a._userId;
   const arr = DATA._cache.issuesByAgent[agentName] || [];
 
-  const { data: existing } = await supabase.from('issues').select('id').eq('agent_id', userId);
+  const { data: existing } = await sb.from('issues').select('id').eq('agent_id', userId);
   const existingIds = new Set((existing || []).map(o => o.id));
   const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('I')));
 
   const toDelete = [...existingIds].filter(id => !localIds.has(id));
   if (toDelete.length > 0) {
-    await supabase.from('issues').delete().in('id', toDelete);
+    await sb.from('issues').delete().in('id', toDelete);
   }
 
   const inserts = arr.filter(o => !o._id || o._id.startsWith('I')).map(o => DATA._toDbIssue(o, userId));
   const updates = arr.filter(o => o._id && !o._id.startsWith('I')).map(o => DATA._toDbIssue(o, userId));
 
   if (updates.length > 0) {
-    const { error } = await supabase.from('issues').upsert(updates);
+    const { error } = await sb.from('issues').upsert(updates);
     if (error) throw error;
   }
   if (inserts.length > 0) {
-    const { data, error } = await supabase.from('issues').insert(inserts).select();
+    const { data, error } = await sb.from('issues').insert(inserts).select();
     if (error) throw error;
     let i = 0;
     for (const o of arr) {
@@ -2137,25 +2137,25 @@ async function fullSyncMissing() {
   const arr = DATA._cache.missingLights;
 
   // 找灯：所有人共享，按 id 同步
-  const { data: existing } = await supabase.from('missing_lights').select('id');
+  const { data: existing } = await sb.from('missing_lights').select('id');
   const existingIds = new Set((existing || []).map(o => o.id));
   const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('M')));
 
   // 只删除自己创建的（RLS 控制）
   const toDelete = [...existingIds].filter(id => !localIds.has(id));
   if (toDelete.length > 0) {
-    await supabase.from('missing_lights').delete().in('id', toDelete);
+    await sb.from('missing_lights').delete().in('id', toDelete);
   }
 
   const inserts = arr.filter(o => !o._id || o._id.startsWith('M')).map(o => DATA._toDbMissing(o, CURRENT_USER_ID, CURRENT_AGENT));
   const updates = arr.filter(o => o._id && !o._id.startsWith('M')).map(o => DATA._toDbMissing(o, CURRENT_USER_ID, CURRENT_AGENT));
 
   if (updates.length > 0) {
-    const { error } = await supabase.from('missing_lights').upsert(updates);
+    const { error } = await sb.from('missing_lights').upsert(updates);
     if (error) throw error;
   }
   if (inserts.length > 0) {
-    const { data, error } = await supabase.from('missing_lights').insert(inserts).select();
+    const { data, error } = await sb.from('missing_lights').insert(inserts).select();
     if (error) throw error;
     let i = 0;
     for (const o of arr) {
@@ -2241,7 +2241,7 @@ let SCORE_RULES = DATA.getScoreRules();
 async function bootstrap() {
   try {
     // 1. 检查 session
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await sb.auth.getSession();
     if (!session) {
       showLoginScreen();
       return;
@@ -2269,7 +2269,7 @@ async function onAuthSuccess(session) {
   } catch (err) {
     console.error('Load data error:', err);
     showLoginError('加载数据失败：' + (err.message || err) + '。请联系主管。');
-    await supabase.auth.signOut();
+    await sb.auth.signOut();
     showLoginScreen();
     return;
   }
@@ -2282,7 +2282,7 @@ async function onAuthSuccess(session) {
   const agent = CONFIG.agents.find(a => a._userId === CURRENT_USER_ID);
   if (!agent) {
     showLoginError('账号未授权（agents 表中没有此用户）。请联系主管在 agents 表添加记录。');
-    await supabase.auth.signOut();
+    await sb.auth.signOut();
     showLoginScreen();
     return;
   }
@@ -2342,7 +2342,7 @@ async function handleLogin(event) {
   btn.textContent = '登录中...';
 
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
     if (error) throw error;
     document.getElementById('loginPassword').value = '';
     await onAuthSuccess(data.session);
@@ -2357,7 +2357,7 @@ async function handleLogin(event) {
 
 async function handleLogout() {
   if (!confirm('确认登出？')) return;
-  await supabase.auth.signOut();
+  await sb.auth.signOut();
   location.reload();
 }
 
@@ -5014,14 +5014,14 @@ async function uploadScreenshotToStorage(dataURL) {
   const ext = blob.type.includes('png') ? 'png' : 'jpg';
   const fileName = `${CURRENT_USER_ID}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
   
-  const { error } = await supabase.storage.from('po-screenshots').upload(fileName, blob, {
+  const { error } = await sb.storage.from('po-screenshots').upload(fileName, blob, {
     contentType: blob.type,
     upsert: false,
   });
   if (error) throw error;
   
   // 取得签名 URL（私密 bucket 需要签名 URL）
-  const { data, error: urlErr } = await supabase.storage.from('po-screenshots').createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 年有效
+  const { data, error: urlErr } = await sb.storage.from('po-screenshots').createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 年有效
   if (urlErr) throw urlErr;
   return data.signedUrl;
 }
