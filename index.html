@@ -1807,17 +1807,22 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     </div>
     <div class="od-section">
       <div class="od-section-title">售后原因 *</div>
-      <div class="status-grid cols-3" id="asmReasonGrid">
-        <div class="status-pill" data-r="质量问题" onclick="setAfterReason('质量问题')">⚠ 质量问题</div>
+      <div class="status-grid cols-4" id="asmReasonGrid">
+        <div class="status-pill" data-r="产品瑕疵" onclick="setAfterReason('产品瑕疵')">⚠ 产品瑕疵</div>
+        <div class="status-pill" data-r="给错货物" onclick="setAfterReason('给错货物')">🔄 给错货物</div>
+        <div class="status-pill" data-r="缺配件" onclick="setAfterReason('缺配件')">🧩 缺配件</div>
+        <div class="status-pill" data-r="功能故障" onclick="setAfterReason('功能故障')">⚡ 功能故障</div>
         <div class="status-pill" data-r="物流损坏" onclick="setAfterReason('物流损坏')">📦 物流损坏</div>
-        <div class="status-pill" data-r="发错货" onclick="setAfterReason('发错货')">🔄 发错货</div>
-        <div class="status-pill" data-r="缺件少件" onclick="setAfterReason('缺件少件')">🧩 缺件少件</div>
         <div class="status-pill" data-r="安装问题" onclick="setAfterReason('安装问题')">🔧 安装问题</div>
         <div class="status-pill" data-r="不符预期" onclick="setAfterReason('不符预期')">😕 不符预期</div>
-        <div class="status-pill" data-r="功能故障" onclick="setAfterReason('功能故障')">⚡ 功能故障</div>
         <div class="status-pill" data-r="其他" onclick="setAfterReason('其他')">📌 其他</div>
       </div>
-      <textarea class="form-control" id="asmReasonDetail" placeholder="详细描述售后原因（如：客户反馈灯罩有裂痕）" style="margin-top: 10px;" oninput="onAfterField('reasonDetail', this.value)"></textarea>
+      <!-- 子原因（根据主原因动态显示） -->
+      <div id="asmSubReasonWrap" style="margin-top: 12px; display: none;">
+        <div style="font-size: 11.5px; color: var(--text-tertiary); margin-bottom: 6px;">具体类型（可选，选了更便于统计）</div>
+        <div class="status-grid cols-3" id="asmSubReasonGrid"></div>
+      </div>
+      <textarea class="form-control" id="asmReasonDetail" placeholder="详细描述售后情况（如：客户反馈灯罩有 2cm 长的裂痕）" style="margin-top: 10px;" oninput="onAfterField('reasonDetail', this.value)"></textarea>
     </div>
     <div class="od-section">
       <div class="od-section-title">当前处理状态</div>
@@ -2768,7 +2773,41 @@ const ORDER_TYPE_LABELS = {
   chase: '💬 催单', response: '📨 供应商反馈',
   ship: '🚚 发货通知', arrive: '📦 到货', other: '📌 其他',
 };
-const REASON_LIST = ['质量问题','物流损坏','发错货','缺件少件','安装问题','不符预期','功能故障','其他'];
+const REASON_LIST = ['产品瑕疵','给错货物','缺配件','功能故障','物流损坏','安装问题','不符预期','其他'];
+const REASON_TREE = {
+  '产品瑕疵': {
+    icon: '⚠',
+    subs: ['喷漆不良/掉漆', '有划痕/磨损', '生锈/氧化', '玻璃破损/裂纹', '亚克力变形/发黄', '焊点开裂', '材质问题', '污渍/胶痕', '其他瑕疵']
+  },
+  '给错货物': {
+    icon: '🔄',
+    subs: ['款式错误（要 A 给 B）', '颜色错误（如白→黑）', '数量错误（要 2 给 1）', '尺寸错误', '型号错误', '替换货未通知', '其他给错']
+  },
+  '缺配件': {
+    icon: '🧩',
+    subs: ['缺光源/灯泡', '缺驱动/电源', '缺遥控器', '缺安装件（螺丝/挂板）', '缺装饰件（吊坠/水晶等）', '缺连接线/灯头线', '缺说明书', '其他缺件']
+  },
+  '功能故障': {
+    icon: '⚡',
+    subs: ['电压错误（如要 110V 给 220V）', '光源不对（如要单色给三色）', '调光不对（如要可控硅给常规）', '不亮 / 闪烁 / 不稳', '开关不灵 / 损坏', '蓝牙 / 智能控制问题', '光源亮度不达标', '色温不对', '其他功能问题']
+  },
+  '物流损坏': {
+    icon: '📦',
+    subs: ['运输压破', '包装破损', '货物丢失/少箱', '运输延误', '其他物流问题']
+  },
+  '安装问题': {
+    icon: '🔧',
+    subs: ['尺寸不符', '配件不匹配', '说明书不清/缺失', '安装结构问题', '其他安装问题']
+  },
+  '不符预期': {
+    icon: '😕',
+    subs: ['客户主观因素', '色差较大', '风格不符', '尺寸偏大/偏小', '材质感不符', '其他不符']
+  },
+  '其他': {
+    icon: '📌',
+    subs: ['请在详情说明']
+  }
+};
 
 // 订单号格式提示（按网站）
 const ORDER_NO_FORMAT = {
@@ -4931,7 +4970,7 @@ function renderAftersales() {
     }
     if (fSupp && a.supplier !== fSupp) return false;
     if (fSite && a.site !== fSite) return false;
-    if (fReason && a.reason !== fReason) return false;
+    if (fReason && !(a.reason || '').startsWith(fReason)) return false;
     if (fs === 'active') return !['resolved','cancelled'].includes(a.status);
     if (fs === 'completed') return ['resolved','cancelled'].includes(a.status);
     if (fs === 'all') return true;
@@ -5134,8 +5173,26 @@ function renderAfterModalContent() {
     </div>
   `;
   // 原因 + 状态
-  document.querySelectorAll('#asmReasonGrid .status-pill').forEach(p => p.classList.toggle('selected', p.dataset.r === a.reason));
-  document.querySelectorAll('#aftersalesModal .status-grid:not(#asmReasonGrid) .status-pill').forEach(p => p.classList.toggle('selected', p.dataset.st === a.status));
+  const { main: mainReason, sub: subReason } = _parseReason(a.reason);
+  document.querySelectorAll('#asmReasonGrid .status-pill').forEach(p => p.classList.toggle('selected', p.dataset.r === mainReason));
+  document.querySelectorAll('#aftersalesModal .status-grid:not(#asmReasonGrid):not(#asmSubReasonGrid) .status-pill').forEach(p => p.classList.toggle('selected', p.dataset.st === a.status));
+  
+  // 子原因渲染
+  const subWrap = document.getElementById('asmSubReasonWrap');
+  const subGrid = document.getElementById('asmSubReasonGrid');
+  if (subWrap && subGrid) {
+    if (mainReason && REASON_TREE[mainReason] && REASON_TREE[mainReason].subs.length > 0) {
+      subWrap.style.display = '';
+      subGrid.innerHTML = REASON_TREE[mainReason].subs.map(s => {
+        const esc = escapeHtml(s).replace(/'/g, '&#39;');
+        const onclick = `setAfterSubReason('${s.replace(/'/g, "\\'")}')`;
+        return `<div class="status-pill ${s === subReason ? 'selected' : ''}" data-sub="${esc}" onclick="${onclick}">${esc}</div>`;
+      }).join('');
+    } else {
+      subWrap.style.display = 'none';
+      subGrid.innerHTML = '';
+    }
+  }
   
   // 截图
   const origs = a.screenshots || [];
@@ -5192,8 +5249,39 @@ function onAfterField(field, value) {
   renderAfterReport();
 }
 
-async function setAfterReason(r) {
-  persistCurrentAfter(a => a.reason = r);
+// 售后原因辅助：拆分 "主类 · 子类" 格式
+const REASON_MIGRATION = {
+  '质量问题': '产品瑕疵',
+  '发错货': '给错货物',
+  '缺件少件': '缺配件',
+};
+function _parseReason(reason) {
+  if (!reason) return { main: '', sub: '' };
+  const parts = reason.split(' · ');
+  let main = parts[0] || '';
+  if (REASON_MIGRATION[main]) main = REASON_MIGRATION[main];
+  return { main, sub: parts[1] || '' };
+}
+
+async function setAfterReason(mainReason) {
+  // 点主原因：保留主原因，清空子原因
+  persistCurrentAfter(a => { a.reason = mainReason; });
+  renderAfterModalContent();
+  renderAftersales();
+  renderAfterReport();
+  const agent = window._currentItemAgent || CURRENT_AGENT;
+  DATA._cancelDebounce('after_' + agent);
+  try { await fullSyncAftersales(agent); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
+}
+
+async function setAfterSubReason(subReason) {
+  const a = currentAfter();
+  if (!a) return;
+  const main = _parseReason(a.reason).main;
+  if (!main) { toast('请先选择主原因', 'warn'); return; }
+  const newReason = subReason ? `${main} · ${subReason}` : main;
+  persistCurrentAfter(x => { x.reason = newReason; });
   renderAfterModalContent();
   renderAftersales();
   renderAfterReport();
@@ -5387,10 +5475,10 @@ function renderAfterReport() {
     }).join('');
   }
   
-  // 按原因
+  // 按原因（只按主原因统计，避免子原因导致分散）
   const byReason = {};
   monthData.forEach(a => {
-    const r = a.reason || '未填';
+    const r = (_parseReason(a.reason).main) || '未填';
     byReason[r] = (byReason[r] || 0) + 1;
   });
   const reasonList = Object.entries(byReason).sort((a, b) => b[1] - a[1]);
