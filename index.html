@@ -202,9 +202,12 @@ body {
   grid-template-columns: 36px 110px 110px minmax(140px, 1fr) minmax(110px, 0.9fr) 130px 100px 90px 40px;
 }
 /* 供应商问题 */
-#issuesBody .record-row, .issues-header {
-  grid-template-columns: 36px 110px minmax(120px, 1fr) 110px minmax(220px, 2fr) 70px 100px 40px;
+#issuesBody .record-row, #issuesContainer .record-row, .issues-header {
+  grid-template-columns: 36px 110px minmax(120px, 1fr) 110px minmax(220px, 2.5fr) 80px 100px 40px;
 }
+#issuesContainer .record-row { align-items: start; padding: 14px 18px; }
+#issuesContainer .record-row > div { padding-top: 4px; }
+#issuesContainer .record-row .row-del { align-self: start; margin-top: 4px; }
 /* 找灯 */
 #missingBody .record-row, .missing-header {
   grid-template-columns: 36px 100px minmax(160px, 2fr) 120px 80px 90px 40px;
@@ -4696,15 +4699,46 @@ function renderIssues() {
 
 function renderIssueRow(it, i) {
   const fuCount = (it.followups || []).length;
-  const lastDate = fuCount > 0 ? it.followups[fuCount - 1].date : '';
+  const lastFu = fuCount > 0 ? it.followups[fuCount - 1] : null;
+  const lastDate = lastFu ? lastFu.date : '';
+  const lastNote = lastFu ? lastFu.note : '';
+  
+  // 供应商显示：空则警示
+  const supplierHtml = it.supplier 
+    ? escapeHtml(it.supplier)
+    : '<span style="color:var(--warning); font-weight:600;">⚠ 待补充</span>';
+  
+  // 沟通次数样式
+  const fuBadge = fuCount === 0 
+    ? '<span style="color:var(--text-tertiary);">—</span>'
+    : fuCount >= 3 
+      ? `<b style="color:var(--danger);">${fuCount} 次 ⚠</b>` 
+      : `<b style="color:var(--text-primary);">${fuCount} 次</b>`;
+  
+  // 主管能看跟单员名字
+  const agentBadge = IS_ADMIN && it._agent 
+    ? `<div style="font-size:9px;color:var(--text-tertiary); margin-top:2px;">👤 ${escapeHtml(it._agent)}</div>` 
+    : '';
+  
+  // 要求 + 最近沟通摘要
+  const reqText = it.requirement || '<span style="color:var(--text-tertiary);">未填写要求</span>';
+  const lastFuHtml = lastFu 
+    ? `<div style="margin-top: 6px; padding: 6px 10px; background: var(--bg-elevated); border-radius: 6px; font-size: 11.5px; color: var(--text-secondary); line-height: 1.4;">
+         <b style="color:var(--accent);">📞 最近沟通 · ${formatShortDate(lastDate)}：</b>${escapeHtml((lastNote || '').slice(0, 80))}${(lastNote || '').length > 80 ? '...' : ''}
+       </div>` 
+    : '<div style="margin-top:4px; font-size:11px; color:var(--warning);">⚠ 还没记录沟通</div>';
+  
   return `
     <div class="record-row s-${it.status}" onclick="openIssueModal('${it._id}', '${escapeHtml(it._agent || '')}')">
-      <div class="row-num">${i + 1}${IS_ADMIN && it._agent ? `<div style="font-size:9px;color:var(--text-tertiary);">${escapeHtml(it._agent.slice(0,2))}</div>` : ''}</div>
+      <div class="row-num">${i + 1}${agentBadge}</div>
       <div><span class="status-pill s-${it.status}">${ISSUE_STATUS_LABELS[it.status]}</span></div>
-      <div class="cell-text">${escapeHtml(it.supplier || '—')}</div>
+      <div class="cell-text" style="font-weight:600;">${supplierHtml}</div>
       <div class="cell-text"><span style="background:rgba(124,58,237,0.08);color:var(--purple);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">${escapeHtml(it.issueType || '—')}</span></div>
-      <div class="cell-text multiline" style="line-height:1.4;max-height:40px;overflow:hidden;">${escapeHtml((it.requirement || '').slice(0, 80))}${(it.requirement || '').length > 80 ? '...' : ''}</div>
-      <div class="cell-text mono" style="text-align:center;">${fuCount > 0 ? `<b style="color:${fuCount >= 3 ? 'var(--danger)' : 'var(--text-primary)'};">${fuCount}</b>` : '—'}</div>
+      <div class="cell-text" style="line-height:1.4;">
+        <div>${typeof reqText === 'string' && !reqText.startsWith('<') ? escapeHtml(reqText.slice(0, 100)) + (reqText.length > 100 ? '...' : '') : reqText}</div>
+        ${lastFuHtml}
+      </div>
+      <div class="cell-text mono" style="text-align:center;">${fuBadge}</div>
       <div class="date-cell ${lastDate ? '' : 'empty'}">${formatShortDate(lastDate)}</div>
       <button class="row-del" onclick="event.stopPropagation(); delIssueRow('${it._id}', '${escapeHtml(it._agent || '')}')">🗑</button>
     </div>
