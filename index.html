@@ -668,6 +668,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .toast { position: fixed; top: 24px; right: 24px; background: var(--bg-card); border: 1px solid var(--border); border-left: 4px solid var(--success); border-radius: 10px; padding: 14px 22px; font-size: 13px; z-index: 200; box-shadow: var(--shadow-lg); animation: toastIn 0.3s ease; }
 .toast.err { border-left-color: var(--danger); }
 .toast.warn { border-left-color: var(--warning); }
+.toast.info { border-left-color: var(--accent); }
 @keyframes toastIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
 /* Agent Picker */
@@ -6295,57 +6296,124 @@ function setupScreenshotHandlers() {
     dz.addEventListener('mouseenter', () => { _pasteTarget = cfg.target; });
   });
   
-  // 全局粘贴
+  // 全局粘贴：自动按当前 modal 决定上传位置
   document.addEventListener('paste', e => {
-    if (!_pasteTarget) return;
-    if (!document.querySelector('.modal-bg.show')) return;
     const items = e.clipboardData?.items;
     if (!items) return;
+    
+    // 检查是否有图片
+    let hasImage = false;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) { hasImage = true; break; }
+    }
+    if (!hasImage) return;
+    
+    // 决定 target：优先用鼠标 hover 设置的 _pasteTarget，否则按当前 modal 自动判断
+    let target = _pasteTarget;
+    if (!target) {
+      const visibleModal = document.querySelector('.modal-bg.show');
+      if (!visibleModal) return;
+      const modalDefaults = {
+        orderModal: 'order_fu',           // 订单：默认进跟进区
+        aftersalesModal: 'after_fu',
+        issueModal: 'issue_fu',
+        missingModal: 'missing_orig',      // 找灯：进图片区
+        batchChaseModal: 'batch_chase',
+      };
+      target = modalDefaults[visibleModal.id];
+    }
+    if (!target) return;
+    
+    e.preventDefault();
+    const files = [];
     for (const item of items) {
       if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (file) handleFiles([file], _pasteTarget);
+        const f = item.getAsFile();
+        if (f) files.push(f);
       }
     }
+    if (files.length > 0) handleFiles(files, target);
   });
 }
 
 async function handleFiles(files, target) {
-  for (const file of files) {
-    if (!file.type.startsWith('image/')) {
-      toast(`${file.name} 不是图片`, 'err');
-      continue;
-    }
+  const fileArr = Array.from(files).filter(f => f.type.startsWith('image/'));
+  const skipped = files.length - fileArr.length;
+  if (skipped > 0) toast(`跳过 ${skipped} 个非图片文件`, 'warn');
+  if (fileArr.length === 0) return;
+  
+  // 上传中提示（长效，30 秒超时）
+  const uploadingMsg = toast(`📤 正在上传${fileArr.length > 1 ? ` ${fileArr.length} 张` : ''}图片...`, 'info', 30000);
+  
+  let okCount = 0, failCount = 0;
+  for (const file of fileArr) {
     try {
       const dataURL = await compressImage(file);
-      // 上传到 Storage 并取得 URL
       const url = await uploadScreenshotToStorage(dataURL);
       attachScreenshot(url, target);
+      okCount++;
     } catch (err) {
-      console.error(err);
-      toast('图片上传失败：' + (err.message || err), 'err');
+      console.error('Upload failed:', file.name, err);
+      failCount++;
     }
+  }
+  
+  // 关闭上传中提示
+  if (uploadingMsg && uploadingMsg.parentNode) {
+    clearTimeout(uploadingMsg._fadeTimer);
+    uploadingMsg.style.opacity = '0';
+    setTimeout(() => { if (uploadingMsg.parentNode) uploadingMsg.remove(); }, 300);
+  }
+  
+  if (okCount > 0 && failCount === 0) {
+    toast(`✓ 已上传 ${okCount} 张图片`);
+  } else if (okCount > 0) {
+    toast(`✓ 成功 ${okCount} 张，失败 ${failCount} 张`, 'warn');
+  } else {
+    toast(`❌ 上传失败，请按 F12 看 Console 错误详情`, 'err');
   }
 }
 
-// 把 dataURL 转 Blob 并上传到 Supabase Storage
+// 把 dataURL 直接转 Blob（比 fetch(dataURL) 更稳健）
+function dataURLToBlob(dataURL) {
+  const parts = dataURL.split(',');
+  const mimeMatch = parts[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+  const bstr = atob(parts[1]);
+  const u8 = new Uint8Array(bstr.length);
+  for (let i = 0; i < bstr.length; i++) u8[i] = bstr.charCodeAt(i);
+  return new Blob([u8], { type: mime });
+}
+
+// 上传到 Supabase Storage（Public bucket，用 publicUrl 永久有效）
 async function uploadScreenshotToStorage(dataURL) {
-  // 转 Blob
-  const resp = await fetch(dataURL);
-  const blob = await resp.blob();
+  if (!CURRENT_USER_ID) {
+    throw new Error('未登录（CURRENT_USER_ID 为空），请刷新页面重新登录');
+  }
+  
+  const blob = dataURLToBlob(dataURL);
   const ext = blob.type.includes('png') ? 'png' : 'jpg';
   const fileName = `${CURRENT_USER_ID}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
   
-  const { error } = await sb.storage.from('po-screenshots').upload(fileName, blob, {
+  console.log('[Upload] 开始上传:', fileName, '大小:', (blob.size / 1024).toFixed(1) + 'KB');
+  
+  const { error: uploadErr } = await sb.storage.from('po-screenshots').upload(fileName, blob, {
     contentType: blob.type,
     upsert: false,
   });
-  if (error) throw error;
+  if (uploadErr) {
+    console.error('[Upload] Storage 上传错误:', uploadErr);
+    throw new Error('Storage 上传失败: ' + (uploadErr.message || JSON.stringify(uploadErr)));
+  }
   
-  // 取得签名 URL（私密 bucket 需要签名 URL）
-  const { data, error: urlErr } = await sb.storage.from('po-screenshots').createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 年有效
-  if (urlErr) throw urlErr;
-  return data.signedUrl;
+  // 用 publicUrl（永久有效、加载快、可缓存。需要 bucket 设为 Public）
+  const { data: urlData } = sb.storage.from('po-screenshots').getPublicUrl(fileName);
+  if (!urlData || !urlData.publicUrl) {
+    throw new Error('生成 URL 失败');
+  }
+  
+  console.log('[Upload] ✓ 完成:', urlData.publicUrl);
+  return urlData.publicUrl;
 }
 
 function attachScreenshot(dataURL, target) {
@@ -6774,12 +6842,15 @@ document.querySelectorAll('.modal-bg').forEach(bg => {
   });
 });
 
-function toast(msg, type) {
+function toast(msg, type, duration) {
   const t = document.createElement('div');
-  t.className = 'toast' + (type === 'err' ? ' err' : type === 'warn' ? ' warn' : '');
+  t.className = 'toast' + (type === 'err' ? ' err' : type === 'warn' ? ' warn' : type === 'info' ? ' info' : '');
   t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2800);
+  const d = duration || 2800;
+  const fadeTimer = setTimeout(() => { t.style.opacity = '0'; setTimeout(() => { if (t.parentNode) t.remove(); }, 300); }, d);
+  t._fadeTimer = fadeTimer;
+  return t;
 }
 
 // 启动
