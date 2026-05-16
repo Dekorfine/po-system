@@ -941,6 +941,33 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .tag-item.has-issue { background: rgba(185,28,28,0.06); border-color: rgba(185,28,28,0.3); }
 .tag-item.has-issue::before { content: '⚠'; color: var(--danger); }
 
+/* 同步状态指示器 */
+.sync-indicator {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-elevated);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-right: 4px;
+}
+.sync-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block;
+}
+.sync-dot.synced { background: var(--success); box-shadow: 0 0 0 0 rgba(21,128,61,0.4); }
+.sync-dot.syncing { 
+  background: var(--warning); 
+  animation: sync-pulse 1s ease-in-out infinite; 
+}
+.sync-dot.error { background: var(--danger); }
+.sync-dot.pending { background: var(--text-tertiary); }
+@keyframes sync-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.6; }
+}
+
 .perf-view-btn { transition: all 0.15s; }
 .perf-view-btn:hover { color: var(--text-primary); }
 .perf-view-btn.active { background: var(--bg-card) !important; color: var(--purple) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
@@ -1356,6 +1383,10 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <div class="name" id="curName">未登录</div>
         <span class="arrow">⎋</span>
       </div>
+      <span class="sync-indicator" id="syncIndicator" title="云端同步状态">
+        <span class="sync-dot synced"></span>
+        <span class="sync-label">已同步</span>
+      </span>
       <button class="btn ghost" onclick="openTrash()" title="回收站">🗑</button>
       <button class="btn ghost" onclick="openSettings()">⚙</button>
       <button class="btn ghost" onclick="exportCurrentTab()">⬇ Excel</button>
@@ -2439,14 +2470,19 @@ const DATA = {
     if (_isBootstrapping) return;
     clearTimeout(this._syncTimers[key]);
     this._pendingFns[key] = fn;
+    setSyncStatus('pending');
     this._syncTimers[key] = setTimeout(() => {
       const f = this._pendingFns[key];
       delete this._pendingFns[key];
       delete this._syncTimers[key];
-      if (f) f().catch(err => {
-        console.error('Sync error', key, err);
-        if (typeof toast === 'function') toast('云端同步失败：' + (err.message || err), 'err');
-      });
+      if (f) {
+        setSyncStatus('syncing');
+        f().then(() => setSyncStatus('synced')).catch(err => {
+          setSyncStatus('error');
+          console.error('Sync error', key, err);
+          if (typeof toast === 'function') toast('云端同步失败：' + (err.message || err), 'err');
+        });
+      }
     }, ms);
   },
   
@@ -2459,19 +2495,27 @@ const DATA = {
   // 立即推送（不 debounce）：用于"明确提交动作"如加跟进、删除、状态切换等
   async saveAndSyncOrders(agent) {
     this._cancelDebounce('orders_' + agent);
-    return fullSyncOrders(agent);
+    setSyncStatus('syncing');
+    try { await fullSyncOrders(agent); setSyncStatus('synced'); }
+    catch (err) { setSyncStatus('error'); throw err; }
   },
   async saveAndSyncAftersales(agent) {
     this._cancelDebounce('after_' + agent);
-    return fullSyncAftersales(agent);
+    setSyncStatus('syncing');
+    try { await fullSyncAftersales(agent); setSyncStatus('synced'); }
+    catch (err) { setSyncStatus('error'); throw err; }
   },
   async saveAndSyncIssues(agent) {
     this._cancelDebounce('issues_' + agent);
-    return fullSyncIssues(agent);
+    setSyncStatus('syncing');
+    try { await fullSyncIssues(agent); setSyncStatus('synced'); }
+    catch (err) { setSyncStatus('error'); throw err; }
   },
   async saveAndSyncMissing() {
     this._cancelDebounce('missing');
-    return fullSyncMissing();
+    setSyncStatus('syncing');
+    try { await fullSyncMissing(); setSyncStatus('synced'); }
+    catch (err) { setSyncStatus('error'); throw err; }
   },
   
   // 立即执行所有 pending 的同步（关闭 modal 时调用，保证数据落库）
@@ -4791,7 +4835,7 @@ function setBcType(t) {
   document.querySelectorAll('#batchChaseModal .fu-type-btn').forEach(b => b.classList.toggle('selected', b.dataset.type === t));
 }
 
-function saveBatchChase() {
+async function saveBatchChase() {
   if (_bcSelectedIds.size === 0) { toast('请至少选 1 单', 'warn'); return; }
   const note = document.getElementById('bcNote').value.trim();
   const date = document.getElementById('bcDate').value || new Date().toISOString().slice(0, 10);
@@ -4821,6 +4865,9 @@ function saveBatchChase() {
   updateOrderStats();
   refreshOrdersFb();
   toast(`✓ 已批量催单 ${count} 个订单`);
+  // 立即同步云端
+  try { await DATA.saveAndSyncOrders(CURRENT_AGENT); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
 }
 
 // ============ 批量催单截图（用 _pasteTarget 复用全局粘贴）============
@@ -5145,11 +5192,15 @@ function onAfterField(field, value) {
   renderAfterReport();
 }
 
-function setAfterReason(r) {
+async function setAfterReason(r) {
   persistCurrentAfter(a => a.reason = r);
   renderAfterModalContent();
   renderAftersales();
   renderAfterReport();
+  const agent = window._currentItemAgent || CURRENT_AGENT;
+  DATA._cancelDebounce('after_' + agent);
+  try { await fullSyncAftersales(agent); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
 }
 
 async function setAfterStatus(st) {
@@ -6309,14 +6360,31 @@ function renderMissingModalContent() {
   }
 }
 
-function onMissingField(field, value) {
+async function onMissingField(field, value) {
   const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
   if (!m) return;
+  // 权限检查：只有发起人或主管能修改
+  if (m.creator !== CURRENT_AGENT && !IS_ADMIN) {
+    toast('只有发起人能修改这个找灯任务', 'err');
+    // 还原 UI 状态
+    renderMissingModalContent();
+    return;
+  }
   m[field] = value;
   DATA.saveMissingLights(MISSING_LIGHTS);
   renderMissingModalContent();
   renderMissing();
   updateMissingStats();
+  if (field === 'status') {
+    try { await DATA.saveAndSyncMissing(); }
+    catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
+  }
+}
+
+// deleteCurrentMissing 也加同步
+async function deleteCurrentMissingSync() {
+  // 旧函数保持兼容
+  return deleteCurrentMissing();
 }
 
 function deleteCurrentMissing() {
@@ -6334,7 +6402,7 @@ function deleteCurrentMissing() {
   toast('已移入回收站');
 }
 
-function addMissingComment() {
+async function addMissingComment() {
   const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
   if (!m) return;
   const content = document.getElementById('mmNewComment').value.trim();
@@ -6363,9 +6431,12 @@ function addMissingComment() {
   renderMissing();
   updateMissingStats();
   toast('✓ 评论已发布');
+  // 立即同步云端
+  try { await DATA.saveAndSyncMissing(); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
 }
 
-function delMissingComment(idx) {
+async function delMissingComment(idx) {
   const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
   if (!m) return;
   const c = m.comments[idx];
@@ -6376,9 +6447,11 @@ function delMissingComment(idx) {
   renderMissingModalContent();
   renderMissing();
   updateMissingStats();
+  try { await DATA.saveAndSyncMissing(); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
 }
 
-function adoptComment(idx) {
+async function adoptComment(idx) {
   const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
   if (!m) return;
   if (m.creator !== CURRENT_AGENT) { toast('只有发起人能采纳', 'err'); return; }
@@ -6389,7 +6462,7 @@ function adoptComment(idx) {
   c.adopted = true;
   c.adoptedAt = new Date().toISOString();
   m.status = 'found';
-  m.adoptedHelper = c.user;  // 记录贡献者，便于绩效统计
+  m.adoptedHelper = c.user;
   m.foundAt = new Date().toISOString();
   document.getElementById('mmStatus').value = 'found';
   
@@ -6398,9 +6471,11 @@ function adoptComment(idx) {
   renderMissing();
   updateMissingStats();
   toast(`✓ 已采纳推荐，${c.user} 获得 ${SCORE_RULES.missingHelp} 分`);
+  try { await DATA.saveAndSyncMissing(); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
 }
 
-function revokeAdopt(idx) {
+async function revokeAdopt(idx) {
   const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
   if (!m) return;
   if (m.creator !== CURRENT_AGENT) { toast('只有发起人能撤销', 'err'); return; }
@@ -6416,15 +6491,20 @@ function revokeAdopt(idx) {
   renderMissing();
   updateMissingStats();
   toast('已撤销采纳');
+  try { await DATA.saveAndSyncMissing(); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
 }
 
-function rmMissingScreenshot(i) {
+async function rmMissingScreenshot(i) {
   const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
   if (!m) return;
+  if (m.creator !== CURRENT_AGENT && !IS_ADMIN) { toast('只有发起人能修改', 'err'); return; }
   m.screenshots.splice(i, 1);
   DATA.saveMissingLights(MISSING_LIGHTS);
   renderMissingModalContent();
   renderMissing();
+  try { await DATA.saveAndSyncMissing(); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
 }
 
 function updateMissingStats() {
@@ -6631,7 +6711,7 @@ function renderDailyReport() {
       <div class="daily-section">
         <h3>📋 新建催单 (${newOrders.length})</h3>
         <div class="daily-list">${newOrders.map((o, i) => `
-          <div class="daily-item" onclick="switchTab('orders'); setTimeout(() => openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}'), 100);">
+          <div class="daily-item" onclick="switchTab('orders'); setTimeout(() => openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}'), 200);">
             <span class="daily-num">${i + 1}</span>
             <span class="daily-mono"><b>${escapeHtml(o.orderNo || '(待填单号)')}</b>${o.site ? ` <span class="site-badge s-${o.site}">${escapeHtml(o.site)}</span>` : ''}</span>
             <span class="daily-text">📦 ${escapeHtml(o.product || '—')} · 🏭 ${escapeHtml(o.supplier || '—')}</span>
@@ -6646,7 +6726,7 @@ function renderDailyReport() {
       <div class="daily-section">
         <h3>🔧 新建售后 (${newAfter.length})</h3>
         <div class="daily-list">${newAfter.map((a, i) => `
-          <div class="daily-item" onclick="switchTab('aftersales'); setTimeout(() => openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}'), 100);">
+          <div class="daily-item" onclick="switchTab('aftersales'); setTimeout(() => openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}'), 200);">
             <span class="daily-num">${i + 1}</span>
             <span class="daily-mono"><b>${escapeHtml(a.orderNo || '(无单号)')}</b>${a.site ? ` <span class="site-badge s-${a.site}">${escapeHtml(a.site)}</span>` : ''}</span>
             <span class="daily-text">${escapeHtml(a.reason || '—')} · 🏭 ${escapeHtml(a.supplier || '—')}</span>
@@ -6661,7 +6741,7 @@ function renderDailyReport() {
       <div class="daily-section">
         <h3>⚠ 新建问题 (${newIssues.length})</h3>
         <div class="daily-list">${newIssues.map((it, i) => `
-          <div class="daily-item" onclick="switchTab('issues'); setTimeout(() => openIssueModal('${it._id}', '${escapeHtml(it._agent || '')}'), 100);">
+          <div class="daily-item" onclick="switchTab('issues'); setTimeout(() => openIssueModal('${it._id}', '${escapeHtml(it._agent || '')}'), 200);">
             <span class="daily-num">${i + 1}</span>
             <span class="daily-mono">🏭 <b>${escapeHtml(it.supplier || '—')}</b></span>
             <span class="daily-text">${escapeHtml(it.issueType || '—')} · ${escapeHtml((it.requirement || '').slice(0, 50))}</span>
@@ -6676,7 +6756,7 @@ function renderDailyReport() {
       <div class="daily-section">
         <h3>🔍 新建找灯 (${newMissing.length})</h3>
         <div class="daily-list">${newMissing.map((m, i) => `
-          <div class="daily-item" onclick="switchTab('missing'); setTimeout(() => openMissingModal('${m._id}'), 100);">
+          <div class="daily-item" onclick="switchTab('missing'); setTimeout(() => openMissingModal('${m._id}'), 200);">
             <span class="daily-num">${i + 1}</span>
             <span class="daily-mono">${escapeHtml((m.description || '(无描述)').slice(0, 30))}</span>
             <span class="daily-text">${escapeHtml(m.specs || '—')}</span>
@@ -6691,7 +6771,7 @@ function renderDailyReport() {
       <div class="daily-section">
         <h3>✓ 完成的订单 (${completedOrders.length})</h3>
         <div class="daily-list">${completedOrders.map((o, i) => `
-          <div class="daily-item" onclick="switchTab('orders'); setTimeout(() => openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}'), 100);">
+          <div class="daily-item" onclick="switchTab('orders'); setTimeout(() => openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}'), 200);">
             <span class="daily-num">${i + 1}</span>
             <span class="daily-mono"><b>${escapeHtml(o.orderNo || '(无单号)')}</b>${o.site ? ` <span class="site-badge s-${o.site}">${escapeHtml(o.site)}</span>` : ''}</span>
             <span class="daily-text">📦 ${escapeHtml(o.product || '—')} · 🏭 ${escapeHtml(o.supplier || '—')}</span>
@@ -6706,7 +6786,7 @@ function renderDailyReport() {
       <div class="daily-section">
         <h3>📞 催单跟进 (${orderFollowups.length})</h3>
         <div class="daily-list">${orderFollowups.map((x, i) => `
-          <div class="daily-item compact" onclick="switchTab('orders'); setTimeout(() => openOrderModal('${x.order._id}', '${escapeHtml(x.order._agent || '')}'), 100);">
+          <div class="daily-item compact" onclick="switchTab('orders'); setTimeout(() => openOrderModal('${x.order._id}', '${escapeHtml(x.order._agent || '')}'), 200);">
             <span class="daily-num">${i + 1}</span>
             <span class="daily-mono"><b>${escapeHtml(x.order.orderNo || '(无单号)')}</b></span>
             <span class="daily-text">${ORDER_TYPE_LABELS[x.fu.type] || '其他'}: ${escapeHtml((x.fu.note || '').slice(0, 60))}</span>
@@ -6721,7 +6801,7 @@ function renderDailyReport() {
       <div class="daily-section">
         <h3>📞 售后跟进 (${afterFollowups.length})</h3>
         <div class="daily-list">${afterFollowups.map((x, i) => `
-          <div class="daily-item compact" onclick="switchTab('aftersales'); setTimeout(() => openAfterModal('${x.after._id}', '${escapeHtml(x.after._agent || '')}'), 100);">
+          <div class="daily-item compact" onclick="switchTab('aftersales'); setTimeout(() => openAfterModal('${x.after._id}', '${escapeHtml(x.after._agent || '')}'), 200);">
             <span class="daily-num">${i + 1}</span>
             <span class="daily-mono"><b>${escapeHtml(x.after.orderNo || '(无单号)')}</b></span>
             <span class="daily-text">${escapeHtml((x.fu.note || '').slice(0, 60))}</span>
@@ -6736,7 +6816,7 @@ function renderDailyReport() {
       <div class="daily-section">
         <h3>📞 问题沟通 (${issueFollowups.length})</h3>
         <div class="daily-list">${issueFollowups.map((x, i) => `
-          <div class="daily-item compact" onclick="switchTab('issues'); setTimeout(() => openIssueModal('${x.issue._id}', '${escapeHtml(x.issue._agent || '')}'), 100);">
+          <div class="daily-item compact" onclick="switchTab('issues'); setTimeout(() => openIssueModal('${x.issue._id}', '${escapeHtml(x.issue._agent || '')}'), 200);">
             <span class="daily-num">${i + 1}</span>
             <span class="daily-mono">🏭 <b>${escapeHtml(x.issue.supplier || '—')}</b></span>
             <span class="daily-text">${escapeHtml((x.fu.note || '').slice(0, 60))}</span>
@@ -6751,7 +6831,7 @@ function renderDailyReport() {
       <div class="daily-section">
         <h3>✓ 解决的售后 (${completedAfter.length})</h3>
         <div class="daily-list">${completedAfter.map((a, i) => `
-          <div class="daily-item" onclick="switchTab('aftersales'); setTimeout(() => openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}'), 100);">
+          <div class="daily-item" onclick="switchTab('aftersales'); setTimeout(() => openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}'), 200);">
             <span class="daily-num">${i + 1}</span>
             <span class="daily-mono"><b>${escapeHtml(a.orderNo || '(无单号)')}</b></span>
             <span class="daily-text">${escapeHtml(a.reason || '—')} · 🏭 ${escapeHtml(a.supplier || '—')}</span>
@@ -7452,7 +7532,7 @@ function renderPerformance() {
           ${contributions.map(m => {
             const cover = (m.screenshots && m.screenshots.length > 0) ? m.screenshots[0] : null;
             return `
-              <div class="contribution-item" onclick="switchTab('missing'); setTimeout(() => openMissingModal('${m._id}'), 100);" style="cursor: pointer;">
+              <div class="contribution-item" onclick="switchTab('missing'); setTimeout(() => openMissingModal('${m._id}'), 200);" style="cursor: pointer;">
                 ${cover ? `<img src="${cover}" class="img-thumb">` : '<div class="img-thumb">💡</div>'}
                 <div class="info">
                   <div class="title">${escapeHtml((m.description || '(无描述)').slice(0, 40))}</div>
@@ -8057,10 +8137,12 @@ function removeAgent(name) {
 // ============================================================
 let _trashTab = 'orders';
 
-function openTrash() {
+async function openTrash() {
   _trashTab = 'orders';
   document.querySelectorAll('.trash-tab-btn').forEach(t => t.classList.toggle('active', t.dataset.trashTab === 'orders'));
   document.getElementById('trashModal').classList.add('show');
+  // 先 flush 任何 pending 同步，确保 cache 是最新的
+  if (DATA && DATA.flushPending) DATA.flushPending();
   renderTrash();
 }
 
@@ -8566,6 +8648,39 @@ document.querySelectorAll('.modal-bg').forEach(bg => {
       bg.classList.remove('show');
     }
   });
+});
+
+// ============================================================
+// 🟢 同步状态指示器
+// ============================================================
+let _syncStatusTimer = null;
+function setSyncStatus(status) {
+  const ind = document.getElementById('syncIndicator');
+  if (!ind) return;
+  const dot = ind.querySelector('.sync-dot');
+  const label = ind.querySelector('.sync-label');
+  if (!dot || !label) return;
+  dot.className = 'sync-dot ' + status;
+  const labels = { synced: '✓ 已同步', syncing: '同步中...', pending: '待同步', error: '⚠ 同步失败' };
+  label.textContent = labels[status] || '';
+  
+  if (status === 'synced') {
+    clearTimeout(_syncStatusTimer);
+  } else if (status === 'error') {
+    clearTimeout(_syncStatusTimer);
+    _syncStatusTimer = setTimeout(() => setSyncStatus('synced'), 5000);
+  }
+}
+
+// 防止在同步中刷新/关闭页面丢数据
+window.addEventListener('beforeunload', (e) => {
+  if (DATA && DATA._pendingFns && Object.keys(DATA._pendingFns).length > 0) {
+    // 尝试立即推送
+    if (DATA.flushPending) DATA.flushPending();
+    e.preventDefault();
+    e.returnValue = '还有数据正在同步到云端，确定关闭吗？数据可能丢失。';
+    return e.returnValue;
+  }
 });
 
 function toast(msg, type, duration) {
