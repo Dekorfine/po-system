@@ -342,11 +342,10 @@ body {
 .after-row .days-ago.warn { background: rgba(202,138,4,0.12); color: var(--warning); }
 /* 供应商问题 */
 #issuesBody .record-row, #issuesContainer .record-row, .issues-header {
-  grid-template-columns: 36px 110px minmax(120px, 1fr) 110px minmax(220px, 2.5fr) 80px 100px 40px;
+  grid-template-columns: 36px 110px minmax(120px, 1fr) 110px minmax(220px, 2.5fr) 80px 100px 80px;
 }
 #issuesContainer .record-row { align-items: start; padding: 14px 18px; }
 #issuesContainer .record-row > div { padding-top: 4px; }
-#issuesContainer .record-row .row-del { align-self: start; margin-top: 4px; }
 /* 找灯 */
 #missingBody .record-row, .missing-header {
   grid-template-columns: 36px 100px minmax(160px, 2fr) 120px 80px 90px 40px;
@@ -1346,7 +1345,8 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="toolbar">
       <div class="search-box"><input type="text" id="oSearch" placeholder="搜索订单号、产品、供应商..." oninput="renderOrders()"></div>
       <select class="filter-select" id="oFilterStatus" onchange="renderOrders()">
-        <option value="active">全部活跃（默认）</option>
+        <option value="active">🔥 进行中（默认）</option>
+        <option value="completed">✓ 已完成</option>
         <option value="all">全部</option>
         <option value="pending">待下采购</option>
         <option value="producing">生产中</option>
@@ -1419,7 +1419,8 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="toolbar">
       <div class="search-box"><input type="text" id="asSearch" placeholder="搜索订单号、产品、供应商..." oninput="renderAftersales()"></div>
       <select class="filter-select" id="asFilterStatus" onchange="renderAftersales()">
-        <option value="active">未解决（默认）</option>
+        <option value="active">🔥 未解决（默认）</option>
+        <option value="completed">✓ 已完成</option>
         <option value="all">全部</option>
         <option value="pending">待处理</option>
         <option value="contacting">沟通中</option>
@@ -1456,7 +1457,8 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="toolbar">
       <div class="search-box"><input type="text" id="isSearch" placeholder="搜索供应商、要求..." oninput="renderIssues()"></div>
       <select class="filter-select" id="isFilterStatus" onchange="renderIssues()">
-        <option value="active">未解决（默认）</option>
+        <option value="active">🔥 未解决（默认）</option>
+        <option value="completed">✓ 已完成</option>
         <option value="all">全部</option>
         <option value="pending">待沟通</option>
         <option value="in_progress">沟通中</option>
@@ -3714,7 +3716,8 @@ function renderOrders() {
     }
     if (fSupplier && o.supplier !== fSupplier) return false;
     if (fSite && o.site !== fSite) return false;
-    if (fStatus === 'active') return !['cancelled'].includes(o.status);
+    if (fStatus === 'active') return !['cancelled', 'arrived'].includes(o.status);
+    if (fStatus === 'completed') return ['arrived', 'cancelled'].includes(o.status);
     if (fStatus === 'overdue') return getOrderEffStatus(o) === 'overdue';
     if (fStatus === 'all') return true;
     return o.status === fStatus;
@@ -4563,6 +4566,7 @@ function renderAftersales() {
     if (fSite && a.site !== fSite) return false;
     if (fReason && a.reason !== fReason) return false;
     if (fs === 'active') return !['resolved','cancelled'].includes(a.status);
+    if (fs === 'completed') return ['resolved','cancelled'].includes(a.status);
     if (fs === 'all') return true;
     return a.status === fs;
   });
@@ -5071,6 +5075,7 @@ function renderIssues() {
     }
     if (fType && it.issueType !== fType) return false;
     if (fs === 'active') return it.status !== 'resolved';
+    if (fs === 'completed') return it.status === 'resolved';
     if (fs === 'all') return true;
     return it.status === fs;
   });
@@ -5110,7 +5115,7 @@ function renderIssues() {
       <div class="records-card">
         <div class="records-header issues-header">
           <div>#</div><div>状态</div><div>供应商</div><div>类型</div><div>具体要求</div>
-          <div>沟通次数</div><div>最后沟通</div><div></div>
+          <div>沟通次数</div><div>最后沟通</div><div style="text-align: right;">操作</div>
         </div>
         <div>${list.map((it, i) => renderIssueRow(it, i)).join('')}</div>
         <div class="add-row" onclick="addIssue()">+ 新增问题</div>
@@ -5162,7 +5167,10 @@ function renderIssueRow(it, i) {
       </div>
       <div class="cell-text mono" style="text-align:center;">${fuBadge}</div>
       <div class="date-cell ${lastDate ? '' : 'empty'}">${formatShortDate(lastDate)}</div>
-      <button class="row-del" onclick="event.stopPropagation(); delIssueRow('${it._id}', '${escapeHtml(it._agent || '')}')">🗑</button>
+      <div class="row-actions">
+        ${it.status !== 'resolved' ? `<button class="action-btn done" title="一键标记为已解决" onclick="event.stopPropagation(); quickResolveIssue('${it._id}', '${escapeHtml(it._agent || '')}')">✓</button>` : '<span style="width: 28px;"></span>'}
+        <button class="action-btn delete" title="删除" onclick="event.stopPropagation(); delIssueRow('${it._id}', '${escapeHtml(it._agent || '')}')">🗑</button>
+      </div>
     </div>
   `;
 }
@@ -5182,6 +5190,27 @@ function addIssue() {
   renderIssues();
   updateIssueStats();
   openIssueModal(newIt._id, CURRENT_AGENT);
+}
+
+function quickResolveIssue(id, agent) {
+  const ownerAgent = (IS_ADMIN && agent) ? agent : CURRENT_AGENT;
+  const arr = DATA.getIssues(ownerAgent);
+  const it = arr.find(x => x._id === id);
+  if (!it) return;
+  
+  if (it.status === 'resolved') {
+    toast('该问题已是「已解决」状态', 'warn');
+    return;
+  }
+  
+  const msg = `供应商问题「${it.supplier || '该问题'}${it.issueType ? ' · ' + it.issueType : ''}」已经解决？\n\n会标记为：✓ 已解决`;
+  if (!confirm(msg)) return;
+  
+  it.status = 'resolved';
+  DATA.saveIssues(ownerAgent, arr);
+  loadAllData();
+  renderActiveTab();
+  toast(`✓ 已标记「已解决」`);
 }
 
 function delIssueRow(id, agent) {
