@@ -689,7 +689,61 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag-item { background: var(--bg-elevated); border: 1px solid var(--border); padding: 5px 10px; border-radius: 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
 
-/* 网站简称徽章 */
+.perf-view-btn { transition: all 0.15s; }
+.perf-view-btn:hover { color: var(--text-primary); }
+.perf-view-btn.active { background: var(--bg-card) !important; color: var(--purple) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+
+/* 月度汇总：未完成清单 */
+.summary-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-sm);
+}
+.summary-section .head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.summary-section .head .title { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.summary-section .head .count {
+  background: var(--bg-elevated); color: var(--text-secondary);
+  padding: 2px 10px; border-radius: 10px; font-size: 12px;
+  font-family: 'JetBrains Mono', monospace; font-weight: 700;
+}
+.summary-section .head .count.danger { background: rgba(185,28,28,0.1); color: var(--danger); }
+.summary-section .head .count.warning { background: rgba(202,138,4,0.1); color: var(--warning); }
+.summary-section .head .count.success { background: rgba(21,128,61,0.1); color: var(--success); }
+.summary-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 100px 100px 80px;
+  gap: 12px; align-items: center;
+  padding: 8px 4px; font-size: 12.5px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+}
+.summary-row:last-child { border-bottom: none; }
+.summary-row:hover { background: var(--bg-elevated); }
+.summary-row .order-no { font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+.summary-row .agent { font-size: 11px; color: var(--text-tertiary); }
+.summary-row .meta { font-size: 11px; color: var(--text-secondary); }
+.summary-empty { text-align: center; padding: 20px; color: var(--text-tertiary); font-size: 12px; }
+
+/* 跟单员工作量统计 */
+.workload-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px; margin-top: 12px;
+}
+.workload-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px;
+}
+.workload-card .name { font-size: 13px; font-weight: 700; margin-bottom: 8px; display: flex; justify-content: space-between; }
+.workload-card .stats { display: flex; gap: 12px; font-size: 12px; flex-wrap: wrap; }
+.workload-card .stat-item { color: var(--text-secondary); }
+.workload-card .stat-item b { color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 13px; }
 .admin-view-note { background: rgba(185,28,28,0.08); color: var(--danger); padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; }
 
 .site-badge {
@@ -1267,35 +1321,72 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 <div class="tab-content" data-tab="performance">
   <div class="section-block">
     <div style="margin-top: 18px; padding: 14px 18px; background: rgba(124,58,237,0.08); border-radius: 10px; border-left: 4px solid var(--purple); font-size: 13px; color: var(--text-secondary);">
-      💡 <b style="color: var(--text-primary);">绩效统计</b> · 系统根据 4 个模块的实际工作自动累计积分。<span id="perfMode" style="font-weight:600; color: var(--purple);"></span>
+      💡 <b style="color: var(--text-primary);">数据汇总</b> · 个人绩效 · 月度回顾 · 年度汇总。<span id="perfMode" style="font-weight:600; color: var(--purple);"></span>
     </div>
     
-    <div class="toolbar">
-      <select class="filter-select" id="perfPeriod" onchange="renderPerformance()">
-        <option value="month">本月</option>
-        <option value="lastMonth">上月</option>
-        <option value="quarter">本季度</option>
-        <option value="all">累计</option>
-      </select>
-      <span style="font-size: 12px; color: var(--text-tertiary); margin-left: 4px;" id="perfPeriodLabel"></span>
-      <button class="btn" onclick="openScoreRules()" style="margin-left: auto;">⚙ 评分规则</button>
-      <button class="btn" onclick="exportPerformance()">⬇ 导出 Excel</button>
+    <!-- 视图切换 -->
+    <div class="perf-view-tabs" style="display: flex; gap: 4px; margin-top: 14px; padding: 4px; background: var(--bg-elevated); border-radius: 10px; width: fit-content;">
+      <button class="perf-view-btn active" data-view="score" onclick="switchPerfView('score')" style="padding: 8px 16px; border: none; background: transparent; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-secondary);">📊 个人绩效</button>
+      <button class="perf-view-btn" data-view="monthly" onclick="switchPerfView('monthly')" style="padding: 8px 16px; border: none; background: transparent; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-secondary);">📅 月度回顾</button>
+      <button class="perf-view-btn" data-view="yearly" onclick="switchPerfView('yearly')" style="padding: 8px 16px; border: none; background: transparent; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-secondary);">📆 年度汇总</button>
     </div>
     
-    <!-- 当前用户/团队的得分汇总 -->
-    <div class="stats-bar" id="perfStatsBar">
-      <div class="stat-card success"><div class="label">总积分</div><div class="value mono"><span id="pTotal">0</span><span class="unit">分</span></div><div class="sub" id="pTotalSub">期内累计</div></div>
-      <div class="stat-card"><div class="label">🔍 找灯贡献</div><div class="value mono"><span id="pMissing">0</span><span class="unit">分</span></div><div class="sub" id="pMissingSub">帮人找到</div></div>
-      <div class="stat-card producing"><div class="label">📋 催单效率</div><div class="value mono"><span id="pOrders">0</span><span class="unit">分</span></div><div class="sub" id="pOrdersSub">按时-逾期</div></div>
-      <div class="stat-card repairing"><div class="label">🔧 售后解决</div><div class="value mono"><span id="pAfter">0</span><span class="unit">分</span></div><div class="sub" id="pAfterSub">已处理</div></div>
-      <div class="stat-card purple"><div class="label">⚠ 推动改善</div><div class="value mono"><span id="pIssues">0</span><span class="unit">分</span></div><div class="sub" id="pIssuesSub">问题解决</div></div>
+    <!-- 视图 1：个人绩效（默认）-->
+    <div class="perf-view" data-view="score">
+      <div class="toolbar">
+        <select class="filter-select" id="perfPeriod" onchange="renderPerformance()">
+          <option value="month">本月</option>
+          <option value="lastMonth">上月</option>
+          <option value="quarter">本季度</option>
+          <option value="all">累计</option>
+        </select>
+        <span style="font-size: 12px; color: var(--text-tertiary); margin-left: 4px;" id="perfPeriodLabel"></span>
+        <button class="btn" onclick="openScoreRules()" style="margin-left: auto;">⚙ 评分规则</button>
+        <button class="btn" onclick="exportPerformance()">⬇ 导出 Excel</button>
+      </div>
+      
+      <div class="stats-bar" id="perfStatsBar">
+        <div class="stat-card success"><div class="label">总积分</div><div class="value mono"><span id="pTotal">0</span><span class="unit">分</span></div><div class="sub" id="pTotalSub">期内累计</div></div>
+        <div class="stat-card"><div class="label">🔍 找灯贡献</div><div class="value mono"><span id="pMissing">0</span><span class="unit">分</span></div><div class="sub" id="pMissingSub">帮人找到</div></div>
+        <div class="stat-card producing"><div class="label">📋 催单效率</div><div class="value mono"><span id="pOrders">0</span><span class="unit">分</span></div><div class="sub" id="pOrdersSub">按时-逾期</div></div>
+        <div class="stat-card repairing"><div class="label">🔧 售后解决</div><div class="value mono"><span id="pAfter">0</span><span class="unit">分</span></div><div class="sub" id="pAfterSub">已处理</div></div>
+        <div class="stat-card purple"><div class="label">⚠ 推动改善</div><div class="value mono"><span id="pIssues">0</span><span class="unit">分</span></div><div class="sub" id="pIssuesSub">问题解决</div></div>
+      </div>
+      
+      <div id="perfLeaderboard" style="margin-top: 18px;"></div>
+      <div id="perfMissingDetail" style="margin-top: 18px;"></div>
     </div>
     
-    <!-- 团队排行榜 (仅主管可见，但跟单员也可以看自己排第几) -->
-    <div id="perfLeaderboard" style="margin-top: 18px;"></div>
+    <!-- 视图 2：月度回顾 -->
+    <div class="perf-view" data-view="monthly" style="display: none;">
+      <div class="toolbar" style="margin-top: 16px;">
+        <label style="font-size: 12px; color: var(--text-tertiary); margin-right: 4px;">查看月份：</label>
+        <input type="month" id="monthlyMonth" class="filter-select mono" onchange="renderMonthlySummary()" style="width: 160px;">
+        <button class="btn" onclick="setMonthlyQuick(-1)" style="margin-left: 4px;">⏪ 上月</button>
+        <button class="btn" onclick="setMonthlyQuick(0)">本月</button>
+        <button class="btn" onclick="exportMonthlySummary()" style="margin-left: auto;">⬇ 导出月报</button>
+      </div>
+      
+      <div class="stats-bar" style="margin-top: 12px;">
+        <div class="stat-card"><div class="label">📋 本月新增订单</div><div class="value mono"><span id="mNewOrders">0</span></div><div class="sub" id="mNewOrdersSub">已完成 0</div></div>
+        <div class="stat-card repairing"><div class="label">🔧 本月新增售后</div><div class="value mono"><span id="mNewAfter">0</span></div><div class="sub" id="mNewAfterSub">已解决 0</div></div>
+        <div class="stat-card purple"><div class="label">⚠ 本月新增问题</div><div class="value mono"><span id="mNewIssues">0</span></div><div class="sub" id="mNewIssuesSub">已解决 0</div></div>
+        <div class="stat-card success"><div class="label">🔍 本月找灯任务</div><div class="value mono"><span id="mNewMissing">0</span></div><div class="sub" id="mNewMissingSub">已找到 0</div></div>
+      </div>
+      
+      <div id="monthlySummaryBody" style="margin-top: 20px;"></div>
+    </div>
     
-    <!-- 我的找灯贡献明细 -->
-    <div id="perfMissingDetail" style="margin-top: 18px;"></div>
+    <!-- 视图 3：年度汇总 -->
+    <div class="perf-view" data-view="yearly" style="display: none;">
+      <div class="toolbar" style="margin-top: 16px;">
+        <label style="font-size: 12px; color: var(--text-tertiary); margin-right: 4px;">查看年份：</label>
+        <select id="yearlyYear" class="filter-select mono" onchange="renderYearlySummary()" style="width: 120px;"></select>
+        <button class="btn" onclick="exportYearlySummary()" style="margin-left: auto;">⬇ 导出年报</button>
+      </div>
+      
+      <div id="yearlySummaryBody" style="margin-top: 20px;"></div>
+    </div>
     
   </div>
 </div>
@@ -3481,7 +3572,6 @@ function renderOrderRow(o, i) {
 }
 
 function addOrder() {
-  if (IS_ADMIN) { toast('主管账号请切换到具体跟单员后再新增', 'warn'); return; }
   const me = CONFIG.agents.find(a => a.name === CURRENT_AGENT);
   const defaultSite = (me && me.sites && me.sites.length > 0) ? me.sites[0] : '';
   const newOrder = {
@@ -3955,7 +4045,6 @@ let _bcScreenshots = [];
 let _bcSelectedIds = new Set();
 
 function openBatchChase(supplier) {
-  if (IS_ADMIN) { toast('主管视角请切换到具体跟单员后再批量催单', 'warn'); return; }
   _bcSupplier = supplier;
   _bcType = 'chase';
   _bcScreenshots = [];
@@ -4161,7 +4250,6 @@ function renderAftersales() {
 }
 
 function addAftersales() {
-  if (IS_ADMIN) { toast('主管账号请切换到具体跟单员后再新增', 'warn'); return; }
   const me = CONFIG.agents.find(a => a.name === CURRENT_AGENT);
   const defaultSite = (me && me.sites && me.sites.length > 0) ? me.sites[0] : '';
   const newA = {
@@ -4623,7 +4711,6 @@ function renderIssueRow(it, i) {
 }
 
 function addIssue() {
-  if (IS_ADMIN) { toast('主管账号请切换到具体跟单员后再新增', 'warn'); return; }
   const newIt = {
     _id: 'I' + Date.now() + Math.random().toString(36).slice(2, 6),
     supplier: '', issueType: '', requirement: '',
@@ -5437,6 +5524,508 @@ function inRange(date, range) {
 }
 
 // 计算单个 agent 的得分
+// ============ 视图切换 ============
+let _perfView = 'score';
+function switchPerfView(view) {
+  _perfView = view;
+  document.querySelectorAll('.perf-view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  document.querySelectorAll('.perf-view').forEach(v => v.style.display = v.dataset.view === view ? '' : 'none');
+  
+  if (view === 'score') {
+    renderPerformance();
+  } else if (view === 'monthly') {
+    // 默认上月
+    const monthInput = document.getElementById('monthlyMonth');
+    if (!monthInput.value) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 1);
+      monthInput.value = d.toISOString().slice(0, 7);
+    }
+    renderMonthlySummary();
+  } else if (view === 'yearly') {
+    initYearlyView();
+    renderYearlySummary();
+  }
+}
+
+function setMonthlyQuick(offset) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + offset);
+  document.getElementById('monthlyMonth').value = d.toISOString().slice(0, 7);
+  renderMonthlySummary();
+}
+
+// ============ 📅 月度回顾 ============
+function renderMonthlySummary() {
+  const month = document.getElementById('monthlyMonth').value;
+  if (!month) return;
+  
+  const monthStart = month + '-01';
+  // 当月结束日
+  const [y, m] = month.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  
+  // 当月范围内的数据
+  const isInMonth = (date) => date && date >= monthStart && date <= monthEnd;
+  const isCreatedInMonth = (o) => isInMonth((o.createdAt || '').slice(0, 10));
+  
+  // 1. 本月新增统计
+  const monthlyOrders = ORDERS.filter(o => isCreatedInMonth(o) || isInMonth(o.orderDate));
+  const monthlyAfter = AFTERSALES.filter(a => isInMonth(a.createdDate));
+  const monthlyIssues = ISSUES.filter(i => isCreatedInMonth(i));
+  const monthlyMissing = MISSING_LIGHTS.filter(m => isCreatedInMonth(m));
+  
+  // 完成统计
+  const ordersCompleted = monthlyOrders.filter(o => ['shipped','arrived'].includes(o.status) && isInMonth(o.shippedDate || o.arrivedDate));
+  const afterResolved = monthlyAfter.filter(a => a.status === 'resolved' && isInMonth(a.resolvedDate));
+  const issuesResolved = monthlyIssues.filter(i => i.status === 'resolved');
+  const missingFound = monthlyMissing.filter(m => m.status === 'found');
+  
+  document.getElementById('mNewOrders').textContent = monthlyOrders.length;
+  document.getElementById('mNewOrdersSub').textContent = `已发货 ${ordersCompleted.length}`;
+  document.getElementById('mNewAfter').textContent = monthlyAfter.length;
+  document.getElementById('mNewAfterSub').textContent = `已解决 ${afterResolved.length}`;
+  document.getElementById('mNewIssues').textContent = monthlyIssues.length;
+  document.getElementById('mNewIssuesSub').textContent = `已解决 ${issuesResolved.length}`;
+  document.getElementById('mNewMissing').textContent = monthlyMissing.length;
+  document.getElementById('mNewMissingSub').textContent = `已找到 ${missingFound.length}`;
+  
+  // 2. 月末未完成清单（截至 monthEnd 或今天，看哪个早）
+  const cutoffDate = monthEnd < todayStr ? monthEnd : todayStr;
+  
+  // 催单：在 cutoffDate 之前下单，但当时还没发货
+  const ordersPending = ORDERS.filter(o => {
+    const orderDate = o.orderDate || (o.createdAt || '').slice(0, 10);
+    if (!orderDate || orderDate > cutoffDate) return false;
+    // 截止日还没发货
+    const shipDate = o.shippedDate;
+    return !shipDate || shipDate > cutoffDate;
+  }).filter(o => !['cancelled'].includes(o.status));
+  
+  // 售后：在 cutoffDate 前发起，但当时还没解决
+  const afterPending = AFTERSALES.filter(a => {
+    const createdDate = a.createdDate || (a.createdAt || '').slice(0, 10);
+    if (!createdDate || createdDate > cutoffDate) return false;
+    const resolveDate = a.resolvedDate;
+    return !resolveDate || resolveDate > cutoffDate;
+  }).filter(a => !['cancelled'].includes(a.status));
+  
+  // 供应商问题：当月新增 + 还未解决
+  const issuesPending = ISSUES.filter(i => {
+    const createdDate = (i.createdAt || '').slice(0, 10);
+    if (!createdDate || createdDate > cutoffDate) return false;
+    return i.status !== 'resolved';
+  });
+  
+  // 找灯：当月新增 + 还在搜寻
+  const missingPending = MISSING_LIGHTS.filter(m => {
+    const createdDate = (m.createdAt || '').slice(0, 10);
+    if (!createdDate || createdDate > cutoffDate) return false;
+    return m.status === 'searching';
+  });
+  
+  // 3. 按跟单员分组工作量
+  const workload = {};
+  CONFIG.agents.forEach(a => {
+    if (!a.isAdmin) workload[a.name] = { orders: 0, after: 0, issues: 0, missing: 0, completed: 0 };
+  });
+  monthlyOrders.forEach(o => { if (workload[o._agent]) workload[o._agent].orders++; });
+  monthlyAfter.forEach(a => { if (workload[a._agent]) workload[a._agent].after++; });
+  monthlyIssues.forEach(i => { if (workload[i._agent]) workload[i._agent].issues++; });
+  monthlyMissing.forEach(m => { if (workload[m.creator]) workload[m.creator].missing++; });
+  ordersCompleted.forEach(o => { if (workload[o._agent]) workload[o._agent].completed++; });
+  
+  // 渲染未完成清单 + 工作量
+  const body = document.getElementById('monthlySummaryBody');
+  body.innerHTML = `
+    <h3 style="margin: 14px 0 8px 0; font-size: 15px; color: var(--text-primary);">⚠ 截至月末（${cutoffDate}）未完成的事项</h3>
+    
+    ${renderSummaryOrdersSection(ordersPending, cutoffDate)}
+    ${renderSummaryAfterSection(afterPending, cutoffDate)}
+    ${renderSummaryIssuesSection(issuesPending)}
+    ${renderSummaryMissingSection(missingPending)}
+    
+    <h3 style="margin: 24px 0 8px 0; font-size: 15px; color: var(--text-primary);">👥 ${month.replace('-', ' 年 ')} 月 · 跟单员工作量</h3>
+    <div class="workload-grid">
+      ${Object.entries(workload).map(([name, w]) => `
+        <div class="workload-card">
+          <div class="name">${escapeHtml(name)}<span style="font-size:11px;color:var(--text-tertiary);font-weight:normal;">${w.orders + w.after + w.issues + w.missing} 项</span></div>
+          <div class="stats">
+            <span class="stat-item">📋 <b>${w.orders}</b></span>
+            <span class="stat-item">✓ <b>${w.completed}</b></span>
+            <span class="stat-item">🔧 <b>${w.after}</b></span>
+            <span class="stat-item">⚠ <b>${w.issues}</b></span>
+            <span class="stat-item">🔍 <b>${w.missing}</b></span>
+          </div>
+        </div>
+      `).join('') || '<div class="summary-empty">本月暂无跟单员活动</div>'}
+    </div>
+  `;
+}
+
+function renderSummaryOrdersSection(orders, cutoffDate) {
+  const cls = orders.length > 0 ? 'danger' : 'success';
+  let rowsHtml;
+  if (orders.length === 0) {
+    rowsHtml = '<div class="summary-empty">✓ 太棒了，本月催单全部按时处理完成！</div>';
+  } else {
+    // 按逾期严重程度排序
+    orders.sort((a, b) => (a.promisedDate || '9999').localeCompare(b.promisedDate || '9999'));
+    rowsHtml = orders.slice(0, 30).map(o => {
+      const days = o.promisedDate && o.promisedDate < cutoffDate
+        ? Math.floor((new Date(cutoffDate) - new Date(o.promisedDate)) / 86400000) : 0;
+      const chaseCount = (o.followups || []).filter(f => f.type === 'chase').length;
+      const siteBadge = o.site ? `<span class="site-badge s-${o.site}" style="margin-left:6px;">${escapeHtml(o.site)}</span>` : '';
+      return `
+        <div class="summary-row" onclick="openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')">
+          <div class="order-no">${escapeHtml(o.orderNo || '—')}${siteBadge}</div>
+          <div>
+            <div>${escapeHtml(o.product || '—')}</div>
+            <div class="meta">🏭 ${escapeHtml(o.supplier || '—')}${IS_ADMIN ? ' · 👤 ' + escapeHtml(o._agent || '') : ''}</div>
+          </div>
+          <div class="meta">承诺 ${o.promisedDate || '—'}</div>
+          <div class="meta" style="color:${days > 7 ? 'var(--danger)' : days > 0 ? 'var(--warning)' : 'var(--text-secondary)'};">${days > 0 ? '逾期 ' + days + ' 天' : '—'}</div>
+          <div class="meta" style="text-align:right;">已催 ${chaseCount} 次</div>
+        </div>
+      `;
+    }).join('');
+    if (orders.length > 30) rowsHtml += `<div class="summary-empty">还有 ${orders.length - 30} 单未显示</div>`;
+  }
+  return `
+    <div class="summary-section">
+      <div class="head">
+        <div class="title">🔴 催单未完成（应发货但未发货）<span class="count ${cls}">${orders.length} 单</span></div>
+      </div>
+      ${rowsHtml}
+    </div>
+  `;
+}
+
+function renderSummaryAfterSection(list, cutoffDate) {
+  const cls = list.length > 0 ? 'warning' : 'success';
+  let rowsHtml;
+  if (list.length === 0) {
+    rowsHtml = '<div class="summary-empty">✓ 本月售后单全部按时处理完成</div>';
+  } else {
+    list.sort((a, b) => (a.createdDate || '9999').localeCompare(b.createdDate || '9999'));
+    rowsHtml = list.slice(0, 30).map(a => {
+      const days = a.createdDate ? Math.floor((new Date(cutoffDate) - new Date(a.createdDate)) / 86400000) : 0;
+      const siteBadge = a.site ? `<span class="site-badge s-${a.site}" style="margin-left:6px;">${escapeHtml(a.site)}</span>` : '';
+      return `
+        <div class="summary-row" onclick="openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}')">
+          <div class="order-no">${escapeHtml(a.orderNo || '—')}${siteBadge}</div>
+          <div>
+            <div>${escapeHtml(a.reason || '—')} · ${escapeHtml(a.product || '—')}</div>
+            <div class="meta">🏭 ${escapeHtml(a.supplier || '—')}${IS_ADMIN ? ' · 👤 ' + escapeHtml(a._agent || '') : ''}</div>
+          </div>
+          <div class="meta">发起 ${a.createdDate || '—'}</div>
+          <div class="meta">${AFTER_STATUS_LABELS[a.status] || a.status}</div>
+          <div class="meta" style="text-align:right;">已 ${days} 天</div>
+        </div>
+      `;
+    }).join('');
+    if (list.length > 30) rowsHtml += `<div class="summary-empty">还有 ${list.length - 30} 单未显示</div>`;
+  }
+  return `
+    <div class="summary-section">
+      <div class="head">
+        <div class="title">🟠 售后未解决<span class="count ${cls}">${list.length} 单</span></div>
+      </div>
+      ${rowsHtml}
+    </div>
+  `;
+}
+
+function renderSummaryIssuesSection(list) {
+  const cls = list.length > 0 ? 'warning' : 'success';
+  let rowsHtml;
+  if (list.length === 0) {
+    rowsHtml = '<div class="summary-empty">✓ 本月供应商问题全部已解决</div>';
+  } else {
+    rowsHtml = list.slice(0, 30).map(i => `
+      <div class="summary-row" onclick="openIssueModal('${i._id}', '${escapeHtml(i._agent || '')}')">
+        <div class="order-no">${escapeHtml(i.supplier || '—')}</div>
+        <div>
+          <div>${escapeHtml(i.issueType || '—')}</div>
+          <div class="meta">${escapeHtml((i.requirement || '').slice(0, 40))}${IS_ADMIN ? ' · 👤 ' + escapeHtml(i._agent || '') : ''}</div>
+        </div>
+        <div class="meta">${(i.createdAt || '').slice(0, 10)}</div>
+        <div class="meta">${i.status === 'escalated' ? '🚨 已升级' : '处理中'}</div>
+        <div class="meta" style="text-align:right;">${(i.followups || []).length} 次沟通</div>
+      </div>
+    `).join('');
+    if (list.length > 30) rowsHtml += `<div class="summary-empty">还有 ${list.length - 30} 个未显示</div>`;
+  }
+  return `
+    <div class="summary-section">
+      <div class="head">
+        <div class="title">🟡 供应商问题未解决<span class="count ${cls}">${list.length} 项</span></div>
+      </div>
+      ${rowsHtml}
+    </div>
+  `;
+}
+
+function renderSummaryMissingSection(list) {
+  const cls = list.length > 0 ? 'warning' : 'success';
+  let rowsHtml;
+  if (list.length === 0) {
+    rowsHtml = '<div class="summary-empty">✓ 本月找灯任务全部已找到</div>';
+  } else {
+    rowsHtml = list.slice(0, 20).map(m => `
+      <div class="summary-row" onclick="openMissingModal('${m._id}')">
+        <div class="order-no">🔍</div>
+        <div>
+          <div>${escapeHtml((m.description || '(无描述)').slice(0, 50))}</div>
+          <div class="meta">${m.specs ? '📏 ' + escapeHtml(m.specs.slice(0, 30)) : ''}</div>
+        </div>
+        <div class="meta">${(m.createdAt || '').slice(0, 10)}</div>
+        <div class="meta">👤 ${escapeHtml(m.creator || '')}</div>
+        <div class="meta" style="text-align:right;">${(m.comments || []).length} 条建议</div>
+      </div>
+    `).join('');
+    if (list.length > 20) rowsHtml += `<div class="summary-empty">还有 ${list.length - 20} 个未显示</div>`;
+  }
+  return `
+    <div class="summary-section">
+      <div class="head">
+        <div class="title">🟢 找灯任务搜寻中<span class="count ${cls}">${list.length} 个</span></div>
+      </div>
+      ${rowsHtml}
+    </div>
+  `;
+}
+
+function exportMonthlySummary() {
+  const month = document.getElementById('monthlyMonth').value;
+  if (!month) return;
+  const [y, m] = month.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const monthStart = month + '-01';
+  const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const cutoffDate = monthEnd < todayStr ? monthEnd : todayStr;
+  
+  const wb = XLSX.utils.book_new();
+  
+  // Sheet 1: 概览
+  const isInMonth = d => d && d >= monthStart && d <= monthEnd;
+  const monthlyOrders = ORDERS.filter(o => isInMonth((o.createdAt || '').slice(0, 10)) || isInMonth(o.orderDate));
+  const monthlyAfter = AFTERSALES.filter(a => isInMonth(a.createdDate));
+  const monthlyIssues = ISSUES.filter(i => isInMonth((i.createdAt || '').slice(0, 10)));
+  const monthlyMissing = MISSING_LIGHTS.filter(M => isInMonth((M.createdAt || '').slice(0, 10)));
+  
+  const overview = [
+    [`${month} 月度报告`],
+    [`生成日期: ${todayStr}`],
+    [],
+    ['指标', '数量', '完成', '说明'],
+    ['本月新增订单', monthlyOrders.length, monthlyOrders.filter(o => ['shipped','arrived'].includes(o.status)).length, ''],
+    ['本月新增售后', monthlyAfter.length, monthlyAfter.filter(a => a.status === 'resolved').length, ''],
+    ['本月新增问题', monthlyIssues.length, monthlyIssues.filter(i => i.status === 'resolved').length, ''],
+    ['本月找灯任务', monthlyMissing.length, monthlyMissing.filter(m => m.status === 'found').length, ''],
+  ];
+  const ws1 = XLSX.utils.aoa_to_sheet(overview);
+  ws1['!merges'] = [{s:{r:0,c:0},e:{r:0,c:3}},{s:{r:1,c:0},e:{r:1,c:3}}];
+  ws1['!cols'] = [{wch:24},{wch:12},{wch:12},{wch:30}];
+  XLSX.utils.book_append_sheet(wb, ws1, '概览');
+  
+  // Sheet 2: 未完成催单
+  const ordersPending = ORDERS.filter(o => {
+    const od = o.orderDate || (o.createdAt || '').slice(0, 10);
+    if (!od || od > cutoffDate) return false;
+    return (!o.shippedDate || o.shippedDate > cutoffDate) && !['cancelled'].includes(o.status);
+  });
+  const ordersData = [
+    ['订单号', '网站', '产品', '供应商', '下单日', '承诺日', '逾期天数', '已催次数', '跟单员']
+  ].concat(ordersPending.map(o => {
+    const days = o.promisedDate && o.promisedDate < cutoffDate
+      ? Math.floor((new Date(cutoffDate) - new Date(o.promisedDate)) / 86400000) : 0;
+    return [o.orderNo, o.site, o.product, o.supplier, o.orderDate, o.promisedDate, days > 0 ? days : '',
+      (o.followups || []).filter(f => f.type === 'chase').length, o._agent];
+  }));
+  const ws2 = XLSX.utils.aoa_to_sheet(ordersData);
+  ws2['!cols'] = [{wch:14},{wch:8},{wch:24},{wch:18},{wch:11},{wch:11},{wch:10},{wch:10},{wch:10}];
+  XLSX.utils.book_append_sheet(wb, ws2, '未完成催单');
+  
+  // Sheet 3: 未解决售后
+  const afterPending = AFTERSALES.filter(a => {
+    const cd = a.createdDate || (a.createdAt || '').slice(0, 10);
+    if (!cd || cd > cutoffDate) return false;
+    return (!a.resolvedDate || a.resolvedDate > cutoffDate) && !['cancelled'].includes(a.status);
+  });
+  const afterData = [
+    ['订单号', '网站', '产品', '供应商', '原因', '详情', '发起日', '状态', '跟单员']
+  ].concat(afterPending.map(a => [a.orderNo, a.site, a.product, a.supplier, a.reason,
+    a.reasonDetail, a.createdDate, AFTER_STATUS_LABELS[a.status], a._agent]));
+  const ws3 = XLSX.utils.aoa_to_sheet(afterData);
+  ws3['!cols'] = [{wch:14},{wch:8},{wch:20},{wch:18},{wch:12},{wch:30},{wch:11},{wch:10},{wch:10}];
+  XLSX.utils.book_append_sheet(wb, ws3, '未解决售后');
+  
+  XLSX.writeFile(wb, `跟单月报_${month}.xlsx`);
+  toast(`✓ 已导出 ${month} 月报`);
+}
+
+// ============ 📆 年度汇总 ============
+function initYearlyView() {
+  const sel = document.getElementById('yearlyYear');
+  if (sel.options.length > 0) return;
+  const thisYear = new Date().getFullYear();
+  for (let y = thisYear; y >= thisYear - 3; y--) {
+    sel.innerHTML += `<option value="${y}">${y} 年</option>`;
+  }
+}
+
+function renderYearlySummary() {
+  const year = document.getElementById('yearlyYear').value;
+  if (!year) return;
+  
+  // 按月统计
+  const monthly = Array.from({ length: 12 }, () => ({ orders: 0, after: 0, issues: 0, missing: 0, completed: 0 }));
+  ORDERS.forEach(o => {
+    const date = o.orderDate || (o.createdAt || '').slice(0, 10);
+    if (!date || !date.startsWith(year)) return;
+    const m = parseInt(date.slice(5, 7), 10) - 1;
+    if (m >= 0 && m < 12) {
+      monthly[m].orders++;
+      if (['shipped','arrived'].includes(o.status)) monthly[m].completed++;
+    }
+  });
+  AFTERSALES.forEach(a => {
+    const date = a.createdDate;
+    if (!date || !date.startsWith(year)) return;
+    const m = parseInt(date.slice(5, 7), 10) - 1;
+    if (m >= 0 && m < 12) monthly[m].after++;
+  });
+  ISSUES.forEach(i => {
+    const date = (i.createdAt || '').slice(0, 10);
+    if (!date.startsWith(year)) return;
+    const m = parseInt(date.slice(5, 7), 10) - 1;
+    if (m >= 0 && m < 12) monthly[m].issues++;
+  });
+  MISSING_LIGHTS.forEach(M => {
+    const date = (M.createdAt || '').slice(0, 10);
+    if (!date.startsWith(year)) return;
+    const m = parseInt(date.slice(5, 7), 10) - 1;
+    if (m >= 0 && m < 12) monthly[m].missing++;
+  });
+  
+  // 全年合计
+  const totals = monthly.reduce((acc, m) => ({
+    orders: acc.orders + m.orders,
+    completed: acc.completed + m.completed,
+    after: acc.after + m.after,
+    issues: acc.issues + m.issues,
+    missing: acc.missing + m.missing,
+  }), { orders: 0, completed: 0, after: 0, issues: 0, missing: 0 });
+  
+  // Top 供应商
+  const supplierCount = {};
+  ORDERS.forEach(o => {
+    const date = o.orderDate || (o.createdAt || '').slice(0, 10);
+    if (!date.startsWith(year) || !o.supplier) return;
+    supplierCount[o.supplier] = (supplierCount[o.supplier] || 0) + 1;
+  });
+  const topSuppliers = Object.entries(supplierCount).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  
+  // 售后原因 Top
+  const reasonCount = {};
+  AFTERSALES.forEach(a => {
+    if (!a.createdDate || !a.createdDate.startsWith(year) || !a.reason) return;
+    reasonCount[a.reason] = (reasonCount[a.reason] || 0) + 1;
+  });
+  const topReasons = Object.entries(reasonCount).sort((a, b) => b[1] - a[1]);
+  
+  const body = document.getElementById('yearlySummaryBody');
+  body.innerHTML = `
+    <div class="stats-bar" style="margin-bottom: 18px;">
+      <div class="stat-card"><div class="label">${year} 年订单</div><div class="value mono"><span>${totals.orders}</span></div><div class="sub">已发货 ${totals.completed}</div></div>
+      <div class="stat-card repairing"><div class="label">售后总数</div><div class="value mono"><span>${totals.after}</span></div><div class="sub">单</div></div>
+      <div class="stat-card purple"><div class="label">供应商问题</div><div class="value mono"><span>${totals.issues}</span></div><div class="sub">项</div></div>
+      <div class="stat-card success"><div class="label">找灯任务</div><div class="value mono"><span>${totals.missing}</span></div><div class="sub">个</div></div>
+    </div>
+    
+    <div class="summary-section">
+      <div class="head"><div class="title">📈 ${year} 年 · 各月业务趋势</div></div>
+      <div style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; padding: 12px 4px;">
+        ${monthly.map((m, idx) => `
+          <div style="text-align: center;">
+            <div style="font-size: 10px; color: var(--text-tertiary); font-family: 'JetBrains Mono', monospace;">${idx + 1}月</div>
+            <div style="background: linear-gradient(to top, var(--accent), rgba(37,99,235,0.3)); height: ${Math.max(20, m.orders * 3)}px; max-height: 80px; margin: 4px 0; border-radius: 3px;" title="订单 ${m.orders}"></div>
+            <div style="font-size: 11px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--accent);">${m.orders}</div>
+            <div style="font-size: 9px; color: var(--text-tertiary);">售后 ${m.after}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px;">
+      <div class="summary-section">
+        <div class="head"><div class="title">🏭 ${year} 年 Top 10 供应商</div></div>
+        ${topSuppliers.length === 0 ? '<div class="summary-empty">暂无数据</div>' : topSuppliers.map(([s, c], i) => `
+          <div style="display: flex; justify-content: space-between; padding: 6px 4px; border-bottom: 1px solid var(--border-subtle); font-size: 12.5px;">
+            <span><b>${i + 1}.</b> ${escapeHtml(s)}</span>
+            <span style="font-family: 'JetBrains Mono', monospace; color: var(--text-secondary);">${c} 单</span>
+          </div>
+        `).join('')}
+      </div>
+      
+      <div class="summary-section">
+        <div class="head"><div class="title">🔧 ${year} 年售后原因分布</div></div>
+        ${topReasons.length === 0 ? '<div class="summary-empty">暂无数据</div>' : topReasons.map(([r, c]) => {
+          const pct = totals.after > 0 ? Math.round(c / totals.after * 100) : 0;
+          return `
+            <div style="padding: 6px 4px; border-bottom: 1px solid var(--border-subtle); font-size: 12.5px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                <span>${escapeHtml(r)}</span>
+                <span style="font-family: 'JetBrains Mono', monospace; color: var(--text-secondary);">${c} (${pct}%)</span>
+              </div>
+              <div style="height: 4px; background: var(--bg-elevated); border-radius: 2px; overflow: hidden;">
+                <div style="height: 100%; background: var(--pink); width: ${pct}%;"></div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function exportYearlySummary() {
+  const year = document.getElementById('yearlyYear').value;
+  if (!year) return;
+  toast(`正在导出 ${year} 年度报告...`);
+  
+  const wb = XLSX.utils.book_new();
+  
+  // 按月统计
+  const months = Array.from({length: 12}, (_, i) => i + 1);
+  const monthly = months.map(m => {
+    const monthStr = `${year}-${String(m).padStart(2, '0')}`;
+    const o = ORDERS.filter(x => (x.orderDate || '').startsWith(monthStr));
+    const a = AFTERSALES.filter(x => (x.createdDate || '').startsWith(monthStr));
+    const i = ISSUES.filter(x => (x.createdAt || '').slice(0,7) === monthStr);
+    const M = MISSING_LIGHTS.filter(x => (x.createdAt || '').slice(0,7) === monthStr);
+    return [`${m} 月`, o.length, o.filter(x => ['shipped','arrived'].includes(x.status)).length, a.length, a.filter(x => x.status === 'resolved').length, i.length, M.length];
+  });
+  const data = [
+    [`${year} 年度报告`],
+    [],
+    ['月份', '订单', '已发货', '售后', '已解决', '问题', '找灯'],
+    ...monthly,
+    ['合计', ...monthly.reduce((acc, r) => acc.map((v, i) => v + r[i + 1]), [0,0,0,0,0,0])],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:6}}];
+  ws['!cols'] = [{wch:10},{wch:8},{wch:10},{wch:8},{wch:10},{wch:8},{wch:8}];
+  XLSX.utils.book_append_sheet(wb, ws, '年度概览');
+  
+  XLSX.writeFile(wb, `跟单年报_${year}.xlsx`);
+  toast(`✓ 已导出 ${year} 年报`);
+}
+
 function calcAgentScore(agentName, range) {
   let scoreMissing = 0, scoreOrders = 0, scoreAfter = 0, scoreIssues = 0;
   const detail = { missingHelps: [], orderOnTime: 0, orderOverdue: 0, orderDelivered: 0, afterResolved: 0, afterFast: 0, issueResolved: 0, issueEscalated: 0 };
@@ -5921,7 +6510,10 @@ function renderSettings() {
               <span class="name">${escapeHtml(a.name)}${a.isAdmin ? '<span class="admin-tag" style="margin-left:4px;">主管</span>' : ''}${a.name === CURRENT_AGENT ? ' ★' : ''}</span>
               <div class="info">${sites.length} 个网站 · ${a.isAdmin ? '全部模块（主管）' : modules.length + ' 个可见模块'}</div>
             </div>
-            ${a.name !== CURRENT_AGENT ? `<button class="row-del" onclick="removeAgent('${a.name.replace(/'/g, "\\'")}')" style="padding: 4px 8px;">✕ 删除</button>` : ''}
+            <div style="display: flex; gap: 6px;">
+              <button class="row-del" onclick="renameAgent(${agentIdx})" style="padding: 4px 10px; background: rgba(37,99,235,0.08); color: var(--accent); border: 1px solid rgba(37,99,235,0.2); border-radius: 5px; font-weight: 600; font-size: 11px; cursor: pointer;" title="给跟单员改名">✏️ 改名</button>
+              ${a.name !== CURRENT_AGENT ? `<button class="row-del" onclick="removeAgent('${a.name.replace(/'/g, "\\'")}')" style="padding: 4px 8px;">✕ 删除</button>` : ''}
+            </div>
           </div>
           
           <div style="font-size: 10.5px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px; margin-bottom: 6px; font-weight: 600;">📍 负责网站</div>
@@ -6035,6 +6627,68 @@ function removeSupplier(name) {
   DATA.saveConfig(CONFIG);
   renderSettings();
   refreshAllSupplierDropdowns();
+}
+
+async function renameAgent(agentIdx) {
+  const agent = CONFIG.agents[agentIdx];
+  if (!agent) return;
+  
+  const newName = prompt(
+    `修改 "${agent.name}" 的显示姓名\n\n` +
+    `💡 用途：\n` +
+    `  · 改成中文名字（如 Sylvie → 王思雨）\n` +
+    `  · 改成英文名字\n` +
+    `  · 跟单离职后，账号给新人接管时改名\n\n` +
+    `⚠ 注意：只改显示名字，登录邮箱和密码不变。\n` +
+    `历史数据（订单、售后等）自动跟着新名字走，不会丢。`,
+    agent.name
+  );
+  
+  if (!newName) return;
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed === agent.name) return;
+  
+  if (CONFIG.agents.find(a => a.name === trimmed)) {
+    toast('已有同名跟单员，请用别的名字', 'warn');
+    return;
+  }
+  
+  try {
+    // 1. 更新 Supabase 的 agents 表
+    if (agent._userId) {
+      const { error } = await sb.from('agents').update({ name: trimmed }).eq('user_id', agent._userId);
+      if (error) throw error;
+    }
+    
+    // 2. 更新内存中的 agent 记录
+    const oldName = agent.name;
+    agent.name = trimmed;
+    
+    // 3. 重命名 _cache 里以旧名字为 key 的数据
+    ['ordersByAgent', 'aftersalesByAgent', 'issuesByAgent'].forEach(k => {
+      if (DATA._cache[k][oldName]) {
+        DATA._cache[k][trimmed] = DATA._cache[k][oldName];
+        delete DATA._cache[k][oldName];
+      }
+    });
+    
+    // 4. 如果改的是当前登录用户，更新 CURRENT_AGENT + 顶部显示
+    if (CURRENT_AGENT === oldName) {
+      CURRENT_AGENT = trimmed;
+    }
+    
+    // 5. 重新加载全部数据 + 刷新所有 UI
+    loadAllData();
+    renderSettings();
+    
+    if (CURRENT_AGENT === trimmed) loginAs(trimmed);
+    else renderActiveTab();
+    
+    toast(`✓ 已改名：${oldName} → ${trimmed}`);
+  } catch (err) {
+    console.error(err);
+    toast('改名失败：' + (err.message || err), 'err');
+  }
 }
 
 function removeAgent(name) {
