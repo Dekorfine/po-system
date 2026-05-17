@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>跟单团队工作台 · 演示版</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
@@ -1313,8 +1313,208 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .comment-adopted {
   background: rgba(21,128,61,0.1); color: var(--success);
   padding: 4px 10px; border-radius: 4px;
-  font-size: 11px; font-weight: 700;
-  margin-top: 6px; display: inline-flex; align-items: center; gap: 4px;
+/* ==================== 响应式适配（手机 / iPad）==================== */
+
+/* iPad 横屏及以下 (≤1024px) */
+@media (max-width: 1024px) {
+  .container { padding: 12px; }
+  .stats-bar { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .stat-card { padding: 10px 14px; }
+  .stat-card .value { font-size: 24px; }
+  .stat-card .label { font-size: 11px; }
+  
+  .toolbar { gap: 6px; }
+  .filter-select { font-size: 12px; padding: 7px 10px; }
+  .search-input { font-size: 12.5px; padding: 7px 12px; min-width: 180px; }
+  
+  /* 列表头隐藏，改成卡片式 */
+  #ordersBody .record-row, #aftersalesBody .record-row, #issuesContainer .record-row {
+    grid-template-columns: 1fr !important;
+    gap: 8px; padding: 12px 14px;
+  }
+  .records-header { display: none !important; }
+  
+  /* 卡片内字段堆叠 */
+  .cell-main { font-size: 13px; }
+  .order-no-big { font-size: 16px !important; }
+  .product-line, .supplier-line { font-size: 12px; }
+  
+  /* 截图列变小 */
+  .thumbs-cell { 
+    display: flex; flex-wrap: wrap; gap: 4px;
+    padding-top: 6px;
+  }
+  .after-thumb { width: 42px !important; height: 42px !important; }
+  
+  /* 日期列变成水平 */
+  .dates-cell { display: flex; flex-wrap: wrap; gap: 6px 12px; padding-top: 4px; }
+  .date-line { font-size: 11px; }
+  
+  /* 操作按钮组 */
+  .row-actions { 
+    margin-top: 8px; justify-content: flex-end; gap: 6px;
+  }
+  .action-btn { width: 32px; height: 32px; font-size: 14px; }
+  
+  /* row 编号小 */
+  .row-num { font-size: 11px; }
+  
+  /* modal 占满屏幕 */
+  .modal { width: 95vw !important; max-width: 95vw !important; padding: 18px; }
+  .modal h2 { font-size: 18px; }
+  
+  /* 设置 modal 选项 */
+  .od-section { padding: 12px; }
+  .od-section-title { font-size: 12px; }
+}
+
+/* 手机竖屏 (≤640px) */
+@media (max-width: 640px) {
+  body { font-size: 13px; }
+  .container { padding: 8px; }
+  
+  /* Header 紧凑 */
+  .brand-text .name { font-size: 13px; }
+  .brand-text .sub { font-size: 9px; }
+  .sync-indicator { padding: 4px 6px; font-size: 10px; }
+  .sync-indicator .sync-label { display: none; }
+  
+  /* Tab 横向滚动 */
+  .tab-nav {
+    overflow-x: auto; flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .tab-nav::-webkit-scrollbar { display: none; }
+  .tab-item {
+    flex-shrink: 0; padding: 8px 12px; font-size: 12px;
+    white-space: nowrap;
+  }
+  
+  /* 统计卡片 2 列 */
+  .stats-bar { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card { padding: 10px; }
+  .stat-card .value { font-size: 20px; }
+  .stat-card .value .unit { font-size: 11px; }
+  .stat-card .sub { font-size: 10px; }
+  .stat-card.clickable:hover::after { font-size: 8px; }
+  
+  /* 工具栏堆叠 */
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar > * { width: 100%; }
+  .search-input, .filter-select { min-width: 0 !important; width: 100% !important; }
+  
+  /* 列表卡片 */
+  #ordersBody .record-row, #aftersalesBody .record-row, #issuesContainer .record-row {
+    padding: 10px; gap: 6px;
+  }
+  .order-no-big { font-size: 14px !important; }
+  
+  /* status pill / site badge 大小 */
+  .status-pill, .site-badge, .related-after-badge { font-size: 11px; padding: 3px 8px; }
+  
+  /* 截图缩略图 */
+  .after-thumb { width: 36px !important; height: 36px !important; }
+  .more-thumb { font-size: 10px; padding: 4px 6px; }
+  
+  /* Modal 全屏，按钮易点 */
+  .modal { 
+    width: 100vw !important; max-width: 100vw !important; 
+    height: 100vh; max-height: 100vh; 
+    border-radius: 0; padding: 14px; 
+  }
+  .modal-bg.show .modal { animation: none; }
+  .modal-close { width: 36px; height: 36px; font-size: 18px; }
+  
+  /* 表单输入加大 */
+  .form-control { font-size: 14px; padding: 10px 12px; min-height: 40px; }
+  
+  /* status grid 自适应 */
+  .status-grid.cols-3, .status-grid.cols-4, .status-grid.cols-5 { 
+    grid-template-columns: 1fr 1fr !important; gap: 6px;
+  }
+  .status-pill { padding: 8px 4px; font-size: 11px; }
+  
+  /* 按钮变大 */
+  .btn { padding: 10px 14px; font-size: 13px; min-height: 38px; }
+  
+  /* 时间线紧凑 */
+  .timeline-text { font-size: 12px; }
+  .timeline-meta { font-size: 10px; }
+  
+  /* 绩效 view tabs */
+  .perf-view-tabs {
+    overflow-x: auto; flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .perf-view-tabs::-webkit-scrollbar { display: none; }
+  .perf-view-btn { flex-shrink: 0; font-size: 11px; padding: 6px 10px; }
+  
+  /* 日报项目堆叠 */
+  .daily-item {
+    grid-template-columns: 24px 1fr !important;
+    gap: 4px !important;
+  }
+  .daily-text { white-space: normal !important; font-size: 11px; }
+  .daily-agent, .daily-status, .daily-time { font-size: 10px; }
+  
+  /* 标签项 */
+  .tag-item { font-size: 11px; padding: 4px 8px; }
+}
+
+/* 触屏设备的悬停优化（避免 sticky hover）*/
+@media (hover: none) {
+  .stat-card.clickable:hover { transform: none; box-shadow: var(--shadow-sm); }
+  .stat-card.clickable:hover::after { display: none; }
+  .action-btn:hover { transform: none; }
+}
+
+/* iPhone notch / 圆角处理 */
+@supports (padding: max(0px)) {
+  .container { 
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ==================== 线上采购模块样式 ==================== */
+.purchase-row {
+  display: grid;
+  grid-template-columns: 44px 110px minmax(280px, 1.6fr) 140px 130px 100px 130px;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+  align-items: start;
+}
+.purchase-row:hover { background: var(--bg-elevated); }
+.purchase-platform {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(37,99,235,0.08); color: var(--accent);
+  padding: 3px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 600;
+}
+.purchase-amount {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700; font-size: 14px;
+}
+.purchase-amount.large { color: var(--warning); }
+.purchase-amount.huge { color: var(--danger); }
+.approval-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 7px; border-radius: 4px;
+  font-size: 10px; font-weight: 600;
+}
+.approval-badge.pending { background: rgba(202,138,4,0.12); color: var(--warning); }
+.approval-badge.approved { background: rgba(21,128,61,0.12); color: var(--success); }
+.approval-badge.rejected { background: rgba(185,28,28,0.12); color: var(--danger); }
+
+@media (max-width: 1024px) {
+  .purchase-row { grid-template-columns: 1fr !important; gap: 8px; }
 }
 
 </style>
@@ -1398,6 +1598,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="tab-item" data-tab="aftersales" onclick="switchTab('aftersales')">🔧 售后 <span class="badge zero" id="badgeAftersales">0</span></div>
     <div class="tab-item" data-tab="issues" onclick="switchTab('issues')">⚠ 供应商问题 <span class="badge zero" id="badgeIssues">0</span></div>
     <div class="tab-item" data-tab="missing" onclick="switchTab('missing')">🔍 找灯 <span class="badge zero" id="badgeMissing">0</span></div>
+    <div class="tab-item" data-tab="purchases" onclick="switchTab('purchases')">🛒 线上采购 <span class="badge zero" id="badgePurchases">0</span></div>
     <div class="tab-item" data-tab="performance" onclick="switchTab('performance')">📊 绩效 <span class="badge zero" id="badgePerformance">0</span></div>
   </div>
 </div>
@@ -1597,6 +1798,11 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <option value="abandoned">仅已放弃</option>
         <option value="all">全部</option>
       </select>
+      <select class="filter-select" id="mFilterSource" onchange="renderMissing()">
+        <option value="">全部来源</option>
+        <option value="manual">📝 手动发起</option>
+        <option value="purchase">🛒 采购需求</option>
+      </select>
       <button class="btn" onclick="exportMissingCollage()" title="把所有搜寻中的图片拼成一张大图，发给供应商"><span style="font-size:14px;">📸</span> 截图打包</button>
       <button class="btn primary" onclick="addMissing()" style="margin-left: auto;">+ 发布找灯任务</button>
     </div>
@@ -1604,7 +1810,181 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   </div>
 </div>
 
-<!-- ============ TAB 5: 绩效统计 ============ -->
+<!-- ============ TAB 5: 线上采购 ============ -->
+<div class="tab-content" data-tab="purchases">
+  <div class="section-block">
+    <div style="margin-top: 18px; padding: 14px 18px; background: rgba(202,138,4,0.08); border-radius: 10px; border-left: 4px solid var(--warning); font-size: 13px; color: var(--text-secondary);">
+      🛒 <b style="color: var(--text-primary);">线上采购</b> · 淘宝/阿里巴巴/京东等平台采购管理。<b style="color: var(--warning);">单笔金额 ≥ ¥<span id="approvalThresholdHint">2000</span> 需主管审批</b>，审批通过后才能下单。
+      <span id="purchasesAdminHint" style="display: none;">主管视角：可审批 / 驳回所有人的采购申请。</span>
+    </div>
+    
+    <div class="stats-bar" style="margin-top: 18px;">
+      <div class="stat-card warning clickable" onclick="quickFilterPurchases('pending_approval')"><div class="label">待审批</div><div class="value mono"><span id="pPendingApproval">0</span><span class="unit">单</span></div><div class="sub">等主管</div></div>
+      <div class="stat-card clickable" onclick="quickFilterPurchases('approved')"><div class="label">待下单</div><div class="value mono"><span id="pApproved">0</span><span class="unit">单</span></div><div class="sub">已批准</div></div>
+      <div class="stat-card shipped clickable" onclick="quickFilterPurchases('ordered')"><div class="label">已下单</div><div class="value mono"><span id="pOrdered">0</span><span class="unit">单</span></div><div class="sub">在途</div></div>
+      <div class="stat-card success clickable" onclick="quickFilterPurchases('received')"><div class="label">本月已收货</div><div class="value mono"><span id="pReceived">0</span><span class="unit">单</span></div><div class="sub">完成</div></div>
+      <div class="stat-card purple"><div class="label">本月支出</div><div class="value mono">¥<span id="pTotalSpent">0</span></div><div class="sub" id="pSpentSub">合计</div></div>
+    </div>
+    
+    <div class="toolbar">
+      <input type="text" class="search-input" id="pSearch" placeholder="🔍 搜索订单号、商品、SKU、平台..." oninput="renderPurchases()">
+      <select class="filter-select" id="pFilterStatus" onchange="renderPurchases()">
+        <option value="active">🔥 进行中（默认）</option>
+        <option value="completed">✓ 已完成</option>
+        <option value="all">全部</option>
+        <option value="draft">草稿</option>
+        <option value="pending_approval">待审批</option>
+        <option value="approved">已批准</option>
+        <option value="rejected">已驳回</option>
+        <option value="ordered">已下单</option>
+        <option value="shipped">已发货</option>
+        <option value="received">已收货</option>
+        <option value="cancelled">已取消</option>
+      </select>
+      <select class="filter-select" id="pFilterPlatform" onchange="renderPurchases()">
+        <option value="">全部平台</option>
+        <option value="淘宝">🛍 淘宝</option>
+        <option value="阿里巴巴">🏭 阿里巴巴 (1688)</option>
+        <option value="京东">🛒 京东</option>
+        <option value="拼多多">🍃 拼多多</option>
+        <option value="天猫">🎁 天猫</option>
+        <option value="其他">📌 其他</option>
+      </select>
+      <button class="btn primary" onclick="addPurchase()" style="margin-left: auto;">+ 新增采购</button>
+    </div>
+    
+    <div class="records-card" style="margin-top: 14px;">
+      <div class="records-header" style="grid-template-columns: 44px 110px minmax(280px, 1.6fr) 140px 130px 100px 130px; display: grid; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-tertiary); font-weight: 600;">
+        <div>#</div><div>平台</div><div>商品 · 链接 · SKU</div><div>金额</div><div>状态</div><div>申请人</div><div style="text-align: right;">操作</div>
+      </div>
+      <div id="purchasesBody"></div>
+      <div class="add-row" onclick="addPurchase()">+ 新增采购</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 采购详情 Modal ============ -->
+<div class="modal-bg" id="purchaseModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('purchaseModal')">✕</button>
+    <h2>🛒 线上采购详情</h2>
+    <p class="desc">填写商品信息和金额，金额 ≥ ¥<span id="pmThresholdHint">2000</span> 需主管审批</p>
+    
+    <div class="od-top">
+      <div class="top">
+        <div class="order-no" id="pmOrderNo" style="font-family: 'JetBrains Mono', monospace;">(无单号)</div>
+        <div class="top-status" id="pmStatusBadge"></div>
+      </div>
+      <div class="meta">
+        <span id="pmAgent">👤 —</span>
+        <span id="pmCreatedAt">📅 —</span>
+        <span id="pmAmount" style="font-weight: 700;"></span>
+      </div>
+    </div>
+    
+    <div class="od-section">
+      <div class="od-section-title">采购平台 *</div>
+      <div class="status-grid cols-3" id="pmPlatformGrid">
+        <div class="status-pill" data-p="淘宝" onclick="setPurchasePlatform('淘宝')">🛍 淘宝</div>
+        <div class="status-pill" data-p="阿里巴巴" onclick="setPurchasePlatform('阿里巴巴')">🏭 阿里巴巴 (1688)</div>
+        <div class="status-pill" data-p="京东" onclick="setPurchasePlatform('京东')">🛒 京东</div>
+        <div class="status-pill" data-p="拼多多" onclick="setPurchasePlatform('拼多多')">🍃 拼多多</div>
+        <div class="status-pill" data-p="天猫" onclick="setPurchasePlatform('天猫')">🎁 天猫</div>
+        <div class="status-pill" data-p="其他" onclick="setPurchasePlatform('其他')">📌 其他</div>
+      </div>
+    </div>
+    
+    <div class="od-section">
+      <div class="od-section-title">基本信息</div>
+      <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-group">
+          <label>关联订单号</label>
+          <input type="text" class="form-control mono" id="pmInternalOrderNo" placeholder="K12345（可选）" oninput="onPurchaseField('orderNo', this.value)">
+        </div>
+        <div class="form-group">
+          <label>SKU 编号</label>
+          <input type="text" class="form-control mono" id="pmSku" placeholder="商品 SKU 编号" oninput="onPurchaseField('sku', this.value)">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>商品链接 *</label>
+        <input type="url" class="form-control" id="pmProductUrl" placeholder="https://item.taobao.com/... 或 https://detail.1688.com/..." oninput="onPurchaseField('productUrl', this.value)">
+        <div id="pmUrlPreview" style="margin-top: 6px; font-size: 11px;"></div>
+      </div>
+      <div class="form-group">
+        <label>商品名称</label>
+        <input type="text" class="form-control" id="pmProductName" placeholder="如：北欧风吊灯 - 黑色 - 60cm" oninput="onPurchaseField('productName', this.value)">
+      </div>
+      <div class="form-group">
+        <label>商品描述 / 规格</label>
+        <textarea class="form-control" id="pmDescription" placeholder="风格、材质、颜色、规格、特殊要求等" oninput="onPurchaseField('description', this.value)" style="min-height: 60px;"></textarea>
+      </div>
+    </div>
+    
+    <div class="od-section">
+      <div class="od-section-title">数量与金额 *</div>
+      <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+        <div class="form-group">
+          <label>数量</label>
+          <input type="number" class="form-control mono" id="pmQuantity" placeholder="1" min="1" oninput="onPurchaseQtyOrPrice()">
+        </div>
+        <div class="form-group">
+          <label>单价 (¥)</label>
+          <input type="number" class="form-control mono" id="pmUnitPrice" placeholder="0.00" min="0" step="0.01" oninput="onPurchaseQtyOrPrice()">
+        </div>
+        <div class="form-group">
+          <label>总金额 (¥)</label>
+          <input type="number" class="form-control mono" id="pmTotalAmount" placeholder="自动计算" min="0" step="0.01" style="background: rgba(202,138,4,0.05);" oninput="onPurchaseField('totalAmount', parseFloat(this.value) || 0)">
+        </div>
+      </div>
+      <div id="pmApprovalNote" style="margin-top: 8px; font-size: 12px;"></div>
+    </div>
+    
+    <div class="od-section">
+      <div class="od-section-title">当前状态</div>
+      <div class="status-grid cols-4" id="pmStatusGrid">
+        <div class="status-pill s-pending" data-st="draft" onclick="setPurchaseStatus('draft')">📝 草稿</div>
+        <div class="status-pill s-producing" data-st="pending_approval" onclick="setPurchaseStatus('pending_approval')">⏳ 待审批</div>
+        <div class="status-pill s-shipped" data-st="approved" onclick="setPurchaseStatus('approved')">✓ 已批准</div>
+        <div class="status-pill s-overdue" data-st="rejected" onclick="setPurchaseStatus('rejected')">✗ 已驳回</div>
+        <div class="status-pill s-shipped" data-st="ordered" onclick="setPurchaseStatus('ordered')">🛒 已下单</div>
+        <div class="status-pill s-shipped" data-st="shipped" onclick="setPurchaseStatus('shipped')">📦 已发货</div>
+        <div class="status-pill s-arrived" data-st="received" onclick="setPurchaseStatus('received')">✓ 已收货</div>
+        <div class="status-pill s-cancelled" data-st="cancelled" onclick="setPurchaseStatus('cancelled')">已取消</div>
+      </div>
+      <div id="pmApprovalActions" style="margin-top: 12px; display: none;">
+        <button class="btn primary" onclick="approvePurchase()" style="margin-right: 8px;">✓ 通过审批</button>
+        <button class="btn" onclick="rejectPurchase()" style="background: rgba(185,28,28,0.08); color: var(--danger);">✗ 驳回</button>
+      </div>
+    </div>
+    
+    <div class="od-section">
+      <div class="od-section-title">商品截图（可选，会同步到找灯模块）</div>
+      <label class="drop-zone-label">
+        <div class="drop-zone" id="pmDropZone">
+          <div>📷 拖拽 / Ctrl+V 粘贴 / <a id="pmFileSelect" style="color: var(--accent); cursor: pointer;">点击选择</a></div>
+          <input type="file" id="pmFileInput" multiple accept="image/*" style="display: none;">
+        </div>
+      </label>
+      <div class="drop-zone-thumbs" id="pmScreenshots"></div>
+      <div style="margin-top: 8px; font-size: 11px; color: var(--text-tertiary);">
+        💡 上传图片后，会自动在「找灯」模块创建任务，让团队一起找供应商
+      </div>
+    </div>
+    
+    <div class="od-section">
+      <div class="od-section-title">备注</div>
+      <textarea class="form-control" id="pmNotes" placeholder="特殊要求、备注等" oninput="onPurchaseField('notes', this.value)" style="min-height: 50px;"></textarea>
+    </div>
+    
+    <div class="modal-actions">
+      <button class="btn danger-text" onclick="deleteCurrentPurchase()">🗑 删除</button>
+      <button class="btn primary" onclick="submitForApproval()" id="pmSubmitBtn">📤 提交审批</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAB 6: 绩效统计 ============ -->
 <div class="tab-content" data-tab="performance">
   <div class="section-block">
     <div style="margin-top: 18px; padding: 14px 18px; background: rgba(124,58,237,0.08); border-radius: 10px; border-left: 4px solid var(--purple); font-size: 13px; color: var(--text-secondary);">
@@ -2136,6 +2516,7 @@ HOGO
       <button class="trash-tab-btn" data-trash-tab="aftersales" onclick="switchTrashTab('aftersales')">🔧 售后 <span class="trash-tab-count" id="tcAfter">0</span></button>
       <button class="trash-tab-btn" data-trash-tab="issues" onclick="switchTrashTab('issues')">⚠ 问题 <span class="trash-tab-count" id="tcIssues">0</span></button>
       <button class="trash-tab-btn" data-trash-tab="missing" onclick="switchTrashTab('missing')">🔍 找灯 <span class="trash-tab-count" id="tcMissing">0</span></button>
+      <button class="trash-tab-btn" data-trash-tab="purchases" onclick="switchTrashTab('purchases')">🛒 采购 <span class="trash-tab-count" id="tcPurchases">0</span></button>
     </div>
     
     <div id="trashContent" style="margin-top: 14px; max-height: 50vh; overflow-y: auto;"></div>
@@ -2219,6 +2600,7 @@ const DATA = {
     aftersalesByAgent: {},
     issuesByAgent: {},
     missingLights: [],
+    purchasesByAgent: {},
   },
   _syncTimers: {},
 
@@ -2249,12 +2631,13 @@ const DATA = {
       modules: a.modules || ['orders','aftersales','issues','missing','performance'],
     }));
 
-    // Orders / Aftersales / Issues 都按 agent 分组（RLS 自动过滤：跟单只能看自己，主管能看所有）
-    const [ordersR, aftersR, issuesR, missingR] = await Promise.all([
+    // Orders / Aftersales / Issues / Missing / Purchases 都按 agent 分组（RLS 自动过滤：跟单只能看自己，主管能看所有）
+    const [ordersR, aftersR, issuesR, missingR, purchasesR] = await Promise.all([
       sb.from('orders').select('*').order('created_at', { ascending: false }),
       sb.from('aftersales').select('*').order('created_at', { ascending: false }),
       sb.from('issues').select('*').order('created_at', { ascending: false }),
       sb.from('missing_lights').select('*').order('created_at', { ascending: false }),
+      sb.from('online_purchases').select('*').order('created_at', { ascending: false }).then(r => r).catch(e => ({ data: [], error: e })),
     ]);
 
     // 按 agent_id 分组
@@ -2262,6 +2645,7 @@ const DATA = {
     this._cache.aftersalesByAgent = this._groupByAgent(aftersR.data || [], 'after');
     this._cache.issuesByAgent = this._groupByAgent(issuesR.data || [], 'issue');
     this._cache.missingLights = (missingR.data || []).map(m => this._fromDbMissing(m));
+    this._cache.purchasesByAgent = this._groupByAgent(purchasesR.data || [], 'purchase');
   },
 
   _groupByAgent(rows, type) {
@@ -2275,6 +2659,7 @@ const DATA = {
       if (type === 'order') result[agentName].push(this._fromDbOrder(r));
       else if (type === 'after') result[agentName].push(this._fromDbAfter(r));
       else if (type === 'issue') result[agentName].push(this._fromDbIssue(r));
+      else if (type === 'purchase') result[agentName].push(this._fromDbPurchase(r));
     });
     return result;
   },
@@ -2326,8 +2711,39 @@ const DATA = {
       status: r.status || 'searching',
       screenshots: r.screenshots || [], comments: r.comments || [],
       adoptedHelper: r.adopted_helper || '', foundAt: r.found_at,
+      source: r.source || 'manual',
+      linkedPurchaseId: r.linked_purchase_id || null,
       createdAt: r.created_at,
       deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
+    };
+  },
+  
+  _fromDbPurchase(r) {
+    return {
+      _id: r.id, _agent_id: r.agent_id,
+      orderNo: r.order_no || '',
+      platform: r.platform || '',
+      productUrl: r.product_url || '',
+      sku: r.sku || '',
+      productName: r.product_name || '',
+      description: r.description || '',
+      quantity: r.quantity || 1,
+      unitPrice: parseFloat(r.unit_price) || 0,
+      totalAmount: parseFloat(r.total_amount) || 0,
+      status: r.status || 'draft',
+      approvedBy: r.approved_by || '',
+      approvedAt: r.approved_at,
+      rejectedReason: r.rejected_reason || '',
+      orderedAt: r.ordered_at,
+      receivedAt: r.received_at,
+      screenshots: r.screenshots || [],
+      followups: r.followups || [],
+      notes: r.notes || '',
+      linkedMissingId: r.linked_missing_id || null,
+      approvalThreshold: parseFloat(r.approval_threshold) || 2000,
+      createdAt: r.created_at,
+      deletedAt: r.deleted_at || null,
+      deletedBy: r.deleted_by || null,
     };
   },
 
@@ -2380,7 +2796,38 @@ const DATA = {
       screenshots: m.screenshots || [], comments: m.comments || [],
       adopted_helper: m.adoptedHelper || null,
       found_at: m.foundAt || null,
+      source: m.source || 'manual',
+      linked_purchase_id: m.linkedPurchaseId || null,
       deleted_at: m.deletedAt || null, deleted_by: m.deletedBy || null,
+    };
+  },
+  
+  _toDbPurchase(p, userId) {
+    return {
+      ...(p._id && !p._id.startsWith('P') ? { id: p._id } : {}),
+      agent_id: userId,
+      order_no: p.orderNo || '',
+      platform: p.platform || '',
+      product_url: p.productUrl || '',
+      sku: p.sku || '',
+      product_name: p.productName || '',
+      description: p.description || '',
+      quantity: p.quantity || 1,
+      unit_price: p.unitPrice || 0,
+      total_amount: p.totalAmount || 0,
+      status: p.status || 'draft',
+      approved_by: p.approvedBy || null,
+      approved_at: p.approvedAt || null,
+      rejected_reason: p.rejectedReason || null,
+      ordered_at: p.orderedAt || null,
+      received_at: p.receivedAt || null,
+      screenshots: p.screenshots || [],
+      followups: p.followups || [],
+      notes: p.notes || '',
+      linked_missing_id: p.linkedMissingId || null,
+      approval_threshold: p.approvalThreshold || 2000,
+      deleted_at: p.deletedAt || null,
+      deleted_by: p.deletedBy || null,
     };
   },
 
@@ -2428,6 +2875,20 @@ const DATA = {
   saveMissingLights(arr) {
     this._cache.missingLights = arr;
     this._debounce('missing', 250, () => fullSyncMissing());
+  },
+  
+  // 线上采购
+  getPurchases(agent) { return this._cache.purchasesByAgent[agent] || []; },
+  getAllPurchases() {
+    const all = [];
+    Object.entries(this._cache.purchasesByAgent).forEach(([agent, arr]) => {
+      arr.forEach(p => all.push({ ...p, _agent: agent }));
+    });
+    return all;
+  },
+  savePurchases(agent, arr) {
+    this._cache.purchasesByAgent[agent] = arr;
+    this._debounce('purchases_' + agent, 250, () => fullSyncPurchases(agent));
   },
 
   // 评分规则
@@ -2520,6 +2981,12 @@ const DATA = {
     this._cancelDebounce('missing');
     setSyncStatus('syncing');
     try { await fullSyncMissing(); setSyncStatus('synced'); }
+    catch (err) { setSyncStatus('error'); throw err; }
+  },
+  async saveAndSyncPurchases(agent) {
+    this._cancelDebounce('purchases_' + agent);
+    setSyncStatus('syncing');
+    try { await fullSyncPurchases(agent); setSyncStatus('synced'); }
     catch (err) { setSyncStatus('error'); throw err; }
   },
   
@@ -2734,15 +3201,58 @@ async function fullSyncMissing() {
   }
 }
 
+async function fullSyncPurchases(agentName) {
+  const me = DATA._cache.agents.find(a => a.name === agentName);
+  if (!me) return;
+  const userId = me._userId;
+  const arr = DATA._cache.purchasesByAgent[agentName] || [];
+
+  const { data: existing } = await sb.from('online_purchases').select('id').eq('agent_id', userId);
+  const existingIds = new Set((existing || []).map(x => x.id));
+  const localIds = new Set(arr.map(p => p._id).filter(id => id && !id.startsWith('P')));
+
+  const toDelete = [...existingIds].filter(id => !localIds.has(id));
+  if (toDelete.length > 0) {
+    await sb.from('online_purchases').delete().in('id', toDelete);
+  }
+
+  const inserts = arr.filter(p => !p._id || p._id.startsWith('P')).map(p => DATA._toDbPurchase(p, userId));
+  const updates = arr.filter(p => p._id && !p._id.startsWith('P')).map(p => DATA._toDbPurchase(p, userId));
+
+  if (updates.length > 0) {
+    const { error } = await sb.from('online_purchases').upsert(updates);
+    if (error) throw error;
+  }
+  if (inserts.length > 0) {
+    const { data, error } = await sb.from('online_purchases').insert(inserts).select();
+    if (error) throw error;
+    let i = 0;
+    for (const p of arr) {
+      if (!p._id || p._id.startsWith('P')) {
+        if (data[i]) {
+          const oldId = p._id;
+          p._id = data[i].id;
+          p._agent_id = userId;
+          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
+            _currentItemId = p._id;
+          }
+          i++;
+        }
+      }
+    }
+  }
+}
+
 // ============ 全局状态 ============
 let CONFIG = DATA.getConfig();  // 空配置，bootstrap 后填充
 let CURRENT_AGENT = null;       // 字符串：当前账号姓名
 let IS_ADMIN = false;
-let CURRENT_TAB = 'orders';     // orders | aftersales | issues | missing
+let CURRENT_TAB = 'orders';     // orders | aftersales | issues | missing | purchases | performance
 let ORDERS = [];
 let AFTERSALES = [];
 let ISSUES = [];
 let MISSING_LIGHTS = [];        // 共享数据
+let PURCHASES = [];             // 线上采购
 
 let _currentItemId = null;
 let _currentItemType = null;     // 当前打开的 modal 类型
@@ -3703,10 +4213,12 @@ function loadAllData() {
     ORDERS = DATA.getAllOrders().filter(o => !o.deletedAt);
     AFTERSALES = DATA.getAllAftersales().filter(a => !a.deletedAt);
     ISSUES = DATA.getAllIssues().filter(i => !i.deletedAt);
+    PURCHASES = DATA.getAllPurchases().filter(p => !p.deletedAt);
   } else {
     ORDERS = DATA.getOrders(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
     AFTERSALES = DATA.getAftersales(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
     ISSUES = DATA.getIssues(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
+    PURCHASES = DATA.getPurchases(CURRENT_AGENT).filter(p => !p.deletedAt).map(p => ({ ...p, _agent: CURRENT_AGENT }));
   }
   MISSING_LIGHTS = DATA.getMissingLights().filter(m => !m.deletedAt);
   refreshAllSupplierDropdowns();
@@ -3718,6 +4230,7 @@ function renderActiveTab() {
   else if (CURRENT_TAB === 'aftersales') { renderAftersales(); refreshAsFb(); updateAfterStats(); renderAfterReport(); }
   else if (CURRENT_TAB === 'issues') { renderIssues(); updateIssueStats(); }
   else if (CURRENT_TAB === 'missing') { renderMissing(); updateMissingStats(); }
+  else if (CURRENT_TAB === 'purchases') { renderPurchases(); updatePurchaseStats(); }
   else if (CURRENT_TAB === 'performance') { renderPerformance(); }
 }
 
@@ -5917,12 +6430,14 @@ function renderMissing() {
   const body = document.getElementById('missingBody');
   const q = (document.getElementById('mSearch').value || '').trim().toLowerCase();
   const fs = document.getElementById('mFilterStatus').value;
+  const fSource = document.getElementById('mFilterSource') ? document.getElementById('mFilterSource').value : '';
   
   let list = MISSING_LIGHTS.filter(m => {
     if (q) {
       const t = [m.description, m.customerOrderNo, m.creator, (m.comments || []).map(c => c.content + ' ' + (c.suggestedSupplier || '')).join(' ')].join(' ').toLowerCase();
       if (!t.includes(q)) return false;
     }
+    if (fSource && (m.source || 'manual') !== fSource) return false;
     if (fs === 'all') return true;
     if (fs === 'active') return ['searching', 'found'].includes(m.status);  // 包含已找到（但会被折叠）
     return m.status === fs;
@@ -6015,6 +6530,7 @@ function renderMissingCard(m) {
       <div class="cover ${coverCls}">
         ${coverHTML}
         <span class="status-badge s-${m.status}">${MISSING_STATUS_LABELS[m.status]}</span>
+        ${m.source === 'purchase' ? '<span class="source-badge" style="position:absolute;top:8px;left:8px;background:rgba(202,138,4,0.95);color:white;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;">🛒 采购需求</span>' : ''}
         ${canDelete ? `<button class="card-delete" onclick="event.stopPropagation(); delMissingRow('${m._id}')" title="删除">🗑</button>` : ''}
         ${cmtCount > 0 ? `<span class="comments-badge" style="${canDelete ? 'top: 44px;' : ''}">💬 ${cmtCount}</span>` : ''}
       </div>
@@ -6555,6 +7071,30 @@ async function adoptComment(idx) {
   document.getElementById('mmStatus').value = 'found';
   
   DATA.saveMissingLights(MISSING_LIGHTS);
+  
+  // 如果关联了采购单，自动给采购单加备注+候选供应商
+  if (m.linkedPurchaseId) {
+    const allPurchases = DATA.getAllPurchases();
+    const linked = allPurchases.find(p => p._id === m.linkedPurchaseId);
+    if (linked) {
+      const pArr = DATA._cache.purchasesByAgent[linked._agent] || [];
+      const p = pArr.find(x => x._id === m.linkedPurchaseId);
+      if (p) {
+        const noteAddition = `[找灯助攻] ${c.user} 推荐供应商：${c.suggestedSupplier}${c.content ? ' — ' + c.content : ''}`;
+        p.notes = (p.notes ? p.notes + '\n\n' : '') + noteAddition;
+        if (!p.followups) p.followups = [];
+        p.followups.push({
+          date: new Date().toISOString().slice(0, 10),
+          time: new Date().toTimeString().slice(0, 5),
+          note: `已找到供应商「${c.suggestedSupplier}」（由 ${c.user} 推荐）`,
+          type: 'found'
+        });
+        DATA.savePurchases(linked._agent, pArr);
+        try { await DATA.saveAndSyncPurchases(linked._agent); } catch (err) { console.error(err); }
+      }
+    }
+  }
+  
   renderMissingModalContent();
   renderMissing();
   updateMissingStats();
@@ -7525,6 +8065,621 @@ function calcAgentScore(agentName, range) {
   };
 }
 
+// ============================================================
+// 🛒 线上采购模块
+// ============================================================
+const PURCHASE_STATUS_LABELS = {
+  draft: '草稿', pending_approval: '待审批', approved: '已批准', rejected: '已驳回',
+  ordered: '已下单', shipped: '已发货', received: '已收货', cancelled: '已取消'
+};
+const PLATFORM_ICONS = {
+  '淘宝': '🛍', '阿里巴巴': '🏭', '京东': '🛒', '拼多多': '🍃', '天猫': '🎁', '其他': '📌'
+};
+
+function getApprovalThreshold() {
+  // 默认 2000 元，可以未来加入配置
+  return (CONFIG && CONFIG.approvalThreshold) || 2000;
+}
+
+async function addPurchase() {
+  const me = CONFIG.agents.find(a => a.name === CURRENT_AGENT);
+  const newP = {
+    _id: 'P' + Date.now() + Math.random().toString(36).slice(2, 6),
+    orderNo: '', platform: '', productUrl: '', sku: '',
+    productName: '', description: '',
+    quantity: 1, unitPrice: 0, totalAmount: 0,
+    status: 'draft',
+    screenshots: [], followups: [], notes: '',
+    linkedMissingId: null,
+    approvalThreshold: getApprovalThreshold(),
+    createdAt: new Date().toISOString(),
+  };
+  const arr = DATA.getPurchases(CURRENT_AGENT);
+  arr.unshift(newP);
+  DATA.savePurchases(CURRENT_AGENT, arr);
+  loadAllData();
+  renderPurchases();
+  updatePurchaseStats();
+  try { await DATA.saveAndSyncPurchases(CURRENT_AGENT); }
+  catch (err) { console.error(err); toast('云端同步失败：' + (err.message || err), 'err'); }
+  openPurchaseModal(newP._id, CURRENT_AGENT);
+}
+
+function renderPurchases() {
+  if (!CURRENT_AGENT) return;
+  // 主管查看所有，跟单只看自己
+  const myList = PURCHASES;
+  
+  const q = (document.getElementById('pSearch') ? document.getElementById('pSearch').value.toLowerCase() : '').trim();
+  const fStatus = document.getElementById('pFilterStatus') ? document.getElementById('pFilterStatus').value : 'active';
+  const fPlatform = document.getElementById('pFilterPlatform') ? document.getElementById('pFilterPlatform').value : '';
+  
+  let list = myList.filter(p => {
+    if (q) {
+      const t = `${p.orderNo||''}${p.productName||''}${p.sku||''}${p.platform||''}${p.description||''}`.toLowerCase();
+      if (!t.includes(q)) return false;
+    }
+    if (fPlatform && p.platform !== fPlatform) return false;
+    if (fStatus === 'active') return !['received', 'cancelled', 'rejected'].includes(p.status);
+    if (fStatus === 'completed') return ['received', 'cancelled', 'rejected'].includes(p.status);
+    if (fStatus === 'all') return true;
+    return p.status === fStatus;
+  });
+  
+  // 排序：待审批 + 紧急金额优先
+  list.sort((a, b) => {
+    const statusPriority = { pending_approval: 0, approved: 1, ordered: 2, shipped: 3, draft: 4, received: 5, rejected: 6, cancelled: 7 };
+    const sa = statusPriority[a.status] ?? 9;
+    const sb = statusPriority[b.status] ?? 9;
+    if (sa !== sb) return sa - sb;
+    return (b.createdAt || '').localeCompare(a.createdAt || '');
+  });
+  
+  const body = document.getElementById('purchasesBody');
+  if (!body) return;
+  
+  if (list.length === 0) {
+    body.innerHTML = `<div style="padding: 60px 20px; text-align: center; color: var(--text-tertiary);">
+      <div style="font-size: 40px; margin-bottom: 12px;">🛒</div>
+      <div style="font-size: 14px;">还没有线上采购单</div>
+      <div style="font-size: 11px; margin-top: 6px;">点击下方 "+ 新增采购" 创建第一笔</div>
+    </div>`;
+    return;
+  }
+  
+  body.innerHTML = list.map((p, i) => renderPurchaseRow(p, i)).join('');
+}
+
+function renderPurchaseRow(p, i) {
+  const totalCls = p.totalAmount >= 5000 ? 'huge' : p.totalAmount >= getApprovalThreshold() ? 'large' : '';
+  const needsApproval = p.totalAmount >= (p.approvalThreshold || getApprovalThreshold());
+  const platformIcon = PLATFORM_ICONS[p.platform] || '📌';
+  
+  let statusBadge = `<span class="status-pill s-${p.status}">${PURCHASE_STATUS_LABELS[p.status]}</span>`;
+  if (p.status === 'pending_approval') statusBadge += '<div class="approval-badge pending" style="margin-top: 4px;">⏳ 待审批</div>';
+  if (p.status === 'approved') statusBadge += `<div class="approval-badge approved" style="margin-top: 4px;">✓ ${escapeHtml(p.approvedBy || '主管')}已批</div>`;
+  if (p.status === 'rejected') statusBadge += '<div class="approval-badge rejected" style="margin-top: 4px;">✗ 已驳回</div>';
+  
+  const thumb = p.screenshots && p.screenshots[0] 
+    ? `<img src="${p.screenshots[0]}" style="width: 36px; height: 36px; border-radius: 4px; object-fit: cover; vertical-align: middle; margin-right: 6px;" onclick="event.stopPropagation(); viewImage('${p.screenshots[0]}')">`
+    : '';
+  
+  return `
+    <div class="purchase-row" onclick="openPurchaseModal('${p._id}', '${escapeHtml(p._agent || '')}')">
+      <div class="row-num">${i + 1}${IS_ADMIN && p._agent ? `<div style="font-size:9px;color:var(--text-tertiary);">${escapeHtml(p._agent.slice(0,2))}</div>` : ''}</div>
+      <div><span class="purchase-platform">${platformIcon} ${escapeHtml(p.platform || '—')}</span></div>
+      <div class="cell-main">
+        <div class="order-line">
+          ${thumb}<span class="order-no-big" style="font-size: 14px;">${escapeHtml(p.productName || '(待填商品名)')}</span>
+        </div>
+        ${p.orderNo ? `<div class="product-line"><b>关联订单</b>: ${escapeHtml(p.orderNo)}</div>` : ''}
+        ${p.sku ? `<div class="supplier-line">📋 SKU: <span style="font-family: 'JetBrains Mono', monospace;">${escapeHtml(p.sku)}</span></div>` : ''}
+        ${p.productUrl ? `<div class="detail-line"><a href="${p.productUrl}" target="_blank" onclick="event.stopPropagation();" style="color: var(--accent); text-decoration: underline; font-size: 11px;">🔗 打开商品链接</a></div>` : ''}
+      </div>
+      <div>
+        <div class="purchase-amount ${totalCls}">¥${(p.totalAmount || 0).toFixed(2)}</div>
+        <div style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px;">${p.quantity || 1} × ¥${(p.unitPrice || 0).toFixed(2)}</div>
+        ${needsApproval && p.status === 'draft' ? '<div style="font-size: 10px; color: var(--warning); margin-top: 2px;">⚠ 需审批</div>' : ''}
+      </div>
+      <div>${statusBadge}</div>
+      <div style="font-size: 11px; color: var(--text-secondary);">
+        👤 ${escapeHtml(p._agent || '—')}<br>
+        <span style="font-size: 10px; color: var(--text-tertiary);">${(p.createdAt || '').slice(5, 10)}</span>
+      </div>
+      <div class="row-actions">
+        ${IS_ADMIN && p.status === 'pending_approval' ? `
+          <button class="action-btn done" title="批准" onclick="event.stopPropagation(); quickApprove('${p._id}', '${escapeHtml(p._agent || '')}')">✓</button>
+          <button class="action-btn delete" title="驳回" onclick="event.stopPropagation(); quickReject('${p._id}', '${escapeHtml(p._agent || '')}')" style="color: var(--danger);">✗</button>
+        ` : ''}
+        ${p.status === 'approved' && p._agent === CURRENT_AGENT ? `<button class="action-btn done" title="标记已下单" onclick="event.stopPropagation(); markOrdered('${p._id}')">🛒</button>` : ''}
+        ${p.status === 'ordered' && p._agent === CURRENT_AGENT ? `<button class="action-btn done" title="标记已收货" onclick="event.stopPropagation(); markReceived('${p._id}')">✓</button>` : ''}
+        <button class="action-btn delete" title="删除" onclick="event.stopPropagation(); delPurchaseRow('${p._id}', '${escapeHtml(p._agent || '')}')">🗑</button>
+      </div>
+    </div>
+  `;
+}
+
+function updatePurchaseStats() {
+  const today = new Date().toISOString().slice(0, 10);
+  const thisMonth = today.slice(0, 7);
+  let pending = 0, approved = 0, ordered = 0, received = 0, totalSpent = 0;
+  
+  PURCHASES.forEach(p => {
+    if (p.status === 'pending_approval') pending++;
+    if (p.status === 'approved') approved++;
+    if (['ordered', 'shipped'].includes(p.status)) ordered++;
+    if (p.status === 'received' && (p.receivedAt || p.createdAt || '').startsWith(thisMonth)) {
+      received++;
+      totalSpent += (p.totalAmount || 0);
+    }
+  });
+  
+  const el = id => document.getElementById(id);
+  if (el('pPendingApproval')) el('pPendingApproval').textContent = pending;
+  if (el('pApproved')) el('pApproved').textContent = approved;
+  if (el('pOrdered')) el('pOrdered').textContent = ordered;
+  if (el('pReceived')) el('pReceived').textContent = received;
+  if (el('pTotalSpent')) el('pTotalSpent').textContent = totalSpent.toFixed(0);
+  if (el('badgePurchases')) {
+    const total = pending + approved;
+    el('badgePurchases').textContent = total;
+    el('badgePurchases').className = 'badge' + (total === 0 ? ' zero' : '');
+  }
+  if (el('purchasesAdminHint')) {
+    el('purchasesAdminHint').style.display = IS_ADMIN ? '' : 'none';
+  }
+  if (el('approvalThresholdHint')) el('approvalThresholdHint').textContent = getApprovalThreshold();
+}
+
+function quickFilterPurchases(status) {
+  const f = document.getElementById('pFilterStatus');
+  if (!f) return;
+  f.value = status;
+  renderPurchases();
+}
+
+// ============ 采购 modal 操作 ============
+let _currentPurchase = null;
+
+function openPurchaseModal(id, agent) {
+  const ownerAgent = agent || CURRENT_AGENT;
+  const arr = DATA.getPurchases(ownerAgent);
+  const p = arr.find(x => x._id === id);
+  if (!p) return;
+  _currentItemId = id;
+  window._currentItemAgent = ownerAgent;
+  _currentItemType = 'purchase';
+  
+  // 填充字段
+  const $ = id => document.getElementById(id);
+  $('pmInternalOrderNo').value = p.orderNo || '';
+  $('pmSku').value = p.sku || '';
+  $('pmProductUrl').value = p.productUrl || '';
+  $('pmProductName').value = p.productName || '';
+  $('pmDescription').value = p.description || '';
+  $('pmQuantity').value = p.quantity || 1;
+  $('pmUnitPrice').value = p.unitPrice || 0;
+  $('pmTotalAmount').value = p.totalAmount || 0;
+  $('pmNotes').value = p.notes || '';
+  $('pmThresholdHint').textContent = p.approvalThreshold || getApprovalThreshold();
+  
+  renderPurchaseModalContent();
+  setupPurchaseScreenshot();
+  document.getElementById('purchaseModal').classList.add('show');
+  _pasteTarget = 'purchase_orig';
+}
+
+function renderPurchaseModalContent() {
+  const arr = DATA.getPurchases(window._currentItemAgent || CURRENT_AGENT);
+  const p = arr.find(x => x._id === _currentItemId);
+  if (!p) return;
+  
+  // header
+  document.getElementById('pmOrderNo').textContent = p.productName || '(待填商品名)';
+  document.getElementById('pmAgent').textContent = '👤 ' + (window._currentItemAgent || CURRENT_AGENT);
+  document.getElementById('pmCreatedAt').textContent = '📅 ' + (p.createdAt || '').slice(0, 10);
+  document.getElementById('pmAmount').textContent = '💰 ¥' + (p.totalAmount || 0).toFixed(2);
+  
+  // status pill highlight
+  document.querySelectorAll('#pmStatusGrid .status-pill').forEach(el => {
+    el.classList.toggle('selected', el.dataset.st === p.status);
+  });
+  document.querySelectorAll('#pmPlatformGrid .status-pill').forEach(el => {
+    el.classList.toggle('selected', el.dataset.p === p.platform);
+  });
+  
+  // status badge
+  document.getElementById('pmStatusBadge').innerHTML = `<span class="status-pill s-${p.status}" style="padding: 6px 14px;">${PURCHASE_STATUS_LABELS[p.status]}</span>`;
+  
+  // 审批提示
+  const threshold = p.approvalThreshold || getApprovalThreshold();
+  const needsApproval = (p.totalAmount || 0) >= threshold;
+  const noteEl = document.getElementById('pmApprovalNote');
+  if (needsApproval) {
+    if (p.status === 'draft') {
+      noteEl.innerHTML = `<span style="color: var(--warning);">⚠ 金额 ¥${(p.totalAmount || 0).toFixed(2)} ≥ ¥${threshold}，需主管审批后才能下单</span>`;
+    } else if (p.status === 'pending_approval') {
+      noteEl.innerHTML = `<span style="color: var(--warning);">⏳ 已提交审批，等待主管批准</span>`;
+    } else if (p.status === 'approved') {
+      noteEl.innerHTML = `<span style="color: var(--success);">✓ 已被 ${escapeHtml(p.approvedBy || '主管')} 批准（${(p.approvedAt || '').slice(0, 10)}），可以下单</span>`;
+    } else if (p.status === 'rejected') {
+      noteEl.innerHTML = `<span style="color: var(--danger);">✗ 已被驳回${p.rejectedReason ? '：' + escapeHtml(p.rejectedReason) : ''}</span>`;
+    } else {
+      noteEl.innerHTML = '';
+    }
+  } else {
+    noteEl.innerHTML = `<span style="color: var(--text-tertiary);">金额 ¥${(p.totalAmount || 0).toFixed(2)} < ¥${threshold}，无需审批</span>`;
+  }
+  
+  // 提交审批按钮
+  const submitBtn = document.getElementById('pmSubmitBtn');
+  const ownerAgent = window._currentItemAgent || CURRENT_AGENT;
+  const isOwner = ownerAgent === CURRENT_AGENT;
+  if (p.status === 'draft' && needsApproval && isOwner) {
+    submitBtn.style.display = '';
+    submitBtn.textContent = '📤 提交审批';
+  } else if (p.status === 'approved' && isOwner) {
+    submitBtn.style.display = '';
+    submitBtn.textContent = '🛒 标记已下单';
+    submitBtn.onclick = () => markOrdered(p._id);
+  } else if (p.status === 'ordered' && isOwner) {
+    submitBtn.style.display = '';
+    submitBtn.textContent = '✓ 标记已收货';
+    submitBtn.onclick = () => markReceived(p._id);
+  } else {
+    submitBtn.style.display = 'none';
+  }
+  if (p.status === 'draft' && needsApproval && isOwner) {
+    submitBtn.onclick = submitForApproval;
+  }
+  
+  // 主管审批按钮
+  const approvalActionsEl = document.getElementById('pmApprovalActions');
+  if (IS_ADMIN && p.status === 'pending_approval') {
+    approvalActionsEl.style.display = '';
+  } else {
+    approvalActionsEl.style.display = 'none';
+  }
+  
+  // URL 预览
+  const urlPreview = document.getElementById('pmUrlPreview');
+  if (p.productUrl) {
+    const platform = detectPlatform(p.productUrl);
+    if (platform && !p.platform) {
+      onPurchaseField('platform', platform);
+    }
+    urlPreview.innerHTML = `<span style="color: var(--text-tertiary);">检测到平台：</span><a href="${p.productUrl}" target="_blank" style="color: var(--accent);">${platform || '其他'}</a>`;
+  } else {
+    urlPreview.innerHTML = '';
+  }
+  
+  // 截图
+  const ss = p.screenshots || [];
+  document.getElementById('pmScreenshots').innerHTML = ss.map((s, i) => 
+    `<div class="drop-zone-thumb"><img src="${s}" onclick="viewImage('${s}')"><button class="rm" onclick="rmPurchaseScreenshot(${i})">×</button></div>`
+  ).join('');
+}
+
+function detectPlatform(url) {
+  if (!url) return '';
+  if (url.includes('taobao.com')) return '淘宝';
+  if (url.includes('1688.com') || url.includes('alibaba.com')) return '阿里巴巴';
+  if (url.includes('jd.com')) return '京东';
+  if (url.includes('pinduoduo.com') || url.includes('yangkeduo.com')) return '拼多多';
+  if (url.includes('tmall.com')) return '天猫';
+  return '其他';
+}
+
+function persistCurrentPurchase(updater, immediate = false) {
+  const agent = window._currentItemAgent || CURRENT_AGENT;
+  const arr = DATA.getPurchases(agent);
+  const idx = arr.findIndex(p => p._id === _currentItemId);
+  if (idx < 0) return;
+  updater(arr[idx]);
+  DATA.savePurchases(agent, arr);
+  loadAllData();
+  if (immediate) {
+    DATA.saveAndSyncPurchases(agent).catch(err => { console.error(err); toast('同步失败:' + (err.message || err), 'err'); });
+  }
+}
+
+function onPurchaseField(field, value) {
+  persistCurrentPurchase(p => p[field] = value);
+  if (field === 'productUrl') {
+    const platform = detectPlatform(value);
+    if (platform) {
+      persistCurrentPurchase(p => p.platform = platform);
+    }
+  }
+  renderPurchaseModalContent();
+  renderPurchases();
+  updatePurchaseStats();
+}
+
+function onPurchaseQtyOrPrice() {
+  const qty = parseFloat(document.getElementById('pmQuantity').value) || 1;
+  const price = parseFloat(document.getElementById('pmUnitPrice').value) || 0;
+  const total = qty * price;
+  document.getElementById('pmTotalAmount').value = total.toFixed(2);
+  persistCurrentPurchase(p => {
+    p.quantity = qty;
+    p.unitPrice = price;
+    p.totalAmount = total;
+  });
+  renderPurchaseModalContent();
+  renderPurchases();
+  updatePurchaseStats();
+}
+
+async function setPurchasePlatform(platform) {
+  persistCurrentPurchase(p => p.platform = platform, true);
+  renderPurchaseModalContent();
+  renderPurchases();
+}
+
+async function setPurchaseStatus(st) {
+  // 检查权限：草稿 → 待审批可以，其他状态切换有限制
+  const arr = DATA.getPurchases(window._currentItemAgent || CURRENT_AGENT);
+  const p = arr.find(x => x._id === _currentItemId);
+  if (!p) return;
+  
+  // 草稿状态下，如果金额超阈值，禁止直接设为非待审批/草稿状态
+  if (p.status === 'draft' && p.totalAmount >= (p.approvalThreshold || getApprovalThreshold())) {
+    if (!['draft', 'pending_approval', 'cancelled'].includes(st)) {
+      toast(`金额 ≥ ¥${p.approvalThreshold || getApprovalThreshold()}，必须先提交审批`, 'warn');
+      return;
+    }
+  }
+  // 非主管不能直接设为 approved/rejected
+  if (!IS_ADMIN && (st === 'approved' || st === 'rejected')) {
+    toast('只有主管能审批通过/驳回', 'warn');
+    return;
+  }
+  
+  persistCurrentPurchase(p => p.status = st, true);
+  renderPurchaseModalContent();
+  renderPurchases();
+  updatePurchaseStats();
+}
+
+async function submitForApproval() {
+  const arr = DATA.getPurchases(window._currentItemAgent || CURRENT_AGENT);
+  const p = arr.find(x => x._id === _currentItemId);
+  if (!p) return;
+  
+  // 校验必填
+  if (!p.platform) { toast('请先选择采购平台', 'warn'); return; }
+  if (!p.productUrl) { toast('请先填写商品链接', 'warn'); return; }
+  if (!p.productName) { toast('请先填写商品名称', 'warn'); return; }
+  if (!p.totalAmount || p.totalAmount <= 0) { toast('请先填写有效金额', 'warn'); return; }
+  
+  const threshold = p.approvalThreshold || getApprovalThreshold();
+  if (p.totalAmount < threshold) {
+    // 不需要审批，直接 approved
+    if (!confirm(`金额 ¥${p.totalAmount.toFixed(2)} 低于审批阈值 ¥${threshold}，将自动批准。\n\n确定提交？`)) return;
+    persistCurrentPurchase(p => {
+      p.status = 'approved';
+      p.approvedBy = '系统自动';
+      p.approvedAt = new Date().toISOString();
+    }, true);
+    toast('✓ 已自动批准（金额低于阈值）');
+  } else {
+    if (!confirm(`金额 ¥${p.totalAmount.toFixed(2)} ≥ ¥${threshold}，需要主管审批。\n\n确定提交？`)) return;
+    persistCurrentPurchase(p => {
+      p.status = 'pending_approval';
+    }, true);
+    toast('✓ 已提交审批，等待主管批准');
+  }
+  
+  // 同步到找灯模块（如果有图片）
+  await syncToMissing(p);
+  
+  renderPurchaseModalContent();
+  renderPurchases();
+  updatePurchaseStats();
+}
+
+async function syncToMissing(p) {
+  // 如果有截图且没关联过找灯，自动创建找灯任务
+  if ((p.screenshots && p.screenshots.length > 0) && !p.linkedMissingId) {
+    const newM = {
+      _id: 'M' + Date.now() + Math.random().toString(36).slice(2, 6),
+      description: `[采购需求] ${p.productName || '商品'}${p.sku ? ' / SKU: ' + p.sku : ''}`,
+      specs: `数量 ${p.quantity || 1} 个 · 单价 ¥${(p.unitPrice || 0).toFixed(2)}\n${p.description || ''}`,
+      customerOrderNo: p.orderNo || '',
+      creator: window._currentItemAgent || CURRENT_AGENT,
+      status: 'searching',
+      screenshots: [...(p.screenshots || [])],
+      comments: [],
+      source: 'purchase',
+      linkedPurchaseId: p._id,
+      createdAt: new Date().toISOString(),
+    };
+    MISSING_LIGHTS.unshift(newM);
+    DATA.saveMissingLights(MISSING_LIGHTS);
+    try { await DATA.saveAndSyncMissing(); } catch (err) { console.error(err); }
+    
+    // 反向链接
+    persistCurrentPurchase(x => x.linkedMissingId = newM._id, true);
+    toast('✓ 已同步到「找灯」模块，团队可以一起帮忙找供应商', 'info', 4000);
+  }
+}
+
+async function approvePurchase() {
+  const arr = DATA.getPurchases(window._currentItemAgent || CURRENT_AGENT);
+  const p = arr.find(x => x._id === _currentItemId);
+  if (!p) return;
+  if (!IS_ADMIN) { toast('只有主管能审批', 'err'); return; }
+  if (!confirm(`确认批准这笔 ¥${p.totalAmount.toFixed(2)} 的采购吗？`)) return;
+  
+  persistCurrentPurchase(x => {
+    x.status = 'approved';
+    x.approvedBy = CURRENT_AGENT;
+    x.approvedAt = new Date().toISOString();
+  }, true);
+  
+  renderPurchaseModalContent();
+  renderPurchases();
+  updatePurchaseStats();
+  toast(`✓ 已批准采购`);
+}
+
+async function quickApprove(id, agent) {
+  const arr = DATA.getPurchases(agent);
+  const p = arr.find(x => x._id === id);
+  if (!p) return;
+  if (!IS_ADMIN) { toast('只有主管能审批', 'err'); return; }
+  if (!confirm(`确认批准 ${agent} 的这笔 ¥${p.totalAmount.toFixed(2)} 采购吗？`)) return;
+  
+  p.status = 'approved';
+  p.approvedBy = CURRENT_AGENT;
+  p.approvedAt = new Date().toISOString();
+  DATA.savePurchases(agent, arr);
+  loadAllData();
+  renderPurchases();
+  updatePurchaseStats();
+  try { await DATA.saveAndSyncPurchases(agent); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
+  toast(`✓ 已批准`);
+}
+
+async function rejectPurchase() {
+  const arr = DATA.getPurchases(window._currentItemAgent || CURRENT_AGENT);
+  const p = arr.find(x => x._id === _currentItemId);
+  if (!p) return;
+  if (!IS_ADMIN) { toast('只有主管能驳回', 'err'); return; }
+  const reason = prompt('驳回原因（必填）：');
+  if (!reason || !reason.trim()) return;
+  
+  persistCurrentPurchase(x => {
+    x.status = 'rejected';
+    x.rejectedReason = reason;
+    x.approvedBy = CURRENT_AGENT;
+    x.approvedAt = new Date().toISOString();
+  }, true);
+  
+  renderPurchaseModalContent();
+  renderPurchases();
+  updatePurchaseStats();
+  toast(`✗ 已驳回`);
+}
+
+async function quickReject(id, agent) {
+  const arr = DATA.getPurchases(agent);
+  const p = arr.find(x => x._id === id);
+  if (!p) return;
+  if (!IS_ADMIN) { toast('只有主管能驳回', 'err'); return; }
+  const reason = prompt('驳回原因（必填）：');
+  if (!reason || !reason.trim()) return;
+  
+  p.status = 'rejected';
+  p.rejectedReason = reason;
+  p.approvedBy = CURRENT_AGENT;
+  p.approvedAt = new Date().toISOString();
+  DATA.savePurchases(agent, arr);
+  loadAllData();
+  renderPurchases();
+  updatePurchaseStats();
+  try { await DATA.saveAndSyncPurchases(agent); }
+  catch (err) { console.error(err); }
+  toast(`✗ 已驳回`);
+}
+
+async function markOrdered(id) {
+  const agent = window._currentItemAgent || CURRENT_AGENT;
+  const arr = DATA.getPurchases(agent);
+  const p = arr.find(x => x._id === id);
+  if (!p) return;
+  if (p.status !== 'approved') { toast('请先获批准', 'warn'); return; }
+  if (!confirm(`确认已在淘宝/平台下单？`)) return;
+  
+  p.status = 'ordered';
+  p.orderedAt = new Date().toISOString();
+  DATA.savePurchases(agent, arr);
+  loadAllData();
+  renderPurchases();
+  renderPurchaseModalContent();
+  updatePurchaseStats();
+  try { await DATA.saveAndSyncPurchases(agent); } catch (err) { console.error(err); }
+  toast('✓ 已标记下单');
+}
+
+async function markReceived(id) {
+  const agent = window._currentItemAgent || CURRENT_AGENT;
+  const arr = DATA.getPurchases(agent);
+  const p = arr.find(x => x._id === id);
+  if (!p) return;
+  if (!['ordered', 'shipped'].includes(p.status)) { toast('请先下单', 'warn'); return; }
+  if (!confirm(`确认货已经收到？`)) return;
+  
+  p.status = 'received';
+  p.receivedAt = new Date().toISOString();
+  DATA.savePurchases(agent, arr);
+  loadAllData();
+  renderPurchases();
+  renderPurchaseModalContent();
+  updatePurchaseStats();
+  try { await DATA.saveAndSyncPurchases(agent); } catch (err) { console.error(err); }
+  toast('✓ 已确认收货');
+}
+
+async function delPurchaseRow(id, agent) {
+  if (!confirm('确定删除这个采购单？\n\n（删除后会进回收站，可恢复）')) return;
+  const ownerAgent = (IS_ADMIN && agent) ? agent : CURRENT_AGENT;
+  const arr = DATA.getPurchases(ownerAgent);
+  const p = arr.find(x => x._id === id);
+  if (!p) return;
+  p.deletedAt = new Date().toISOString();
+  p.deletedBy = CURRENT_AGENT;
+  DATA.savePurchases(ownerAgent, arr);
+  loadAllData();
+  renderPurchases();
+  updatePurchaseStats();
+  try { await DATA.saveAndSyncPurchases(ownerAgent); } catch (err) { console.error(err); }
+  toast('已移入回收站');
+}
+
+async function deleteCurrentPurchase() {
+  if (!confirm('确定删除这个采购单？\n\n（删除后会进回收站，可恢复）')) return;
+  const agent = window._currentItemAgent || CURRENT_AGENT;
+  const arr = DATA.getPurchases(agent);
+  const p = arr.find(x => x._id === _currentItemId);
+  if (!p) return;
+  p.deletedAt = new Date().toISOString();
+  p.deletedBy = CURRENT_AGENT;
+  DATA.savePurchases(agent, arr);
+  closeModal('purchaseModal');
+  loadAllData();
+  renderPurchases();
+  updatePurchaseStats();
+  try { await DATA.saveAndSyncPurchases(agent); } catch (err) { console.error(err); }
+  toast('已移入回收站');
+}
+
+async function rmPurchaseScreenshot(i) {
+  persistCurrentPurchase(p => p.screenshots.splice(i, 1), true);
+  renderPurchaseModalContent();
+  renderPurchases();
+}
+
+function setupPurchaseScreenshot() {
+  const dz = document.getElementById('pmDropZone');
+  const fi = document.getElementById('pmFileInput');
+  const sel = document.getElementById('pmFileSelect');
+  if (!dz || !fi || dz.dataset.bound) return;
+  dz.dataset.bound = '1';
+  
+  sel.addEventListener('click', () => fi.click());
+  fi.addEventListener('change', e => handleFiles(e.target.files, 'purchase_orig'));
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files, 'purchase_orig');
+  });
+}
+
 function renderPerformance() {
   const period = document.getElementById('perfPeriod').value;
   const range = getPeriodRange(period);
@@ -7742,6 +8897,7 @@ function setupScreenshotHandlers() {
         aftersalesModal: 'after_fu',
         issueModal: 'issue_fu',
         missingModal: 'missing_orig',      // 找灯：进图片区
+        purchaseModal: 'purchase_orig',    // 采购：进图片区
         batchChaseModal: 'batch_chase',
       };
       target = modalDefaults[visibleModal.id];
@@ -7871,6 +9027,13 @@ function attachScreenshot(dataURL, target) {
   } else if (target === 'batch_chase') {
     _bcScreenshots.push(dataURL);
     renderBcThumbs();
+  } else if (target === 'purchase_orig') {
+    persistCurrentPurchase(p => { 
+      if (!p.screenshots) p.screenshots = []; 
+      p.screenshots.push(dataURL); 
+    }, true);
+    renderPurchaseModalContent();
+    renderPurchases();
   }
 }
 
@@ -8266,6 +9429,13 @@ function _getTrashItems(type) {
   if (type === 'missing') {
     return DATA._cache.missingLights.filter(m => m.deletedAt);
   }
+  if (type === 'purchases') {
+    const all = [];
+    Object.entries(DATA._cache.purchasesByAgent || {}).forEach(([agent, arr]) => {
+      arr.forEach(p => p.deletedAt && all.push({ ...p, _agent: agent }));
+    });
+    return all;
+  }
   return [];
 }
 
@@ -8275,6 +9445,9 @@ function renderTrash() {
   document.getElementById('tcAfter').textContent = _getTrashItems('aftersales').length;
   document.getElementById('tcIssues').textContent = _getTrashItems('issues').length;
   document.getElementById('tcMissing').textContent = _getTrashItems('missing').length;
+  if (document.getElementById('tcPurchases')) {
+    document.getElementById('tcPurchases').textContent = _getTrashItems('purchases').length;
+  }
   
   const items = _getTrashItems(_trashTab);
   // 按删除时间倒序
@@ -8302,6 +9475,9 @@ function renderTrash() {
     } else if (_trashTab === 'missing') {
       title = item.description || '(无描述)';
       subtitle = item.specs ? '📏 ' + item.specs : '';
+    } else if (_trashTab === 'purchases') {
+      title = `${PLATFORM_ICONS[item.platform] || ''} ${item.productName || '(待填商品)'}`;
+      subtitle = `¥${(item.totalAmount || 0).toFixed(2)}${item.sku ? ' · SKU: ' + item.sku : ''}${item.orderNo ? ' · ' + item.orderNo : ''}`;
     }
     
     return `
@@ -8337,6 +9513,9 @@ function restoreTrashItem(type, id, agent) {
   } else if (type === 'missing') {
     arr = DATA._cache.missingLights;
     item = arr.find(x => x._id === id);
+  } else if (type === 'purchases') {
+    arr = DATA._cache.purchasesByAgent[agent] || [];
+    item = arr.find(x => x._id === id);
   }
   if (!item) return;
   
@@ -8348,6 +9527,7 @@ function restoreTrashItem(type, id, agent) {
   else if (type === 'aftersales') DATA.saveAftersales(agent, arr);
   else if (type === 'issues') DATA.saveIssues(agent, arr);
   else if (type === 'missing') DATA.saveMissingLights(arr);
+  else if (type === 'purchases') DATA.savePurchases(agent, arr);
   
   loadAllData();
   renderTrash();
@@ -8365,8 +9545,9 @@ async function permanentDeleteTrashItem(type, id, agent) {
     else if (type === 'aftersales') tableName = 'aftersales';
     else if (type === 'issues') tableName = 'issues';
     else if (type === 'missing') tableName = 'missing_lights';
+    else if (type === 'purchases') tableName = 'online_purchases';
     
-    if (id && !id.startsWith('O') && !id.startsWith('A') && !id.startsWith('I') && !id.startsWith('M')) {
+    if (id && !id.startsWith('O') && !id.startsWith('A') && !id.startsWith('I') && !id.startsWith('M') && !id.startsWith('P')) {
       const { error } = await sb.from(tableName).delete().eq('id', id);
       if (error) throw error;
     }
@@ -8380,6 +9561,8 @@ async function permanentDeleteTrashItem(type, id, agent) {
       DATA._cache.issuesByAgent[agent] = (DATA._cache.issuesByAgent[agent] || []).filter(x => x._id !== id);
     } else if (type === 'missing') {
       DATA._cache.missingLights = DATA._cache.missingLights.filter(x => x._id !== id);
+    } else if (type === 'purchases') {
+      DATA._cache.purchasesByAgent[agent] = (DATA._cache.purchasesByAgent[agent] || []).filter(x => x._id !== id);
     }
     
     renderTrash();
@@ -8399,6 +9582,7 @@ function exportCurrentTab() {
   else if (CURRENT_TAB === 'aftersales') exportAfterReport();
   else if (CURRENT_TAB === 'issues') exportIssues();
   else if (CURRENT_TAB === 'missing') exportMissing();
+  else if (CURRENT_TAB === 'purchases') exportPurchases();
   else if (CURRENT_TAB === 'performance') exportPerformance();
 }
 
@@ -8531,6 +9715,51 @@ function exportMissingHTML() {
       if (cs.length === 0) return '<span style="color:#999;">无</span>';
       return cs.map(c => `<b>${escapeHtml(c.user || '')}</b>${c.suggestedSupplier ? ` 👍 推荐: <b style="color:#2563eb">${escapeHtml(c.suggestedSupplier)}</b>` : ''}<br>${escapeHtml(c.content || '')}`).join('<hr style="border:0;border-top:1px dashed #ddd;margin:6px 0;">');
     }},
+    { key: 'images', label: '图片', isImage: true },
+  ]);
+}
+
+function exportPurchases() {
+  if (PURCHASES.length === 0) { toast('没有数据', 'err'); return; }
+  const choice = confirm('选择导出格式：\n\n确定 = 📄 图文报告（HTML，含图片）\n取消 = 📊 Excel 表格');
+  if (choice) return exportPurchasesHTML();
+  
+  const headers = ['#','关联订单号','平台','商品名','SKU','商品链接','数量','单价','总金额','状态','申请人','审批人','审批日期','创建时间'];
+  const rows = PURCHASES.map((p, i) => [
+    i + 1, p.orderNo || '', p.platform || '',
+    p.productName || '', p.sku || '',
+    p.productUrl || '', p.quantity || 1,
+    p.unitPrice || 0, p.totalAmount || 0,
+    PURCHASE_STATUS_LABELS[p.status] || '',
+    p._agent || '', p.approvedBy || '',
+    (p.approvedAt || '').slice(0, 10),
+    (p.createdAt || '').slice(0, 16).replace('T', ' '),
+  ]);
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  // 给商品链接加超链接
+  for (let i = 0; i < rows.length; i++) {
+    const p = PURCHASES[i];
+    if (p.productUrl) {
+      const cellRef = XLSX.utils.encode_cell({ r: i + 1, c: 5 });
+      if (ws[cellRef]) ws[cellRef].l = { Target: p.productUrl, Tooltip: '打开商品链接' };
+    }
+  }
+  ws['!cols'] = [{wch:5},{wch:14},{wch:10},{wch:30},{wch:14},{wch:30},{wch:6},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:11},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, ws, '线上采购');
+  XLSX.writeFile(wb, `线上采购_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  toast(`✓ 已导出 ${PURCHASES.length} 条`);
+}
+
+function exportPurchasesHTML() {
+  exportAsHTML('线上采购清单', PURCHASES, [
+    { key: 'productName', label: '商品名' },
+    { key: 'platform', label: '平台', val: p => (PLATFORM_ICONS[p.platform] || '') + ' ' + (p.platform || '') },
+    { key: 'sku', label: 'SKU' },
+    { key: 'amount', label: '金额', val: p => `<b>¥${(p.totalAmount || 0).toFixed(2)}</b><br><span style="color:#999;font-size:11px;">${p.quantity || 1} × ¥${(p.unitPrice || 0).toFixed(2)}</span>` },
+    { key: 'url', label: '商品链接', val: p => p.productUrl ? `<a href="${p.productUrl}" target="_blank" style="color:#2563eb;">🔗 打开</a>` : '—' },
+    { key: 'statusLabel', label: '状态', val: p => PURCHASE_STATUS_LABELS[p.status] || '' },
+    { key: 'approval', label: '审批', val: p => p.approvedBy ? `${escapeHtml(p.approvedBy)}<br><span style="color:#999;font-size:11px;">${(p.approvedAt||'').slice(0,10)}</span>` : '—' },
     { key: 'images', label: '图片', isImage: true },
   ]);
 }
@@ -8723,6 +9952,31 @@ async function cleanupEmptyDraft(modalId) {
         await DATA.saveAndSyncMissing();
         loadAllData(); renderMissing(); updateMissingStats();
         toast('空白任务已自动取消', 'info');
+      } catch (err) { console.error(err); }
+    }
+  } else if (modalId === 'purchaseModal') {
+    const agent = window._currentItemAgent || CURRENT_AGENT;
+    const arr = DATA.getPurchases(agent);
+    const idx = arr.findIndex(x => x._id === _currentItemId);
+    if (idx < 0) return;
+    const p = arr[idx];
+    if (p.deletedAt) return;
+    
+    const hasContent = (p.platform && p.platform.trim()) ||
+                       (p.productUrl && p.productUrl.trim()) ||
+                       (p.productName && p.productName.trim()) ||
+                       (p.sku && p.sku.trim()) ||
+                       (p.totalAmount && p.totalAmount > 0) ||
+                       (p.screenshots && p.screenshots.length > 0) ||
+                       (p.notes && p.notes.trim());
+    
+    if (!hasContent) {
+      arr.splice(idx, 1);
+      DATA._cache.purchasesByAgent[agent] = arr;
+      try {
+        await DATA.saveAndSyncPurchases(agent);
+        loadAllData(); renderPurchases(); updatePurchaseStats();
+        toast('空白采购单已自动取消', 'info');
       } catch (err) { console.error(err); }
     }
   }
