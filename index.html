@@ -2724,7 +2724,7 @@ const DATA = {
       name: a.name,
       isAdmin: a.is_admin,
       sites: a.sites || [],
-      modules: a.modules || ['orders','aftersales','issues','missing','performance'],
+      modules: a.modules || ['orders','aftersales','issues','missing','purchases','sales','po','products','performance'],
     }));
 
     // Orders / Aftersales / Issues / Missing / Purchases 都按 agent 分组（RLS 自动过滤：跟单只能看自己，主管能看所有）
@@ -3436,6 +3436,10 @@ const ALL_MODULES = [
   { key: 'aftersales', label: '🔧 售后' },
   { key: 'issues', label: '⚠ 供应商问题' },
   { key: 'missing', label: '🔍 找灯' },
+  { key: 'purchases', label: '🛒 线上采购' },
+  { key: 'sales', label: '📥 销售单' },
+  { key: 'po', label: '📦 PO' },
+  { key: 'products', label: '📚 产品' },
   { key: 'performance', label: '📊 绩效' },
 ];
 const ALL_MODULE_KEYS = ALL_MODULES.map(m => m.key);
