@@ -1599,6 +1599,9 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="tab-item" data-tab="issues" onclick="switchTab('issues')">⚠ 供应商问题 <span class="badge zero" id="badgeIssues">0</span></div>
     <div class="tab-item" data-tab="missing" onclick="switchTab('missing')">🔍 找灯 <span class="badge zero" id="badgeMissing">0</span></div>
     <div class="tab-item" data-tab="purchases" onclick="switchTab('purchases')">🛒 线上采购 <span class="badge zero" id="badgePurchases">0</span></div>
+    <div class="tab-item" data-tab="sales" onclick="switchTab('sales')">📥 销售单 <span class="badge zero" id="badgeSales">0</span></div>
+    <div class="tab-item" data-tab="po" onclick="switchTab('po')">📦 PO <span class="badge zero" id="badgePo">0</span></div>
+    <div class="tab-item" data-tab="products" onclick="switchTab('products')">📚 产品 <span class="badge zero" id="badgeProducts">0</span></div>
     <div class="tab-item" data-tab="performance" onclick="switchTab('performance')">📊 绩效 <span class="badge zero" id="badgePerformance">0</span></div>
   </div>
 </div>
@@ -1980,6 +1983,99 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="modal-actions">
       <button class="btn danger-text" onclick="deleteCurrentPurchase()">🗑 删除</button>
       <button class="btn primary" onclick="submitForApproval()" id="pmSubmitBtn">📤 提交审批</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAB 7: 销售单（Shopify 订单池） ============ -->
+<div class="tab-content" data-tab="sales">
+  <div class="section-block">
+
+    <div class="fb-card" id="salesStoresCard" style="margin-top: 14px;">
+      <div class="fb-head" style="cursor: default;">
+        <div class="fb-title">
+          🏪 店铺连接
+          <span class="fb-total" id="salesStoresTotal">0 / 9 已连接</span>
+        </div>
+        <div class="fb-tabs" style="cursor: default;">
+          <span id="salesAutoSyncIndicator" style="font-size: 11px; color: var(--text-tertiary); margin-right: 8px;"></span>
+          <button class="btn ghost" onclick="shopifyToggleAutoSync()" id="salesAutoSyncBtn" title="自动同步开关">⏱️ 自动</button>
+          <button class="btn" onclick="shopifyReloadStores()" title="刷新店铺状态">🔄 刷新</button>
+        </div>
+      </div>
+      <div id="salesStoresGrid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 8px 0 4px;"></div>
+    </div>
+
+    <div class="fb-card" id="salesFetchCard" style="margin-top: 14px;">
+      <div class="fb-head" style="cursor: default;">
+        <div class="fb-title">📥 拉取订单</div>
+        <div class="fb-tabs" style="cursor: default;">
+          <span id="salesFetchHint" style="font-size: 11px; color: var(--text-tertiary);"></span>
+        </div>
+      </div>
+
+      <div class="toolbar" style="margin-top: 10px;">
+        <select class="filter-select" id="salesFetchShop" style="min-width: 200px;">
+          <option value="">— 选择店铺 —</option>
+        </select>
+        <input type="date" class="filter-select" id="salesFetchFrom" style="min-width: 140px;">
+        <span style="color: var(--text-tertiary); font-size: 12px;">至</span>
+        <input type="date" class="filter-select" id="salesFetchTo" style="min-width: 140px;">
+        <select class="filter-select" id="salesFetchStatus">
+          <option value="open">未关闭</option>
+          <option value="any">全部</option>
+          <option value="closed">已关闭</option>
+        </select>
+        <button class="btn primary" onclick="shopifyFetchOrders()">🔍 拉取</button>
+      </div>
+
+      <div class="records-card" id="salesOrdersCard" style="margin-top: 14px; display: none;">
+        <div class="records-header sales-header">
+          <div><input type="checkbox" id="salesSelectAll" onchange="shopifyToggleSelectAll(this.checked)" title="全选/全不选"></div>
+          <div>订单号</div>
+          <div>客户</div>
+          <div>国家</div>
+          <div style="text-align:center;">行</div>
+          <div style="text-align:right;">金额</div>
+          <div>财务</div>
+          <div>状态</div>
+        </div>
+        <div id="salesOrdersBody"></div>
+      </div>
+
+      <div id="salesImportBar" style="margin-top: 12px; padding: 10px 14px; background: var(--bg-elevated); border-radius: 8px; display: none; justify-content: space-between; align-items: center;">
+        <span id="salesImportSummary" style="font-size: 13px; color: var(--text-secondary);"></span>
+        <button class="btn primary" onclick="shopifyImportSelected()">📥 导入选中</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============ TAB 8: PO（占位，批次 6 实现） ============ -->
+<div class="tab-content" data-tab="po">
+  <div class="section-block">
+    <div class="fb-card" style="margin-top: 14px;">
+      <div class="fb-head" style="cursor: default;">
+        <div class="fb-title">📦 采购单 PO</div>
+      </div>
+      <div style="padding: 24px; text-align: center; color: var(--text-tertiary); font-size: 13px;">
+        本模块将在后续批次实现，敬请期待。
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAB 9: 产品维护（占位，批次 5 实现） ============ -->
+<div class="tab-content" data-tab="products">
+  <div class="section-block">
+    <div class="fb-card" style="margin-top: 14px;">
+      <div class="fb-head" style="cursor: default;">
+        <div class="fb-title">📚 产品维护</div>
+      </div>
+      <div style="padding: 24px; text-align: center; color: var(--text-tertiary); font-size: 13px;">
+        本模块将在后续批次实现，敬请期待。
+      </div>
     </div>
   </div>
 </div>
