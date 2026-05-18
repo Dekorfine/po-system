@@ -1517,6 +1517,128 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   .purchase-row { grid-template-columns: 1fr !important; gap: 8px; }
 }
 
+/* ============ 销售单 tab（Shopify 订单池） ============ */
+.shopify-store-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 78px;
+}
+.shopify-store-card.connected { border-color: rgba(21,128,61,0.3); background: rgba(21,128,61,0.02); }
+.shopify-store-card:not(.connected) { background: var(--bg-elevated); opacity: 0.85; }
+.shopify-store-card:hover { box-shadow: var(--shadow-sm); }
+.shopify-store-card .store-row-1 { display: flex; justify-content: space-between; align-items: center; }
+.shopify-store-card .site-pill {
+  font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 700;
+  background: var(--success); color: white; letter-spacing: 0.5px;
+}
+.shopify-store-card:not(.connected) .site-pill { background: var(--text-tertiary); color: var(--bg); }
+.shopify-store-card .store-status { font-size: 11px; font-weight: 500; }
+.shopify-store-card.connected .store-status { color: var(--success); }
+.shopify-store-card:not(.connected) .store-status { color: var(--text-tertiary); }
+.shopify-store-card .store-name {
+  font-size: 13px; font-weight: 500; color: var(--text-primary);
+  display: flex; align-items: center; gap: 4px;
+}
+.shopify-store-card .store-rename {
+  cursor: pointer; font-size: 11px; color: var(--text-tertiary);
+  opacity: 0; transition: opacity 0.15s;
+}
+.shopify-store-card:hover .store-rename { opacity: 1; }
+.shopify-store-card .store-rename:hover { color: var(--accent); }
+.shopify-store-card .store-meta { font-size: 10px; color: var(--text-tertiary); }
+.shopify-store-card .store-install-btn {
+  font-size: 11px; padding: 4px 10px; border-radius: 4px;
+  background: var(--accent); color: white; border: none;
+  cursor: pointer; margin-top: 4px; font-weight: 500;
+  transition: background 0.15s;
+}
+.shopify-store-card .store-install-btn:hover { background: var(--accent-bright); }
+.shopify-store-card .store-fetch-btn {
+  font-size: 11px; padding: 4px 10px; border-radius: 4px;
+  background: transparent; color: var(--accent); border: 1px solid var(--accent);
+  cursor: pointer; margin-top: 4px; font-weight: 500;
+  transition: all 0.15s;
+}
+.shopify-store-card .store-fetch-btn:hover { background: var(--accent); color: white; }
+
+/* 销售单订单表 */
+.records-header.sales-header,
+.record-row.sales-row {
+  display: grid;
+  grid-template-columns: 36px 100px 1fr 90px 40px 100px 70px 80px;
+  gap: 10px;
+  align-items: center;
+}
+.record-row.sales-row {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background 0.1s;
+  font-size: 13px;
+}
+.record-row.sales-row:hover { background: var(--bg-row-hover); }
+.record-row.sales-row.imported { opacity: 0.55; cursor: default; }
+.record-row.sales-row.imported:hover { background: transparent; }
+.record-row.sales-row .so-mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.record-row.sales-row .so-customer-name { font-size: 13px; }
+.record-row.sales-row .so-customer-email { font-size: 11px; color: var(--text-tertiary); }
+.record-row.sales-row .so-country { font-size: 12px; color: var(--text-secondary); }
+.record-row.sales-row .so-amount { font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right; }
+
+.so-status-pill {
+  display: inline-block; font-size: 11px; padding: 2px 7px;
+  border-radius: 4px; font-weight: 500;
+}
+.so-status-pill.paid { background: rgba(21,128,61,0.12); color: var(--success); }
+.so-status-pill.pending { background: rgba(180,83,9,0.12); color: var(--warning); }
+.so-status-pill.refunded { background: rgba(185,28,28,0.12); color: var(--danger); }
+.so-status-pill.partially_paid { background: rgba(202,138,4,0.12); color: var(--status-producing); }
+.so-status-pill.imported { background: rgba(37,99,235,0.12); color: var(--accent); }
+.so-status-pill.unimported { color: var(--text-tertiary); }
+
+/* 自动同步指示器 */
+#salesAutoSyncBtn.on {
+  background: rgba(21,128,61,0.08);
+  color: var(--success);
+  border-color: rgba(21,128,61,0.3);
+}
+
+/* 拉取按钮加载态 */
+.btn.loading {
+  pointer-events: none; opacity: 0.7;
+}
+.btn.loading::after {
+  content: ''; display: inline-block;
+  width: 10px; height: 10px;
+  border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin-left: 6px; vertical-align: -1px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 1024px) {
+  #salesStoresGrid { grid-template-columns: repeat(2, 1fr) !important; }
+  .records-header.sales-header,
+  .record-row.sales-row {
+    grid-template-columns: 30px 80px 1fr 60px 100px 80px;
+    gap: 8px;
+  }
+  .records-header.sales-header > div:nth-child(4),
+  .records-header.sales-header > div:nth-child(5),
+  .record-row.sales-row > div:nth-child(4),
+  .record-row.sales-row > div:nth-child(5) { display: none; }
+}
+@media (max-width: 640px) {
+  #salesStoresGrid { grid-template-columns: 1fr !important; }
+}
+
 </style>
 </head>
 <body>
@@ -10135,6 +10257,398 @@ function toast(msg, type, duration) {
   t._fadeTimer = fadeTimer;
   return t;
 }
+
+// ============================================================
+// Shopify 销售单模块（批次 3：数据层 + 渲染交互）
+// ============================================================
+const SHOPIFY = {
+  STORES_META: [
+    { domain: 'vakkerlighting.myshopify.com', site_code: 'VK' },
+    { domain: 'dekorfine.myshopify.com',      site_code: 'DF' },
+    { domain: 'docolight.myshopify.com',      site_code: 'DC' },
+    { domain: 'vkfrench.myshopify.com',       site_code: 'PL' },
+    { domain: 'vakkerge.myshopify.com',       site_code: 'RD' },
+    { domain: 'vkwholesale.myshopify.com',    site_code: 'MH' },
+    { domain: 'docolamp.myshopify.com',       site_code: 'LS' },
+    { domain: 'mooijane.myshopify.com',       site_code: 'MJ' },
+    { domain: 'decormote.myshopify.com',      site_code: 'RS' },
+  ],
+  FN_URL: 'https://pyfmuknvjqfwcqvbrsvw.supabase.co/functions/v1/shopify-api',
+  _stores: [],
+  _fetchedOrders: [],
+  _autoSyncTimer: null,
+  _initialized: false,
+
+  async call(action, params = {}, shop = null) {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error('未登录');
+    const body = { shop, action, params };
+    const res = await fetch(this.FN_URL, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) throw new Error(json.error || ('HTTP ' + res.status));
+    return json;
+  },
+
+  async loadStores() {
+    const { data, error } = await sb.from('shopify_stores').select('*').order('site_code');
+    if (error) throw error;
+    const byDomain = {};
+    (data || []).forEach(s => { byDomain[s.shop_domain] = s; });
+    this._stores = this.STORES_META.map(meta => {
+      const row = byDomain[meta.domain];
+      return {
+        ...meta,
+        connected: !!row && row.is_active,
+        id: row?.id || null,
+        display_name: row?.display_name || meta.domain.replace('.myshopify.com', ''),
+        last_sync_at: row?.last_sync_at || null,
+        auto_sync_enabled: row?.auto_sync_enabled !== false,
+        auto_sync_minutes: row?.auto_sync_minutes || 5,
+      };
+    });
+    return this._stores;
+  },
+
+  async renameStore(storeId, newName) {
+    const trimmed = (newName || '').trim();
+    if (!trimmed) return;
+    const { error } = await sb.from('shopify_stores').update({ display_name: trimmed }).eq('id', storeId);
+    if (error) throw error;
+  },
+
+  installUrl(domain) {
+    return `https://pyfmuknvjqfwcqvbrsvw.supabase.co/functions/v1/shopify-install?shop=${domain}`;
+  },
+
+  shopifyAdminUrl(domain, shopifyOrderId) {
+    return `https://admin.shopify.com/store/${domain.replace('.myshopify.com', '')}/orders/${shopifyOrderId}`;
+  },
+
+  formatRelativeTime(ts) {
+    if (!ts) return '未同步';
+    const diff = (Date.now() - new Date(ts).getTime()) / 1000;
+    if (diff < 60) return Math.floor(diff) + ' 秒前';
+    if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前';
+    if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前';
+    if (diff < 86400 * 2) return '昨天';
+    return Math.floor(diff / 86400) + ' 天前';
+  },
+
+  flagEmoji(code) {
+    if (!code || code.length !== 2) return '🌐';
+    const A = 0x1F1E6;
+    return String.fromCodePoint(...code.toUpperCase().split('').map(c => A + c.charCodeAt(0) - 65));
+  },
+};
+
+async function shopifyReloadStores() {
+  try {
+    await SHOPIFY.loadStores();
+    renderShopifyStores();
+    populateFetchShopDropdown();
+  } catch (e) {
+    toast('加载店铺失败：' + (e.message || e), 'err');
+  }
+}
+
+function renderShopifyStores() {
+  const grid = document.getElementById('salesStoresGrid');
+  if (!grid) return;
+  const stores = SHOPIFY._stores;
+  const connected = stores.filter(s => s.connected).length;
+  document.getElementById('salesStoresTotal').textContent = `${connected} / 9 已连接`;
+
+  grid.innerHTML = stores.map(s => {
+    if (s.connected) {
+      return `
+        <div class="shopify-store-card connected">
+          <div class="store-row-1">
+            <span class="site-pill">${s.site_code}</span>
+            <span class="store-status">✓ 已连</span>
+          </div>
+          <div class="store-name">
+            ${escapeHtml(s.display_name)}
+            <span class="store-rename" onclick="shopifyRenameStore('${s.id}', '${escapeHtml(s.display_name)}')" title="改名">✏️</span>
+          </div>
+          <div class="store-meta">${SHOPIFY.formatRelativeTime(s.last_sync_at)}同步</div>
+          <button class="store-fetch-btn" onclick="shopifyQuickFetchFromCard('${s.domain}')">📥 拉单</button>
+        </div>`;
+    } else {
+      return `
+        <div class="shopify-store-card">
+          <div class="store-row-1">
+            <span class="site-pill">${s.site_code}</span>
+            <span class="store-status">未连</span>
+          </div>
+          <div class="store-name">${escapeHtml(s.display_name)}</div>
+          <button class="store-install-btn" onclick="shopifyInstall('${s.domain}')">📥 一键安装</button>
+        </div>`;
+    }
+  }).join('');
+}
+
+async function shopifyRenameStore(storeId, currentName) {
+  const newName = prompt('改店铺显示名（建议用真实品牌名）', currentName);
+  if (newName === null || newName.trim() === currentName) return;
+  try {
+    await SHOPIFY.renameStore(storeId, newName);
+    toast('改名成功');
+    await shopifyReloadStores();
+  } catch (e) {
+    toast('改名失败：' + (e.message || e), 'err');
+  }
+}
+
+function shopifyInstall(domain) {
+  const url = SHOPIFY.installUrl(domain);
+  window.open(url, '_blank', 'noopener');
+  toast('请在新窗口完成授权后回来点 🔄 刷新');
+}
+
+function populateFetchShopDropdown() {
+  const sel = document.getElementById('salesFetchShop');
+  if (!sel) return;
+  const connected = SHOPIFY._stores.filter(s => s.connected);
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— 选择店铺 —</option>' +
+    connected.map(s => `<option value="${s.domain}">${escapeHtml(s.display_name)} (${s.site_code})</option>`).join('');
+  if (current && connected.find(s => s.domain === current)) sel.value = current;
+  else if (connected.length === 1) sel.value = connected[0].domain;
+}
+
+function shopifyQuickFetchFromCard(domain) {
+  switchTab('sales');
+  document.getElementById('salesFetchShop').value = domain;
+  shopifyFetchOrders();
+}
+
+function setSalesDefaultDates() {
+  const to = document.getElementById('salesFetchTo');
+  const from = document.getElementById('salesFetchFrom');
+  if (!to || !from) return;
+  if (!to.value) {
+    const today = new Date();
+    to.value = today.toISOString().slice(0, 10);
+  }
+  if (!from.value) {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    from.value = d.toISOString().slice(0, 10);
+  }
+}
+
+async function shopifyFetchOrders() {
+  const shop = document.getElementById('salesFetchShop').value;
+  if (!shop) { toast('请先选择店铺', 'warn'); return; }
+  const from = document.getElementById('salesFetchFrom').value;
+  const to = document.getElementById('salesFetchTo').value;
+  const status = document.getElementById('salesFetchStatus').value;
+
+  const btn = document.querySelector('#salesFetchCard .btn.primary');
+  btn.classList.add('loading');
+  const hint = document.getElementById('salesFetchHint');
+  hint.textContent = '正在拉取…';
+
+  try {
+    const params = { status, limit: 100 };
+    if (from) params.created_at_min = from + 'T00:00:00Z';
+    if (to) params.created_at_max = to + 'T23:59:59Z';
+    const r = await SHOPIFY.call('list_orders', params, shop);
+    SHOPIFY._fetchedOrders = r.orders || [];
+    SHOPIFY._fetchedShop = shop;
+    hint.textContent = `拉到 ${r.count} 个订单 · ${new Date().toLocaleTimeString()}`;
+    renderShopifyOrders();
+  } catch (e) {
+    toast('拉单失败：' + (e.message || e), 'err');
+    hint.textContent = '拉单失败';
+  } finally {
+    btn.classList.remove('loading');
+  }
+}
+
+function renderShopifyOrders() {
+  const orders = SHOPIFY._fetchedOrders || [];
+  const card = document.getElementById('salesOrdersCard');
+  const body = document.getElementById('salesOrdersBody');
+  const bar = document.getElementById('salesImportBar');
+  if (!card || !body) return;
+
+  if (orders.length === 0) {
+    card.style.display = 'none';
+    bar.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
+
+  body.innerHTML = orders.map(o => {
+    const imported = !!o.imported;
+    const checked = !imported ? 'checked' : '';
+    const disabled = imported ? 'disabled' : '';
+    const customer = o.customer || {};
+    const country = o.shipping_country || '';
+    const adminLink = SHOPIFY.shopifyAdminUrl(SHOPIFY._fetchedShop, o.id);
+    return `
+      <div class="record-row sales-row ${imported ? 'imported' : ''}">
+        <div><input type="checkbox" class="so-cb" data-id="${o.id}" ${checked} ${disabled} onchange="shopifyUpdateImportBar()"></div>
+        <div class="so-mono">${escapeHtml(o.name || ('#' + o.order_number))}</div>
+        <div>
+          <div class="so-customer-name">${escapeHtml(customer.name || '(无名)')}</div>
+          <div class="so-customer-email">${escapeHtml(customer.email || '')}</div>
+        </div>
+        <div class="so-country">${SHOPIFY.flagEmoji(country)} ${escapeHtml(o.shipping_city || country || '-')}</div>
+        <div style="text-align:center; font-family: 'JetBrains Mono', monospace;">${o.line_items_count}</div>
+        <div class="so-amount">${o.total_price ? parseFloat(o.total_price).toFixed(2) : '0.00'} ${o.currency || ''}</div>
+        <div><span class="so-status-pill ${o.financial_status || 'pending'}">${o.financial_status || '-'}</span></div>
+        <div>
+          ${imported ? '<span class="so-status-pill imported">✓ 已导入</span>' : '<span class="so-status-pill unimported">未导入</span>'}
+          <a href="${adminLink}" target="_blank" rel="noopener" style="margin-left:6px; font-size:11px; color: var(--accent); text-decoration: none;" title="在 Shopify 后台打开">↗</a>
+        </div>
+      </div>`;
+  }).join('');
+
+  shopifyUpdateImportBar();
+}
+
+function shopifyToggleSelectAll(checked) {
+  document.querySelectorAll('#salesOrdersBody .so-cb:not(:disabled)').forEach(cb => { cb.checked = checked; });
+  shopifyUpdateImportBar();
+}
+
+function shopifyUpdateImportBar() {
+  const selected = document.querySelectorAll('#salesOrdersBody .so-cb:checked');
+  const bar = document.getElementById('salesImportBar');
+  const summary = document.getElementById('salesImportSummary');
+  if (!bar || !summary) return;
+  const n = selected.length;
+  const total = SHOPIFY._fetchedOrders.length;
+  if (n > 0) {
+    bar.style.display = 'flex';
+    summary.textContent = `已选 ${n} / 共 ${total} 个订单`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+async function shopifyImportSelected() {
+  const ids = [...document.querySelectorAll('#salesOrdersBody .so-cb:checked')].map(cb => cb.dataset.id);
+  if (ids.length === 0) { toast('请先勾选订单', 'warn'); return; }
+  const shop = SHOPIFY._fetchedShop;
+  if (!shop) { toast('未知店铺', 'err'); return; }
+
+  const btn = document.querySelector('#salesImportBar .btn.primary');
+  btn.classList.add('loading');
+  try {
+    const r = await SHOPIFY.call('import_orders_bulk', { shopify_order_ids: ids }, shop);
+    let msg = `✓ 成功导入 ${r.imported} 个订单`;
+    if (r.failed > 0) msg += `，${r.failed} 个失败`;
+    if (r.new_products > 0) msg += `，新建 ${r.new_products} 个产品档案`;
+    toast(msg);
+    // 标记已导入
+    (r.results || []).forEach(rs => {
+      if (rs.ok) {
+        const found = SHOPIFY._fetchedOrders.find(o => o.id === rs.shopify_order_id);
+        if (found) found.imported = true;
+      }
+    });
+    renderShopifyOrders();
+    await shopifyReloadStores();
+  } catch (e) {
+    toast('批量导入失败：' + (e.message || e), 'err');
+  } finally {
+    btn.classList.remove('loading');
+  }
+}
+
+// ============ 自动同步 ============
+const SHOPIFY_AUTOSYNC_KEY = 'shopify_autosync_on';
+
+function shopifyAutoSyncOn() {
+  return localStorage.getItem(SHOPIFY_AUTOSYNC_KEY) !== '0';
+}
+
+function shopifyToggleAutoSync() {
+  const on = !shopifyAutoSyncOn();
+  localStorage.setItem(SHOPIFY_AUTOSYNC_KEY, on ? '1' : '0');
+  if (on) {
+    shopifyStartAutoSync();
+    toast('自动同步已开启 · 每 5 分钟自动拉单');
+  } else {
+    shopifyStopAutoSync();
+    toast('自动同步已关闭');
+  }
+  shopifyUpdateAutoSyncIndicator();
+}
+
+function shopifyUpdateAutoSyncIndicator() {
+  const btn = document.getElementById('salesAutoSyncBtn');
+  const ind = document.getElementById('salesAutoSyncIndicator');
+  if (!btn || !ind) return;
+  const on = shopifyAutoSyncOn();
+  btn.classList.toggle('on', on);
+  btn.innerHTML = on ? '⏱️ 自动 ✓' : '⏱️ 自动';
+  ind.textContent = on ? '自动同步：开 · 5 分钟' : '自动同步：关';
+}
+
+function shopifyStartAutoSync() {
+  shopifyStopAutoSync();
+  SHOPIFY._autoSyncTimer = setInterval(async () => {
+    if (CURRENT_TAB !== 'sales') return;
+    if (!SHOPIFY._fetchedShop) return;
+    try {
+      const status = document.getElementById('salesFetchStatus').value;
+      const from = document.getElementById('salesFetchFrom').value;
+      const to = document.getElementById('salesFetchTo').value;
+      const params = { status, limit: 100 };
+      if (from) params.created_at_min = from + 'T00:00:00Z';
+      if (to) params.created_at_max = to + 'T23:59:59Z';
+      const r = await SHOPIFY.call('list_orders', params, SHOPIFY._fetchedShop);
+      const prevIds = new Set(SHOPIFY._fetchedOrders.map(o => o.id));
+      const newOnes = (r.orders || []).filter(o => !prevIds.has(o.id));
+      SHOPIFY._fetchedOrders = r.orders || [];
+      renderShopifyOrders();
+      const hint = document.getElementById('salesFetchHint');
+      if (hint) hint.textContent = `自动同步：${r.count} 单 · ${new Date().toLocaleTimeString()}`;
+      if (newOnes.length > 0) {
+        toast(`🔔 自动同步：新到 ${newOnes.length} 个订单`);
+      }
+    } catch (e) {
+      console.warn('自动同步失败', e);
+    }
+  }, 5 * 60 * 1000);
+}
+
+function shopifyStopAutoSync() {
+  if (SHOPIFY._autoSyncTimer) { clearInterval(SHOPIFY._autoSyncTimer); SHOPIFY._autoSyncTimer = null; }
+}
+
+// ============ 销售单 tab 初始化（进入 tab 时调用） ============
+async function renderSales() {
+  if (!SHOPIFY._initialized) {
+    setSalesDefaultDates();
+    shopifyUpdateAutoSyncIndicator();
+    SHOPIFY._initialized = true;
+    if (shopifyAutoSyncOn()) shopifyStartAutoSync();
+  }
+  await shopifyReloadStores();
+}
+
+// 占位 render 函数
+function renderPo() { /* 批次 6 实现 */ }
+function renderProducts() { /* 批次 5 实现 */ }
+
+// ============ 接入 renderActiveTab ============
+const _origRenderActiveTab = renderActiveTab;
+renderActiveTab = function() {
+  if (CURRENT_TAB === 'sales') return renderSales();
+  if (CURRENT_TAB === 'po') return renderPo();
+  if (CURRENT_TAB === 'products') return renderProducts();
+  return _origRenderActiveTab();
+};
 
 // 启动
 // 启动：bootstrap（异步登录检查）
