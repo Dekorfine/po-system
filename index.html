@@ -1567,32 +1567,150 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .shopify-store-card .store-fetch-btn:hover { background: var(--accent); color: white; }
 
-/* 销售单订单表 */
-.records-header.sales-header,
-.record-row.sales-row {
-  display: grid;
-  grid-template-columns: 36px 100px 1fr 90px 40px 100px 70px 80px;
-  gap: 10px;
-  align-items: center;
+/* 销售单 sub-tabs */
+.sales-subtabs { display: flex; gap: 4px; padding: 4px; background: var(--bg-elevated); border-radius: 8px; }
+.sub-tab-btn {
+  flex: 1; padding: 8px 12px; font-size: 13px; border-radius: 6px;
+  background: transparent; border: none; cursor: pointer; color: var(--text-secondary);
+  font-family: inherit; font-weight: 500; transition: all 0.15s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 }
-.record-row.sales-row {
-  padding: 10px 14px;
+.sub-tab-btn:hover { background: rgba(255,255,255,0.5); color: var(--text-primary); }
+.sub-tab-btn.active { background: var(--bg-card); color: var(--accent); box-shadow: var(--shadow-sm); }
+.sub-tab-btn .cnt {
+  font-size: 11px; padding: 1px 7px; border-radius: 9px;
+  background: var(--bg-elevated); color: var(--text-tertiary);
+  font-family: 'JetBrains Mono', monospace; min-width: 18px; text-align: center;
+}
+.sub-tab-btn.active .cnt { background: var(--accent); color: white; }
+
+/* 卡片底部操作区 */
+.so-card-actions {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 14px; background: var(--bg-elevated);
   border-top: 1px solid var(--border-subtle);
-  cursor: pointer;
-  transition: background 0.1s;
-  font-size: 13px;
 }
-.record-row.sales-row:hover { background: var(--bg-row-hover); }
-.record-row.sales-row.imported { opacity: 0.55; cursor: default; }
-.record-row.sales-row.imported:hover { background: transparent; }
-.record-row.sales-row .so-mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
-.record-row.sales-row .so-customer-name { font-size: 13px; }
-.record-row.sales-row .so-customer-email { font-size: 11px; color: var(--text-tertiary); }
-.record-row.sales-row .so-country { font-size: 12px; color: var(--text-secondary); }
-.record-row.sales-row .so-amount { font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right; }
+.so-card-actions .so-progress {
+  font-size: 11px; color: var(--text-tertiary);
+}
+.so-card-actions .so-actions-right { display: flex; gap: 6px; }
+.so-action-btn {
+  font-size: 12px; padding: 5px 12px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text-secondary); cursor: pointer; font-family: inherit; font-weight: 500;
+  transition: all 0.15s;
+}
+.so-action-btn:hover { border-color: var(--accent); color: var(--accent); }
+.so-action-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+.so-action-btn.primary:hover { background: var(--accent-bright); }
+.so-action-btn.danger { color: var(--danger); }
+.so-action-btn.danger:hover { background: rgba(185,28,28,0.08); border-color: var(--danger); }
+
+/* 销售订单卡片（店小秘风格） */
+.so-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-top: 10px;
+  padding: 0;
+  overflow: hidden;
+  transition: all 0.15s;
+}
+.so-card:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.so-card.imported { opacity: 0.6; }
+.so-card.imported:hover { border-color: var(--border); box-shadow: none; }
+
+.so-card-top {
+  display: grid;
+  grid-template-columns: 32px 1fr 200px;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  align-items: center;
+  font-size: 12px;
+}
+.so-top-checkbox { display: flex; align-items: center; }
+.so-top-meta { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; color: var(--text-secondary); }
+.so-top-meta b { color: var(--text-primary); font-weight: 500; }
+.so-top-status { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+
+.so-order-no {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; font-weight: 600;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.so-order-no:hover { color: var(--accent); }
+.so-order-no .ext { font-size: 10px; opacity: 0.6; }
+
+.so-card-body {
+  display: grid;
+  grid-template-columns: 1fr 160px 180px;
+  gap: 14px;
+  padding: 12px 14px;
+}
+
+.so-products { display: flex; flex-direction: column; gap: 8px; }
+.so-product-line {
+  display: grid;
+  grid-template-columns: 50px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 0;
+}
+.so-product-line + .so-product-line {
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 12px;
+}
+.so-prod-img {
+  width: 50px; height: 50px; border-radius: 6px;
+  object-fit: cover; border: 1px solid var(--border-subtle);
+  cursor: zoom-in; background: var(--bg-elevated);
+  transition: transform 0.15s;
+}
+.so-prod-img:hover { transform: scale(1.08); border-color: var(--accent); }
+.so-prod-noimg {
+  width: 50px; height: 50px; border-radius: 6px;
+  background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-tertiary); font-size: 16px;
+}
+.so-prod-info { font-size: 13px; min-width: 0; }
+.so-prod-sku {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--accent); margin-bottom: 2px;
+}
+.so-prod-name {
+  font-weight: 500; color: var(--text-primary);
+  margin-bottom: 2px; line-height: 1.3;
+  overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.so-prod-variant { font-size: 11px; color: var(--text-secondary); line-height: 1.3; }
+.so-prod-qty {
+  text-align: right; white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  color: var(--text-primary);
+}
+.so-prod-qty .price { font-size: 11px; color: var(--text-tertiary); display: block; }
+
+.so-recipient { font-size: 12px; line-height: 1.5; }
+.so-recipient .name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.so-recipient .email { color: var(--text-tertiary); font-size: 11px; word-break: break-all; }
+.so-recipient .country { color: var(--text-secondary); margin-top: 3px; }
+
+.so-amount-block { text-align: right; font-size: 12px; line-height: 1.5; }
+.so-amount-big {
+  font-family: 'JetBrains Mono', monospace; font-size: 18px;
+  font-weight: 600; color: var(--text-primary);
+}
+.so-amount-cur { font-size: 12px; color: var(--text-secondary); margin-left: 3px; }
+.so-amount-sub { color: var(--text-tertiary); font-size: 11px; margin-top: 2px; }
+.so-amount-time { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
 
 .so-status-pill {
-  display: inline-block; font-size: 11px; padding: 2px 7px;
+  display: inline-block; font-size: 11px; padding: 2px 8px;
   border-radius: 4px; font-weight: 500;
 }
 .so-status-pill.paid { background: rgba(21,128,61,0.12); color: var(--success); }
@@ -1600,7 +1718,21 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .so-status-pill.refunded { background: rgba(185,28,28,0.12); color: var(--danger); }
 .so-status-pill.partially_paid { background: rgba(202,138,4,0.12); color: var(--status-producing); }
 .so-status-pill.imported { background: rgba(37,99,235,0.12); color: var(--accent); }
-.so-status-pill.unimported { color: var(--text-tertiary); }
+.so-status-pill.unimported { color: var(--text-tertiary); background: rgba(168,162,158,0.08); }
+
+@media (max-width: 1024px) {
+  #salesStoresGrid { grid-template-columns: repeat(2, 1fr) !important; }
+  .so-card-top { grid-template-columns: 28px 1fr; }
+  .so-top-status { grid-column: 2; justify-content: flex-start; }
+  .so-card-body { grid-template-columns: 1fr; gap: 10px; }
+  .so-recipient, .so-amount-block { text-align: left; padding: 8px; background: var(--bg-elevated); border-radius: 6px; }
+  .so-amount-block { text-align: right; }
+}
+@media (max-width: 640px) {
+  #salesStoresGrid { grid-template-columns: 1fr !important; }
+  .so-product-line { grid-template-columns: 44px 1fr; }
+  .so-prod-qty { grid-column: 2; text-align: left; }
+}
 
 /* 自动同步指示器 */
 #salesAutoSyncBtn.on {
@@ -1622,22 +1754,6 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   margin-left: 6px; vertical-align: -1px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-@media (max-width: 1024px) {
-  #salesStoresGrid { grid-template-columns: repeat(2, 1fr) !important; }
-  .records-header.sales-header,
-  .record-row.sales-row {
-    grid-template-columns: 30px 80px 1fr 60px 100px 80px;
-    gap: 8px;
-  }
-  .records-header.sales-header > div:nth-child(4),
-  .records-header.sales-header > div:nth-child(5),
-  .record-row.sales-row > div:nth-child(4),
-  .record-row.sales-row > div:nth-child(5) { display: none; }
-}
-@media (max-width: 640px) {
-  #salesStoresGrid { grid-template-columns: 1fr !important; }
-}
 
 </style>
 </head>
@@ -2130,7 +2246,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 
     <div class="fb-card" id="salesFetchCard" style="margin-top: 14px;">
       <div class="fb-head" style="cursor: default;">
-        <div class="fb-title">📥 拉取订单</div>
+        <div class="fb-title">📥 销售订单</div>
         <div class="fb-tabs" style="cursor: default;">
           <span id="salesFetchHint" style="font-size: 11px; color: var(--text-tertiary);"></span>
         </div>
@@ -2148,30 +2264,26 @@ textarea.form-control { resize: vertical; min-height: 70px; }
           <option value="any">全部</option>
           <option value="closed">已关闭</option>
         </select>
-        <button class="btn primary" onclick="shopifyFetchOrders()">🔍 拉取</button>
+        <button class="btn primary" onclick="shopifyFetchOrders()">🔄 同步</button>
       </div>
 
-      <div class="records-card" id="salesOrdersCard" style="margin-top: 14px; display: none;">
-        <div class="records-header sales-header">
-          <div><input type="checkbox" id="salesSelectAll" onchange="shopifyToggleSelectAll(this.checked)" title="全选/全不选"></div>
-          <div>订单号</div>
-          <div>客户</div>
-          <div>国家</div>
-          <div style="text-align:center;">行</div>
-          <div style="text-align:right;">金额</div>
-          <div>财务</div>
-          <div>状态</div>
-        </div>
-        <div id="salesOrdersBody"></div>
+      <div class="sales-subtabs" id="salesSubtabs" style="margin-top: 14px;">
+        <button class="sub-tab-btn active" data-filter="all" onclick="shopifyShowFilter('all')">📋 全部 <span class="cnt" id="cntAll">0</span></button>
+        <button class="sub-tab-btn" data-filter="pending" onclick="shopifyShowFilter('pending')">🔵 待审核 <span class="cnt" id="cntPending">0</span></button>
+        <button class="sub-tab-btn" data-filter="processing" onclick="shopifyShowFilter('processing')">🟡 待处理 <span class="cnt" id="cntProcessing">0</span></button>
+        <button class="sub-tab-btn" data-filter="done" onclick="shopifyShowFilter('done')">✅ 已完成 <span class="cnt" id="cntDone">0</span></button>
       </div>
 
-      <div id="salesImportBar" style="margin-top: 12px; padding: 10px 14px; background: var(--bg-elevated); border-radius: 8px; display: none; justify-content: space-between; align-items: center;">
-        <span id="salesImportSummary" style="font-size: 13px; color: var(--text-secondary);"></span>
-        <button class="btn primary" onclick="shopifyImportSelected()">📥 导入选中</button>
-      </div>
+      <div id="salesOrdersBody" style="margin-top: 8px;"></div>
     </div>
 
   </div>
+</div>
+
+<!-- 图片放大 Lightbox -->
+<div id="imgLightbox" onclick="closeImgLightbox(event)" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9998; align-items:center; justify-content:center; cursor:zoom-out;">
+  <img id="imgLightboxImg" style="max-width:90vw; max-height:90vh; object-fit:contain; border-radius:8px; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+  <button onclick="closeImgLightbox(event)" style="position:absolute; top:24px; right:24px; background:rgba(255,255,255,0.15); border:none; color:white; width:40px; height:40px; border-radius:50%; font-size:20px; cursor:pointer;">✕</button>
 </div>
 
 <!-- ============ TAB 8: PO（占位，批次 6 实现） ============ -->
@@ -10259,7 +10371,7 @@ function toast(msg, type, duration) {
 }
 
 // ============================================================
-// Shopify 销售单模块（批次 3：数据层 + 渲染交互）
+// Shopify 销售单模块（批次 3：状态机 + DB 持久化 + sub-tabs）
 // ============================================================
 const SHOPIFY = {
   STORES_META: [
@@ -10275,9 +10387,10 @@ const SHOPIFY = {
   ],
   FN_URL: 'https://pyfmuknvjqfwcqvbrsvw.supabase.co/functions/v1/shopify-api',
   _stores: [],
-  _fetchedOrders: [],
+  _orders: [],
   _autoSyncTimer: null,
   _initialized: false,
+  _currentFilter: 'all',
 
   async call(action, params = {}, shop = null) {
     const { data: { session } } = await sb.auth.getSession();
@@ -10313,10 +10426,36 @@ const SHOPIFY = {
     return this._stores;
   },
 
+  async loadOrdersFromDB() {
+    const { data, error } = await sb
+      .from('shopify_orders')
+      .select('*')
+      .order('shopify_created_at', { ascending: false })
+      .limit(500);
+    if (error) throw error;
+    this._orders = data || [];
+    return this._orders;
+  },
+
+  async loadProductImageMap(skus) {
+    if (!skus || skus.length === 0) return {};
+    const { data } = await sb.from('products').select('sku, image_url, name_cn, name_en').in('sku', skus);
+    const map = {};
+    (data || []).forEach(p => { map[p.sku] = p; });
+    return map;
+  },
+
   async renameStore(storeId, newName) {
     const trimmed = (newName || '').trim();
     if (!trimmed) return;
     const { error } = await sb.from('shopify_stores').update({ display_name: trimmed }).eq('id', storeId);
+    if (error) throw error;
+  },
+
+  async setOrderStatus(orderId, status) {
+    const { error } = await sb.from('shopify_orders')
+      .update({ local_status: status, updated_at: new Date().toISOString() })
+      .eq('id', orderId);
     if (error) throw error;
   },
 
@@ -10342,6 +10481,11 @@ const SHOPIFY = {
     if (!code || code.length !== 2) return '🌐';
     const A = 0x1F1E6;
     return String.fromCodePoint(...code.toUpperCase().split('').map(c => A + c.charCodeAt(0) - 65));
+  },
+
+  siteCodeOf(shopDomain) {
+    const m = this.STORES_META.find(s => s.domain === shopDomain);
+    return m?.site_code || '';
   },
 };
 
@@ -10375,7 +10519,7 @@ function renderShopifyStores() {
             <span class="store-rename" onclick="shopifyRenameStore('${s.id}', '${escapeHtml(s.display_name)}')" title="改名">✏️</span>
           </div>
           <div class="store-meta">${SHOPIFY.formatRelativeTime(s.last_sync_at)}同步</div>
-          <button class="store-fetch-btn" onclick="shopifyQuickFetchFromCard('${s.domain}')">📥 拉单</button>
+          <button class="store-fetch-btn" onclick="shopifyQuickFetchFromCard('${s.domain}')">📥 同步</button>
         </div>`;
     } else {
       return `
@@ -10422,8 +10566,10 @@ function populateFetchShopDropdown() {
 
 function shopifyQuickFetchFromCard(domain) {
   switchTab('sales');
-  document.getElementById('salesFetchShop').value = domain;
-  shopifyFetchOrders();
+  setTimeout(() => {
+    document.getElementById('salesFetchShop').value = domain;
+    shopifyFetchOrders();
+  }, 100);
 }
 
 function setSalesDefaultDates() {
@@ -10451,117 +10597,233 @@ async function shopifyFetchOrders() {
   const btn = document.querySelector('#salesFetchCard .btn.primary');
   btn.classList.add('loading');
   const hint = document.getElementById('salesFetchHint');
-  hint.textContent = '正在拉取…';
+  hint.textContent = '正在同步…';
 
   try {
-    const params = { status, limit: 100 };
+    const params = { status, limit: 100, auto_save: true };
     if (from) params.created_at_min = from + 'T00:00:00Z';
     if (to) params.created_at_max = to + 'T23:59:59Z';
     const r = await SHOPIFY.call('list_orders', params, shop);
-    SHOPIFY._fetchedOrders = r.orders || [];
-    SHOPIFY._fetchedShop = shop;
-    hint.textContent = `拉到 ${r.count} 个订单 · ${new Date().toLocaleTimeString()}`;
-    renderShopifyOrders();
+    let msg = `同步完成 · 共 ${r.count} 单`;
+    if (r.saved !== undefined) msg += ` · 入库 ${r.saved}`;
+    if (r.new_products) msg += ` · 新建产品 ${r.new_products}`;
+    hint.textContent = `${msg} · ${new Date().toLocaleTimeString()}`;
+    toast(msg);
+    await shopifyReloadOrdersAndRender();
   } catch (e) {
-    toast('拉单失败：' + (e.message || e), 'err');
-    hint.textContent = '拉单失败';
+    toast('同步失败：' + (e.message || e), 'err');
+    hint.textContent = '同步失败';
   } finally {
     btn.classList.remove('loading');
   }
+}
+
+async function shopifyReloadOrdersAndRender() {
+  await SHOPIFY.loadOrdersFromDB();
+  // 加载所有出现过的 SKU 的图片
+  const skus = [];
+  SHOPIFY._orders.forEach(o => (o.line_items || []).forEach(li => { if (li.sku) skus.push(li.sku); }));
+  SHOPIFY._productMap = await SHOPIFY.loadProductImageMap([...new Set(skus)]);
+  shopifyRefreshCounts();
+  renderShopifyOrders();
+}
+
+function shopifyShowFilter(filter) {
+  SHOPIFY._currentFilter = filter;
+  document.querySelectorAll('.sub-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === filter));
+  renderShopifyOrders();
+}
+
+function shopifyRefreshCounts() {
+  const orders = SHOPIFY._orders;
+  const counts = { all: orders.length, pending: 0, processing: 0, done: 0 };
+  orders.forEach(o => {
+    if (o.local_status === 'pending') counts.pending++;
+    else if (o.local_status === 'processing') counts.processing++;
+    else if (o.local_status === 'done') counts.done++;
+  });
+  document.getElementById('cntAll').textContent = counts.all;
+  document.getElementById('cntPending').textContent = counts.pending;
+  document.getElementById('cntProcessing').textContent = counts.processing;
+  document.getElementById('cntDone').textContent = counts.done;
+  // badge
+  if (typeof setBadge === 'function') setBadge('badgeSales', counts.pending);
 }
 
 function renderShopifyOrders() {
-  const orders = SHOPIFY._fetchedOrders || [];
-  const card = document.getElementById('salesOrdersCard');
   const body = document.getElementById('salesOrdersBody');
-  const bar = document.getElementById('salesImportBar');
-  if (!card || !body) return;
+  if (!body) return;
+  const filter = SHOPIFY._currentFilter;
+  const all = SHOPIFY._orders;
+  const orders = filter === 'all' ? all : all.filter(o => o.local_status === filter);
 
   if (orders.length === 0) {
-    card.style.display = 'none';
-    bar.style.display = 'none';
+    const hint = filter === 'all'
+      ? '还没有订单。选店铺 + 时间范围，点 🔄 同步从 Shopify 拉取'
+      : `没有 "${({pending:'待审核',processing:'待处理',done:'已完成'})[filter]||filter}" 状态的订单`;
+    body.innerHTML = `<div style="padding: 32px; text-align: center; color: var(--text-tertiary); font-size: 13px;">${hint}</div>`;
     return;
   }
 
-  card.style.display = 'block';
+  const productMap = SHOPIFY._productMap || {};
 
   body.innerHTML = orders.map(o => {
-    const imported = !!o.imported;
-    const checked = !imported ? 'checked' : '';
-    const disabled = imported ? 'disabled' : '';
-    const customer = o.customer || {};
-    const country = o.shipping_country || '';
-    const adminLink = SHOPIFY.shopifyAdminUrl(SHOPIFY._fetchedShop, o.id);
+    const shop = o.shop_domain;
+    const customerName = o.customer_name || '(无名)';
+    const customerEmail = o.customer_email || '';
+    const ship = o.shipping_address || {};
+    const country = ship.country_code || '';
+    const city = ship.city || '';
+    const adminLink = SHOPIFY.shopifyAdminUrl(shop, o.shopify_order_id);
+    const createdAt = o.shopify_created_at ? new Date(o.shopify_created_at) : null;
+    const dateStr = createdAt ? `${createdAt.getFullYear()}-${String(createdAt.getMonth()+1).padStart(2,'0')}-${String(createdAt.getDate()).padStart(2,'0')}` : '';
+    const timeStr = createdAt ? `${String(createdAt.getHours()).padStart(2,'0')}:${String(createdAt.getMinutes()).padStart(2,'0')}` : '';
+
+    const items = o.line_items || [];
+    const totalQty = items.reduce((s, li) => s + (li.quantity || 0), 0);
+    const lineWithPo = items.filter(li => (li.po_assignments || []).length > 0).length;
+    const siteCode = SHOPIFY.siteCodeOf(shop);
+
+    const productsHtml = items.length > 0 ? items.map(li => {
+      const p = productMap[li.sku] || {};
+      const imgUrl = p.image_url || li.image_url || '';
+      const nameCn = p.name_cn || '';
+      const title = nameCn || li.title || '(无名)';
+      const variant = li.variant_title || '';
+      const hasPo = (li.po_assignments || []).length > 0;
+      return `
+        <div class="so-product-line">
+          ${imgUrl ? `<img class="so-prod-img" src="${escapeHtml(imgUrl)}" onclick="openImgLightbox('${escapeHtml(imgUrl)}')" alt="">` : `<div class="so-prod-noimg">📷</div>`}
+          <div class="so-prod-info">
+            ${li.sku ? `<div class="so-prod-sku">SKU: ${escapeHtml(li.sku)}${hasPo ? ' · <span style="color:var(--success)">✓ 已开 PO</span>' : ''}</div>` : ''}
+            <div class="so-prod-name">${escapeHtml(title)}${nameCn ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(li.title || '')}</span>` : ''}</div>
+            ${variant ? `<div class="so-prod-variant">${escapeHtml(variant)}</div>` : ''}
+          </div>
+          <div class="so-prod-qty">
+            × ${li.quantity || 0}
+            ${li.price ? `<span class="price">${o.currency || ''} ${parseFloat(li.price).toFixed(2)}</span>` : ''}
+          </div>
+        </div>`;
+    }).join('') : `<div style="font-size:12px; color:var(--text-tertiary); padding:8px 0;">（无产品行）</div>`;
+
+    let actionsHtml = '';
+    if (o.local_status === 'pending') {
+      actionsHtml = `
+        <button class="so-action-btn primary" onclick="shopifyStartProcessing('${o.id}')">👁 开始处理</button>
+        <button class="so-action-btn" onclick="shopifyCancelOrder('${o.id}')">取消</button>`;
+    } else if (o.local_status === 'processing') {
+      actionsHtml = `
+        <button class="so-action-btn primary" onclick="shopifyOpenPoForm('${o.id}')">📦 开 PO</button>
+        <button class="so-action-btn" onclick="shopifyMarkDone('${o.id}')" title="所有产品都开 PO 后点此完成">✓ 标记完成</button>`;
+    } else if (o.local_status === 'done') {
+      actionsHtml = `<button class="so-action-btn" onclick="shopifyReopenOrder('${o.id}')">↺ 重新打开</button>`;
+    } else if (o.local_status === 'cancelled') {
+      actionsHtml = `<button class="so-action-btn" onclick="shopifyReopenOrder('${o.id}')">↺ 恢复</button>`;
+    }
+
+    const localStatusPill = ({
+      pending: '<span class="so-status-pill" style="background:rgba(37,99,235,0.12); color:var(--accent)">🔵 待审核</span>',
+      processing: '<span class="so-status-pill" style="background:rgba(202,138,4,0.12); color:var(--status-producing)">🟡 待处理</span>',
+      done: '<span class="so-status-pill" style="background:rgba(21,128,61,0.12); color:var(--success)">✅ 已完成</span>',
+      cancelled: '<span class="so-status-pill" style="background:rgba(168,162,158,0.12); color:var(--text-tertiary)">已取消</span>',
+    })[o.local_status] || '';
+
     return `
-      <div class="record-row sales-row ${imported ? 'imported' : ''}">
-        <div><input type="checkbox" class="so-cb" data-id="${o.id}" ${checked} ${disabled} onchange="shopifyUpdateImportBar()"></div>
-        <div class="so-mono">${escapeHtml(o.name || ('#' + o.order_number))}</div>
-        <div>
-          <div class="so-customer-name">${escapeHtml(customer.name || '(无名)')}</div>
-          <div class="so-customer-email">${escapeHtml(customer.email || '')}</div>
+      <div class="so-card ${o.local_status === 'done' || o.local_status === 'cancelled' ? 'imported' : ''}" data-id="${o.id}">
+        <div class="so-card-top">
+          <div class="so-top-checkbox">
+            ${siteCode ? `<span class="site-pill" style="background:var(--accent); color:white; font-size:11px; padding:2px 7px; border-radius:4px; font-weight:700;">${siteCode}</span>` : ''}
+          </div>
+          <div class="so-top-meta">
+            <a href="${adminLink}" target="_blank" rel="noopener" class="so-order-no" title="在 Shopify 后台打开">
+              ${escapeHtml(o.shopify_order_number || '#' + (o.shopify_order_id || ''))} <span class="ext">↗</span>
+            </a>
+            <span>下单 <b>${dateStr} ${timeStr}</b></span>
+          </div>
+          <div class="so-top-status">
+            ${o.financial_status ? `<span class="so-status-pill ${o.financial_status}">${o.financial_status}</span>` : ''}
+            ${localStatusPill}
+          </div>
         </div>
-        <div class="so-country">${SHOPIFY.flagEmoji(country)} ${escapeHtml(o.shipping_city || country || '-')}</div>
-        <div style="text-align:center; font-family: 'JetBrains Mono', monospace;">${o.line_items_count}</div>
-        <div class="so-amount">${o.total_price ? parseFloat(o.total_price).toFixed(2) : '0.00'} ${o.currency || ''}</div>
-        <div><span class="so-status-pill ${o.financial_status || 'pending'}">${o.financial_status || '-'}</span></div>
-        <div>
-          ${imported ? '<span class="so-status-pill imported">✓ 已导入</span>' : '<span class="so-status-pill unimported">未导入</span>'}
-          <a href="${adminLink}" target="_blank" rel="noopener" style="margin-left:6px; font-size:11px; color: var(--accent); text-decoration: none;" title="在 Shopify 后台打开">↗</a>
+        <div class="so-card-body">
+          <div class="so-products">${productsHtml}</div>
+          <div class="so-recipient">
+            <div class="name">${escapeHtml(customerName)}</div>
+            <div class="email">${escapeHtml(customerEmail)}</div>
+            <div class="country">${SHOPIFY.flagEmoji(country)} ${escapeHtml(city)}${country ? `, ${country}` : ''}</div>
+          </div>
+          <div class="so-amount-block">
+            <div><span class="so-amount-big">${o.total_price ? parseFloat(o.total_price).toFixed(2) : '0.00'}</span><span class="so-amount-cur">${o.currency || ''}</span></div>
+            <div class="so-amount-sub">${totalQty} 件 · ${items.length} 行</div>
+          </div>
+        </div>
+        <div class="so-card-actions">
+          <div class="so-progress">${items.length > 0 ? `PO 进度：${lineWithPo} / ${items.length} 行已分配` : ''}</div>
+          <div class="so-actions-right">${actionsHtml}</div>
         </div>
       </div>`;
   }).join('');
-
-  shopifyUpdateImportBar();
 }
 
-function shopifyToggleSelectAll(checked) {
-  document.querySelectorAll('#salesOrdersBody .so-cb:not(:disabled)').forEach(cb => { cb.checked = checked; });
-  shopifyUpdateImportBar();
-}
-
-function shopifyUpdateImportBar() {
-  const selected = document.querySelectorAll('#salesOrdersBody .so-cb:checked');
-  const bar = document.getElementById('salesImportBar');
-  const summary = document.getElementById('salesImportSummary');
-  if (!bar || !summary) return;
-  const n = selected.length;
-  const total = SHOPIFY._fetchedOrders.length;
-  if (n > 0) {
-    bar.style.display = 'flex';
-    summary.textContent = `已选 ${n} / 共 ${total} 个订单`;
-  } else {
-    bar.style.display = 'none';
-  }
-}
-
-async function shopifyImportSelected() {
-  const ids = [...document.querySelectorAll('#salesOrdersBody .so-cb:checked')].map(cb => cb.dataset.id);
-  if (ids.length === 0) { toast('请先勾选订单', 'warn'); return; }
-  const shop = SHOPIFY._fetchedShop;
-  if (!shop) { toast('未知店铺', 'err'); return; }
-
-  const btn = document.querySelector('#salesImportBar .btn.primary');
-  btn.classList.add('loading');
+async function shopifyStartProcessing(orderId) {
   try {
-    const r = await SHOPIFY.call('import_orders_bulk', { shopify_order_ids: ids }, shop);
-    let msg = `✓ 成功导入 ${r.imported} 个订单`;
-    if (r.failed > 0) msg += `，${r.failed} 个失败`;
-    if (r.new_products > 0) msg += `，新建 ${r.new_products} 个产品档案`;
-    toast(msg);
-    // 标记已导入
-    (r.results || []).forEach(rs => {
-      if (rs.ok) {
-        const found = SHOPIFY._fetchedOrders.find(o => o.id === rs.shopify_order_id);
-        if (found) found.imported = true;
-      }
-    });
-    renderShopifyOrders();
-    await shopifyReloadStores();
+    await SHOPIFY.setOrderStatus(orderId, 'processing');
+    toast('已进入"待处理"');
+    await shopifyReloadOrdersAndRender();
+    shopifyShowFilter('processing');
   } catch (e) {
-    toast('批量导入失败：' + (e.message || e), 'err');
-  } finally {
-    btn.classList.remove('loading');
+    toast('操作失败：' + (e.message || e), 'err');
   }
+}
+
+async function shopifyCancelOrder(orderId) {
+  if (!confirm('确认取消这个销售订单？（可后续恢复）')) return;
+  try {
+    await SHOPIFY.setOrderStatus(orderId, 'cancelled');
+    toast('已取消');
+    await shopifyReloadOrdersAndRender();
+  } catch (e) {
+    toast('操作失败：' + (e.message || e), 'err');
+  }
+}
+
+async function shopifyMarkDone(orderId) {
+  if (!confirm('确认标记这个订单为"已完成"？（所有 PO 都已开完）')) return;
+  try {
+    await SHOPIFY.setOrderStatus(orderId, 'done');
+    toast('✓ 已完成');
+    await shopifyReloadOrdersAndRender();
+  } catch (e) {
+    toast('操作失败：' + (e.message || e), 'err');
+  }
+}
+
+async function shopifyReopenOrder(orderId) {
+  try {
+    await SHOPIFY.setOrderStatus(orderId, 'processing');
+    toast('已重开');
+    await shopifyReloadOrdersAndRender();
+    shopifyShowFilter('processing');
+  } catch (e) {
+    toast('操作失败：' + (e.message || e), 'err');
+  }
+}
+
+function shopifyOpenPoForm(orderId) {
+  toast('📦 开 PO 表单将在批次 4 实现', 'info');
+}
+
+function openImgLightbox(url) {
+  const box = document.getElementById('imgLightbox');
+  const img = document.getElementById('imgLightboxImg');
+  if (!box || !img) return;
+  img.src = url;
+  box.style.display = 'flex';
+}
+
+function closeImgLightbox(e) {
+  if (e && e.target && e.target.tagName === 'IMG') return;
+  document.getElementById('imgLightbox').style.display = 'none';
 }
 
 // ============ 自动同步 ============
@@ -10598,23 +10860,23 @@ function shopifyStartAutoSync() {
   shopifyStopAutoSync();
   SHOPIFY._autoSyncTimer = setInterval(async () => {
     if (CURRENT_TAB !== 'sales') return;
-    if (!SHOPIFY._fetchedShop) return;
+    const shop = document.getElementById('salesFetchShop')?.value;
+    if (!shop) return;
     try {
       const status = document.getElementById('salesFetchStatus').value;
       const from = document.getElementById('salesFetchFrom').value;
       const to = document.getElementById('salesFetchTo').value;
-      const params = { status, limit: 100 };
+      const params = { status, limit: 100, auto_save: true };
       if (from) params.created_at_min = from + 'T00:00:00Z';
       if (to) params.created_at_max = to + 'T23:59:59Z';
-      const r = await SHOPIFY.call('list_orders', params, SHOPIFY._fetchedShop);
-      const prevIds = new Set(SHOPIFY._fetchedOrders.map(o => o.id));
-      const newOnes = (r.orders || []).filter(o => !prevIds.has(o.id));
-      SHOPIFY._fetchedOrders = r.orders || [];
-      renderShopifyOrders();
+      const r = await SHOPIFY.call('list_orders', params, shop);
+      const prevIds = new Set(SHOPIFY._orders.map(o => o.shopify_order_id));
+      await shopifyReloadOrdersAndRender();
+      const newCount = SHOPIFY._orders.filter(o => !prevIds.has(o.shopify_order_id)).length;
       const hint = document.getElementById('salesFetchHint');
       if (hint) hint.textContent = `自动同步：${r.count} 单 · ${new Date().toLocaleTimeString()}`;
-      if (newOnes.length > 0) {
-        toast(`🔔 自动同步：新到 ${newOnes.length} 个订单`);
+      if (newCount > 0) {
+        toast(`🔔 自动同步：新到 ${newCount} 个订单`);
       }
     } catch (e) {
       console.warn('自动同步失败', e);
@@ -10626,7 +10888,7 @@ function shopifyStopAutoSync() {
   if (SHOPIFY._autoSyncTimer) { clearInterval(SHOPIFY._autoSyncTimer); SHOPIFY._autoSyncTimer = null; }
 }
 
-// ============ 销售单 tab 初始化（进入 tab 时调用） ============
+// ============ 销售单 tab 初始化 ============
 async function renderSales() {
   if (!SHOPIFY._initialized) {
     setSalesDefaultDates();
@@ -10635,6 +10897,7 @@ async function renderSales() {
     if (shopifyAutoSyncOn()) shopifyStartAutoSync();
   }
   await shopifyReloadStores();
+  await shopifyReloadOrdersAndRender();
 }
 
 // 占位 render 函数
