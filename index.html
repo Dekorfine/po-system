@@ -1521,49 +1521,52 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .shopify-store-card {
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   background: var(--bg-card);
   transition: all 0.15s;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-height: 78px;
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 40px;
 }
 .shopify-store-card.connected { border-color: rgba(21,128,61,0.3); background: rgba(21,128,61,0.02); }
-.shopify-store-card:not(.connected) { background: var(--bg-elevated); opacity: 0.85; }
+.shopify-store-card:not(.connected) { background: var(--bg-elevated); opacity: 0.78; }
 .shopify-store-card:hover { box-shadow: var(--shadow-sm); }
-.shopify-store-card .store-row-1 { display: flex; justify-content: space-between; align-items: center; }
 .shopify-store-card .site-pill {
-  font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 700;
+  font-size: 11px; padding: 4px 0; border-radius: 4px; font-weight: 700;
   background: var(--success); color: white; letter-spacing: 0.5px;
+  text-align: center; width: 32px;
 }
 .shopify-store-card:not(.connected) .site-pill { background: var(--text-tertiary); color: var(--bg); }
-.shopify-store-card .store-status { font-size: 11px; font-weight: 500; }
-.shopify-store-card.connected .store-status { color: var(--success); }
-.shopify-store-card:not(.connected) .store-status { color: var(--text-tertiary); }
+.shopify-store-card .store-mid { min-width: 0; line-height: 1.3; }
 .shopify-store-card .store-name {
   font-size: 13px; font-weight: 500; color: var(--text-primary);
   display: flex; align-items: center; gap: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .shopify-store-card .store-rename {
-  cursor: pointer; font-size: 11px; color: var(--text-tertiary);
-  opacity: 0; transition: opacity 0.15s;
+  cursor: pointer; font-size: 10px; color: var(--text-tertiary);
+  opacity: 0; transition: opacity 0.15s; flex-shrink: 0;
 }
 .shopify-store-card:hover .store-rename { opacity: 1; }
 .shopify-store-card .store-rename:hover { color: var(--accent); }
-.shopify-store-card .store-meta { font-size: 10px; color: var(--text-tertiary); }
-.shopify-store-card .store-install-btn {
+.shopify-store-card .store-meta {
+  font-size: 11px; color: var(--text-tertiary);
+}
+.shopify-store-card .store-meta .ok { color: var(--success); margin-right: 6px; }
+.shopify-store-card .store-install-btn,
+.shopify-store-card .store-fetch-btn {
   font-size: 11px; padding: 4px 10px; border-radius: 4px;
+  cursor: pointer; font-weight: 500; transition: all 0.15s;
+  white-space: nowrap;
+}
+.shopify-store-card .store-install-btn {
   background: var(--accent); color: white; border: none;
-  cursor: pointer; margin-top: 4px; font-weight: 500;
-  transition: background 0.15s;
 }
 .shopify-store-card .store-install-btn:hover { background: var(--accent-bright); }
 .shopify-store-card .store-fetch-btn {
-  font-size: 11px; padding: 4px 10px; border-radius: 4px;
   background: transparent; color: var(--accent); border: 1px solid var(--accent);
-  cursor: pointer; margin-top: 4px; font-weight: 500;
-  transition: all 0.15s;
 }
 .shopify-store-card .store-fetch-btn:hover { background: var(--accent); color: white; }
 
@@ -1754,6 +1757,47 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   margin-left: 6px; vertical-align: -1px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* 图片放大 Lightbox */
+.img-lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.88);
+  z-index: 9998;
+  cursor: zoom-out;
+  padding: 40px;
+  box-sizing: border-box;
+}
+.img-lightbox.show {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.img-lightbox-img {
+  max-width: calc(100vw - 80px);
+  max-height: calc(100vh - 80px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  background: white;
+  display: block;
+}
+.img-lightbox-close {
+  position: fixed;
+  top: 20px; right: 20px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none; color: white;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  font-size: 20px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+  z-index: 1;
+}
+.img-lightbox-close:hover { background: rgba(255, 255, 255, 0.3); }
 
 </style>
 </head>
@@ -2281,9 +2325,9 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 </div>
 
 <!-- 图片放大 Lightbox -->
-<div id="imgLightbox" onclick="closeImgLightbox(event)" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9998; align-items:center; justify-content:center; cursor:zoom-out;">
-  <img id="imgLightboxImg" style="max-width:90vw; max-height:90vh; object-fit:contain; border-radius:8px; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-  <button onclick="closeImgLightbox(event)" style="position:absolute; top:24px; right:24px; background:rgba(255,255,255,0.15); border:none; color:white; width:40px; height:40px; border-radius:50%; font-size:20px; cursor:pointer;">✕</button>
+<div id="imgLightbox" class="img-lightbox" onclick="closeImgLightbox(event)">
+  <img id="imgLightboxImg" class="img-lightbox-img" alt="">
+  <button class="img-lightbox-close" onclick="closeImgLightbox(event)">✕</button>
 </div>
 
 <!-- ============ TAB 8: PO（占位，批次 6 实现） ============ -->
@@ -4517,6 +4561,7 @@ function loginAs(name) {
   closeModal('agentModal');
   loadAllData();
   applyModuleVisibility();
+  restoreLastTab();
   renderActiveTab();
 }
 
@@ -4599,9 +4644,23 @@ function setBadge(id, n) {
 // ============ Tab 切换 ============
 function switchTab(name) {
   CURRENT_TAB = name;
+  try { localStorage.setItem('current_tab', name); } catch(_) {}
   document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === name));
   renderActiveTab();
+}
+
+function restoreLastTab() {
+  try {
+    const last = localStorage.getItem('current_tab');
+    if (!last) return;
+    // 验证 tab 元素存在且当前用户有权限访问
+    const tabEl = document.querySelector(`.tab-item[data-tab="${last}"]`);
+    if (!tabEl) return;
+    const visible = tabEl.offsetParent !== null || window.getComputedStyle(tabEl).display !== 'none';
+    if (!visible) return;
+    switchTab(last);
+  } catch(_) {}
 }
 
 // ============ 公用 - 状态判断 ============
@@ -10510,26 +10569,25 @@ function renderShopifyStores() {
     if (s.connected) {
       return `
         <div class="shopify-store-card connected">
-          <div class="store-row-1">
-            <span class="site-pill">${s.site_code}</span>
-            <span class="store-status">✓ 已连</span>
+          <span class="site-pill">${s.site_code}</span>
+          <div class="store-mid">
+            <div class="store-name">
+              ${escapeHtml(s.display_name)}
+              <span class="store-rename" onclick="shopifyRenameStore('${s.id}', '${escapeHtml(s.display_name).replace(/'/g,"\\'")}')" title="改名">✏️</span>
+            </div>
+            <div class="store-meta"><span class="ok">✓ 已连</span>${SHOPIFY.formatRelativeTime(s.last_sync_at)}同步</div>
           </div>
-          <div class="store-name">
-            ${escapeHtml(s.display_name)}
-            <span class="store-rename" onclick="shopifyRenameStore('${s.id}', '${escapeHtml(s.display_name)}')" title="改名">✏️</span>
-          </div>
-          <div class="store-meta">${SHOPIFY.formatRelativeTime(s.last_sync_at)}同步</div>
-          <button class="store-fetch-btn" onclick="shopifyQuickFetchFromCard('${s.domain}')">📥 同步</button>
+          <button class="store-fetch-btn" onclick="shopifyQuickFetchFromCard('${s.domain}')">⇄ 同步</button>
         </div>`;
     } else {
       return `
         <div class="shopify-store-card">
-          <div class="store-row-1">
-            <span class="site-pill">${s.site_code}</span>
-            <span class="store-status">未连</span>
+          <span class="site-pill">${s.site_code}</span>
+          <div class="store-mid">
+            <div class="store-name">${escapeHtml(s.display_name)}</div>
+            <div class="store-meta">未连接</div>
           </div>
-          <div class="store-name">${escapeHtml(s.display_name)}</div>
-          <button class="store-install-btn" onclick="shopifyInstall('${s.domain}')">📥 一键安装</button>
+          <button class="store-install-btn" onclick="shopifyInstall('${s.domain}')">安装</button>
         </div>`;
     }
   }).join('');
@@ -10693,7 +10751,7 @@ function renderShopifyOrders() {
       const hasPo = (li.po_assignments || []).length > 0;
       return `
         <div class="so-product-line">
-          ${imgUrl ? `<img class="so-prod-img" src="${escapeHtml(imgUrl)}" onclick="openImgLightbox('${escapeHtml(imgUrl)}')" alt="">` : `<div class="so-prod-noimg">📷</div>`}
+          ${imgUrl ? `<img class="so-prod-img" src="${escapeHtml(imgUrl)}" data-fullsrc="${escapeHtml(imgUrl)}" onclick="openImgLightbox(this.dataset.fullsrc)" alt="">` : `<div class="so-prod-noimg">📷</div>`}
           <div class="so-prod-info">
             ${li.sku ? `<div class="so-prod-sku">SKU: ${escapeHtml(li.sku)}${hasPo ? ' · <span style="color:var(--success)">✓ 已开 PO</span>' : ''}</div>` : ''}
             <div class="so-prod-name">${escapeHtml(title)}${nameCn ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(li.title || '')}</span>` : ''}</div>
@@ -10818,12 +10876,17 @@ function openImgLightbox(url) {
   const img = document.getElementById('imgLightboxImg');
   if (!box || !img) return;
   img.src = url;
-  box.style.display = 'flex';
+  box.classList.add('show');
+  document.body.style.overflow = 'hidden';
 }
 
 function closeImgLightbox(e) {
+  const box = document.getElementById('imgLightbox');
+  if (!box) return;
+  // 点图片本身不关闭（避免误触）；点 ✕ 或 背景关闭
   if (e && e.target && e.target.tagName === 'IMG') return;
-  document.getElementById('imgLightbox').style.display = 'none';
+  box.classList.remove('show');
+  document.body.style.overflow = '';
 }
 
 // ============ 自动同步 ============
