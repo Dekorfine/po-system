@@ -1658,8 +1658,8 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .so-products { display: flex; flex-direction: column; gap: 8px; }
 .so-product-line {
   display: grid;
-  grid-template-columns: 50px 1fr auto;
-  gap: 12px;
+  grid-template-columns: 90px 1fr auto;
+  gap: 14px;
   align-items: center;
   padding: 6px 0;
 }
@@ -1668,17 +1668,17 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   padding-top: 12px;
 }
 .so-prod-img {
-  width: 50px; height: 50px; border-radius: 6px;
+  width: 90px; height: 90px; border-radius: 8px;
   object-fit: cover; border: 1px solid var(--border-subtle);
   cursor: zoom-in; background: var(--bg-elevated);
   transition: transform 0.15s;
 }
-.so-prod-img:hover { transform: scale(1.08); border-color: var(--accent); }
+.so-prod-img:hover { transform: scale(1.06); border-color: var(--accent); }
 .so-prod-noimg {
-  width: 50px; height: 50px; border-radius: 6px;
+  width: 90px; height: 90px; border-radius: 8px;
   background: var(--bg-elevated); border: 1px solid var(--border-subtle);
   display: flex; align-items: center; justify-content: center;
-  color: var(--text-tertiary); font-size: 16px;
+  color: var(--text-tertiary); font-size: 24px;
 }
 .so-prod-info { font-size: 13px; min-width: 0; }
 .so-prod-sku {
@@ -1734,7 +1734,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 @media (max-width: 640px) {
   #salesStoresGrid { grid-template-columns: 1fr !important; }
-  .so-product-line { grid-template-columns: 44px 1fr; }
+  .so-product-line { grid-template-columns: 70px 1fr; }
   .so-prod-qty { grid-column: 2; text-align: left; }
 }
 
@@ -1871,10 +1871,10 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 /* PO 创建弹窗 - line item 选择行 */
 .po-li-row {
   display: grid;
-  grid-template-columns: 32px 56px 1fr 120px 100px 100px;
-  gap: 10px;
+  grid-template-columns: 32px 80px 1fr 100px 130px 90px;
+  gap: 12px;
   align-items: center;
-  padding: 10px;
+  padding: 12px 10px;
   border-bottom: 1px solid var(--border-subtle);
   transition: background 0.1s;
 }
@@ -1882,10 +1882,10 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .po-li-row.checked { background: rgba(37,99,235,0.04); }
 .po-li-row.assigned { opacity: 0.5; }
 .po-li-row .li-img {
-  width: 56px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-subtle); cursor: zoom-in;
+  width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border-subtle); cursor: zoom-in;
 }
 .po-li-row .li-noimg {
-  width: 56px; height: 56px; border-radius: 6px; background: var(--bg-elevated); display: flex; align-items: center; justify-content: center; color: var(--text-tertiary);
+  width: 80px; height: 80px; border-radius: 8px; background: var(--bg-elevated); display: flex; align-items: center; justify-content: center; color: var(--text-tertiary); font-size: 22px;
 }
 .po-li-row .li-info .sku { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); }
 .po-li-row .li-info .name { font-size: 13px; color: var(--text-primary); margin-top: 2px; font-weight: 500; }
@@ -11817,7 +11817,7 @@ function renderPoForm() {
 
     <h4 style="margin: 0 0 8px; font-size: 13px;">📦 选择产品（勾选要开采购单的）</h4>
     <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
-      <div style="display: grid; grid-template-columns: 32px 56px 1fr 120px 100px 100px; gap: 10px; padding: 8px 10px; background: var(--bg-elevated); font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase;">
+      <div style="display: grid; grid-template-columns: 32px 80px 1fr 100px 130px 90px; gap: 12px; padding: 8px 10px; background: var(--bg-elevated); font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase;">
         <div></div><div>图</div><div>产品 (SKU/中文名)</div><div>数量</div><div>单价 ¥</div><div style="text-align:right;">小计</div>
       </div>
       ${itemsHtml}
