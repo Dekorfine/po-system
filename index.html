@@ -11403,13 +11403,19 @@ const SUPPLIERS = {
   byName(name) { return this._list.find(s => s.name === name); },
   byId(id) { return this._list.find(s => s.id === id); },
   search(q) {
-    if (!q) return this._list.slice(0, 30);
-    const lower = q.toLowerCase();
-    return this._list.filter(s =>
-      (s.name || '').toLowerCase().includes(lower) ||
-      (s.contact_name || '').toLowerCase().includes(lower) ||
-      (s.contact_phone || '').includes(q)
-    ).slice(0, 30);
+    if (!q || !q.trim()) return this._list.slice(0, 30);
+    // 把查询拆成多个关键词（空格分隔），每个 trim
+    const keywords = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (keywords.length === 0) return this._list.slice(0, 30);
+    return this._list.filter(s => {
+      const haystack = ((s.name || '') + ' ' + (s.contact_name || '') + ' ' + (s.contact_phone || '')).toLowerCase();
+      const haystackNoSpace = haystack.replace(/\s+/g, '');
+      // 每个关键词都必须命中（AND 模式）；既支持"含空格"也支持"忽略空格"匹配
+      return keywords.every(kw => {
+        const kwNoSpace = kw.replace(/\s+/g, '');
+        return haystack.includes(kw) || haystackNoSpace.includes(kwNoSpace);
+      });
+    }).slice(0, 30);
   },
 };
 
@@ -11443,12 +11449,15 @@ function setupSupplierTypeahead() {
         // 空输入显示前 30 个（按下单数排序）
         matches = list.slice().sort((a,b) => (b.total_orders||0) - (a.total_orders||0)).slice(0, 30);
       } else {
-        const lower = q.toLowerCase();
-        matches = list.filter(s =>
-          (s.name || '').toLowerCase().includes(lower) ||
-          (s.contact_name || '').toLowerCase().includes(lower) ||
-          (s.contact_phone || '').includes(q)
-        ).slice(0, 50);
+        const keywords = q.toLowerCase().split(/\s+/).filter(Boolean);
+        matches = list.filter(s => {
+          const haystack = ((s.name || '') + ' ' + (s.contact_name || '') + ' ' + (s.contact_phone || '')).toLowerCase();
+          const haystackNoSpace = haystack.replace(/\s+/g, '');
+          return keywords.every(kw => {
+            const kwNoSpace = kw.replace(/\s+/g, '');
+            return haystack.includes(kw) || haystackNoSpace.includes(kwNoSpace);
+          });
+        }).slice(0, 50);
       }
       if (matches.length === 0) {
         popup.innerHTML = `<div style="padding:10px; color:var(--text-tertiary);">无匹配${q ? ` "${escapeHtml(q)}"` : ''} · <a href="#" onclick="event.preventDefault(); openSuppliersManager()" style="color:var(--accent);">去管理</a></div>`;
@@ -12208,13 +12217,17 @@ function closeSuppliersManager() {
 }
 
 function renderSuppliersList() {
-  const q = document.getElementById('supSearch').value.toLowerCase();
+  const rawQ = document.getElementById('supSearch').value || '';
+  const keywords = rawQ.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const sort = document.getElementById('supSort').value;
   let list = SUPPLIERS._list.filter(s => {
-    if (!q) return true;
-    return (s.name || '').toLowerCase().includes(q)
-        || (s.contact_name || '').toLowerCase().includes(q)
-        || (s.contact_phone || '').includes(q);
+    if (keywords.length === 0) return true;
+    const haystack = ((s.name || '') + ' ' + (s.contact_name || '') + ' ' + (s.contact_phone || '')).toLowerCase();
+    const haystackNoSpace = haystack.replace(/\s+/g, '');
+    return keywords.every(kw => {
+      const kwNoSpace = kw.replace(/\s+/g, '');
+      return haystack.includes(kw) || haystackNoSpace.includes(kwNoSpace);
+    });
   });
   if (sort === 'orders') list.sort((a,b) => (b.total_orders||0) - (a.total_orders||0));
   else if (sort === 'name') list.sort((a,b) => (a.name||'').localeCompare(b.name||''));
