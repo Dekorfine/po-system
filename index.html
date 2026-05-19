@@ -1800,6 +1800,173 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .img-lightbox-close:hover { background: rgba(255, 255, 255, 0.3); }
 
+/* ============ 批次 4：采购单 + 供应商 + 产品维护 ============ */
+
+/* PO 子 tab */
+.po-subtabs { display: flex; gap: 4px; padding: 4px; background: var(--bg-elevated); border-radius: 8px; }
+
+/* PO 创建弹窗 - line item 选择行 */
+.po-li-row {
+  display: grid;
+  grid-template-columns: 32px 56px 1fr 120px 100px 100px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.1s;
+}
+.po-li-row:hover { background: var(--bg-row-hover); }
+.po-li-row.checked { background: rgba(37,99,235,0.04); }
+.po-li-row.assigned { opacity: 0.5; }
+.po-li-row .li-img {
+  width: 56px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-subtle); cursor: zoom-in;
+}
+.po-li-row .li-noimg {
+  width: 56px; height: 56px; border-radius: 6px; background: var(--bg-elevated); display: flex; align-items: center; justify-content: center; color: var(--text-tertiary);
+}
+.po-li-row .li-info .sku { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); }
+.po-li-row .li-info .name { font-size: 13px; color: var(--text-primary); margin-top: 2px; font-weight: 500; }
+.po-li-row .li-info .variant { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+.po-li-row input[type="number"], .po-li-row input[type="text"] {
+  padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; width: 100%;
+  font-family: 'JetBrains Mono', monospace;
+}
+.po-li-row input:focus { outline: none; border-color: var(--accent); }
+.po-li-row .li-default-supplier { font-size: 10px; color: var(--text-tertiary); margin-top: 4px; }
+
+/* 供应商搜索下拉 */
+.supplier-picker {
+  position: relative;
+}
+.supplier-picker input {
+  width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px;
+}
+.supplier-picker .picker-results {
+  position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: var(--shadow-md); z-index: 100; margin-top: 2px; display: none;
+}
+.supplier-picker .picker-results.show { display: block; }
+.supplier-picker .picker-item {
+  padding: 8px 12px; cursor: pointer; font-size: 12px; border-bottom: 1px solid var(--border-subtle);
+}
+.supplier-picker .picker-item:hover { background: var(--bg-row-hover); color: var(--accent); }
+.supplier-picker .picker-item .stats { font-size: 10px; color: var(--text-tertiary); margin-top: 2px; }
+.supplier-picker .picker-item.new { color: var(--accent); font-weight: 500; }
+
+/* PO 列表卡片 */
+.po-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+  margin-top: 10px; overflow: hidden; transition: all 0.15s;
+}
+.po-card:hover { border-color: var(--accent); }
+.po-card.cancelled { opacity: 0.55; }
+.po-card-top {
+  display: grid; grid-template-columns: 1fr 200px 180px;
+  gap: 12px; padding: 10px 14px; background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle); align-items: center; font-size: 12px;
+}
+.po-card-top .po-no {
+  font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; color: var(--text-primary);
+}
+.po-card-top .po-meta { color: var(--text-secondary); }
+.po-card-top .po-meta b { color: var(--text-primary); font-weight: 500; }
+.po-card-body { padding: 12px 14px; }
+.po-card-actions {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 14px; background: var(--bg-elevated); border-top: 1px solid var(--border-subtle);
+}
+
+/* 供应商列表 */
+.supplier-row {
+  display: grid; grid-template-columns: 1fr 180px 140px 100px 80px;
+  gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border-subtle);
+  align-items: center; cursor: pointer; transition: background 0.1s;
+}
+.supplier-row:hover { background: var(--bg-row-hover); }
+.supplier-row .name { font-weight: 500; font-size: 13px; color: var(--text-primary); }
+.supplier-row .contact { font-size: 12px; color: var(--text-secondary); }
+.supplier-row .phone { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-secondary); }
+.supplier-row .orders { font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: right; color: var(--text-secondary); }
+.supplier-row .actions { display: flex; gap: 6px; justify-content: flex-end; }
+.supplier-header {
+  display: grid; grid-template-columns: 1fr 180px 140px 100px 80px;
+  gap: 12px; padding: 8px 14px; background: var(--bg-elevated);
+  font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* 产品列表 */
+.product-row {
+  display: grid; grid-template-columns: 50px 1fr 1fr 140px 100px 110px;
+  gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--border-subtle);
+  align-items: center; transition: background 0.1s;
+}
+.product-row:hover { background: var(--bg-row-hover); }
+.product-row .prod-img { width: 50px; height: 50px; border-radius: 6px; object-fit: cover; cursor: zoom-in; border: 1px solid var(--border-subtle); }
+.product-row .prod-noimg { width: 50px; height: 50px; border-radius: 6px; background: var(--bg-elevated); display: flex; align-items: center; justify-content: center; color: var(--text-tertiary); }
+.product-row .sku { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); }
+.product-row .name-cn { font-size: 13px; color: var(--text-primary); font-weight: 500; }
+.product-row .name-en { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+.product-row .price { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.product-row .actions { display: flex; gap: 6px; justify-content: flex-end; }
+.product-row.is-alias { background: rgba(37,99,235,0.03); }
+.product-row .master-tag {
+  display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 3px;
+  background: rgba(37,99,235,0.12); color: var(--accent); margin-left: 4px;
+  font-family: inherit; font-weight: 500; letter-spacing: 0.5px;
+}
+.product-row .alias-tag {
+  display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 3px;
+  background: rgba(168,162,158,0.12); color: var(--text-secondary); margin-left: 4px;
+}
+.product-header {
+  display: grid; grid-template-columns: 50px 1fr 1fr 140px 100px 110px;
+  gap: 10px; padding: 8px 12px; background: var(--bg-elevated);
+  font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* 打印预览 - 模仿 PO 模板 */
+.po-print {
+  background: white; color: #000; padding: 30px; font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+.po-print h1 { font-size: 22px; text-align: center; margin: 0 0 4px; font-weight: 700; }
+.po-print .sub { text-align: center; color: #555; font-size: 12px; margin-bottom: 18px; }
+.po-print .meta-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px;
+  font-size: 13px; margin-bottom: 18px;
+  padding: 10px 12px; background: #fafafa; border-radius: 4px;
+}
+.po-print .meta-grid b { color: #333; }
+.po-print table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 14px; }
+.po-print th { background: #f0f0f0; padding: 8px 6px; text-align: left; border: 1px solid #ddd; font-weight: 600; }
+.po-print td { padding: 8px 6px; border: 1px solid #ddd; vertical-align: top; }
+.po-print td img { max-width: 60px; max-height: 60px; border-radius: 4px; }
+.po-print .total-row td { background: #f7f7f7; font-weight: 600; }
+.po-print .note-box {
+  border: 1px solid #ddd; padding: 10px; min-height: 50px; font-size: 12px; color: #444;
+  background: #fffbeb; border-radius: 4px; margin-bottom: 10px;
+}
+.po-print .signature {
+  margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; font-size: 12px;
+}
+.po-print .signature .line { border-bottom: 1px solid #999; padding-bottom: 3px; min-height: 30px; }
+
+@media print {
+  body * { visibility: hidden; }
+  #poPrintBody, #poPrintBody * { visibility: visible; }
+  #poPrintBody { position: absolute; left: 0; top: 0; width: 100%; }
+  .modal-header, .modal-footer { display: none !important; }
+}
+
+@media (max-width: 1024px) {
+  .po-li-row { grid-template-columns: 30px 50px 1fr; gap: 8px; }
+  .po-li-row > *:nth-child(n+4) { grid-column: 2 / -1; padding-left: 50px; }
+  .supplier-row, .supplier-header { grid-template-columns: 1fr 100px 80px; gap: 8px; }
+  .supplier-row > *:nth-child(n+4), .supplier-header > *:nth-child(n+4) { display: none; }
+  .product-row, .product-header { grid-template-columns: 40px 1fr 110px; gap: 8px; }
+  .product-row > *:nth-child(n+4), .product-header > *:nth-child(n+4) { display: none; }
+}
+
 </style>
 </head>
 <body>
@@ -1883,8 +2050,9 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="tab-item" data-tab="missing" onclick="switchTab('missing')">🔍 找灯 <span class="badge zero" id="badgeMissing">0</span></div>
     <div class="tab-item" data-tab="purchases" onclick="switchTab('purchases')">🛒 线上采购 <span class="badge zero" id="badgePurchases">0</span></div>
     <div class="tab-item" data-tab="sales" onclick="switchTab('sales')">📥 销售单 <span class="badge zero" id="badgeSales">0</span></div>
-    <div class="tab-item" data-tab="po" onclick="switchTab('po')">📦 PO <span class="badge zero" id="badgePo">0</span></div>
+    <div class="tab-item" data-tab="po" onclick="switchTab('po')">📦 采购单 <span class="badge zero" id="badgePo">0</span></div>
     <div class="tab-item" data-tab="products" onclick="switchTab('products')">📚 产品 <span class="badge zero" id="badgeProducts">0</span></div>
+    <div class="tab-item" data-tab="consolidation" onclick="switchTab('consolidation')">🧊 合箱</div>
     <div class="tab-item" data-tab="performance" onclick="switchTab('performance')">📊 绩效 <span class="badge zero" id="badgePerformance">0</span></div>
   </div>
 </div>
@@ -2331,31 +2499,169 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   <button class="img-lightbox-close" onclick="closeImgLightbox(event)">✕</button>
 </div>
 
-<!-- ============ TAB 8: PO（占位，批次 6 实现） ============ -->
-<div class="tab-content" data-tab="po">
-  <div class="section-block">
-    <div class="fb-card" style="margin-top: 14px;">
-      <div class="fb-head" style="cursor: default;">
-        <div class="fb-title">📦 采购单 PO</div>
-      </div>
-      <div style="padding: 24px; text-align: center; color: var(--text-tertiary); font-size: 13px;">
-        本模块将在后续批次实现，敬请期待。
-      </div>
+<!-- ============ 开采购单弹窗 ============ -->
+<div id="poFormModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width: 1100px;">
+    <div class="modal-header">
+      <h3>📦 开采购单</h3>
+      <button class="modal-close" onclick="closePoForm()">✕</button>
+    </div>
+    <div class="modal-body" id="poFormBody" style="max-height: 75vh; overflow-y: auto;"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closePoForm()">取消</button>
+      <button class="btn primary" id="poFormSaveBtn" onclick="poFormSave()">保存采购单</button>
     </div>
   </div>
 </div>
 
-<!-- ============ TAB 9: 产品维护（占位，批次 5 实现） ============ -->
+<!-- ============ 供应商档案管理弹窗 ============ -->
+<div id="suppliersModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width: 1100px;">
+    <div class="modal-header">
+      <h3>🏭 供应商档案</h3>
+      <button class="modal-close" onclick="closeSuppliersManager()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+      <div class="toolbar" style="margin-bottom: 12px;">
+        <input type="text" class="filter-select" id="supSearch" placeholder="🔍 搜名称 / 联系人 / 电话" style="min-width: 280px;" oninput="renderSuppliersList()">
+        <select class="filter-select" id="supSort" onchange="renderSuppliersList()">
+          <option value="orders">按下单数排序</option>
+          <option value="name">按名字排序</option>
+          <option value="recent">按最近合作排序</option>
+        </select>
+        <button class="btn primary" onclick="openSupplierEdit(null)">+ 新增供应商</button>
+      </div>
+      <div id="suppliersListBody"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 供应商详情编辑弹窗 ============ -->
+<div id="supplierEditModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width: 600px;">
+    <div class="modal-header">
+      <h3 id="supplierEditTitle">供应商详情</h3>
+      <button class="modal-close" onclick="closeSupplierEdit()">✕</button>
+    </div>
+    <div class="modal-body" id="supplierEditBody"></div>
+    <div class="modal-footer">
+      <button class="btn danger" id="supplierDeleteBtn" onclick="supplierDelete()" style="margin-right:auto;">删除</button>
+      <button class="btn" onclick="closeSupplierEdit()">取消</button>
+      <button class="btn primary" onclick="supplierSave()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 同款绑定弹窗 ============ -->
+<div id="masterBindModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width: 800px;">
+    <div class="modal-header">
+      <h3>🔗 同款产品绑定</h3>
+      <button class="modal-close" onclick="closeMasterBind()">✕</button>
+    </div>
+    <div class="modal-body" id="masterBindBody" style="max-height: 70vh; overflow-y: auto;"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeMasterBind()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 多供应商提示弹窗 ============ -->
+<div id="multiSupplierConfirm" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width: 600px;">
+    <div class="modal-header">
+      <h3>⚠ 选中产品的默认供应商不同</h3>
+      <button class="modal-close" onclick="closeMultiSupplierConfirm()">✕</button>
+    </div>
+    <div class="modal-body" id="multiSupplierBody"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeMultiSupplierConfirm()">取消</button>
+      <button class="btn" onclick="multiSupplierChoice('manual')">手动单独开</button>
+      <button class="btn primary" onclick="multiSupplierChoice('split')">一键拆 N 张</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 打印预览弹窗 ============ -->
+<div id="poPrintModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width: 900px;">
+    <div class="modal-header">
+      <h3>🖨 采购单打印预览</h3>
+      <button class="modal-close" onclick="closePoPrint()">✕</button>
+    </div>
+    <div class="modal-body" id="poPrintBody" style="max-height: 75vh; overflow-y: auto;"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closePoPrint()">关闭</button>
+      <button class="btn primary" onclick="poPrintNow()">🖨 打印</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAB 8: 采购单 ============ -->
+<div class="tab-content" data-tab="po">
+  <div class="section-block">
+    <div class="fb-card" style="margin-top: 14px;">
+      <div class="fb-head" style="cursor: default;">
+        <div class="fb-title">📦 采购单</div>
+        <div class="fb-tabs" style="cursor: default;">
+          <button class="btn small" onclick="openSuppliersManager()" style="font-size:12px;">🏭 供应商档案</button>
+        </div>
+      </div>
+      <div class="po-subtabs" style="margin-top: 12px;">
+        <button class="sub-tab-btn active" data-pofilter="all" onclick="poShowFilter('all')">📋 全部 <span class="cnt" id="poCntAll">0</span></button>
+        <button class="sub-tab-btn" data-pofilter="active" onclick="poShowFilter('active')">🟡 进行中 <span class="cnt" id="poCntActive">0</span></button>
+        <button class="sub-tab-btn" data-pofilter="done" onclick="poShowFilter('done')">✅ 已完成 <span class="cnt" id="poCntDone">0</span></button>
+        <button class="sub-tab-btn" data-pofilter="cancelled" onclick="poShowFilter('cancelled')">⊘ 已取消 <span class="cnt" id="poCntCancelled">0</span></button>
+      </div>
+      <div id="poListBody" style="margin-top: 12px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAB 9: 产品维护 ============ -->
 <div class="tab-content" data-tab="products">
   <div class="section-block">
     <div class="fb-card" style="margin-top: 14px;">
       <div class="fb-head" style="cursor: default;">
         <div class="fb-title">📚 产品维护</div>
+        <div class="fb-tabs" style="cursor: default;">
+          <span style="font-size:12px; color: var(--text-tertiary);" id="productsCountHint">0 个产品</span>
+        </div>
       </div>
-      <div style="padding: 24px; text-align: center; color: var(--text-tertiary); font-size: 13px;">
-        本模块将在后续批次实现，敬请期待。
+      <div class="toolbar" style="margin-top: 10px;">
+        <input type="text" class="filter-select" id="productSearch" placeholder="🔍 搜 SKU / 中文名 / 英文名" style="min-width: 260px;" oninput="renderProductsList()">
+        <select class="filter-select" id="productFilter" onchange="renderProductsList()">
+          <option value="all">全部</option>
+          <option value="no_cn">未维护中文</option>
+          <option value="no_supplier">未设默认供应商</option>
+          <option value="masters">主产品</option>
+          <option value="aliases">已绑同款</option>
+        </select>
+        <select class="filter-select" id="productSiteFilter" onchange="renderProductsList()">
+          <option value="all">全部站点</option>
+          <option value="VK">VK</option>
+          <option value="DF">DF</option>
+          <option value="DC">DC</option>
+          <option value="PL">PL</option>
+          <option value="RD">RD</option>
+          <option value="MH">MH</option>
+          <option value="LS">LS</option>
+          <option value="MJ">MJ</option>
+          <option value="RS">RS</option>
+        </select>
       </div>
+      <div id="productsListBody" style="margin-top: 14px;"></div>
     </div>
+  </div>
+</div>
+
+<!-- ============ TAB 10: 合箱（iframe 嵌入独立 React 应用） ============ -->
+<div class="tab-content" data-tab="consolidation">
+  <div class="section-block" style="padding: 0;">
+    <iframe id="consolidationFrame" src="consolidation.html"
+      style="width:100%; height: calc(100vh - 140px); border: none; background: transparent; border-radius: 12px;"
+      loading="lazy">
+    </iframe>
   </div>
 </div>
 
@@ -3717,8 +4023,9 @@ const ALL_MODULES = [
   { key: 'missing', label: '🔍 找灯' },
   { key: 'purchases', label: '🛒 线上采购' },
   { key: 'sales', label: '📥 销售单' },
-  { key: 'po', label: '📦 PO' },
+  { key: 'po', label: '📦 采购单' },
   { key: 'products', label: '📚 产品' },
+  { key: 'consolidation', label: '🧊 合箱' },
   { key: 'performance', label: '📊 绩效' },
 ];
 const ALL_MODULE_KEYS = ALL_MODULES.map(m => m.key);
@@ -10772,8 +11079,8 @@ function renderShopifyOrders() {
         <button class="so-action-btn" onclick="shopifyCancelOrder('${o.id}')">取消</button>`;
     } else if (o.local_status === 'processing') {
       actionsHtml = `
-        <button class="so-action-btn primary" onclick="shopifyOpenPoForm('${o.id}')">📦 开 PO</button>
-        <button class="so-action-btn" onclick="shopifyMarkDone('${o.id}')" title="所有产品都开 PO 后点此完成">✓ 标记完成</button>`;
+        <button class="so-action-btn primary" onclick="shopifyOpenPoForm('${o.id}')">📦 开采购单</button>
+        <button class="so-action-btn" onclick="shopifyMarkDone('${o.id}')" title="所有产品都开采购单后点此完成">✓ 标记完成</button>`;
     } else if (o.local_status === 'done') {
       actionsHtml = `<button class="so-action-btn" onclick="shopifyReopenOrder('${o.id}')">↺ 重新打开</button>`;
     } else if (o.local_status === 'cancelled') {
@@ -10869,7 +11176,7 @@ async function shopifyReopenOrder(orderId) {
 }
 
 function shopifyOpenPoForm(orderId) {
-  toast('📦 开 PO 表单将在批次 4 实现', 'info');
+  openPoForm(orderId);
 }
 
 function openImgLightbox(url) {
@@ -10964,9 +11271,1010 @@ async function renderSales() {
   await shopifyReloadOrdersAndRender();
 }
 
-// 占位 render 函数
-function renderPo() { /* 批次 6 实现 */ }
-function renderProducts() { /* 批次 5 实现 */ }
+// ============================================================
+// 批次 4：采购单 + 供应商 + 产品维护 + 同款绑定
+// ============================================================
+
+const SUPPLIERS = {
+  _list: [],
+  async loadAll() {
+    const { data, error } = await sb.from('suppliers').select('*').eq('is_active', true).order('name');
+    if (error) throw error;
+    this._list = data || [];
+    return this._list;
+  },
+  byName(name) { return this._list.find(s => s.name === name); },
+  byId(id) { return this._list.find(s => s.id === id); },
+  search(q) {
+    if (!q) return this._list.slice(0, 30);
+    const lower = q.toLowerCase();
+    return this._list.filter(s =>
+      (s.name || '').toLowerCase().includes(lower) ||
+      (s.contact_name || '').toLowerCase().includes(lower) ||
+      (s.contact_phone || '').includes(q)
+    ).slice(0, 30);
+  },
+};
+
+// ============ 通用供应商 typeahead 增强（不破坏原有 datalist） ============
+// 给所有现有的 <input list="*SuppliersList"> 加自定义浮动下拉，更明显的过滤体验
+function setupSupplierTypeahead() {
+  const inputs = document.querySelectorAll('input[list$="SuppliersList"]');
+  inputs.forEach(input => {
+    if (input.dataset.typeaheadInit) return;
+    input.dataset.typeaheadInit = '1';
+    // 移除 list 属性以禁用浏览器原生 datalist（避免双下拉）
+    const listId = input.getAttribute('list');
+    input.removeAttribute('list');
+
+    // 创建浮层
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:relative; display:contents;';
+    input.parentNode.insertBefore(wrapper, input);
+    wrapper.appendChild(input);
+
+    const popup = document.createElement('div');
+    popup.className = 'supplier-typeahead-popup';
+    popup.style.cssText = 'position:absolute; left:0; right:0; max-height:280px; overflow-y:auto; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; box-shadow:var(--shadow-md); z-index:10000; display:none; margin-top:2px; font-size:13px;';
+    wrapper.appendChild(popup);
+
+    const render = () => {
+      const q = (input.value || '').trim();
+      const list = SUPPLIERS._list || [];
+      let matches;
+      if (!q) {
+        // 空输入显示前 30 个（按下单数排序）
+        matches = list.slice().sort((a,b) => (b.total_orders||0) - (a.total_orders||0)).slice(0, 30);
+      } else {
+        const lower = q.toLowerCase();
+        matches = list.filter(s =>
+          (s.name || '').toLowerCase().includes(lower) ||
+          (s.contact_name || '').toLowerCase().includes(lower) ||
+          (s.contact_phone || '').includes(q)
+        ).slice(0, 50);
+      }
+      if (matches.length === 0) {
+        popup.innerHTML = `<div style="padding:10px; color:var(--text-tertiary);">无匹配${q ? ` "${escapeHtml(q)}"` : ''} · <a href="#" onclick="event.preventDefault(); openSuppliersManager()" style="color:var(--accent);">去管理</a></div>`;
+      } else {
+        popup.innerHTML = matches.map((s, i) => `
+          <div class="supplier-ta-item" data-name="${escapeHtml(s.name)}" style="padding:7px 12px; cursor:pointer; border-bottom:1px solid var(--border-subtle); ${i === 0 ? 'background:var(--bg-row-hover);' : ''}">
+            <div style="font-weight:500;">${escapeHtml(s.name)}</div>
+            ${(s.contact_name || s.contact_phone || s.total_orders) ? `<div style="font-size:11px; color:var(--text-tertiary); margin-top:2px;">${escapeHtml(s.contact_name || '')} ${s.contact_phone ? '· ' + escapeHtml(s.contact_phone) : ''} ${s.total_orders ? '· ' + s.total_orders + ' 次合作' : ''}</div>` : ''}
+          </div>
+        `).join('');
+        popup.querySelectorAll('.supplier-ta-item').forEach(el => {
+          el.addEventListener('mousedown', e => {
+            e.preventDefault();
+            input.value = el.dataset.name;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            popup.style.display = 'none';
+          });
+          el.addEventListener('mouseover', () => {
+            popup.querySelectorAll('.supplier-ta-item').forEach(x => x.style.background = '');
+            el.style.background = 'var(--bg-row-hover)';
+          });
+        });
+      }
+      popup.style.display = 'block';
+    };
+
+    input.addEventListener('focus', () => {
+      // 确保供应商已加载
+      if (SUPPLIERS._list.length === 0) SUPPLIERS.loadAll().then(render).catch(() => {});
+      else render();
+    });
+    input.addEventListener('input', render);
+    input.addEventListener('blur', () => setTimeout(() => { popup.style.display = 'none'; }, 200));
+
+    // 键盘
+    let highlightIdx = 0;
+    input.addEventListener('keydown', e => {
+      if (popup.style.display === 'none') return;
+      const items = popup.querySelectorAll('.supplier-ta-item');
+      if (items.length === 0) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[highlightIdx]?.style && (items[highlightIdx].style.background = '');
+        highlightIdx = e.key === 'ArrowDown' ? (highlightIdx + 1) % items.length : (highlightIdx - 1 + items.length) % items.length;
+        items[highlightIdx].style.background = 'var(--bg-row-hover)';
+        items[highlightIdx].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        if (items[highlightIdx]) {
+          e.preventDefault();
+          items[highlightIdx].dispatchEvent(new MouseEvent('mousedown'));
+        }
+      } else if (e.key === 'Escape') {
+        popup.style.display = 'none';
+      }
+    });
+  });
+}
+
+// 在 DOM 准备好时初始化（页面加载完 + 切 tab 时都跑）
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(setupSupplierTypeahead, 500);
+});
+
+const PRODUCTS_CACHE = {
+  _bySku: {},
+  _byId: {},
+  _all: [],
+  async loadAll() {
+    const { data, error } = await sb.from('products').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    this._all = data || [];
+    this._bySku = {};
+    this._byId = {};
+    (data || []).forEach(p => { this._bySku[p.sku] = p; this._byId[p.id] = p; });
+    return this._all;
+  },
+  // 通过 SKU 查产品，自动穿透 master_product_id
+  effectiveBySku(sku) {
+    const p = this._bySku[sku];
+    if (!p) return null;
+    if (p.master_product_id) {
+      const master = this._byId[p.master_product_id];
+      if (master) return master;
+    }
+    return p;
+  },
+};
+
+// ============ 采购单弹窗 ============
+let PO_FORM_STATE = null;
+
+async function openPoForm(salesOrderId) {
+  // 加载销售订单、供应商列表、产品库
+  const so = SHOPIFY._orders.find(o => o.id === salesOrderId);
+  if (!so) { toast('订单不存在', 'err'); return; }
+
+  try {
+    await Promise.all([SUPPLIERS.loadAll(), PRODUCTS_CACHE.loadAll()]);
+  } catch (e) {
+    toast('加载基础数据失败：' + (e.message || e), 'err');
+    return;
+  }
+
+  PO_FORM_STATE = {
+    salesOrder: so,
+    selectedSupplierId: null,
+    selectedSupplierName: '',
+    lineItemSelections: {},  // shopify_line_item_id => { checked, qty, price, supplierName }
+  };
+
+  // 默认勾选未分配且未取消的 line items
+  (so.line_items || []).forEach(li => {
+    const remaining = (li.quantity || 0) - ((li.po_assignments || []).reduce((s, a) => s + (a.qty || 0), 0));
+    const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
+    PO_FORM_STATE.lineItemSelections[li.shopify_line_item_id] = {
+      checked: remaining > 0,
+      qty: remaining,
+      price: eff.last_purchase_price || '',
+      supplierName: eff.default_supplier || '',
+      remaining,
+      assignedQty: (li.quantity || 0) - remaining,
+    };
+  });
+
+  // 推荐默认供应商：从选中 line items 的 default_supplier 取最常见的
+  const counts = {};
+  Object.values(PO_FORM_STATE.lineItemSelections).forEach(sel => {
+    if (sel.checked && sel.supplierName) counts[sel.supplierName] = (counts[sel.supplierName] || 0) + 1;
+  });
+  const top = Object.entries(counts).sort((a,b) => b[1]-a[1])[0];
+  if (top) {
+    PO_FORM_STATE.selectedSupplierName = top[0];
+    const sup = SUPPLIERS.byName(top[0]);
+    if (sup) PO_FORM_STATE.selectedSupplierId = sup.id;
+  }
+
+  renderPoForm();
+  document.getElementById('poFormModal').style.display = 'flex';
+}
+
+function renderPoForm() {
+  const so = PO_FORM_STATE.salesOrder;
+  const body = document.getElementById('poFormBody');
+  const ship = so.shipping_address || {};
+  const siteCode = SHOPIFY.siteCodeOf(so.shop_domain);
+
+  const items = so.line_items || [];
+  const itemsHtml = items.map(li => {
+    const sel = PO_FORM_STATE.lineItemSelections[li.shopify_line_item_id];
+    if (!sel) return '';
+    const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
+    const productMap = SHOPIFY._productMap || {};
+    const ownProd = productMap[li.sku] || {};
+    const imgUrl = eff.image_url || ownProd.image_url || li.image_url || '';
+    const displaySku = eff.sku || li.sku;  // master 的 SKU
+    const nameCn = eff.name_cn || ownProd.name_cn || '';
+    const fullyAssigned = sel.remaining === 0;
+    return `
+      <div class="po-li-row ${sel.checked ? 'checked' : ''} ${fullyAssigned ? 'assigned' : ''}">
+        <input type="checkbox" ${sel.checked ? 'checked' : ''} ${fullyAssigned ? 'disabled' : ''}
+          onchange="poFormToggleItem('${li.shopify_line_item_id}', this.checked)">
+        ${imgUrl ? `<img class="li-img" src="${escapeHtml(imgUrl)}" onclick="openImgLightbox('${escapeHtml(imgUrl)}')">` : `<div class="li-noimg">📷</div>`}
+        <div class="li-info">
+          <div class="sku">${escapeHtml(displaySku)}${eff.master_product_id || (eff.sku !== li.sku) ? '' : ''}</div>
+          <div class="name">${escapeHtml(nameCn || li.title || '(无名)')}</div>
+          <div class="variant">${escapeHtml(li.variant_title || '')}${fullyAssigned ? ' · <span style="color:var(--success)">✓ 已全部开 PO</span>' : sel.assignedQty > 0 ? ` · 剩 ${sel.remaining}/${li.quantity}` : ''}</div>
+          ${eff.default_supplier ? `<div class="li-default-supplier">默认: ${escapeHtml(eff.default_supplier)}</div>` : ''}
+        </div>
+        <input type="number" min="1" max="${sel.remaining}" value="${sel.qty}" placeholder="数量"
+          onchange="poFormSetQty('${li.shopify_line_item_id}', this.value)" ${fullyAssigned ? 'disabled' : ''}>
+        <input type="number" min="0" step="0.01" value="${sel.price}" placeholder="单价 ¥"
+          onchange="poFormSetPrice('${li.shopify_line_item_id}', this.value)" ${fullyAssigned ? 'disabled' : ''}>
+        <div style="text-align:right; font-family:'JetBrains Mono', monospace; font-size:12px;">
+          ${sel.qty && sel.price ? '¥ ' + (Number(sel.qty) * Number(sel.price)).toFixed(2) : '—'}
+        </div>
+      </div>`;
+  }).join('');
+
+  const selected = Object.entries(PO_FORM_STATE.lineItemSelections).filter(([_, sel]) => sel.checked);
+  const totalAmount = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0) * (Number(sel.price) || 0), 0);
+  const totalQty = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0), 0);
+
+  // 自动生成订单备注（{siteCode}{订单号末5位} {产品关键词}）
+  const orderNoTail = (so.shopify_order_number || '').replace(/[^0-9]/g,'').slice(-5);
+  const productKw = selected.slice(0, 2).map(([liid]) => {
+    const li = items.find(x => x.shopify_line_item_id === liid);
+    return (li?.title || '').split(' ').slice(0, 2).join(' ');
+  }).filter(Boolean).join('+');
+  const autoNote = `${siteCode}${orderNoTail} ${productKw}`.trim();
+
+  body.innerHTML = `
+    <div style="background: var(--bg-elevated); padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 12px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+        <div><b>销售订单：</b>${escapeHtml(so.shopify_order_number || '')} <span style="color:var(--text-tertiary);">(${siteCode})</span></div>
+        <div><b>客户：</b>${escapeHtml(so.customer_name || '')}</div>
+        <div><b>金额：</b>${so.total_price ? parseFloat(so.total_price).toFixed(2) : '0'} ${so.currency || ''}</div>
+        <div style="grid-column: 1/-1; color: var(--text-secondary);"><b>收货：</b>${escapeHtml(ship.country_code || '')} ${escapeHtml(ship.city || '')} ${escapeHtml(ship.address1 || '')}</div>
+      </div>
+    </div>
+
+    <h4 style="margin: 0 0 8px; font-size: 13px;">📦 选择产品（勾选要开采购单的）</h4>
+    <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+      <div style="display: grid; grid-template-columns: 32px 56px 1fr 120px 100px 100px; gap: 10px; padding: 8px 10px; background: var(--bg-elevated); font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase;">
+        <div></div><div>图</div><div>产品 (SKU/中文名)</div><div>数量</div><div>单价 ¥</div><div style="text-align:right;">小计</div>
+      </div>
+      ${itemsHtml}
+    </div>
+
+    <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div>
+        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">供应商 *</label>
+        <div class="supplier-picker">
+          <input type="text" id="poFormSupplierInput" placeholder="🔍 输入供应商名搜索…"
+            value="${escapeHtml(PO_FORM_STATE.selectedSupplierName)}"
+            oninput="poFormSupplierSearch(this.value)"
+            onfocus="poFormSupplierSearch(this.value)"
+            onblur="setTimeout(() => document.getElementById('poFormSupplierResults').classList.remove('show'), 200)">
+          <div class="picker-results" id="poFormSupplierResults"></div>
+        </div>
+      </div>
+      <div>
+        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">承诺到货日 *</label>
+        <input type="date" id="poFormPromisedDate" class="form-control" value="${(() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })()}">
+      </div>
+      <div style="grid-column: 1/-1;">
+        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">订单备注 (会写在纸箱上，供应商对单用) *</label>
+        <input type="text" id="poFormBoxNote" class="form-control" value="${escapeHtml(autoNote)}" placeholder="自动生成">
+      </div>
+      <div style="grid-column: 1/-1;">
+        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">其他备注</label>
+        <textarea id="poFormNote" class="form-control" rows="2" placeholder="特殊要求、加急、配件…"></textarea>
+      </div>
+    </div>
+
+    <div style="margin-top: 16px; padding: 12px; background: rgba(37,99,235,0.05); border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <span style="font-size:12px; color:var(--text-secondary);">已选 ${selected.length} 行 · ${totalQty} 件</span>
+      </div>
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 600;">
+        合计：¥ ${totalAmount.toFixed(2)}
+      </div>
+    </div>
+  `;
+}
+
+function poFormToggleItem(liid, checked) {
+  PO_FORM_STATE.lineItemSelections[liid].checked = checked;
+  renderPoForm();
+}
+function poFormSetQty(liid, val) {
+  PO_FORM_STATE.lineItemSelections[liid].qty = parseInt(val) || 0;
+  renderPoForm();
+}
+function poFormSetPrice(liid, val) {
+  PO_FORM_STATE.lineItemSelections[liid].price = val;
+  renderPoForm();
+}
+
+function poFormSupplierSearch(q) {
+  const results = document.getElementById('poFormSupplierResults');
+  const matches = SUPPLIERS.search(q);
+  const exists = SUPPLIERS.byName(q.trim());
+  let html = matches.map(s => `
+    <div class="picker-item" onmousedown="poFormPickSupplier('${s.id}', '${escapeHtml(s.name).replace(/'/g,"\\'")}')">
+      <div>${escapeHtml(s.name)}</div>
+      <div class="stats">${s.contact_name || ''} ${s.contact_phone || ''} · ${s.total_orders || 0} 次合作</div>
+    </div>`).join('');
+  if (q.trim() && !exists) {
+    html += `<div class="picker-item new" onmousedown="poFormQuickAddSupplier('${escapeHtml(q.trim()).replace(/'/g,"\\'")}')">+ 新增供应商 "${escapeHtml(q.trim())}"</div>`;
+  }
+  results.innerHTML = html || '<div class="picker-item" style="color:var(--text-tertiary)">没有匹配的供应商</div>';
+  results.classList.add('show');
+}
+
+function poFormPickSupplier(id, name) {
+  PO_FORM_STATE.selectedSupplierId = id;
+  PO_FORM_STATE.selectedSupplierName = name;
+  document.getElementById('poFormSupplierInput').value = name;
+  document.getElementById('poFormSupplierResults').classList.remove('show');
+}
+
+async function poFormQuickAddSupplier(name) {
+  try {
+    const { data, error } = await sb.from('suppliers').insert({ name }).select().single();
+    if (error) throw error;
+    SUPPLIERS._list.push(data);
+    poFormPickSupplier(data.id, data.name);
+    toast('已新增供应商');
+  } catch (e) { toast('新增失败：' + (e.message || e), 'err'); }
+}
+
+function closePoForm() {
+  document.getElementById('poFormModal').style.display = 'none';
+  PO_FORM_STATE = null;
+}
+
+async function poFormSave() {
+  const so = PO_FORM_STATE.salesOrder;
+  const selected = Object.entries(PO_FORM_STATE.lineItemSelections).filter(([_, sel]) => sel.checked && sel.qty > 0);
+  if (selected.length === 0) { toast('请勾选至少 1 个产品', 'warn'); return; }
+
+  const supplierName = document.getElementById('poFormSupplierInput').value.trim();
+  if (!supplierName) { toast('请选择/输入供应商', 'warn'); return; }
+  let supplierId = PO_FORM_STATE.selectedSupplierId;
+  // 如果用户改了输入但没从下拉选，按名字找；找不到就新增
+  if (!supplierId || (SUPPLIERS.byId(supplierId)?.name !== supplierName)) {
+    const found = SUPPLIERS.byName(supplierName);
+    if (found) supplierId = found.id;
+    else {
+      const { data, error } = await sb.from('suppliers').insert({ name: supplierName }).select().single();
+      if (error) { toast('新增供应商失败：' + error.message, 'err'); return; }
+      SUPPLIERS._list.push(data);
+      supplierId = data.id;
+    }
+  }
+
+  const boxNote = document.getElementById('poFormBoxNote').value.trim();
+  const promisedDate = document.getElementById('poFormPromisedDate').value;
+  const note = document.getElementById('poFormNote').value.trim();
+
+  if (!promisedDate) { toast('请填承诺到货日', 'warn'); return; }
+  for (const [liid, sel] of selected) {
+    if (!sel.price || Number(sel.price) <= 0) { toast('请填所有勾选产品的单价', 'warn'); return; }
+  }
+
+  // 检查多供应商：按 default_supplier 拆
+  const items = so.line_items || [];
+  const groups = {};  // supplierName => [liid...]
+  selected.forEach(([liid, sel]) => {
+    const li = items.find(x => x.shopify_line_item_id === liid);
+    const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
+    const supName = eff.default_supplier || supplierName;
+    if (!groups[supName]) groups[supName] = [];
+    groups[supName].push(liid);
+  });
+
+  if (Object.keys(groups).length > 1) {
+    // 多供应商，弹提示
+    const totals = Object.entries(groups).map(([name, liids]) => {
+      const qty = liids.reduce((s, lid) => s + (PO_FORM_STATE.lineItemSelections[lid].qty || 0), 0);
+      return { name, count: liids.length, qty };
+    });
+    document.getElementById('multiSupplierBody').innerHTML = `
+      <p style="font-size: 13px; line-height: 1.6;">检测到选中的产品来自 <b>${totals.length} 个不同的默认供应商</b>：</p>
+      <ul style="font-size: 13px; padding-left: 20px; line-height: 1.8;">
+        ${totals.map(t => `<li><b>${escapeHtml(t.name)}</b> · ${t.count} 个产品 · ${t.qty} 件</li>`).join('')}
+      </ul>
+      <p style="font-size: 12px; color: var(--text-secondary); margin-top: 12px;">
+        选 <b>一键拆 ${totals.length} 张</b>：按供应商自动生成 ${totals.length} 张采购单（合计 ${totals.length} 张）<br>
+        选 <b>手动单独开</b>：取消本次保存，回上一步自己分批选
+      </p>
+    `;
+    document.getElementById('multiSupplierConfirm').style.display = 'flex';
+    PO_FORM_STATE._pendingGroups = groups;
+    PO_FORM_STATE._formData = { boxNote, promisedDate, note, supplierIdFallback: supplierId, supplierNameFallback: supplierName };
+    return;
+  }
+
+  // 单供应商，直接保存
+  await poFormDoSave([{ supplierId, supplierName, liids: selected.map(([liid]) => liid) }], { boxNote, promisedDate, note });
+}
+
+function closeMultiSupplierConfirm() {
+  document.getElementById('multiSupplierConfirm').style.display = 'none';
+}
+
+async function multiSupplierChoice(choice) {
+  document.getElementById('multiSupplierConfirm').style.display = 'none';
+  if (choice === 'manual') return;  // 用户自己再选
+  // split: 一键拆
+  const groups = PO_FORM_STATE._pendingGroups;
+  const fd = PO_FORM_STATE._formData;
+  const all = [];
+  for (const [supName, liids] of Object.entries(groups)) {
+    let supId;
+    const existing = SUPPLIERS.byName(supName);
+    if (existing) supId = existing.id;
+    else {
+      const { data } = await sb.from('suppliers').insert({ name: supName }).select().single();
+      if (data) { SUPPLIERS._list.push(data); supId = data.id; }
+    }
+    all.push({ supplierId: supId || fd.supplierIdFallback, supplierName: supName, liids });
+  }
+  await poFormDoSave(all, fd);
+}
+
+async function poFormDoSave(groups, common) {
+  const so = PO_FORM_STATE.salesOrder;
+  const items = so.line_items || [];
+  const siteCode = SHOPIFY.siteCodeOf(so.shop_domain);
+  const me = (DATA.agents.find(a => a.user_id === supabaseUser?.id)?.name) || '系统';
+
+  try {
+    const allInserts = [];
+    const allLineItemUpdates = JSON.parse(JSON.stringify(so.line_items));  // 深拷
+
+    for (const g of groups) {
+      // 生成 PO 编号
+      const { data: poNum } = await sb.rpc('generate_po_number');
+      if (!poNum) throw new Error('生成采购单编号失败');
+
+      const liData = g.liids.map(liid => {
+        const li = items.find(x => x.shopify_line_item_id === liid);
+        const sel = PO_FORM_STATE.lineItemSelections[liid];
+        const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
+        return {
+          shopify_line_item_id: liid,
+          sku: eff.sku || li.sku,
+          title_cn: eff.name_cn || '',
+          title_en: li.title || '',
+          variant: li.variant_title || '',
+          image_url: eff.image_url || li.image_url || '',
+          qty: Number(sel.qty),
+          price: Number(sel.price),
+          subtotal: Number(sel.qty) * Number(sel.price),
+        };
+      });
+      const totalAmount = liData.reduce((s, x) => s + x.subtotal, 0);
+      const firstLi = liData[0];
+
+      const poRow = {
+        po_number: poNum,
+        source: 'shopify',
+        supplier: g.supplierName,
+        product: liData.map(x => x.title_cn || x.title_en).join(' / '),
+        sku: firstLi.sku,
+        qty: liData.reduce((s, x) => s + x.qty, 0),
+        status: 'producing',
+        promisedDate: common.promisedDate,
+        line_items: liData,
+        box_note: common.boxNote,
+        total_amount: totalAmount,
+        sales_order_id: so.id,
+        creator_name: me,
+        site: siteCode,
+        orderNo: so.shopify_order_number,
+        note: common.note,
+        followups: [],
+      };
+      const { data: created, error: err } = await sb.from('orders').insert(poRow).select().single();
+      if (err) throw err;
+      allInserts.push(created);
+
+      // 更新 line_items 的 po_assignments
+      g.liids.forEach((liid, idx) => {
+        const target = allLineItemUpdates.find(x => x.shopify_line_item_id === liid);
+        if (target) {
+          target.po_assignments = target.po_assignments || [];
+          target.po_assignments.push({
+            po_id: created.id,
+            po_number: poNum,
+            qty: liData[idx].qty,
+            supplier: g.supplierName,
+            created_at: new Date().toISOString(),
+          });
+        }
+      });
+
+      // 更新 products 表的 last_purchase_price / default_supplier
+      for (const li of liData) {
+        await sb.from('products').update({
+          last_purchase_price: li.price,
+          default_supplier: g.supplierName,
+          last_purchased_at: new Date().toISOString(),
+        }).eq('sku', li.sku);
+      }
+
+      // 更新 suppliers 累计
+      if (g.supplierId) {
+        await sb.rpc('exec_sql', { sql: '' }).catch(() => {});
+        const sup = SUPPLIERS.byId(g.supplierId);
+        if (sup) {
+          await sb.from('suppliers').update({
+            total_orders: (sup.total_orders || 0) + 1,
+            total_amount: (Number(sup.total_amount) || 0) + totalAmount,
+            last_order_at: new Date().toISOString(),
+          }).eq('id', g.supplierId);
+        }
+      }
+    }
+
+    // 把更新后的 line_items 写回 shopify_orders
+    await sb.from('shopify_orders').update({
+      line_items: allLineItemUpdates,
+      local_status: 'processing',
+      updated_at: new Date().toISOString(),
+    }).eq('id', so.id);
+
+    toast(`✓ 成功开 ${allInserts.length} 张采购单`);
+    closePoForm();
+    await shopifyReloadOrdersAndRender();
+  } catch (e) {
+    toast('保存失败：' + (e.message || e), 'err');
+  }
+}
+
+// ============ 供应商档案管理 ============
+async function openSuppliersManager() {
+  try {
+    await SUPPLIERS.loadAll();
+    document.getElementById('suppliersModal').style.display = 'flex';
+    renderSuppliersList();
+  } catch (e) { toast('加载供应商失败：' + (e.message || e), 'err'); }
+}
+
+function closeSuppliersManager() {
+  document.getElementById('suppliersModal').style.display = 'none';
+}
+
+function renderSuppliersList() {
+  const q = document.getElementById('supSearch').value.toLowerCase();
+  const sort = document.getElementById('supSort').value;
+  let list = SUPPLIERS._list.filter(s => {
+    if (!q) return true;
+    return (s.name || '').toLowerCase().includes(q)
+        || (s.contact_name || '').toLowerCase().includes(q)
+        || (s.contact_phone || '').includes(q);
+  });
+  if (sort === 'orders') list.sort((a,b) => (b.total_orders||0) - (a.total_orders||0));
+  else if (sort === 'name') list.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  else if (sort === 'recent') list.sort((a,b) => new Date(b.last_order_at||0) - new Date(a.last_order_at||0));
+
+  const body = document.getElementById('suppliersListBody');
+  if (list.length === 0) {
+    body.innerHTML = '<div style="padding:32px; text-align:center; color:var(--text-tertiary);">无匹配</div>';
+    return;
+  }
+  body.innerHTML = `
+    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div class="supplier-header">
+        <div>名称</div><div>联系人</div><div>电话</div><div style="text-align:right;">下单数</div><div></div>
+      </div>
+      ${list.map(s => `
+        <div class="supplier-row" onclick="openSupplierEdit('${s.id}')">
+          <div class="name">${escapeHtml(s.name)}</div>
+          <div class="contact">${escapeHtml(s.contact_name || '—')}</div>
+          <div class="phone">${escapeHtml(s.contact_phone || '—')}</div>
+          <div class="orders">${s.total_orders || 0}</div>
+          <div class="actions"><button class="btn small" onclick="event.stopPropagation(); openSupplierEdit('${s.id}')">编辑</button></div>
+        </div>`).join('')}
+    </div>
+    <div style="padding:10px; text-align:center; color:var(--text-tertiary); font-size:11px;">共 ${list.length} 家</div>
+  `;
+}
+
+let SUPPLIER_EDIT_ID = null;
+function openSupplierEdit(id) {
+  SUPPLIER_EDIT_ID = id;
+  const s = id ? SUPPLIERS.byId(id) : { name:'', contact_name:'', contact_phone:'', contact_wechat:'', address:'', payment_terms:'', notes:'' };
+  document.getElementById('supplierEditTitle').textContent = id ? `编辑供应商：${s.name}` : '新增供应商';
+  document.getElementById('supplierDeleteBtn').style.display = id ? '' : 'none';
+  document.getElementById('supplierEditBody').innerHTML = `
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div style="grid-column:1/-1;"><label style="font-size:12px; font-weight:600;">供应商名 *</label><input id="seName" class="form-control" value="${escapeHtml(s.name||'')}" placeholder="如：优亮灯饰"></div>
+      <div><label style="font-size:12px; font-weight:600;">联系人</label><input id="seContact" class="form-control" value="${escapeHtml(s.contact_name||'')}"></div>
+      <div><label style="font-size:12px; font-weight:600;">电话</label><input id="sePhone" class="form-control" value="${escapeHtml(s.contact_phone||'')}"></div>
+      <div><label style="font-size:12px; font-weight:600;">微信</label><input id="seWechat" class="form-control" value="${escapeHtml(s.contact_wechat||'')}"></div>
+      <div><label style="font-size:12px; font-weight:600;">付款条件</label><input id="seTerms" class="form-control" value="${escapeHtml(s.payment_terms||'')}" placeholder="如：月结30天 / 见单付款"></div>
+      <div style="grid-column:1/-1;"><label style="font-size:12px; font-weight:600;">地址</label><input id="seAddress" class="form-control" value="${escapeHtml(s.address||'')}"></div>
+      <div style="grid-column:1/-1;"><label style="font-size:12px; font-weight:600;">备注</label><textarea id="seNotes" class="form-control" rows="2">${escapeHtml(s.notes||'')}</textarea></div>
+      ${id ? `<div style="grid-column:1/-1; padding:8px 10px; background:var(--bg-elevated); border-radius:6px; font-size:11px; color:var(--text-tertiary);">累计下单：${s.total_orders||0} 次 · 累计金额：¥${Number(s.total_amount||0).toFixed(2)}</div>` : ''}
+    </div>
+  `;
+  document.getElementById('supplierEditModal').style.display = 'flex';
+}
+
+function closeSupplierEdit() {
+  document.getElementById('supplierEditModal').style.display = 'none';
+  SUPPLIER_EDIT_ID = null;
+}
+
+async function supplierSave() {
+  const payload = {
+    name: document.getElementById('seName').value.trim(),
+    contact_name: document.getElementById('seContact').value.trim(),
+    contact_phone: document.getElementById('sePhone').value.trim(),
+    contact_wechat: document.getElementById('seWechat').value.trim(),
+    payment_terms: document.getElementById('seTerms').value.trim(),
+    address: document.getElementById('seAddress').value.trim(),
+    notes: document.getElementById('seNotes').value.trim(),
+    updated_at: new Date().toISOString(),
+  };
+  if (!payload.name) { toast('名称必填', 'warn'); return; }
+  try {
+    if (SUPPLIER_EDIT_ID) {
+      const { error } = await sb.from('suppliers').update(payload).eq('id', SUPPLIER_EDIT_ID);
+      if (error) throw error;
+    } else {
+      const { error } = await sb.from('suppliers').insert(payload);
+      if (error) throw error;
+    }
+    await SUPPLIERS.loadAll();
+    renderSuppliersList();
+    closeSupplierEdit();
+    toast('已保存');
+  } catch (e) { toast('保存失败：' + (e.message || e), 'err'); }
+}
+
+async function supplierDelete() {
+  if (!SUPPLIER_EDIT_ID) return;
+  const s = SUPPLIERS.byId(SUPPLIER_EDIT_ID);
+  if (!confirm(`确认删除供应商 "${s?.name}"？（仅停用，历史采购单不影响）`)) return;
+  try {
+    await sb.from('suppliers').update({ is_active: false }).eq('id', SUPPLIER_EDIT_ID);
+    await SUPPLIERS.loadAll();
+    renderSuppliersList();
+    closeSupplierEdit();
+    toast('已删除');
+  } catch (e) { toast('删除失败：' + (e.message || e), 'err'); }
+}
+
+// ============ 产品维护 ============
+async function renderProducts() {
+  try {
+    await PRODUCTS_CACHE.loadAll();
+    renderProductsList();
+  } catch (e) { toast('加载产品失败：' + (e.message || e), 'err'); }
+}
+
+function renderProductsList() {
+  const q = (document.getElementById('productSearch')?.value || '').toLowerCase();
+  const filter = document.getElementById('productFilter')?.value || 'all';
+  const site = document.getElementById('productSiteFilter')?.value || 'all';
+  let list = PRODUCTS_CACHE._all.slice();
+  if (q) list = list.filter(p =>
+    (p.sku || '').toLowerCase().includes(q) ||
+    (p.name_cn || '').toLowerCase().includes(q) ||
+    (p.name_en || '').toLowerCase().includes(q)
+  );
+  if (filter === 'no_cn') list = list.filter(p => !p.name_cn);
+  else if (filter === 'no_supplier') list = list.filter(p => !p.default_supplier);
+  else if (filter === 'masters') list = list.filter(p => !p.master_product_id && PRODUCTS_CACHE._all.some(x => x.master_product_id === p.id));
+  else if (filter === 'aliases') list = list.filter(p => !!p.master_product_id);
+  if (site !== 'all') list = list.filter(p => (p.sku || '').startsWith(site) || (p.sku || '').includes('-' + site + '-'));
+
+  document.getElementById('productsCountHint').textContent = `${list.length} / ${PRODUCTS_CACHE._all.length} 个产品`;
+
+  const body = document.getElementById('productsListBody');
+  if (list.length === 0) {
+    body.innerHTML = '<div style="padding:32px; text-align:center; color:var(--text-tertiary);">无匹配产品</div>';
+    return;
+  }
+
+  body.innerHTML = `
+    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div class="product-header">
+        <div></div><div>SKU / 英文名</div><div>中文名</div><div>默认供应商</div><div>上次单价</div><div></div>
+      </div>
+      ${list.slice(0, 200).map(p => {
+        const hasAlias = !p.master_product_id && PRODUCTS_CACHE._all.some(x => x.master_product_id === p.id);
+        const isAlias = !!p.master_product_id;
+        const master = isAlias ? PRODUCTS_CACHE._byId[p.master_product_id] : null;
+        return `
+        <div class="product-row ${isAlias ? 'is-alias' : ''}">
+          ${p.image_url ? `<img class="prod-img" src="${escapeHtml(p.image_url)}" onclick="openImgLightbox('${escapeHtml(p.image_url)}')">` : `<div class="prod-noimg">📷</div>`}
+          <div>
+            <div class="sku">${escapeHtml(p.sku)}${hasAlias ? '<span class="master-tag">主</span>' : ''}${isAlias ? `<span class="alias-tag">同款: ${escapeHtml(master?.sku || '')}</span>` : ''}</div>
+            <div class="name-en">${escapeHtml(p.name_en || '')}</div>
+          </div>
+          <div>
+            <div class="name-cn">${p.name_cn ? escapeHtml(p.name_cn) : '<span style="color:var(--text-tertiary)">未维护</span>'}</div>
+          </div>
+          <div style="font-size:12px;">${p.default_supplier ? escapeHtml(p.default_supplier) : '<span style="color:var(--text-tertiary)">—</span>'}</div>
+          <div class="price">${p.last_purchase_price ? '¥' + Number(p.last_purchase_price).toFixed(2) : '—'}</div>
+          <div class="actions">
+            <button class="btn small" onclick="openProductEdit('${p.id}')">编辑</button>
+            <button class="btn small" onclick="openMasterBind('${p.id}')" title="同款绑定">🔗</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    ${list.length > 200 ? `<div style="padding:10px; text-align:center; color:var(--text-tertiary); font-size:11px;">仅显示前 200 个，请用搜索筛选</div>` : ''}
+  `;
+}
+
+function openProductEdit(productId) {
+  const p = PRODUCTS_CACHE._byId[productId];
+  if (!p) return;
+  const newCn = prompt(`编辑「${p.sku}」中文名`, p.name_cn || '');
+  if (newCn === null) return;
+  sb.from('products').update({ name_cn: newCn.trim() }).eq('id', productId).then(({error}) => {
+    if (error) toast('保存失败', 'err');
+    else { toast('已保存'); renderProducts(); }
+  });
+}
+
+// ============ 同款绑定 ============
+let MASTER_BIND_PRODUCT_ID = null;
+async function openMasterBind(productId) {
+  MASTER_BIND_PRODUCT_ID = productId;
+  await PRODUCTS_CACHE.loadAll();
+  renderMasterBind();
+  document.getElementById('masterBindModal').style.display = 'flex';
+}
+function closeMasterBind() {
+  document.getElementById('masterBindModal').style.display = 'none';
+  MASTER_BIND_PRODUCT_ID = null;
+}
+function renderMasterBind() {
+  const p = PRODUCTS_CACHE._byId[MASTER_BIND_PRODUCT_ID];
+  if (!p) return;
+  // 找出主产品（若 p 是 alias，主就是 master_product_id 指向的；若 p 自身是主，就是它）
+  const masterId = p.master_product_id || p.id;
+  const master = PRODUCTS_CACHE._byId[masterId];
+  const aliases = PRODUCTS_CACHE._all.filter(x => x.master_product_id === masterId);
+
+  document.getElementById('masterBindBody').innerHTML = `
+    <div style="background: var(--bg-elevated); padding: 12px; border-radius: 8px; margin-bottom: 12px;">
+      <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px;">主产品（同款代表）</div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        ${master.image_url ? `<img src="${escapeHtml(master.image_url)}" style="width:48px; height:48px; border-radius:6px; object-fit:cover;">` : ''}
+        <div>
+          <div style="font-family:'JetBrains Mono', monospace; color: var(--accent); font-size: 12px;">${escapeHtml(master.sku)}</div>
+          <div style="font-weight: 500;">${escapeHtml(master.name_cn || master.name_en || '')}</div>
+        </div>
+        ${master.id !== MASTER_BIND_PRODUCT_ID ? `<button class="btn small" style="margin-left:auto;" onclick="masterUnbindSelf()">解除我自己的绑定</button>` : ''}
+      </div>
+    </div>
+
+    <h4 style="margin: 12px 0 8px; font-size: 13px;">已关联同款 (${aliases.length})</h4>
+    ${aliases.length === 0 ? `<div style="font-size: 12px; color: var(--text-tertiary); padding: 8px;">还没有绑定其他 SKU 为同款</div>` :
+      `<div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; overflow: hidden;">
+        ${aliases.map(a => `
+          <div style="display:grid; grid-template-columns: 48px 1fr 80px; gap: 10px; padding: 8px 12px; align-items: center; border-bottom: 1px solid var(--border-subtle);">
+            ${a.image_url ? `<img src="${escapeHtml(a.image_url)}" style="width:40px; height:40px; border-radius:4px; object-fit:cover;">` : '<div></div>'}
+            <div>
+              <div style="font-family:'JetBrains Mono', monospace; color: var(--accent); font-size:11px;">${escapeHtml(a.sku)}</div>
+              <div style="font-size: 12px;">${escapeHtml(a.name_en || '')}</div>
+            </div>
+            <button class="btn small danger" onclick="masterRemoveAlias('${a.id}')">移除</button>
+          </div>
+        `).join('')}
+      </div>`}
+
+    <h4 style="margin: 14px 0 8px; font-size: 13px;">+ 添加同款</h4>
+    <input type="text" id="masterBindSearch" placeholder="🔍 搜其他 SKU / 名称 来添加为同款" oninput="masterBindSearchInput(this.value)" class="form-control">
+    <div id="masterBindSearchResults" style="margin-top: 8px; max-height: 200px; overflow-y: auto;"></div>
+  `;
+}
+
+function masterBindSearchInput(q) {
+  const results = document.getElementById('masterBindSearchResults');
+  if (!q || q.length < 2) { results.innerHTML = ''; return; }
+  const lower = q.toLowerCase();
+  const masterId = PRODUCTS_CACHE._byId[MASTER_BIND_PRODUCT_ID]?.master_product_id || MASTER_BIND_PRODUCT_ID;
+  const candidates = PRODUCTS_CACHE._all.filter(p =>
+    p.id !== masterId && p.master_product_id !== masterId &&
+    ((p.sku || '').toLowerCase().includes(lower) || (p.name_en || '').toLowerCase().includes(lower) || (p.name_cn || '').toLowerCase().includes(lower))
+  ).slice(0, 15);
+  if (candidates.length === 0) { results.innerHTML = '<div style="font-size:12px; color:var(--text-tertiary); padding:8px;">无匹配</div>'; return; }
+  results.innerHTML = candidates.map(c => `
+    <div style="display:grid; grid-template-columns: 40px 1fr 80px; gap: 10px; padding: 6px 10px; align-items: center; border-bottom: 1px solid var(--border-subtle); cursor:pointer;" onclick="masterAddAlias('${c.id}')">
+      ${c.image_url ? `<img src="${escapeHtml(c.image_url)}" style="width:36px; height:36px; border-radius:4px; object-fit:cover;">` : '<div></div>'}
+      <div>
+        <div style="font-family:'JetBrains Mono', monospace; color: var(--accent); font-size:11px;">${escapeHtml(c.sku)}</div>
+        <div style="font-size: 12px;">${escapeHtml(c.name_en || c.name_cn || '')}</div>
+      </div>
+      <button class="btn small primary">加为同款</button>
+    </div>`).join('');
+}
+
+async function masterAddAlias(aliasId) {
+  const masterId = PRODUCTS_CACHE._byId[MASTER_BIND_PRODUCT_ID]?.master_product_id || MASTER_BIND_PRODUCT_ID;
+  try {
+    await sb.from('products').update({ master_product_id: masterId }).eq('id', aliasId);
+    await PRODUCTS_CACHE.loadAll();
+    renderMasterBind();
+    toast('已绑定为同款');
+  } catch (e) { toast('失败：' + (e.message || e), 'err'); }
+}
+async function masterRemoveAlias(aliasId) {
+  if (!confirm('确认移除该 SKU 的同款绑定？')) return;
+  try {
+    await sb.from('products').update({ master_product_id: null }).eq('id', aliasId);
+    await PRODUCTS_CACHE.loadAll();
+    renderMasterBind();
+    toast('已移除');
+  } catch (e) { toast('失败：' + (e.message || e), 'err'); }
+}
+async function masterUnbindSelf() {
+  try {
+    await sb.from('products').update({ master_product_id: null }).eq('id', MASTER_BIND_PRODUCT_ID);
+    await PRODUCTS_CACHE.loadAll();
+    renderMasterBind();
+    toast('已解除');
+  } catch (e) { toast('失败', 'err'); }
+}
+
+// ============ 采购单 tab ============
+let PO_LIST = [];
+let PO_FILTER = 'all';
+async function renderPo() {
+  try {
+    const { data } = await sb.from('orders').select('*').not('po_number', 'is', null).order('created_at', { ascending: false }).limit(500);
+    PO_LIST = data || [];
+    poRefreshCounts();
+    renderPoList();
+  } catch (e) { toast('加载采购单失败：' + (e.message || e), 'err'); }
+}
+function poRefreshCounts() {
+  const counts = { all: PO_LIST.length, active: 0, done: 0, cancelled: 0 };
+  PO_LIST.forEach(p => {
+    if (p.status === 'cancelled') counts.cancelled++;
+    else if (['arrived', 'received'].includes(p.status)) counts.done++;
+    else counts.active++;
+  });
+  document.getElementById('poCntAll').textContent = counts.all;
+  document.getElementById('poCntActive').textContent = counts.active;
+  document.getElementById('poCntDone').textContent = counts.done;
+  document.getElementById('poCntCancelled').textContent = counts.cancelled;
+  if (typeof setBadge === 'function') setBadge('badgePo', counts.active);
+}
+function poShowFilter(f) {
+  PO_FILTER = f;
+  document.querySelectorAll('.sub-tab-btn[data-pofilter]').forEach(b => b.classList.toggle('active', b.dataset.pofilter === f));
+  renderPoList();
+}
+function renderPoList() {
+  let list = PO_LIST;
+  if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
+  else if (PO_FILTER === 'done') list = list.filter(p => ['arrived', 'received'].includes(p.status));
+  else if (PO_FILTER === 'active') list = list.filter(p => p.status !== 'cancelled' && !['arrived', 'received'].includes(p.status));
+
+  const body = document.getElementById('poListBody');
+  if (list.length === 0) {
+    body.innerHTML = '<div style="padding:32px; text-align:center; color:var(--text-tertiary);">无采购单</div>';
+    return;
+  }
+  body.innerHTML = list.map(p => {
+    const items = p.line_items || [];
+    const created = p.created_at ? new Date(p.created_at).toISOString().slice(0,10) : '';
+    return `
+      <div class="po-card ${p.status === 'cancelled' ? 'cancelled' : ''}">
+        <div class="po-card-top">
+          <div>
+            <span class="po-no">${escapeHtml(p.po_number || '')}</span>
+            <span class="po-meta" style="margin-left: 12px;">销售单 <b>${escapeHtml(p.orderNo || '')}</b> · ${escapeHtml(p.site || '')}</span>
+          </div>
+          <div class="po-meta">供应商：<b>${escapeHtml(p.supplier || '')}</b></div>
+          <div class="po-meta" style="text-align:right; font-family: 'JetBrains Mono', monospace;">¥ ${Number(p.total_amount || 0).toFixed(2)}</div>
+        </div>
+        <div class="po-card-body" style="display: grid; grid-template-columns: 1fr 200px; gap: 12px; font-size: 12px;">
+          <div>
+            ${items.slice(0,3).map(li => `<div style="margin-bottom:4px;">${escapeHtml(li.title_cn || li.title_en)} <span style="color:var(--text-tertiary)">× ${li.qty}</span> @ ¥${Number(li.price).toFixed(2)}</div>`).join('')}
+            ${items.length > 3 ? `<div style="color:var(--text-tertiary); font-size:11px;">还有 ${items.length-3} 行…</div>` : ''}
+            <div style="color:var(--text-secondary); margin-top:6px;">📦 ${escapeHtml(p.box_note || '')}</div>
+          </div>
+          <div style="font-size: 11px; color: var(--text-tertiary);">
+            <div>开单：${created}</div>
+            <div>承诺到货：${escapeHtml(p.promisedDate || '—')}</div>
+            <div>状态：${escapeHtml(p.status || '')}</div>
+            <div>跟单：${escapeHtml(p.creator_name || '')}</div>
+          </div>
+        </div>
+        <div class="po-card-actions">
+          <div style="font-size: 11px; color: var(--text-tertiary);">${items.length} 个产品行 · ${items.reduce((s,x) => s + (x.qty||0), 0)} 件</div>
+          <div style="display: flex; gap: 6px;">
+            <button class="so-action-btn" onclick="poOpenPrint('${p.id}')">🖨 打印预览</button>
+            ${p.status !== 'cancelled' && !['arrived','received'].includes(p.status) ? `<button class="so-action-btn danger" onclick="poCancel('${p.id}')">取消采购单</button>` : ''}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function poCancel(poId) {
+  if (!confirm('确认取消此采购单？\n该 line items 会释放，可重新开新的采购单。')) return;
+  try {
+    const po = PO_LIST.find(x => x.id === poId);
+    if (!po) return;
+    await sb.from('orders').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', poId);
+    // 释放 sales_order line_items 中对应的 po_assignments
+    if (po.sales_order_id) {
+      const { data: so } = await sb.from('shopify_orders').select('line_items').eq('id', po.sales_order_id).single();
+      if (so) {
+        const updatedItems = (so.line_items || []).map(li => ({
+          ...li,
+          po_assignments: (li.po_assignments || []).filter(a => a.po_id !== poId),
+        }));
+        await sb.from('shopify_orders').update({ line_items: updatedItems, updated_at: new Date().toISOString() }).eq('id', po.sales_order_id);
+      }
+    }
+    toast('已取消');
+    await renderPo();
+  } catch (e) { toast('取消失败：' + (e.message || e), 'err'); }
+}
+
+// ============ 打印预览 ============
+function poOpenPrint(poId) {
+  const po = PO_LIST.find(x => x.id === poId);
+  if (!po) return;
+  const items = po.line_items || [];
+  const totalQty = items.reduce((s,x) => s + (x.qty||0), 0);
+  const totalAmount = items.reduce((s,x) => s + (x.subtotal||0), 0);
+
+  document.getElementById('poPrintBody').innerHTML = `
+    <div class="po-print" id="poPrintContent">
+      <h1>采 购 单</h1>
+      <div class="sub">PURCHASE ORDER</div>
+      <div class="meta-grid">
+        <div><b>采购单号：</b>${escapeHtml(po.po_number)}</div>
+        <div><b>开单日期：</b>${new Date(po.created_at).toLocaleDateString()}</div>
+        <div><b>供 应 商：</b>${escapeHtml(po.supplier)}</div>
+        <div><b>承诺到货：</b>${escapeHtml(po.promisedDate || '—')}</div>
+        <div><b>关联销售：</b>${escapeHtml(po.orderNo || '')} (${escapeHtml(po.site || '')})</div>
+        <div><b>跟  单：</b>${escapeHtml(po.creator_name || '')}</div>
+      </div>
+      <table>
+        <thead><tr><th width="50">序号</th><th width="80">图片</th><th width="140">编号</th><th>产品名称/规格</th><th width="60">数量</th><th width="80">单价</th><th width="100">小计</th></tr></thead>
+        <tbody>
+          ${items.map((li, i) => `
+            <tr>
+              <td style="text-align:center;">${i+1}</td>
+              <td style="text-align:center;">${li.image_url ? `<img src="${escapeHtml(li.image_url)}">` : '—'}</td>
+              <td style="font-family:monospace;">${escapeHtml(li.sku)}</td>
+              <td>${escapeHtml(li.title_cn || li.title_en)}<br><span style="color:#888; font-size:11px;">${escapeHtml(li.variant || '')}</span></td>
+              <td style="text-align:center;">${li.qty}</td>
+              <td style="text-align:right;">¥ ${Number(li.price).toFixed(2)}</td>
+              <td style="text-align:right;">¥ ${Number(li.subtotal).toFixed(2)}</td>
+            </tr>`).join('')}
+          <tr class="total-row">
+            <td colspan="4" style="text-align:right;">合计</td>
+            <td style="text-align:center;">${totalQty}</td>
+            <td></td>
+            <td style="text-align:right;">¥ ${totalAmount.toFixed(2)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div><b style="font-size:13px;">⚠ 订单备注（请写在纸箱上）：</b></div>
+      <div class="note-box" style="font-size:16px; font-weight:600; font-family:monospace;">${escapeHtml(po.box_note || '—')}</div>
+      ${po.note ? `<div><b style="font-size:13px;">其他备注：</b></div><div class="note-box">${escapeHtml(po.note)}</div>` : ''}
+      <div class="signature">
+        <div><b>采购方签字：</b><div class="line"></div></div>
+        <div><b>供应商签字：</b><div class="line"></div></div>
+      </div>
+    </div>
+  `;
+  document.getElementById('poPrintModal').style.display = 'flex';
+}
+function closePoPrint() { document.getElementById('poPrintModal').style.display = 'none'; }
+function poPrintNow() { window.print(); }
+// 兼容旧引用
 
 // ============ 接入 renderActiveTab ============
 const _origRenderActiveTab = renderActiveTab;
