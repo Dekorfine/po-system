@@ -2670,10 +2670,12 @@ textarea.form-control { resize: vertical; min-height: 70px; }
           <button class="btn small" onclick="openSuppliersManager()" style="font-size:12px;">🏭 供应商档案</button>
         </div>
       </div>
+      <div id="poStatsContainer" style="margin-top: 12px;"></div>
       <div class="po-subtabs" style="margin-top: 12px;">
         <button class="sub-tab-btn active" data-pofilter="all" onclick="poShowFilter('all')">📋 全部 <span class="cnt" id="poCntAll">0</span></button>
         <button class="sub-tab-btn" data-pofilter="pending" onclick="poShowFilter('pending')">⏳ 待审批 <span class="cnt" id="poCntPending">0</span></button>
-        <button class="sub-tab-btn" data-pofilter="active" onclick="poShowFilter('active')">🟡 进行中 <span class="cnt" id="poCntActive">0</span></button>
+        <button class="sub-tab-btn" data-pofilter="producing" onclick="poShowFilter('producing')">📝 待发供应商 <span class="cnt" id="poCntProducing">0</span></button>
+        <button class="sub-tab-btn" data-pofilter="ordered" onclick="poShowFilter('ordered')">📤 已下单 <span class="cnt" id="poCntOrdered">0</span></button>
         <button class="sub-tab-btn" data-pofilter="done" onclick="poShowFilter('done')">✅ 已完成 <span class="cnt" id="poCntDone">0</span></button>
         <button class="sub-tab-btn" data-pofilter="cancelled" onclick="poShowFilter('cancelled')">⊘ 已取消 <span class="cnt" id="poCntCancelled">0</span></button>
       </div>
@@ -11563,9 +11565,16 @@ function extractVariantInfo(variantTitle) {
   const seenDimensions = new Set();  // 去重：网站同时给英寸和 cm 时只保留一个
   const parts = variantTitle.split(/[/|]/).map(s => s.trim()).filter(Boolean);
 
-  // 标准化尺寸字符串（忽略空格/大小写/.0 结尾，便于比较去重）
+  // 标准化尺寸字符串（忽略空格/大小写/.0 结尾/直径符号同义词，便于比较去重）
   function normSize(s) {
-    return s.replace(/\s+/g, '').toLowerCase().replace(/\.0cm/g, 'cm');
+    let n = s.toLowerCase().replace(/\s+/g, '');
+    // 把所有"直径"同义词统一为 d（注意：\b 在字母-数字之间不算边界，所以用 lookahead）
+    n = n.replace(/[ø⌀]/g, 'd');
+    n = n.replace(/diameter/g, 'd');           // 先匹配长的
+    n = n.replace(/dia(?![a-z])/g, 'd');       // "dia80" 替换，"diagonal" 不替换
+    // 标准化 .0 结尾（80.0cm → 80cm）
+    n = n.replace(/(\d+)\.0+(?=cm|mm)/g, '$1');
+    return n;
   }
   function addDimension(text) {
     const key = normSize(text);
@@ -12758,25 +12767,126 @@ async function renderPo() {
     PO_LIST = data || [];
     poRefreshCounts();
     renderPoList();
+    loadPoStats();  // 异步加载业绩统计
   } catch (e) { toast('加载采购单失败：' + (e.message || e), 'err'); }
 }
 
+// 业绩统计：自己的下单数（管理员可看团队总计）
+async function loadPoStats() {
+  const container = document.getElementById('poStatsContainer');
+  if (!container) return;
+  const me = (typeof CURRENT_AGENT === 'string' && CURRENT_AGENT) ? CURRENT_AGENT : '';
+  if (!me) { container.innerHTML = ''; return; }
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const periods = [
+    { label: '今天',   since: startOfToday },
+    { label: '近7天',  since: new Date(now.getTime() - 7  * 86400000).toISOString() },
+    { label: '近30天', since: new Date(now.getTime() - 30 * 86400000).toISOString() },
+    { label: '近90天', since: new Date(now.getTime() - 90 * 86400000).toISOString() },
+    { label: '近1年',  since: new Date(now.getTime() - 365 * 86400000).toISOString() },
+  ];
+
+  // 一次查询近 1 年的，前端切片
+  const { data, error } = await sb.from('orders')
+    .select('total_amount, status, creator_name, created_at')
+    .gte('created_at', periods[periods.length - 1].since)
+    .not('po_number', 'is', null);
+  if (error) { console.warn('业绩统计加载失败：', error); return; }
+
+  const myRows = (data || []).filter(r => r.creator_name === me);
+  const allRows = data || [];
+
+  const myStats = periods.map(p => {
+    const rows = myRows.filter(r => r.created_at >= p.since);
+    return { label: p.label, count: rows.length, amount: rows.reduce((s, x) => s + Number(x.total_amount || 0), 0) };
+  });
+
+  let html = `
+    <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">📊 我的业绩 <span style="font-weight:400; color:var(--text-tertiary); margin-left:6px;">${escapeHtml(me)}</span></div>
+        ${IS_ADMIN ? '<button class="btn small" onclick="poStatsToggleTeam()" style="font-size:11px;" id="poStatsToggleBtn">👥 查看全员</button>' : ''}
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;">
+        ${myStats.map(s => `
+          <div style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 11px; color: var(--text-tertiary);">${s.label}</div>
+            <div style="font-size: 20px; font-weight: 700; color: var(--accent); margin-top:2px;">${s.count}<span style="font-size: 11px; font-weight: 400; color: var(--text-tertiary); margin-left: 3px;">张</span></div>
+            <div style="font-size: 10px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">¥ ${s.amount.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</div>
+          </div>
+        `).join('')}
+      </div>
+      <div id="poStatsTeam" style="display:none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-subtle);">
+        <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">👥 全员业绩（近1年）</div>
+        ${(() => {
+          const byCreator = {};
+          allRows.forEach(r => {
+            const c = r.creator_name || '未知';
+            if (!byCreator[c]) byCreator[c] = { count: 0, amount: 0 };
+            byCreator[c].count++;
+            byCreator[c].amount += Number(r.total_amount || 0);
+          });
+          const sorted = Object.entries(byCreator).sort(([,a], [,b]) => b.count - a.count);
+          if (sorted.length === 0) return '<div style="font-size:12px; color:var(--text-tertiary);">暂无数据</div>';
+          return `<table style="width:100%; font-size:12px; border-collapse:collapse;">
+            <thead><tr style="color:var(--text-tertiary); text-align:left;">
+              <th style="padding:4px 8px;">跟单</th>
+              <th style="padding:4px 8px; text-align:right;">今天</th>
+              <th style="padding:4px 8px; text-align:right;">近7天</th>
+              <th style="padding:4px 8px; text-align:right;">近30天</th>
+              <th style="padding:4px 8px; text-align:right;">近90天</th>
+              <th style="padding:4px 8px; text-align:right;">近1年</th>
+              <th style="padding:4px 8px; text-align:right;">总金额（1年）</th>
+            </tr></thead>
+            <tbody>
+              ${sorted.map(([creator, _]) => {
+                const rs = allRows.filter(r => r.creator_name === creator);
+                const counts = periods.map(p => rs.filter(r => r.created_at >= p.since).length);
+                const totalAmount = rs.reduce((s, x) => s + Number(x.total_amount || 0), 0);
+                const isMe = creator === me;
+                return `<tr style="border-top:1px solid var(--border-subtle); ${isMe ? 'background:rgba(37,99,235,0.04);' : ''}">
+                  <td style="padding:4px 8px; font-weight:${isMe ? '600' : '400'};">${escapeHtml(creator)}${isMe ? ' <span style="font-size:10px; color:var(--accent);">(我)</span>' : ''}</td>
+                  ${counts.map(c => `<td style="padding:4px 8px; text-align:right; font-family:monospace;">${c}</td>`).join('')}
+                  <td style="padding:4px 8px; text-align:right; font-family:monospace; color:var(--text-secondary);">¥ ${totalAmount.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>`;
+        })()}
+      </div>
+    </div>
+  `;
+  container.innerHTML = html;
+}
+
+function poStatsToggleTeam() {
+  const el = document.getElementById('poStatsTeam');
+  const btn = document.getElementById('poStatsToggleBtn');
+  if (!el) return;
+  const visible = el.style.display !== 'none';
+  el.style.display = visible ? 'none' : 'block';
+  if (btn) btn.textContent = visible ? '👥 查看全员' : '👥 收起';
+}
+
 function poRefreshCounts() {
-  const counts = { all: PO_LIST.length, active: 0, done: 0, cancelled: 0, pending: 0 };
+  const counts = { all: PO_LIST.length, producing: 0, ordered: 0, done: 0, cancelled: 0, pending: 0 };
   PO_LIST.forEach(p => {
     if (p.status === 'cancelled') counts.cancelled++;
     else if (p.status === 'received') counts.done++;
-    else counts.active++;
-    if (p.status === 'pending_approval') counts.pending++;
+    else if (p.status === 'pending_approval') counts.pending++;
+    else if (p.status === 'producing') counts.producing++;
+    else if (['sent', 'confirmed', 'arrived'].includes(p.status)) counts.ordered++;
   });
   document.getElementById('poCntAll').textContent = counts.all;
-  document.getElementById('poCntActive').textContent = counts.active;
+  document.getElementById('poCntProducing').textContent = counts.producing;
+  document.getElementById('poCntOrdered').textContent = counts.ordered;
   document.getElementById('poCntDone').textContent = counts.done;
   document.getElementById('poCntCancelled').textContent = counts.cancelled;
   const pendingEl = document.getElementById('poCntPending');
   if (pendingEl) pendingEl.textContent = counts.pending;
-  // badge: 主管显示待审批数，跟单显示进行中
-  if (typeof setBadge === 'function') setBadge('badgePo', IS_ADMIN && counts.pending > 0 ? counts.pending : counts.active);
+  if (typeof setBadge === 'function') setBadge('badgePo', IS_ADMIN && counts.pending > 0 ? counts.pending : (counts.producing + counts.ordered));
 }
 
 function poShowFilter(f) {
@@ -12788,9 +12898,10 @@ function poShowFilter(f) {
 function renderPoList() {
   let list = PO_LIST;
   if (PO_FILTER === 'pending') list = list.filter(p => p.status === 'pending_approval');
+  else if (PO_FILTER === 'producing') list = list.filter(p => p.status === 'producing');
+  else if (PO_FILTER === 'ordered') list = list.filter(p => ['sent', 'confirmed', 'arrived'].includes(p.status));
   else if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
   else if (PO_FILTER === 'done') list = list.filter(p => p.status === 'received');
-  else if (PO_FILTER === 'active') list = list.filter(p => p.status !== 'cancelled' && p.status !== 'received');
 
   const body = document.getElementById('poListBody');
   if (list.length === 0) {
