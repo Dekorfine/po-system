@@ -11512,11 +11512,10 @@ const PRODUCTS_CACHE = {
   },
 };
 
-// ============ 从 variant_title 自动提取 尺寸（英寸→cm）+ 色温 + 材质 ============
+// ============ 从 variant_title 自动提取 尺寸（英寸→cm 取整）+ 色温 + 材质 + N-Lights 灯头 ============
 function extractVariantInfo(variantTitle) {
   if (!variantTitle) return '';
   const out = [];
-  // 同时支持 / 和 | 作为分隔符
   const parts = variantTitle.split(/[/|]/).map(s => s.trim()).filter(Boolean);
 
   // 材质中英对照
@@ -11533,42 +11532,55 @@ function extractVariantInfo(variantTitle) {
     paper: '纸艺', alabaster: '雪花石',
   };
 
+  // 英寸 → cm 整数（保留 1 位小数显示 .0）
+  const inchToCm = (inchStr) => Math.round(parseFloat(inchStr) * 2.54).toFixed(1) + 'cm';
+
+  // N-Lights → N 头
+  function translateLights(text) {
+    return text.replace(/(\d+)\s*-?\s*(?:light|lights|head|heads|bulbs?)\b/gi, '$1 头');
+  }
+
   for (const part of parts) {
-    // 1. 尺寸（含英寸 " 或 ' 的）→ 全部转 cm
+    // 1. 尺寸（含英寸）→ 全部转整数 cm；同时把 N-Lights 也翻译
     if (/\d+(?:\.\d+)?\s*["'″]/.test(part)) {
-      const cmText = part.replace(/(\d+(?:\.\d+)?)\s*["'″]/g, (_, n) => (parseFloat(n) * 2.54).toFixed(1) + 'cm');
+      let cmText = part.replace(/(\d+(?:\.\d+)?)\s*["'″]/g, (_, n) => inchToCm(n));
+      cmText = translateLights(cmText);
       out.push('尺寸：' + cmText);
       continue;
     }
-    // 2. 已经是 cm 的尺寸
+    // 2. 已是 cm
     if (/\d+(?:\.\d+)?\s*cm/i.test(part)) {
-      out.push('尺寸：' + part);
+      out.push('尺寸：' + translateLights(part));
       continue;
     }
-    // 3. mm 的尺寸
+    // 3. 是 mm
     if (/\d+(?:\.\d+)?\s*mm/i.test(part)) {
-      out.push('尺寸：' + part);
+      out.push('尺寸：' + translateLights(part));
       continue;
     }
-    // 4. 色温
+    // 4. 单独的 N-Lights（无尺寸）
+    if (/\d+\s*-?\s*(light|lights|head|heads|bulbs?)\b/i.test(part) && !/(warm|cool|natural|daylight)/i.test(part)) {
+      out.push('灯头：' + translateLights(part));
+      continue;
+    }
+    // 5. 色温
     if (/warm\s*(light|white)|3000\s*k/i.test(part)) { out.push('色温：暖光 3000K'); continue; }
     if (/cool\s*(light|white)|6000\s*k|6500\s*k/i.test(part)) { out.push('色温：冷光 6000K'); continue; }
     if (/natural\s*(light|white)|neutral\s*white|4000\s*k/i.test(part)) { out.push('色温：中性光 4000K'); continue; }
     if (/daylight|5000\s*k/i.test(part)) { out.push('色温：日光 5000K'); continue; }
-    // 5. 可调光
+    // 6. 可调光
     if (/triac.*dimm|dimmable.*triac/i.test(part)) { out.push('可控硅调光'); continue; }
     if (/0-10v|0-?10\s*v/i.test(part)) { out.push('0-10V 调光'); continue; }
     if (/dimmable/i.test(part)) { out.push('可调光'); continue; }
 
-    // 6. 材质（部分匹配）
+    // 7. 材质
     let foundMat = null;
     const lower = part.toLowerCase();
     for (const [en, cn] of Object.entries(MATERIAL_MAP)) {
       if (new RegExp('\\b' + en + '\\b', 'i').test(lower)) { foundMat = cn; break; }
     }
     if (foundMat) { out.push('材质：' + foundMat); continue; }
-
-    // 其他不输出（颜色、款式不需要）
+    // 其他不输出（颜色、款式、插头标准等不需要）
   }
   const result = out.join('\n');
   console.log('[extractVariantInfo]', JSON.stringify(variantTitle), '→', JSON.stringify(result));
@@ -11656,11 +11668,19 @@ function renderPoForm() {
           <div class="name">${escapeHtml(nameCn || li.title || '(无名)')}</div>
           <div class="variant">${escapeHtml(li.variant_title || '')}${fullyAssigned ? ' · <span style="color:var(--success)">✓ 已全部开 PO</span>' : sel.assignedQty > 0 ? ` · 剩 ${sel.remaining}/${li.quantity}` : ''}</div>
           ${eff.default_supplier ? `<div class="li-default-supplier">默认: ${escapeHtml(eff.default_supplier)}</div>` : ''}
+          <div style="margin-top:4px; font-size:11px;">
+            <span style="color: var(--text-tertiary);">SKU 备注：</span>
+            <span style="color: var(--text-primary);">${eff.notes ? escapeHtml(eff.notes).slice(0, 60) + (eff.notes.length > 60 ? '…' : '') : '<i style="color:var(--text-tertiary)">未维护</i>'}</span>
+            <a href="javascript:void(0)" onclick="editSkuNotes('${escapeHtml(li.sku).replace(/'/g,"\\'")}')" style="margin-left:6px; color:var(--accent); text-decoration:none; font-size:11px;">✏️ ${eff.notes ? '编辑' : '添加'}</a>
+          </div>
         </div>
         <input type="number" min="1" max="${sel.remaining}" value="${sel.qty}" placeholder="数量"
           onchange="poFormSetQty('${li.shopify_line_item_id}', this.value)" ${fullyAssigned ? 'disabled' : ''}>
-        <input type="number" min="0" step="0.01" value="${sel.price}" placeholder="单价 ¥"
-          onchange="poFormSetPrice('${li.shopify_line_item_id}', this.value)" ${fullyAssigned ? 'disabled' : ''}>
+        <div>
+          <input type="number" min="0" step="0.01" value="${sel.price}" placeholder="单价 ¥"
+            onchange="poFormSetPrice('${li.shopify_line_item_id}', this.value)" ${fullyAssigned ? 'disabled' : ''} style="width:100%;">
+          ${eff.last_purchase_price ? `<div style="font-size:10px; color:var(--text-tertiary); margin-top:3px; line-height:1.3;">上次：¥${Number(eff.last_purchase_price).toFixed(2)}${eff.default_supplier ? ` · ${escapeHtml(eff.default_supplier)}` : ''}</div>` : '<div style="font-size:10px; color:var(--text-tertiary); margin-top:3px;">无历史价</div>'}
+        </div>
         <div style="text-align:right; font-family:'JetBrains Mono', monospace; font-size:12px;">
           ${sel.qty && sel.price ? '¥ ' + (Number(sel.qty) * Number(sel.price)).toFixed(2) : '—'}
         </div>
@@ -11675,6 +11695,7 @@ function renderPoForm() {
   const autoNote = `销售订单：${so.shopify_order_number || ''}`;
 
   // 自动从所有勾选 line items 的 variant_title 提取信息到"其他备注"
+  // 同时合并 products.notes（每个 SKU 跟单手动维护的备注）
   // 每次勾选变化都重新生成；如果用户手动改过则保留用户的内容
   if (!PO_FORM_STATE.otherNoteManuallyEdited) {
     const segments = [];
@@ -11682,12 +11703,18 @@ function renderPoForm() {
     selected.forEach(([liid]) => {
       const li = items.find(x => x.shopify_line_item_id === liid);
       if (!li) return;
+      const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
       console.log('  - SKU:', li.sku, '| variant_title:', JSON.stringify(li.variant_title || '(空)'));
-      const info = extractVariantInfo(li.variant_title || '');
-      console.log('  → 提取结果:', JSON.stringify(info));
-      if (info) segments.push(info);
+      const extracted = extractVariantInfo(li.variant_title || '');
+      const userNotes = (eff.notes || '').trim();
+      console.log('  → 提取:', JSON.stringify(extracted), '| SKU 备注:', JSON.stringify(userNotes));
+      // 合并：自动提取 + 跟单维护的 SKU 备注
+      const lines = [];
+      if (extracted) lines.push(extracted);
+      if (userNotes) lines.push(userNotes);
+      if (lines.length > 0) segments.push(lines.join('\n'));
     });
-    PO_FORM_STATE.otherNote = segments.join('\n');
+    PO_FORM_STATE.otherNote = segments.join('\n\n');
     console.log('%c[PoForm] 最终其他备注:', 'color:#2563eb; font-weight:bold', JSON.stringify(PO_FORM_STATE.otherNote));
   }
 
@@ -11760,6 +11787,24 @@ function poFormSetQty(liid, val) {
 function poFormSetPrice(liid, val) {
   PO_FORM_STATE.lineItemSelections[liid].price = val;
   renderPoForm();
+}
+
+// 编辑 SKU 备注（绑定到 products.notes）
+async function editSkuNotes(sku) {
+  // 走 master 穿透：编辑的是主产品的备注
+  const eff = PRODUCTS_CACHE.effectiveBySku(sku);
+  if (!eff) { toast('产品不存在', 'err'); return; }
+  const current = eff.notes || '';
+  const newNotes = prompt(`编辑「${eff.sku}」SKU 备注\n\n这段备注会绑定到这个 SKU（含同款组），下次开采购单时自动追加进"其他备注"。\n常用于：翻译纠正、特殊要求、定制细节。`, current);
+  if (newNotes === null) return;  // 取消
+  try {
+    await sb.from('products').update({ notes: newNotes.trim() }).eq('id', eff.id);
+    eff.notes = newNotes.trim();  // 缓存同步
+    toast('已保存');
+    // 让 otherNote 重新生成（如果用户没手动改过）
+    PO_FORM_STATE.otherNoteManuallyEdited = false;
+    renderPoForm();
+  } catch (e) { toast('保存失败：' + (e.message || e), 'err'); }
 }
 
 function poFormSupplierSearch(q) {
@@ -11949,17 +11994,15 @@ async function poFormDoSave(groups, common) {
         source: 'shopify',
         supplier: g.supplierName,
         product: liData.map(x => x.title_cn || x.title_en).join(' / '),
-        sku: firstLi.sku,
-        qty: liData.reduce((s, x) => s + x.qty, 0),
         status: 'producing',
-        promisedDate: common.promisedDate,
+        promised_date: common.promisedDate,
         line_items: liData,
         box_note: common.boxNote,
         total_amount: totalAmount,
         sales_order_id: so.id,
         creator_name: me,
         site: siteCode,
-        orderNo: so.shopify_order_number,
+        order_no: so.shopify_order_number,
         note: common.note,
         followups: [],
       };
@@ -12368,7 +12411,7 @@ function renderPoList() {
         <div class="po-card-top">
           <div>
             <span class="po-no">${escapeHtml(p.po_number || '')}</span>
-            <span class="po-meta" style="margin-left: 12px;">销售单 <b>${escapeHtml(p.orderNo || '')}</b> · ${escapeHtml(p.site || '')}</span>
+            <span class="po-meta" style="margin-left: 12px;">销售单 <b>${escapeHtml(p.order_no || '')}</b> · ${escapeHtml(p.site || '')}</span>
           </div>
           <div class="po-meta">供应商：<b>${escapeHtml(p.supplier || '')}</b></div>
           <div class="po-meta" style="text-align:right; font-family: 'JetBrains Mono', monospace;">¥ ${Number(p.total_amount || 0).toFixed(2)}</div>
@@ -12381,7 +12424,7 @@ function renderPoList() {
           </div>
           <div style="font-size: 11px; color: var(--text-tertiary);">
             <div>开单：${created}</div>
-            <div>下单日期：${escapeHtml(p.promisedDate || '—')}</div>
+            <div>下单日期：${escapeHtml(p.promised_date || '—')}</div>
             <div>状态：${escapeHtml(p.status || '')}</div>
             <div>跟单：${escapeHtml(p.creator_name || '')}</div>
           </div>
@@ -12435,8 +12478,8 @@ function poOpenPrint(poId) {
         <div><b>采购单号：</b>${escapeHtml(po.po_number)}</div>
         <div><b>开单日期：</b>${new Date(po.created_at).toLocaleDateString()}</div>
         <div><b>供 应 商：</b>${escapeHtml(po.supplier)}</div>
-        <div><b>下单日期：</b>${escapeHtml(po.promisedDate || '—')}</div>
-        <div><b>关联销售：</b>${escapeHtml(po.orderNo || '')} (${escapeHtml(po.site || '')})</div>
+        <div><b>下单日期：</b>${escapeHtml(po.promised_date || '—')}</div>
+        <div><b>关联销售：</b>${escapeHtml(po.order_no || '')} (${escapeHtml(po.site || '')})</div>
         <div><b>跟  单：</b>${escapeHtml(po.creator_name || '')}</div>
       </div>
       <table>
