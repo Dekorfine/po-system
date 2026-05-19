@@ -11421,6 +11421,61 @@ const PRODUCTS_CACHE = {
   },
 };
 
+// ============ 从 variant_title 自动提取 尺寸（英寸→cm）+ 色温 + 材质 ============
+function extractVariantInfo(variantTitle) {
+  if (!variantTitle) return '';
+  const out = [];
+  const parts = variantTitle.split('/').map(s => s.trim()).filter(Boolean);
+
+  // 材质中英对照
+  const MATERIAL_MAP = {
+    brass: '黄铜', copper: '铜', bronze: '青铜',
+    iron: '铁', steel: '不锈钢', 'stainless steel': '不锈钢',
+    aluminum: '铝', aluminium: '铝',
+    marble: '大理石', travertine: '洞石', stone: '石材',
+    wood: '木质', oak: '橡木', walnut: '胡桃木', ash: '白蜡木',
+    bamboo: '竹', rattan: '藤编',
+    glass: '玻璃', crystal: '水晶', ceramic: '陶瓷', porcelain: '瓷',
+    fabric: '布艺', linen: '亚麻', cotton: '棉', velvet: '天鹅绒', leather: '皮质',
+    concrete: '混凝土', plaster: '石膏', resin: '树脂', acrylic: '亚克力',
+    paper: '纸艺', alabaster: '雪花石',
+  };
+
+  for (const part of parts) {
+    // 1. 尺寸（含英寸 " 的）→ 全部转 cm
+    if (/\d+(?:\.\d+)?\s*"/.test(part)) {
+      const cmText = part.replace(/(\d+(?:\.\d+)?)\s*"/g, (_, n) => (parseFloat(n) * 2.54).toFixed(1) + 'cm');
+      out.push('尺寸：' + cmText);
+      continue;
+    }
+    // 2. 已经是 cm 的尺寸
+    if (/\d+(?:\.\d+)?\s*cm/i.test(part) && /[hwldø⌀×x]/i.test(part)) {
+      out.push('尺寸：' + part);
+      continue;
+    }
+    // 3. 色温
+    if (/warm\s*(light|white)|3000\s*k/i.test(part)) { out.push('色温：暖光 3000K'); continue; }
+    if (/cool\s*(light|white)|6000\s*k|6500\s*k/i.test(part)) { out.push('色温：冷光 6000K'); continue; }
+    if (/natural\s*(light|white)|neutral\s*white|4000\s*k/i.test(part)) { out.push('色温：中性光 4000K'); continue; }
+    if (/daylight|5000\s*k/i.test(part)) { out.push('色温：日光 5000K'); continue; }
+    // 4. 可调光
+    if (/triac.*dimm|dimmable.*triac/i.test(part)) { out.push('可控硅调光'); continue; }
+    if (/0-10v|0-?10\s*v/i.test(part)) { out.push('0-10V 调光'); continue; }
+    if (/dimmable/i.test(part)) { out.push('可调光'); continue; }
+
+    // 5. 材质（部分匹配）
+    let foundMat = null;
+    const lower = part.toLowerCase();
+    for (const [en, cn] of Object.entries(MATERIAL_MAP)) {
+      if (new RegExp('\\b' + en + '\\b', 'i').test(lower)) { foundMat = cn; break; }
+    }
+    if (foundMat) { out.push('材质：' + foundMat); continue; }
+
+    // 其他不输出（颜色、款式不需要）
+  }
+  return out.join('\n');
+}
+
 // ============ 采购单弹窗 ============
 let PO_FORM_STATE = null;
 
@@ -11441,6 +11496,7 @@ async function openPoForm(salesOrderId) {
     selectedSupplierId: null,
     selectedSupplierName: '',
     lineItemSelections: {},  // shopify_line_item_id => { checked, qty, price, supplierName }
+    otherNote: undefined,    // 自动提取后填充；undefined 表示尚未填充
   };
 
   // 默认勾选未分配且未取消的 line items
@@ -11515,13 +11571,23 @@ function renderPoForm() {
   const totalAmount = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0) * (Number(sel.price) || 0), 0);
   const totalQty = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0), 0);
 
-  // 自动生成订单备注（{siteCode}{订单号末5位} {产品关键词}）
-  const orderNoTail = (so.shopify_order_number || '').replace(/[^0-9]/g,'').slice(-5);
-  const productKw = selected.slice(0, 2).map(([liid]) => {
-    const li = items.find(x => x.shopify_line_item_id === liid);
-    return (li?.title || '').split(' ').slice(0, 2).join(' ');
-  }).filter(Boolean).join('+');
-  const autoNote = `${siteCode}${orderNoTail} ${productKw}`.trim();
+  // 自动生成订单备注 = 销售订单：{原始订单号}
+  const autoNote = `销售订单：${so.shopify_order_number || ''}`;
+
+  // 自动从所有勾选 line items 的 variant_title 提取信息到"其他备注"
+  if (PO_FORM_STATE.otherNote === undefined || PO_FORM_STATE.otherNote === null) {
+    const segments = [];
+    selected.forEach(([liid]) => {
+      const li = items.find(x => x.shopify_line_item_id === liid);
+      if (!li) return;
+      const info = extractVariantInfo(li.variant_title || '');
+      if (info) {
+        const skuLabel = (PRODUCTS_CACHE.effectiveBySku(li.sku) || {}).sku || li.sku;
+        segments.push(`【${skuLabel}】\n${info}`);
+      }
+    });
+    PO_FORM_STATE.otherNote = segments.join('\n\n');
+  }
 
   body.innerHTML = `
     <div style="background: var(--bg-elevated); padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 12px;">
@@ -11554,16 +11620,16 @@ function renderPoForm() {
         </div>
       </div>
       <div>
-        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">承诺到货日 *</label>
-        <input type="date" id="poFormPromisedDate" class="form-control" value="${(() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })()}">
+        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">下单日期 *</label>
+        <input type="date" id="poFormPromisedDate" class="form-control" value="${new Date().toISOString().slice(0, 10)}">
       </div>
       <div style="grid-column: 1/-1;">
         <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">订单备注 (会写在纸箱上，供应商对单用) *</label>
         <input type="text" id="poFormBoxNote" class="form-control" value="${escapeHtml(autoNote)}" placeholder="自动生成">
       </div>
       <div style="grid-column: 1/-1;">
-        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">其他备注</label>
-        <textarea id="poFormNote" class="form-control" rows="2" placeholder="特殊要求、加急、配件…"></textarea>
+        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">其他备注 <span style="color:var(--text-tertiary); font-weight:normal;">(自动提取尺寸/色温/材质，可编辑)</span></label>
+        <textarea id="poFormNote" class="form-control" rows="5" placeholder="特殊要求、加急、配件…" oninput="PO_FORM_STATE.otherNote = this.value">${escapeHtml(PO_FORM_STATE.otherNote || '')}</textarea>
       </div>
     </div>
 
@@ -11653,7 +11719,7 @@ async function poFormSave() {
   const promisedDate = document.getElementById('poFormPromisedDate').value;
   const note = document.getElementById('poFormNote').value.trim();
 
-  if (!promisedDate) { toast('请填承诺到货日', 'warn'); return; }
+  if (!promisedDate) { toast('请填下单日期', 'warn'); return; }
   for (const [liid, sel] of selected) {
     if (!sel.price || Number(sel.price) <= 0) { toast('请填所有勾选产品的单价', 'warn'); return; }
   }
@@ -11723,7 +11789,7 @@ async function poFormDoSave(groups, common) {
   const so = PO_FORM_STATE.salesOrder;
   const items = so.line_items || [];
   const siteCode = SHOPIFY.siteCodeOf(so.shop_domain);
-  const me = (DATA.agents.find(a => a.user_id === supabaseUser?.id)?.name) || '系统';
+  const me = (typeof CURRENT_AGENT === 'string' && CURRENT_AGENT) ? CURRENT_AGENT : '系统';
 
   try {
     const allInserts = [];
@@ -11731,8 +11797,9 @@ async function poFormDoSave(groups, common) {
 
     for (const g of groups) {
       // 生成 PO 编号
-      const { data: poNum } = await sb.rpc('generate_po_number');
-      if (!poNum) throw new Error('生成采购单编号失败');
+      const { data: poNum, error: poNumErr } = await sb.rpc('generate_po_number');
+      if (poNumErr) { console.error('PO编号生成失败：', poNumErr); throw new Error('PO 编号生成失败：' + poNumErr.message); }
+      if (!poNum) throw new Error('生成采购单编号失败 (no data)');
 
       const liData = g.liids.map(liid => {
         const li = items.find(x => x.shopify_line_item_id === liid);
@@ -11772,8 +11839,9 @@ async function poFormDoSave(groups, common) {
         note: common.note,
         followups: [],
       };
+      console.log('保存采购单：', poRow);
       const { data: created, error: err } = await sb.from('orders').insert(poRow).select().single();
-      if (err) throw err;
+      if (err) { console.error('采购单 insert 失败：', err, '\n字段：', poRow); throw new Error('数据库插入失败：' + (err.message || JSON.stringify(err))); }
       allInserts.push(created);
 
       // 更新 line_items 的 po_assignments
@@ -11793,39 +11861,42 @@ async function poFormDoSave(groups, common) {
 
       // 更新 products 表的 last_purchase_price / default_supplier
       for (const li of liData) {
-        await sb.from('products').update({
+        const { error: pErr } = await sb.from('products').update({
           last_purchase_price: li.price,
           default_supplier: g.supplierName,
           last_purchased_at: new Date().toISOString(),
         }).eq('sku', li.sku);
+        if (pErr) console.warn('更新产品上次单价失败（不影响主流程）：', li.sku, pErr.message);
       }
 
       // 更新 suppliers 累计
       if (g.supplierId) {
-        await sb.rpc('exec_sql', { sql: '' }).catch(() => {});
         const sup = SUPPLIERS.byId(g.supplierId);
         if (sup) {
-          await sb.from('suppliers').update({
+          const { error: sErr } = await sb.from('suppliers').update({
             total_orders: (sup.total_orders || 0) + 1,
             total_amount: (Number(sup.total_amount) || 0) + totalAmount,
             last_order_at: new Date().toISOString(),
           }).eq('id', g.supplierId);
+          if (sErr) console.warn('更新供应商累计失败（不影响主流程）：', sErr.message);
         }
       }
     }
 
     // 把更新后的 line_items 写回 shopify_orders
-    await sb.from('shopify_orders').update({
+    const { error: soErr } = await sb.from('shopify_orders').update({
       line_items: allLineItemUpdates,
       local_status: 'processing',
       updated_at: new Date().toISOString(),
     }).eq('id', so.id);
+    if (soErr) console.warn('更新销售订单 line_items 失败：', soErr.message);
 
     toast(`✓ 成功开 ${allInserts.length} 张采购单`);
     closePoForm();
     await shopifyReloadOrdersAndRender();
   } catch (e) {
-    toast('保存失败：' + (e.message || e), 'err');
+    console.error('保存采购单错误：', e);
+    toast('保存失败：' + (e.message || JSON.stringify(e) || '未知错误'), 'err');
   }
 }
 
@@ -12182,7 +12253,7 @@ function renderPoList() {
           </div>
           <div style="font-size: 11px; color: var(--text-tertiary);">
             <div>开单：${created}</div>
-            <div>承诺到货：${escapeHtml(p.promisedDate || '—')}</div>
+            <div>下单日期：${escapeHtml(p.promisedDate || '—')}</div>
             <div>状态：${escapeHtml(p.status || '')}</div>
             <div>跟单：${escapeHtml(p.creator_name || '')}</div>
           </div>
@@ -12236,7 +12307,7 @@ function poOpenPrint(poId) {
         <div><b>采购单号：</b>${escapeHtml(po.po_number)}</div>
         <div><b>开单日期：</b>${new Date(po.created_at).toLocaleDateString()}</div>
         <div><b>供 应 商：</b>${escapeHtml(po.supplier)}</div>
-        <div><b>承诺到货：</b>${escapeHtml(po.promisedDate || '—')}</div>
+        <div><b>下单日期：</b>${escapeHtml(po.promisedDate || '—')}</div>
         <div><b>关联销售：</b>${escapeHtml(po.orderNo || '')} (${escapeHtml(po.site || '')})</div>
         <div><b>跟  单：</b>${escapeHtml(po.creator_name || '')}</div>
       </div>
