@@ -1800,6 +1800,69 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .img-lightbox-close:hover { background: rgba(255, 255, 255, 0.3); }
 
+/* ============ 批次 4 新增弹窗 overlay（修复位置 bug） ============ */
+/* 6 个新弹窗的 .modal 不能用原系统的卡片样式，要 reset 成全屏遮罩 */
+#poFormModal, #suppliersModal, #supplierEditModal,
+#masterBindModal, #multiSupplierConfirm, #poPrintModal {
+  position: fixed !important; inset: 0 !important;
+  background: rgba(28,25,23,0.5) !important;
+  backdrop-filter: blur(4px);
+  z-index: 9000 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: none !important; border-radius: 0 !important; padding: 0 !important;
+  width: auto !important; max-width: none !important; max-height: none !important;
+  box-shadow: none !important; animation: none !important;
+  overflow: hidden !important;
+}
+#poFormModal[style*="flex"], #suppliersModal[style*="flex"], #supplierEditModal[style*="flex"],
+#masterBindModal[style*="flex"], #multiSupplierConfirm[style*="flex"], #poPrintModal[style*="flex"] {
+  display: flex !important;
+}
+.modal-content {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  max-width: 92vw;
+  max-height: 90vh;
+  display: flex; flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  animation: modalIn 0.2s ease;
+  overflow: hidden;
+}
+.modal-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
+#poFormModal .modal-close, #suppliersModal .modal-close, #supplierEditModal .modal-close,
+#masterBindModal .modal-close, #multiSupplierConfirm .modal-close, #poPrintModal .modal-close {
+  position: static !important; top: auto !important; right: auto !important;
+  width: 30px; height: 30px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-tertiary); font-size: 18px;
+  border-radius: 6px;
+}
+#poFormModal .modal-close:hover, #suppliersModal .modal-close:hover, #supplierEditModal .modal-close:hover,
+#masterBindModal .modal-close:hover, #multiSupplierConfirm .modal-close:hover, #poPrintModal .modal-close:hover {
+  background: var(--bg-elevated); color: var(--text-primary);
+}
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+.modal-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  display: flex; justify-content: flex-end; gap: 8px;
+  flex-shrink: 0;
+}
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { background: rgba(185,28,28,0.08); border-color: var(--danger); }
+
 /* ============ 批次 4：采购单 + 供应商 + 产品维护 ============ */
 
 /* PO 子 tab */
@@ -11453,7 +11516,8 @@ const PRODUCTS_CACHE = {
 function extractVariantInfo(variantTitle) {
   if (!variantTitle) return '';
   const out = [];
-  const parts = variantTitle.split('/').map(s => s.trim()).filter(Boolean);
+  // 同时支持 / 和 | 作为分隔符
+  const parts = variantTitle.split(/[/|]/).map(s => s.trim()).filter(Boolean);
 
   // 材质中英对照
   const MATERIAL_MAP = {
@@ -11470,28 +11534,33 @@ function extractVariantInfo(variantTitle) {
   };
 
   for (const part of parts) {
-    // 1. 尺寸（含英寸 " 的）→ 全部转 cm
-    if (/\d+(?:\.\d+)?\s*"/.test(part)) {
-      const cmText = part.replace(/(\d+(?:\.\d+)?)\s*"/g, (_, n) => (parseFloat(n) * 2.54).toFixed(1) + 'cm');
+    // 1. 尺寸（含英寸 " 或 ' 的）→ 全部转 cm
+    if (/\d+(?:\.\d+)?\s*["'″]/.test(part)) {
+      const cmText = part.replace(/(\d+(?:\.\d+)?)\s*["'″]/g, (_, n) => (parseFloat(n) * 2.54).toFixed(1) + 'cm');
       out.push('尺寸：' + cmText);
       continue;
     }
     // 2. 已经是 cm 的尺寸
-    if (/\d+(?:\.\d+)?\s*cm/i.test(part) && /[hwldø⌀×x]/i.test(part)) {
+    if (/\d+(?:\.\d+)?\s*cm/i.test(part)) {
       out.push('尺寸：' + part);
       continue;
     }
-    // 3. 色温
+    // 3. mm 的尺寸
+    if (/\d+(?:\.\d+)?\s*mm/i.test(part)) {
+      out.push('尺寸：' + part);
+      continue;
+    }
+    // 4. 色温
     if (/warm\s*(light|white)|3000\s*k/i.test(part)) { out.push('色温：暖光 3000K'); continue; }
     if (/cool\s*(light|white)|6000\s*k|6500\s*k/i.test(part)) { out.push('色温：冷光 6000K'); continue; }
     if (/natural\s*(light|white)|neutral\s*white|4000\s*k/i.test(part)) { out.push('色温：中性光 4000K'); continue; }
     if (/daylight|5000\s*k/i.test(part)) { out.push('色温：日光 5000K'); continue; }
-    // 4. 可调光
+    // 5. 可调光
     if (/triac.*dimm|dimmable.*triac/i.test(part)) { out.push('可控硅调光'); continue; }
     if (/0-10v|0-?10\s*v/i.test(part)) { out.push('0-10V 调光'); continue; }
     if (/dimmable/i.test(part)) { out.push('可调光'); continue; }
 
-    // 5. 材质（部分匹配）
+    // 6. 材质（部分匹配）
     let foundMat = null;
     const lower = part.toLowerCase();
     for (const [en, cn] of Object.entries(MATERIAL_MAP)) {
@@ -11501,7 +11570,9 @@ function extractVariantInfo(variantTitle) {
 
     // 其他不输出（颜色、款式不需要）
   }
-  return out.join('\n');
+  const result = out.join('\n');
+  console.log('[extractVariantInfo]', JSON.stringify(variantTitle), '→', JSON.stringify(result));
+  return result;
 }
 
 // ============ 采购单弹窗 ============
@@ -11607,13 +11678,17 @@ function renderPoForm() {
   // 每次勾选变化都重新生成；如果用户手动改过则保留用户的内容
   if (!PO_FORM_STATE.otherNoteManuallyEdited) {
     const segments = [];
+    console.log('%c[PoForm] 准备提取 variant 信息', 'color:#2563eb; font-weight:bold');
     selected.forEach(([liid]) => {
       const li = items.find(x => x.shopify_line_item_id === liid);
       if (!li) return;
+      console.log('  - SKU:', li.sku, '| variant_title:', JSON.stringify(li.variant_title || '(空)'));
       const info = extractVariantInfo(li.variant_title || '');
-      if (info) segments.push(info);  // 不带 SKU 标签
+      console.log('  → 提取结果:', JSON.stringify(info));
+      if (info) segments.push(info);
     });
     PO_FORM_STATE.otherNote = segments.join('\n');
+    console.log('%c[PoForm] 最终其他备注:', 'color:#2563eb; font-weight:bold', JSON.stringify(PO_FORM_STATE.otherNote));
   }
 
   body.innerHTML = `
@@ -11945,7 +12020,8 @@ async function poFormDoSave(groups, common) {
     SHOPIFY.invalidateOrders();  // 销售单 line_items 已变化，下次进 tab 强制刷新
     PRODUCTS_CACHE.invalidate(); // 产品上次单价/默认供应商已更新
     SUPPLIERS.invalidate();      // 供应商累计已更新
-    await shopifyReloadOrdersAndRender(true);
+    // 切换到采购单 tab 看刚开的单
+    switchTab('po');
   } catch (e) {
     console.error('保存采购单错误：', e);
     toast('保存失败：' + (e.message || JSON.stringify(e) || '未知错误'), 'err');
