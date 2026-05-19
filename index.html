@@ -12734,6 +12734,7 @@ async function masterUnbindSelf() {
 // ============ 采购单 tab ============
 let PO_LIST = [];
 let PO_FILTER = 'all';
+let PO_SALES_ORDERS_MAP = {};  // sales_order_id → { shopify_order_id, shop_domain }
 
 // 5 步状态流：producing → sent → confirmed → arrived → received
 const PO_STATUSES = [
@@ -12765,9 +12766,20 @@ async function renderPo() {
   try {
     const { data } = await sb.from('orders').select('*').not('po_number', 'is', null).order('created_at', { ascending: false }).limit(500);
     PO_LIST = data || [];
+
+    // 预加载相关销售单的 shopify_order_id + shop_domain（用于点击销售单号跳转 Shopify 后台）
+    const salesOrderIds = [...new Set(PO_LIST.map(p => p.sales_order_id).filter(Boolean))];
+    if (salesOrderIds.length > 0) {
+      const { data: sos } = await sb.from('shopify_orders').select('id, shopify_order_id, shop_domain').in('id', salesOrderIds);
+      PO_SALES_ORDERS_MAP = {};
+      (sos || []).forEach(o => { PO_SALES_ORDERS_MAP[o.id] = o; });
+    } else {
+      PO_SALES_ORDERS_MAP = {};
+    }
+
     poRefreshCounts();
     renderPoList();
-    loadPoStats();  // 异步加载业绩统计
+    loadPoStats();
   } catch (e) { toast('加载采购单失败：' + (e.message || e), 'err'); }
 }
 
@@ -12925,12 +12937,18 @@ function renderPoList() {
     if (bigQtyItems.length > 0) approvalReasons.push(`产品数量过大 (${bigQtyItems.map(li => (li.title_cn||li.title_en)+' '+li.qty+'件').join(', ')})`);
     if (isBigTotal) approvalReasons.push(`金额 ¥${Number(p.total_amount).toFixed(2)} > 5000`);
 
+    // 构建 Shopify Admin 订单链接
+    const soInfo = PO_SALES_ORDERS_MAP[p.sales_order_id] || {};
+    const adminLink = (soInfo.shop_domain && soInfo.shopify_order_id)
+      ? `https://${soInfo.shop_domain}/admin/orders/${soInfo.shopify_order_id}`
+      : '';
+
     return `
       <div class="po-card ${isCancelled ? 'cancelled' : ''}" style="${isPending ? 'border-color:var(--warning); border-width:2px;' : isRejected ? 'border-color:var(--danger); border-width:2px;' : ''}">
         <div class="po-card-top">
           <div>
             <span class="po-no">${escapeHtml(p.po_number || '')}</span>
-            <span class="po-meta" style="margin-left: 12px;">销售单 <b><a href="javascript:void(0)" onclick="poJumpToSalesOrder('${p.sales_order_id}')" style="color:var(--accent); text-decoration:none;">${escapeHtml(p.order_no || '')}</a></b> · ${escapeHtml(p.site || '')}</span>
+            <span class="po-meta" style="margin-left: 12px;">销售单 ${adminLink ? `<a href="${adminLink}" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600;" title="在 Shopify 后台打开">${escapeHtml(p.order_no || '')} ↗</a>` : `<b>${escapeHtml(p.order_no || '')}</b>`} · ${escapeHtml(p.site || '')}</span>
           </div>
           <div class="po-meta">供应商：<b>${escapeHtml(p.supplier || '')}</b></div>
           <div class="po-meta" style="text-align:right; font-family: 'JetBrains Mono', monospace;">¥ ${Number(p.total_amount || 0).toFixed(2)}</div>
