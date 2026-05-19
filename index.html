@@ -2003,7 +2003,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .po-print table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 14px; }
 .po-print th { background: #f0f0f0; padding: 8px 6px; text-align: left; border: 1px solid #ddd; font-weight: 600; }
 .po-print td { padding: 8px 6px; border: 1px solid #ddd; vertical-align: top; }
-.po-print td img { max-width: 60px; max-height: 60px; border-radius: 4px; }
+.po-print td img { max-width: 100px; max-height: 100px; border-radius: 4px; }
 .po-print .total-row td { background: #f7f7f7; font-weight: 600; }
 .po-print .note-box {
   border: 1px solid #ddd; padding: 10px; min-height: 50px; font-size: 12px; color: #444;
@@ -11516,7 +11516,19 @@ const PRODUCTS_CACHE = {
 function extractVariantInfo(variantTitle) {
   if (!variantTitle) return '';
   const out = [];
+  const seenDimensions = new Set();  // 去重：网站同时给英寸和 cm 时只保留一个
   const parts = variantTitle.split(/[/|]/).map(s => s.trim()).filter(Boolean);
+
+  // 标准化尺寸字符串（忽略空格/大小写/.0 结尾，便于比较去重）
+  function normSize(s) {
+    return s.replace(/\s+/g, '').toLowerCase().replace(/\.0cm/g, 'cm');
+  }
+  function addDimension(text) {
+    const key = normSize(text);
+    if (seenDimensions.has(key)) return;  // 已有等价尺寸，跳过
+    seenDimensions.add(key);
+    out.push('尺寸：' + text);
+  }
 
   // 材质中英对照
   const MATERIAL_MAP = {
@@ -11545,17 +11557,17 @@ function extractVariantInfo(variantTitle) {
     if (/\d+(?:\.\d+)?\s*["'″]/.test(part)) {
       let cmText = part.replace(/(\d+(?:\.\d+)?)\s*["'″]/g, (_, n) => inchToCm(n));
       cmText = translateLights(cmText);
-      out.push('尺寸：' + cmText);
+      addDimension(cmText);
       continue;
     }
     // 2. 已是 cm
     if (/\d+(?:\.\d+)?\s*cm/i.test(part)) {
-      out.push('尺寸：' + translateLights(part));
+      addDimension(translateLights(part));
       continue;
     }
     // 3. 是 mm
     if (/\d+(?:\.\d+)?\s*mm/i.test(part)) {
-      out.push('尺寸：' + translateLights(part));
+      addDimension(translateLights(part));
       continue;
     }
     // 4. 单独的 N-Lights（无尺寸）
@@ -11691,8 +11703,8 @@ function renderPoForm() {
   const totalAmount = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0) * (Number(sel.price) || 0), 0);
   const totalQty = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0), 0);
 
-  // 自动生成订单备注 = 销售订单：{原始订单号}
-  const autoNote = `销售订单：${so.shopify_order_number || ''}`;
+  // 自动生成订单备注 = 销售订单编号（写纸箱用）
+  const autoNote = `${so.shopify_order_number || ''}`;
 
   // 自动从所有勾选 line items 的 variant_title 提取信息到"其他备注"
   // 同时合并 products.notes（每个 SKU 跟单手动维护的备注）
@@ -11960,6 +11972,20 @@ async function poFormDoSave(groups, common) {
   const siteCode = SHOPIFY.siteCodeOf(so.shop_domain);
   const me = (typeof CURRENT_AGENT === 'string' && CURRENT_AGENT) ? CURRENT_AGENT : '系统';
 
+  // agent_id 必填校验 + fallback：先用全局，再 fall back 到 supabase auth
+  let agentId = (typeof CURRENT_USER_ID === 'string') ? CURRENT_USER_ID : null;
+  if (!agentId) {
+    try {
+      const { data: { user } } = await sb.auth.getUser();
+      agentId = user?.id || null;
+    } catch (e) {}
+  }
+  console.log('%c[poFormDoSave] CURRENT_USER_ID:', 'color:#2563eb', CURRENT_USER_ID, '| 最终 agent_id:', agentId);
+  if (!agentId) {
+    toast('当前账号未识别，请刷新页面重新登录', 'err');
+    return;
+  }
+
   try {
     const allInserts = [];
     const allLineItemUpdates = JSON.parse(JSON.stringify(so.line_items));  // 深拷
@@ -11990,7 +12016,7 @@ async function poFormDoSave(groups, common) {
       const firstLi = liData[0];
 
       const poRow = {
-        agent_id: CURRENT_USER_ID,
+        agent_id: agentId,
         po_number: poNum,
         source: 'shopify',
         supplier: g.supplierName,
@@ -12367,6 +12393,27 @@ async function masterUnbindSelf() {
 // ============ 采购单 tab ============
 let PO_LIST = [];
 let PO_FILTER = 'all';
+
+// 5 步状态流：producing → sent → confirmed → arrived → received
+const PO_STATUSES = [
+  { value: 'producing', label: '已开单',         color: '#2563eb', bg: 'rgba(37,99,235,0.1)' },
+  { value: 'sent',      label: '已发供应商',     color: '#7c3aed', bg: 'rgba(124,58,237,0.1)' },
+  { value: 'confirmed', label: '供应商已确认',   color: '#0891b2', bg: 'rgba(8,145,178,0.1)' },
+  { value: 'arrived',   label: '已到货',         color: '#ea580c', bg: 'rgba(234,88,12,0.1)' },
+  { value: 'received',  label: '已完成入库',     color: '#15803d', bg: 'rgba(21,128,61,0.1)' },
+];
+function poStatusInfo(value) {
+  return PO_STATUSES.find(s => s.value === value) || { value, label: value || '未知', color: '#888', bg: '#eee' };
+}
+function poNextStatus(value) {
+  const i = PO_STATUSES.findIndex(s => s.value === value);
+  return (i >= 0 && i < PO_STATUSES.length - 1) ? PO_STATUSES[i + 1] : null;
+}
+function poPrevStatus(value) {
+  const i = PO_STATUSES.findIndex(s => s.value === value);
+  return (i > 0) ? PO_STATUSES[i - 1] : null;
+}
+
 async function renderPo() {
   try {
     const { data } = await sb.from('orders').select('*').not('po_number', 'is', null).order('created_at', { ascending: false }).limit(500);
@@ -12375,11 +12422,12 @@ async function renderPo() {
     renderPoList();
   } catch (e) { toast('加载采购单失败：' + (e.message || e), 'err'); }
 }
+
 function poRefreshCounts() {
   const counts = { all: PO_LIST.length, active: 0, done: 0, cancelled: 0 };
   PO_LIST.forEach(p => {
     if (p.status === 'cancelled') counts.cancelled++;
-    else if (['arrived', 'received'].includes(p.status)) counts.done++;
+    else if (p.status === 'received') counts.done++;
     else counts.active++;
   });
   document.getElementById('poCntAll').textContent = counts.all;
@@ -12388,16 +12436,18 @@ function poRefreshCounts() {
   document.getElementById('poCntCancelled').textContent = counts.cancelled;
   if (typeof setBadge === 'function') setBadge('badgePo', counts.active);
 }
+
 function poShowFilter(f) {
   PO_FILTER = f;
   document.querySelectorAll('.sub-tab-btn[data-pofilter]').forEach(b => b.classList.toggle('active', b.dataset.pofilter === f));
   renderPoList();
 }
+
 function renderPoList() {
   let list = PO_LIST;
   if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
-  else if (PO_FILTER === 'done') list = list.filter(p => ['arrived', 'received'].includes(p.status));
-  else if (PO_FILTER === 'active') list = list.filter(p => p.status !== 'cancelled' && !['arrived', 'received'].includes(p.status));
+  else if (PO_FILTER === 'done') list = list.filter(p => p.status === 'received');
+  else if (PO_FILTER === 'active') list = list.filter(p => p.status !== 'cancelled' && p.status !== 'received');
 
   const body = document.getElementById('poListBody');
   if (list.length === 0) {
@@ -12407,12 +12457,16 @@ function renderPoList() {
   body.innerHTML = list.map(p => {
     const items = p.line_items || [];
     const created = p.created_at ? new Date(p.created_at).toISOString().slice(0,10) : '';
+    const isCancelled = p.status === 'cancelled';
+    const statusInfo = poStatusInfo(p.status);
+    const next = poNextStatus(p.status);
+    const prev = poPrevStatus(p.status);
     return `
-      <div class="po-card ${p.status === 'cancelled' ? 'cancelled' : ''}">
+      <div class="po-card ${isCancelled ? 'cancelled' : ''}">
         <div class="po-card-top">
           <div>
             <span class="po-no">${escapeHtml(p.po_number || '')}</span>
-            <span class="po-meta" style="margin-left: 12px;">销售单 <b>${escapeHtml(p.order_no || '')}</b> · ${escapeHtml(p.site || '')}</span>
+            <span class="po-meta" style="margin-left: 12px;">销售单 <b><a href="javascript:void(0)" onclick="poJumpToSalesOrder('${p.sales_order_id}')" style="color:var(--accent); text-decoration:none;">${escapeHtml(p.order_no || '')}</a></b> · ${escapeHtml(p.site || '')}</span>
           </div>
           <div class="po-meta">供应商：<b>${escapeHtml(p.supplier || '')}</b></div>
           <div class="po-meta" style="text-align:right; font-family: 'JetBrains Mono', monospace;">¥ ${Number(p.total_amount || 0).toFixed(2)}</div>
@@ -12426,19 +12480,62 @@ function renderPoList() {
           <div style="font-size: 11px; color: var(--text-tertiary);">
             <div>开单：${created}</div>
             <div>下单日期：${escapeHtml(p.promised_date || '—')}</div>
-            <div>状态：${escapeHtml(p.status || '')}</div>
+            <div style="margin-top: 4px;">
+              <span style="display:inline-block; padding:2px 8px; border-radius:4px; background:${isCancelled ? 'rgba(185,28,28,0.1)' : statusInfo.bg}; color:${isCancelled ? '#b91c1c' : statusInfo.color}; font-size:11px; font-weight:500;">
+                ${isCancelled ? '⊘ 已取消' : statusInfo.label}
+              </span>
+            </div>
             <div>跟单：${escapeHtml(p.creator_name || '')}</div>
           </div>
         </div>
         <div class="po-card-actions">
           <div style="font-size: 11px; color: var(--text-tertiary);">${items.length} 个产品行 · ${items.reduce((s,x) => s + (x.qty||0), 0)} 件</div>
-          <div style="display: flex; gap: 6px;">
-            <button class="so-action-btn" onclick="poOpenPrint('${p.id}')">🖨 打印预览</button>
-            ${p.status !== 'cancelled' && !['arrived','received'].includes(p.status) ? `<button class="so-action-btn danger" onclick="poCancel('${p.id}')">取消采购单</button>` : ''}
+          <div style="display: flex; gap: 6px; align-items:center; flex-wrap:wrap;">
+            ${!isCancelled && next ? `<button class="so-action-btn primary" onclick="poAdvance('${p.id}', '${next.value}', '${next.label}')" title="推进到下一步">▶ ${next.label}</button>` : ''}
+            ${!isCancelled && prev ? `<button class="so-action-btn" onclick="poRevert('${p.id}', '${prev.value}', '${prev.label}')" title="退回上一步">↩ 退回</button>` : ''}
+            <button class="so-action-btn" onclick="poOpenPrint('${p.id}')">🖨 打印</button>
+            ${!isCancelled ? `<button class="so-action-btn danger" onclick="poCancel('${p.id}')">⊘ 取消</button>` : ''}
           </div>
         </div>
       </div>`;
   }).join('');
+}
+
+async function poAdvance(poId, nextStatus, nextLabel) {
+  if (!confirm(`确认推进到「${nextLabel}」？`)) return;
+  try {
+    await sb.from('orders').update({ status: nextStatus, updated_at: new Date().toISOString() }).eq('id', poId);
+    toast(`✓ 已推进到「${nextLabel}」`);
+    await renderPo();
+  } catch (e) { toast('操作失败：' + (e.message || e), 'err'); }
+}
+
+async function poRevert(poId, prevStatus, prevLabel) {
+  if (!confirm(`确认退回到「${prevLabel}」？`)) return;
+  try {
+    await sb.from('orders').update({ status: prevStatus, updated_at: new Date().toISOString() }).eq('id', poId);
+    toast(`已退回到「${prevLabel}」`);
+    await renderPo();
+  } catch (e) { toast('操作失败：' + (e.message || e), 'err'); }
+}
+
+// 点采购单里的销售单号跳转到销售单 tab
+function poJumpToSalesOrder(salesOrderId) {
+  if (!salesOrderId) { toast('该采购单没关联销售单', 'warn'); return; }
+  // 切到销售单 tab
+  switchTab('sales');
+  setTimeout(() => {
+    // 滚动到对应订单卡片
+    const card = document.querySelector(`.so-card[data-id="${salesOrderId}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.style.outline = '2px solid var(--accent)';
+      card.style.outlineOffset = '2px';
+      setTimeout(() => { card.style.outline = ''; card.style.outlineOffset = ''; }, 2500);
+    } else {
+      toast('订单卡片不在当前 sub-tab，请切换 sub-tab', 'info');
+    }
+  }, 400);
 }
 
 async function poCancel(poId) {
@@ -12480,24 +12577,27 @@ function poOpenPrint(poId) {
         <div><b>开单日期：</b>${new Date(po.created_at).toLocaleDateString()}</div>
         <div><b>供 应 商：</b>${escapeHtml(po.supplier)}</div>
         <div><b>下单日期：</b>${escapeHtml(po.promised_date || '—')}</div>
-        <div><b>关联销售：</b>${escapeHtml(po.order_no || '')} (${escapeHtml(po.site || '')})</div>
+        <div><b>关联销售：</b>${escapeHtml(po.order_no || '')}</div>
         <div><b>跟  单：</b>${escapeHtml(po.creator_name || '')}</div>
       </div>
       <table>
-        <thead><tr><th width="50">序号</th><th width="80">图片</th><th width="140">编号</th><th>产品名称/规格</th><th width="60">数量</th><th width="80">单价</th><th width="100">小计</th></tr></thead>
+        <thead><tr><th width="50">序号</th><th width="110">图片</th><th>产品规格</th><th width="60">数量</th><th width="80">单价</th><th width="100">小计</th></tr></thead>
         <tbody>
-          ${items.map((li, i) => `
+          ${items.map((li, i) => {
+            // 提取规格信息（用 extractVariantInfo 转换好的内容），不显示英文名/SKU
+            const specs = extractVariantInfo(li.variant || '');
+            return `
             <tr>
               <td style="text-align:center;">${i+1}</td>
               <td style="text-align:center;">${li.image_url ? `<img src="${escapeHtml(li.image_url)}">` : '—'}</td>
-              <td style="font-family:monospace;">${escapeHtml(li.sku)}</td>
-              <td>${escapeHtml(li.title_cn || li.title_en)}<br><span style="color:#888; font-size:11px;">${escapeHtml(li.variant || '')}</span></td>
+              <td>${li.title_cn ? `<div style="font-weight:600;">${escapeHtml(li.title_cn)}</div>` : ''}${specs ? `<div style="color:#444; font-size:11px; white-space:pre-line; margin-top:3px;">${escapeHtml(specs)}</div>` : (li.title_cn ? '' : '<span style="color:#888;">—</span>')}</td>
               <td style="text-align:center;">${li.qty}</td>
               <td style="text-align:right;">¥ ${Number(li.price).toFixed(2)}</td>
               <td style="text-align:right;">¥ ${Number(li.subtotal).toFixed(2)}</td>
-            </tr>`).join('')}
+            </tr>`;
+          }).join('')}
           <tr class="total-row">
-            <td colspan="4" style="text-align:right;">合计</td>
+            <td colspan="3" style="text-align:right;">合计</td>
             <td style="text-align:center;">${totalQty}</td>
             <td></td>
             <td style="text-align:right;">¥ ${totalAmount.toFixed(2)}</td>
