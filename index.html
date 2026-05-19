@@ -11136,7 +11136,9 @@ function renderShopifyOrders() {
             ${variant ? `<div class="so-prod-variant">${escapeHtml(variant)}</div>` : ''}
           </div>
           <div class="so-prod-qty">
-            × ${li.quantity || 0}
+            ${(li.quantity || 0) >= 2
+              ? `<span style="display:inline-block; background:var(--danger); color:white; padding:3px 10px; border-radius:6px; font-weight:700; font-size:16px;">× ${li.quantity}</span>`
+              : `<span style="color:var(--text-secondary); font-size:13px;">× ${li.quantity || 0}</span>`}
             ${li.price ? `<span class="price">${o.currency || ''} ${parseFloat(li.price).toFixed(2)}</span>` : ''}
           </div>
         </div>`;
@@ -11705,7 +11707,8 @@ async function openPoForm(salesOrderId) {
     salesOrder: so,
     selectedSupplierId: null,
     selectedSupplierName: '',
-    lineItemSelections: {},  // shopify_line_item_id => { checked, qty, price, supplierName }
+    lineItemSelections: {},  // shopify_line_item_id => { checked, qty, price, supplierName, customSku, customTitleCn, customImageUrl }
+    customLines: [],         // 跟单追加的自定义产品（差价/配件/换货等）
     otherNote: '',
     otherNoteManuallyEdited: false,
   };
@@ -11753,9 +11756,11 @@ function renderPoForm() {
     const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
     const productMap = SHOPIFY._productMap || {};
     const ownProd = productMap[li.sku] || {};
-    const imgUrl = eff.image_url || ownProd.image_url || li.image_url || '';
-    const displaySku = eff.sku || li.sku;  // master 的 SKU
-    const nameCn = eff.name_cn || ownProd.name_cn || '';
+    // 跟单手动改过的字段优先
+    const imgUrl = sel.customImageUrl || eff.image_url || ownProd.image_url || li.image_url || '';
+    const displaySku = sel.customSku || eff.sku || li.sku;
+    const displayTitle = sel.customTitleCn || eff.name_cn || ownProd.name_cn || li.title || '(无名)';
+    const wasEdited = !!(sel.customSku || sel.customTitleCn || sel.customImageUrl);
     const fullyAssigned = sel.remaining === 0;
     return `
       <div class="po-li-row ${sel.checked ? 'checked' : ''} ${fullyAssigned ? 'assigned' : ''}">
@@ -11763,19 +11768,26 @@ function renderPoForm() {
           onchange="poFormToggleItem('${li.shopify_line_item_id}', this.checked)">
         ${imgUrl ? `<img class="li-img" src="${escapeHtml(imgUrl)}" onclick="openImgLightbox('${escapeHtml(imgUrl)}')">` : `<div class="li-noimg">📷</div>`}
         <div class="li-info">
-          <div class="sku">${escapeHtml(displaySku)}${eff.master_product_id || (eff.sku !== li.sku) ? '' : ''}</div>
-          <div class="name">${escapeHtml(nameCn || li.title || '(无名)')}</div>
+          <div class="sku">${escapeHtml(displaySku)}${wasEdited ? '<span style="margin-left:6px; font-size:10px; padding:1px 6px; background:rgba(124,58,237,0.12); color:#7c3aed; border-radius:3px;">已修改</span>' : ''}</div>
+          <div class="name">${escapeHtml(displayTitle)}</div>
           <div class="variant">${escapeHtml(li.variant_title || '')}${fullyAssigned ? ' · <span style="color:var(--success)">✓ 已全部开 PO</span>' : sel.assignedQty > 0 ? ` · 剩 ${sel.remaining}/${li.quantity}` : ''}</div>
           ${eff.default_supplier ? `<div class="li-default-supplier">默认: ${escapeHtml(eff.default_supplier)}</div>` : ''}
-          <div style="margin-top:4px; font-size:11px;">
-            <span style="color: var(--text-tertiary);">SKU 备注：</span>
-            <span style="color: var(--text-primary);">${eff.notes ? escapeHtml(eff.notes).slice(0, 60) + (eff.notes.length > 60 ? '…' : '') : '<i style="color:var(--text-tertiary)">未维护，自动用 variant 提取</i>'}</span>
-            <a href="javascript:void(0)" onclick="editSkuNotes('${escapeHtml(li.sku).replace(/'/g,"\\'")}')" style="margin-left:6px; color:var(--accent); text-decoration:none; font-size:11px;">✏️ ${eff.notes ? '编辑' : '添加'}</a>
-            ${eff.notes ? `<span style="margin-left:6px; font-size:10px; color:var(--success);">✓ 已用此备注</span>` : ''}
+          <div style="margin-top:4px; font-size:11px; display:flex; gap:10px; flex-wrap:wrap;">
+            <span>
+              <span style="color: var(--text-tertiary);">SKU 备注：</span>
+              <span style="color: var(--text-primary);">${eff.notes ? escapeHtml(eff.notes).slice(0, 60) + (eff.notes.length > 60 ? '…' : '') : '<i style="color:var(--text-tertiary)">未维护</i>'}</span>
+              <a href="javascript:void(0)" onclick="editSkuNotes('${escapeHtml(li.sku).replace(/'/g,"\\'")}')" style="margin-left:4px; color:var(--accent); text-decoration:none;">✏️ ${eff.notes ? '编辑' : '添加'}</a>
+            </span>
+            <a href="javascript:void(0)" onclick="poFormEditLine('${li.shopify_line_item_id}')" style="color:#7c3aed; text-decoration:none; font-weight:500;">🔧 修改 SKU / 图 / 名 (换货/差价)</a>
+            ${wasEdited ? `<a href="javascript:void(0)" onclick="poFormResetLine('${li.shopify_line_item_id}')" style="color:var(--text-tertiary); text-decoration:none;">↺ 恢复默认</a>` : ''}
           </div>
         </div>
-        <input type="number" min="1" max="${sel.remaining}" value="${sel.qty}" placeholder="数量"
-          onchange="poFormSetQty('${li.shopify_line_item_id}', this.value)" ${fullyAssigned ? 'disabled' : ''}>
+        <div style="position:relative;">
+          <input type="number" min="1" max="${sel.remaining}" value="${sel.qty}" placeholder="数量"
+            onchange="poFormSetQty('${li.shopify_line_item_id}', this.value)" ${fullyAssigned ? 'disabled' : ''}
+            style="width:100%; ${Number(sel.qty) >= 2 ? 'background:rgba(220,38,38,0.08); border:2px solid #dc2626; color:#dc2626; font-weight:700; font-size:18px; text-align:center;' : ''}">
+          ${Number(sel.qty) >= 2 ? `<div style="font-size:9px; color:#dc2626; font-weight:600; text-align:center; margin-top:2px;">⚠ 多件 注意</div>` : ''}
+        </div>
         <div>
           <input type="number" min="0" step="0.01" value="${sel.price}" placeholder="单价 ¥"
             onchange="poFormSetPrice('${li.shopify_line_item_id}', this.value)" ${fullyAssigned ? 'disabled' : ''} style="width:100%;">
@@ -11785,11 +11797,44 @@ function renderPoForm() {
           ${sel.qty && sel.price ? '¥ ' + (Number(sel.qty) * Number(sel.price)).toFixed(2) : '—'}
         </div>
       </div>`;
+  }).join('') + 
+  // 自定义追加的产品行
+  PO_FORM_STATE.customLines.map(cl => {
+    return `
+      <div class="po-li-row checked" style="background: rgba(124,58,237,0.04); border-left: 3px solid #7c3aed;">
+        <input type="checkbox" checked disabled title="自定义产品行">
+        ${cl.image_url ? `<img class="li-img" src="${escapeHtml(cl.image_url)}" onclick="openImgLightbox('${escapeHtml(cl.image_url)}')">` : `<div class="li-noimg">📷</div>`}
+        <div class="li-info">
+          <div class="sku">${escapeHtml(cl.sku || '')} <span style="margin-left:6px; font-size:10px; padding:1px 6px; background:rgba(124,58,237,0.12); color:#7c3aed; border-radius:3px;">自定义</span></div>
+          <div class="name">${escapeHtml(cl.title_cn || cl.title_en || '(无名)')}</div>
+          <div class="variant">${escapeHtml(cl.variant || '')}</div>
+          <div style="margin-top:4px; font-size:11px;">
+            <a href="javascript:void(0)" onclick="poFormEditCustomLine('${cl.id}')" style="color:#7c3aed; text-decoration:none;">🔧 修改</a>
+            <a href="javascript:void(0)" onclick="poFormRemoveCustomLine('${cl.id}')" style="color:var(--danger); text-decoration:none; margin-left:10px;">✕ 删除</a>
+          </div>
+        </div>
+        <div style="position:relative;">
+          <input type="number" min="1" value="${cl.qty}" placeholder="数量"
+            onchange="poFormSetCustomQty('${cl.id}', this.value)"
+            style="width:100%; ${Number(cl.qty) >= 2 ? 'background:rgba(220,38,38,0.08); border:2px solid #dc2626; color:#dc2626; font-weight:700; font-size:18px; text-align:center;' : ''}">
+          ${Number(cl.qty) >= 2 ? `<div style="font-size:9px; color:#dc2626; font-weight:600; text-align:center; margin-top:2px;">⚠ 多件 注意</div>` : ''}
+        </div>
+        <div>
+          <input type="number" min="0" step="0.01" value="${cl.price}" placeholder="单价 ¥"
+            onchange="poFormSetCustomPrice('${cl.id}', this.value)" style="width:100%;">
+        </div>
+        <div style="text-align:right; font-family:'JetBrains Mono', monospace; font-size:12px;">
+          ${cl.qty && cl.price ? '¥ ' + (Number(cl.qty) * Number(cl.price)).toFixed(2) : '—'}
+        </div>
+      </div>`;
   }).join('');
 
   const selected = Object.entries(PO_FORM_STATE.lineItemSelections).filter(([_, sel]) => sel.checked);
-  const totalAmount = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0) * (Number(sel.price) || 0), 0);
-  const totalQty = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0), 0);
+  const customLines = PO_FORM_STATE.customLines || [];
+  const totalAmount = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0) * (Number(sel.price) || 0), 0)
+    + customLines.reduce((s, cl) => s + (Number(cl.qty) || 0) * (Number(cl.price) || 0), 0);
+  const totalQty = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0), 0)
+    + customLines.reduce((s, cl) => s + (Number(cl.qty) || 0), 0);
 
   // 自动生成订单备注 = [电气标准] + 销售订单编号（写纸箱用）
   const countryCode = (so.shipping_address && (so.shipping_address.country_code || so.shipping_address.country)) || so.shipping_country || '';
@@ -11849,6 +11894,10 @@ function renderPoForm() {
         <div></div><div>图</div><div>产品 (SKU/中文名)</div><div>数量</div><div>单价 ¥</div><div style="text-align:right;">小计</div>
       </div>
       ${itemsHtml}
+      <div style="padding: 10px 12px; border-top: 1px dashed var(--border); background: var(--bg-elevated);">
+        <button type="button" class="btn small" onclick="poFormAddCustomLine()" style="font-size:12px;">+ 添加自定义产品行（差价 / 配件 / 换货）</button>
+        <span style="margin-left:10px; font-size:11px; color:var(--text-tertiary);">用于客户买 A 换成 B、补差价、加配件等场景</span>
+      </div>
     </div>
 
     <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
@@ -11914,6 +11963,96 @@ function poFormSetQty(liid, val) {
 function poFormSetPrice(liid, val) {
   PO_FORM_STATE.lineItemSelections[liid].price = val;
   renderPoForm();
+}
+
+// 修改销售单原始 line item 的 SKU / 中文名 / 图（用于换货 A→B 等场景）
+function poFormEditLine(liid) {
+  const sel = PO_FORM_STATE.lineItemSelections[liid];
+  const li = (PO_FORM_STATE.salesOrder.line_items || []).find(x => x.shopify_line_item_id === liid);
+  if (!sel || !li) return;
+  const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
+  const newSku = prompt('新 SKU（留空恢复原值）：', sel.customSku || eff.sku || li.sku);
+  if (newSku === null) return;
+  const newTitle = prompt('新中文名（留空恢复原值）：', sel.customTitleCn || eff.name_cn || li.title || '');
+  if (newTitle === null) return;
+  const newImg = prompt('新图片 URL（留空保留当前图）：', sel.customImageUrl || eff.image_url || li.image_url || '');
+  if (newImg === null) return;
+  sel.customSku = newSku.trim() || null;
+  sel.customTitleCn = newTitle.trim() || null;
+  sel.customImageUrl = newImg.trim() || null;
+  renderPoForm();
+  toast('已修改');
+}
+
+// 恢复销售单原始 line item 默认值
+function poFormResetLine(liid) {
+  const sel = PO_FORM_STATE.lineItemSelections[liid];
+  if (!sel) return;
+  sel.customSku = null;
+  sel.customTitleCn = null;
+  sel.customImageUrl = null;
+  renderPoForm();
+  toast('已恢复默认');
+}
+
+// 自定义额外产品行（差价/配件/换货）
+function poFormAddCustomLine() {
+  const sku = prompt('SKU 编号（如：DIFF-001 / ACCESSORY-X / CUSTOM-XX）');
+  if (sku === null) return;
+  if (!sku.trim()) { toast('SKU 必填', 'warn'); return; }
+  const title = prompt('中文名（如：差价补充 / 配件 / 换货 A→B）：');
+  if (title === null) return;
+  const qty = prompt('数量：', '1');
+  if (qty === null) return;
+  const price = prompt('单价 ¥：', '0');
+  if (price === null) return;
+  const img = prompt('图片 URL（可选）：', '');
+  PO_FORM_STATE.customLines.push({
+    id: 'custom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    sku: sku.trim(),
+    title_cn: title.trim(),
+    title_en: '',
+    variant: '',
+    image_url: (img || '').trim(),
+    qty: parseInt(qty) || 1,
+    price: parseFloat(price) || 0,
+    is_custom: true,
+  });
+  renderPoForm();
+  toast('已添加自定义产品行');
+}
+
+function poFormEditCustomLine(id) {
+  const cl = PO_FORM_STATE.customLines.find(x => x.id === id);
+  if (!cl) return;
+  const sku = prompt('SKU 编号：', cl.sku);
+  if (sku === null) return;
+  const title = prompt('中文名：', cl.title_cn);
+  if (title === null) return;
+  const img = prompt('图片 URL（可选）：', cl.image_url || '');
+  if (img === null) return;
+  cl.sku = sku.trim();
+  cl.title_cn = title.trim();
+  cl.image_url = img.trim();
+  renderPoForm();
+  toast('已修改');
+}
+
+function poFormRemoveCustomLine(id) {
+  if (!confirm('删除这一自定义产品行？')) return;
+  PO_FORM_STATE.customLines = PO_FORM_STATE.customLines.filter(x => x.id !== id);
+  renderPoForm();
+  toast('已删除');
+}
+
+function poFormSetCustomQty(id, val) {
+  const cl = PO_FORM_STATE.customLines.find(x => x.id === id);
+  if (cl) { cl.qty = parseInt(val) || 0; renderPoForm(); }
+}
+
+function poFormSetCustomPrice(id, val) {
+  const cl = PO_FORM_STATE.customLines.find(x => x.id === id);
+  if (cl) { cl.price = parseFloat(val) || 0; renderPoForm(); }
 }
 
 // 编辑 SKU 备注（绑定到 products.notes）
@@ -11994,7 +12133,8 @@ function closePoForm() {
 async function poFormSave() {
   const so = PO_FORM_STATE.salesOrder;
   const selected = Object.entries(PO_FORM_STATE.lineItemSelections).filter(([_, sel]) => sel.checked && sel.qty > 0);
-  if (selected.length === 0) { toast('请勾选至少 1 个产品', 'warn'); return; }
+  const customLines = (PO_FORM_STATE.customLines || []).filter(cl => cl.qty > 0);
+  if (selected.length === 0 && customLines.length === 0) { toast('请勾选至少 1 个产品（或添加自定义行）', 'warn'); return; }
 
   const supplierName = document.getElementById('poFormSupplierInput').value.trim();
   if (!supplierName) { toast('请选择/输入供应商', 'warn'); return; }
@@ -12018,6 +12158,9 @@ async function poFormSave() {
   if (!promisedDate) { toast('请填下单日期', 'warn'); return; }
   for (const [liid, sel] of selected) {
     if (!sel.price || Number(sel.price) <= 0) { toast('请填所有勾选产品的单价', 'warn'); return; }
+  }
+  for (const cl of customLines) {
+    if (!cl.price || Number(cl.price) <= 0) { toast(`自定义产品「${cl.sku}」未填单价`, 'warn'); return; }
   }
 
   // 检查多供应商：按 default_supplier 拆
@@ -12053,8 +12196,8 @@ async function poFormSave() {
     return;
   }
 
-  // 单供应商，直接保存
-  await poFormDoSave([{ supplierId, supplierName, liids: selected.map(([liid]) => liid) }], { boxNote, promisedDate, note });
+  // 单供应商，直接保存（customLines 都跟在这个供应商下）
+  await poFormDoSave([{ supplierId, supplierName, liids: selected.map(([liid]) => liid), customLines }], { boxNote, promisedDate, note });
 }
 
 function closeMultiSupplierConfirm() {
@@ -12063,11 +12206,12 @@ function closeMultiSupplierConfirm() {
 
 async function multiSupplierChoice(choice) {
   document.getElementById('multiSupplierConfirm').style.display = 'none';
-  if (choice === 'manual') return;  // 用户自己再选
-  // split: 一键拆
+  if (choice === 'manual') return;
   const groups = PO_FORM_STATE._pendingGroups;
   const fd = PO_FORM_STATE._formData;
+  const customLines = (PO_FORM_STATE.customLines || []).filter(cl => cl.qty > 0);
   const all = [];
+  let isFirst = true;
   for (const [supName, liids] of Object.entries(groups)) {
     let supId;
     const existing = SUPPLIERS.byName(supName);
@@ -12076,7 +12220,9 @@ async function multiSupplierChoice(choice) {
       const { data } = await sb.from('suppliers').insert({ name: supName }).select().single();
       if (data) { SUPPLIERS._list.push(data); supId = data.id; }
     }
-    all.push({ supplierId: supId || fd.supplierIdFallback, supplierName: supName, liids });
+    // 自定义产品行只挂在第一组（默认归当前主供应商）
+    all.push({ supplierId: supId || fd.supplierIdFallback, supplierName: supName, liids, customLines: isFirst ? customLines : [] });
+    isFirst = false;
   }
   await poFormDoSave(all, fd);
 }
@@ -12115,17 +12261,34 @@ async function poFormDoSave(groups, common) {
         const li = items.find(x => x.shopify_line_item_id === liid);
         const sel = PO_FORM_STATE.lineItemSelections[liid];
         const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
+        // 用户改过则用 custom 字段，否则用 effective/li 原始字段
         return {
           shopify_line_item_id: liid,
-          sku: eff.sku || li.sku,
-          title_cn: eff.name_cn || '',
+          sku: sel.customSku || eff.sku || li.sku,
+          title_cn: sel.customTitleCn || eff.name_cn || '',
           title_en: li.title || '',
           variant: li.variant_title || '',
-          image_url: eff.image_url || li.image_url || '',
+          image_url: sel.customImageUrl || eff.image_url || li.image_url || '',
           qty: Number(sel.qty),
           price: Number(sel.price),
           subtotal: Number(sel.qty) * Number(sel.price),
+          edited: !!(sel.customSku || sel.customTitleCn || sel.customImageUrl),
         };
+      });
+      // 把自定义产品行追加到 liData
+      (g.customLines || []).forEach(cl => {
+        liData.push({
+          shopify_line_item_id: null,  // 自定义没有 shopify line id
+          sku: cl.sku,
+          title_cn: cl.title_cn || '',
+          title_en: cl.title_en || '',
+          variant: cl.variant || '',
+          image_url: cl.image_url || '',
+          qty: Number(cl.qty),
+          price: Number(cl.price),
+          subtotal: Number(cl.qty) * Number(cl.price),
+          is_custom: true,
+        });
       });
       const totalAmount = liData.reduce((s, x) => s + x.subtotal, 0);
       const firstLi = liData[0];
@@ -12624,7 +12787,7 @@ function renderPoList() {
         ${isRejected && p.approval_note ? `<div style="background:rgba(185,28,28,0.08); padding:8px 14px; border-bottom:1px solid var(--border-subtle); font-size:12px;"><b style="color:var(--danger);">❌ 驳回原因：</b><span style="color:var(--text-primary);">${escapeHtml(p.approval_note)}</span>${p.approved_by ? ` <span style="color:var(--text-tertiary);">· 由 ${escapeHtml(p.approved_by)} 驳回</span>` : ''}</div>` : ''}
         <div class="po-card-body" style="display: grid; grid-template-columns: 1fr 200px; gap: 12px; font-size: 12px;">
           <div>
-            ${items.slice(0,3).map(li => `<div style="margin-bottom:4px;">${escapeHtml(li.title_cn || li.title_en)} <span style="color:${(li.qty||0)>20 ? 'var(--danger); font-weight:600;' : 'var(--text-tertiary);'}">× ${li.qty}</span> @ ¥${Number(li.price).toFixed(2)}</div>`).join('')}
+            ${items.slice(0,3).map(li => `<div style="margin-bottom:4px;">${escapeHtml(li.title_cn || li.title_en)} ${(li.qty||0) >= 2 ? `<span style="background:var(--danger); color:white; padding:2px 8px; border-radius:5px; font-weight:700; font-size:14px; margin:0 4px;">× ${li.qty}</span>` : `<span style="color:var(--text-tertiary)">× ${li.qty}</span>`} @ ¥${Number(li.price).toFixed(2)}</div>`).join('')}
             ${items.length > 3 ? `<div style="color:var(--text-tertiary); font-size:11px;">还有 ${items.length-3} 行…</div>` : ''}
             <div style="color:var(--text-secondary); margin-top:6px;">📦 ${escapeHtml(p.box_note || '')}</div>
           </div>
@@ -12792,7 +12955,7 @@ function poOpenPrint(poId) {
               <td style="text-align:center;">${i+1}</td>
               <td style="text-align:center;">${li.image_url ? `<img src="${escapeHtml(li.image_url)}">` : '—'}</td>
               <td>${li.title_cn ? `<div style="font-weight:600;">${escapeHtml(li.title_cn)}</div>` : ''}${specs ? `<div style="color:#444; font-size:11px; white-space:pre-line; margin-top:3px;">${escapeHtml(specs)}</div>` : (li.title_cn ? '' : '<span style="color:#888;">—</span>')}</td>
-              <td style="text-align:center;">${li.qty}</td>
+              <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:4px 10px; border-radius:6px; font-weight:700; font-size:16px; display:inline-block;">${li.qty}</span>` : li.qty}</td>
               <td style="text-align:right;">¥ ${Number(li.price).toFixed(2)}</td>
               <td style="text-align:right;">¥ ${Number(li.subtotal).toFixed(2)}</td>
             </tr>`;
