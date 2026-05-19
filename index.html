@@ -11576,16 +11576,43 @@ function extractVariantInfo(variantTitle) {
 
   // 材质中英对照
   const MATERIAL_MAP = {
+    // 多词条目（按长度优先匹配）
+    'stainless steel': '不锈钢',
+    'oak wood': '橡木', 'walnut wood': '胡桃木', 'ash wood': '白蜡木',
+    'cherry wood': '樱桃木', 'pine wood': '松木', 'teak wood': '柚木',
+    'solid wood': '实木',
+    // 单词
     brass: '黄铜', copper: '铜', bronze: '青铜',
-    iron: '铁', steel: '不锈钢', 'stainless steel': '不锈钢',
+    iron: '铁', steel: '钢',
     aluminum: '铝', aluminium: '铝',
     marble: '大理石', travertine: '洞石', stone: '石材',
-    wood: '木质', oak: '橡木', walnut: '胡桃木', ash: '白蜡木',
+    oak: '橡木', walnut: '胡桃木', ash: '白蜡木',
+    cherry: '樱桃木', teak: '柚木', pine: '松木',
     bamboo: '竹', rattan: '藤编',
     glass: '玻璃', crystal: '水晶', ceramic: '陶瓷', porcelain: '瓷',
     fabric: '布艺', linen: '亚麻', cotton: '棉', velvet: '天鹅绒', leather: '皮质',
     concrete: '混凝土', plaster: '石膏', resin: '树脂', acrylic: '亚克力',
     paper: '纸艺', alabaster: '雪花石',
+  };
+
+  // 颜色中英对照（含修饰词）
+  const COLOR_MAP = {
+    // 多词组合（必须排前面，避免被单词分割）
+    'rose gold': '玫瑰金', 'champagne gold': '香槟金', 'antique brass': '复古黄铜',
+    'matte black': '哑光黑', 'matte white': '哑光白', 'polished chrome': '抛光铬',
+    'brushed nickel': '拉丝镍', 'satin nickel': '缎面镍',
+    'natural wood': '原木色',
+    // 单词颜色
+    black: '黑色', white: '白色', gray: '灰色', grey: '灰色',
+    brown: '棕色', red: '红色', blue: '蓝色', green: '绿色',
+    yellow: '黄色', pink: '粉色', orange: '橙色', purple: '紫色',
+    silver: '银色', gold: '金色', beige: '米色', cream: '奶油色',
+    ivory: '象牙白', navy: '海军蓝', champagne: '香槟色',
+    charcoal: '炭灰色', chrome: '铬', graphite: '石墨色',
+    nickel: '镍',
+    // 修饰词
+    matte: '哑光', polished: '抛光', glossy: '亮光', satin: '缎面',
+    antique: '复古', brushed: '拉丝',
   };
 
   // 英寸 → cm 整数（保留 1 位小数显示 .0）
@@ -11646,14 +11673,28 @@ function extractVariantInfo(variantTitle) {
       continue;
     }
 
-    // === 5. 材质 ===
-    let foundMat = null;
+    // === 5. 颜色 / 材质 综合翻译（如 "Black+Walnut Wood" → "黑色 + 胡桃木"）===
     const lower = part.toLowerCase();
-    for (const [en, cn] of Object.entries(MATERIAL_MAP)) {
-      if (new RegExp('\\b' + en + '\\b', 'i').test(lower)) { foundMat = cn; break; }
+    const hasColor = Object.keys(COLOR_MAP).some(k => new RegExp('\\b' + k + '\\b', 'i').test(lower));
+    const hasMat = Object.keys(MATERIAL_MAP).some(k => new RegExp('\\b' + k + '\\b', 'i').test(lower));
+    if (hasColor || hasMat) {
+      // 全量整段翻译：先长后短，避免 "rose" 替换 "rose gold"
+      let translated = part;
+      const allMaps = { ...MATERIAL_MAP, ...COLOR_MAP };
+      const sortedKeys = Object.keys(allMaps).sort((a, b) => b.length - a.length);
+      for (const k of sortedKeys) {
+        translated = translated.replace(new RegExp('\\b' + k + '\\b', 'gi'), allMaps[k]);
+      }
+      // 标准化连接符 + 清理残留的 wood/material 修饰词 + 去重复空格
+      translated = translated.replace(/\+/g, ' + ').replace(/\s+&\s+|\s+and\s+/gi, ' + ');
+      translated = translated.replace(/\b(wood|material|finish|color|colour)\b/gi, '').replace(/\s+/g, ' ').trim();
+      translated = translated.replace(/\s+\+\s+/g, ' + ');  // 再次标准化
+      // 选择前缀
+      const prefix = (hasColor && hasMat) ? '配色/材质：' : (hasColor ? '颜色：' : '材质：');
+      out.push(prefix + translated);
+      continue;
     }
-    if (foundMat) { out.push('材质：' + foundMat); continue; }
-    // 其他不输出（颜色、款式、插头标准等不需要）
+    // 其他不输出（款式、插头标准等不需要）
   }
   const result = out.join('\n');
   console.log('[extractVariantInfo]', JSON.stringify(variantTitle), '→', JSON.stringify(result));
@@ -12866,7 +12907,55 @@ async function poResubmit(poId) {
 }
 
 async function poAdvance(poId, nextStatus, nextLabel) {
-  if (!confirm(`确认推进到「${nextLabel}」？`)) return;
+  const po = PO_LIST.find(x => x.id === poId);
+  if (!po) return;
+
+  // 推进到"已到货"时，提示同步到 Shopify 后台
+  if (nextStatus === 'arrived') {
+    const items = po.line_items || [];
+    const today = new Date().toISOString().slice(0, 10);
+    // 默认拼接：每行一个产品
+    const defaultLines = items.map(li => {
+      const name = li.title_cn || li.title_en || li.sku || '产品';
+      return `  • ${name} × ${li.qty}（${po.supplier || '供应商'}）已回`;
+    }).join('\n');
+    const defaultAppend = `[财务录入 ${today}] 采购单 ${po.po_number} 已到货：\n${defaultLines}`;
+
+    const extraNote = prompt(
+      `确认 ${po.po_number} 已到货？\n` +
+      `\n会自动追加以下内容到 Shopify 订单备注（保留原有备注）：\n` +
+      `${'-'.repeat(40)}\n${defaultAppend}\n${'-'.repeat(40)}\n` +
+      `\n额外备注（可选，会追加到末尾）：`,
+      ''
+    );
+    if (extraNote === null) return;  // 取消
+
+    const appendText = extraNote.trim()
+      ? `${defaultAppend}\n  备注：${extraNote.trim()}`
+      : defaultAppend;
+
+    // 调 Edge Function 同步 Shopify
+    try {
+      const so = SHOPIFY._orders.find(o => o.id === po.sales_order_id);
+      if (so && so.shopify_order_id) {
+        await SHOPIFY.call('update_order_note', {
+          order_id: so.shopify_order_id,
+          shop: so.shop_domain,
+          append_text: appendText,
+        }, so.shop_domain);
+        toast('✓ 已同步到 Shopify 后台备注');
+      } else {
+        console.warn('未找到对应销售单，跳过 Shopify 同步');
+      }
+    } catch (e) {
+      // 同步失败但不阻塞推进
+      console.error('Shopify 同步失败：', e);
+      if (!confirm('⚠️ 同步到 Shopify 失败：\n' + (e.message || e) + '\n\n是否继续推进 PO 到"已到货"状态？\n（建议先检查 Edge Function 是否更新了 update_order_note action）')) return;
+    }
+  } else {
+    if (!confirm(`确认推进到「${nextLabel}」？`)) return;
+  }
+
   try {
     await sb.from('orders').update({ status: nextStatus, updated_at: new Date().toISOString() }).eq('id', poId);
     toast(`✓ 已推进到「${nextLabel}」`);
