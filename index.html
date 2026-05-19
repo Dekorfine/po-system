@@ -2672,6 +2672,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       </div>
       <div class="po-subtabs" style="margin-top: 12px;">
         <button class="sub-tab-btn active" data-pofilter="all" onclick="poShowFilter('all')">📋 全部 <span class="cnt" id="poCntAll">0</span></button>
+        <button class="sub-tab-btn" data-pofilter="pending" onclick="poShowFilter('pending')">⏳ 待审批 <span class="cnt" id="poCntPending">0</span></button>
         <button class="sub-tab-btn" data-pofilter="active" onclick="poShowFilter('active')">🟡 进行中 <span class="cnt" id="poCntActive">0</span></button>
         <button class="sub-tab-btn" data-pofilter="done" onclick="poShowFilter('done')">✅ 已完成 <span class="cnt" id="poCntDone">0</span></button>
         <button class="sub-tab-btn" data-pofilter="cancelled" onclick="poShowFilter('cancelled')">⊘ 已取消 <span class="cnt" id="poCntCancelled">0</span></button>
@@ -11180,6 +11181,17 @@ function renderShopifyOrders() {
             ${localStatusPill}
           </div>
         </div>
+        ${(() => {
+          const customerNote = (o.customer_note || '').trim();
+          const internalNote = (o.internal_note || '').trim();
+          const noteAttrs = (o.raw_payload?.note_attributes || []).filter(a => a.value && String(a.value).trim());
+          if (!customerNote && !internalNote && noteAttrs.length === 0) return '';
+          return `<div style="background: rgba(234,179,8,0.08); border-top:1px solid var(--border-subtle); border-bottom:1px solid var(--border-subtle); padding:8px 14px; font-size:12px;">
+            ${customerNote ? `<div style="margin-bottom:${(internalNote || noteAttrs.length) ? '6px' : '0'};"><b style="color:var(--warning);">💬 客户备注：</b><span style="color:var(--text-primary); white-space:pre-wrap;">${escapeHtml(customerNote)}</span></div>` : ''}
+            ${noteAttrs.length > 0 ? `<div style="margin-bottom:${internalNote ? '6px' : '0'};"><b style="color:var(--text-secondary);">🏷 自定义字段：</b>${noteAttrs.map(a => `<span style="display:inline-block; background:rgba(0,0,0,0.04); padding:1px 6px; border-radius:3px; margin:0 4px 2px 0; font-size:11px;">${escapeHtml(a.name)}: ${escapeHtml(a.value)}</span>`).join('')}</div>` : ''}
+            ${internalNote ? `<div><b style="color:var(--accent);">📝 内部备注：</b><span style="color:var(--text-primary); white-space:pre-wrap;">${escapeHtml(internalNote)}</span></div>` : ''}
+          </div>`;
+        })()}
         <div class="so-card-body">
           <div class="so-products">${productsHtml}</div>
           <div class="so-recipient">
@@ -11194,10 +11206,31 @@ function renderShopifyOrders() {
         </div>
         <div class="so-card-actions">
           <div class="so-progress">${items.length > 0 ? `PO 进度：${lineWithPo} / ${items.length} 行已分配` : ''}</div>
-          <div class="so-actions-right">${actionsHtml}</div>
+          <div class="so-actions-right">
+            <button class="so-action-btn" onclick="editInternalNote('${o.id}')" title="跟单内部备注（不会同步回 Shopify）">📝 内部备注</button>
+            ${actionsHtml}
+          </div>
         </div>
       </div>`;
   }).join('');
+}
+
+// 编辑工作台内部备注（不同步到 Shopify）
+async function editInternalNote(orderId) {
+  const o = SHOPIFY._orders.find(x => x.id === orderId);
+  if (!o) return;
+  const current = o.internal_note || '';
+  const newNote = prompt(`编辑内部备注（${o.shopify_order_number || ''}）\n\n这是跟单团队内部的备注，不会同步回 Shopify。\n用于：和同事沟通处理思路、提醒事项、客户特殊要求确认等。`, current);
+  if (newNote === null) return;
+  try {
+    await sb.from('shopify_orders').update({
+      internal_note: newNote.trim(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', orderId);
+    o.internal_note = newNote.trim();
+    toast('已保存');
+    renderShopifyOrders();
+  } catch (e) { toast('保存失败：' + (e.message || e), 'err'); }
 }
 
 async function shopifyStartProcessing(orderId) {
@@ -11599,6 +11632,34 @@ function extractVariantInfo(variantTitle) {
   return result;
 }
 
+// ============ 国家 → 电气标准（用于订单备注） ============
+function getElectricalStandard(countryCode, fallbackCountry) {
+  const code = (countryCode || '').toUpperCase().trim();
+  const NA   = ['US','CA','MX'];                                                  // 北美 110V
+  const UK   = ['GB','UK','IE'];                                                  // 英规 230V BS
+  const EU   = ['DE','FR','ES','IT','NL','BE','PT','AT','SE','FI','DK','PL','CZ','GR','HU','RO','BG','HR','SK','SI','LT','LV','EE','LU','MT','CY','NO','CH','IS','LI'];
+  const AUS  = ['AU','NZ','FJ'];
+  if (NA.includes(code))  return '美规';
+  if (UK.includes(code))  return '英规';
+  if (EU.includes(code))  return '欧规';
+  if (AUS.includes(code)) return '澳规';
+  if (code === 'CN') return '中规';
+  if (code === 'JP') return '日规';
+  if (code === 'KR') return '韩规';
+  if (code === 'IN' || code === 'PK' || code === 'ZA') return '英规';
+  if (code === 'IL') return '欧规';
+  if (code === 'BR') return '巴标';
+  if (code === 'AR' || code === 'CL') return '南美规';
+  if (fallbackCountry) {
+    const fc = fallbackCountry.toLowerCase();
+    if (/united states|usa|canada|mexico/.test(fc)) return '美规';
+    if (/united kingdom|britain|ireland/.test(fc)) return '英规';
+    if (/germany|france|spain|italy|netherlands|europe/.test(fc)) return '欧规';
+    if (/australia|new zealand/.test(fc)) return '澳规';
+  }
+  return '';
+}
+
 // ============ 采购单弹窗 ============
 let PO_FORM_STATE = null;
 
@@ -11703,8 +11764,10 @@ function renderPoForm() {
   const totalAmount = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0) * (Number(sel.price) || 0), 0);
   const totalQty = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0), 0);
 
-  // 自动生成订单备注 = 销售订单编号（写纸箱用）
-  const autoNote = `${so.shopify_order_number || ''}`;
+  // 自动生成订单备注 = [电气标准] + 销售订单编号（写纸箱用）
+  const countryCode = (so.shipping_address && (so.shipping_address.country_code || so.shipping_address.country)) || so.shipping_country || '';
+  const standard = getElectricalStandard(countryCode, so.shipping_address?.country || so.shipping_country);
+  const autoNote = standard ? `${standard} ${so.shopify_order_number || ''}`.trim() : `${so.shopify_order_number || ''}`;
 
   // 自动从所有勾选 line items 的 variant_title 提取信息到"其他备注"
   // 同时合并 products.notes（每个 SKU 跟单手动维护的备注）
@@ -11739,6 +11802,18 @@ function renderPoForm() {
         <div style="grid-column: 1/-1; color: var(--text-secondary);"><b>收货：</b>${escapeHtml(ship.country_code || '')} ${escapeHtml(ship.city || '')} ${escapeHtml(ship.address1 || '')}</div>
       </div>
     </div>
+    ${(() => {
+      const customerNote = (so.customer_note || '').trim();
+      const internalNote = (so.internal_note || '').trim();
+      const noteAttrs = (so.raw_payload?.note_attributes || []).filter(a => a.value && String(a.value).trim());
+      if (!customerNote && !internalNote && noteAttrs.length === 0) return '';
+      return `<div style="background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.3); padding: 10px 12px; border-radius: 8px; margin-bottom: 16px; font-size: 13px;">
+        <div style="font-weight:600; color:var(--warning); margin-bottom:6px;">⚠️ 注意：本订单有备注信息</div>
+        ${customerNote ? `<div style="margin-bottom:6px;"><b>💬 客户备注：</b><span style="white-space:pre-wrap;">${escapeHtml(customerNote)}</span></div>` : ''}
+        ${noteAttrs.length > 0 ? `<div style="margin-bottom:6px;"><b>🏷 自定义字段：</b>${noteAttrs.map(a => `<span style="display:inline-block; background:rgba(0,0,0,0.05); padding:1px 6px; border-radius:3px; margin-right:4px;">${escapeHtml(a.name)}: ${escapeHtml(a.value)}</span>`).join('')}</div>` : ''}
+        ${internalNote ? `<div><b>📝 内部备注：</b><span style="white-space:pre-wrap;">${escapeHtml(internalNote)}</span></div>` : ''}
+      </div>`;
+    })()}
 
     <h4 style="margin: 0 0 8px; font-size: 13px;">📦 选择产品（勾选要开采购单的）</h4>
     <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
@@ -11785,6 +11860,18 @@ function renderPoForm() {
         合计：¥ ${totalAmount.toFixed(2)}
       </div>
     </div>
+    ${(() => {
+      const hasLargeQty = selected.some(([_, sel]) => Number(sel.qty) > 20);
+      const hasLargeTotal = totalAmount > 5000;
+      if (!hasLargeQty && !hasLargeTotal) return '';
+      const reasons = [];
+      if (hasLargeQty) reasons.push('有产品数量 > 20 件');
+      if (hasLargeTotal) reasons.push('总金额 > ¥5000');
+      return `<div style="margin-top:12px; padding:10px 14px; background:rgba(180,83,9,0.08); border-left:3px solid var(--warning); border-radius:6px;">
+        <div style="font-size:13px; font-weight:600; color:var(--warning);">⚠️ 本采购单需主管审批</div>
+        <div style="font-size:12px; color:var(--text-secondary); margin-top:3px;">触发条件：${reasons.join('、')}。保存后状态为「待主管审批」，需主管批准后才能推进下一步。</div>
+      </div>`;
+    })()}
   `;
 }
 
@@ -12015,13 +12102,17 @@ async function poFormDoSave(groups, common) {
       const totalAmount = liData.reduce((s, x) => s + x.subtotal, 0);
       const firstLi = liData[0];
 
+      // 审批触发：单个产品数量 > 20 或总金额 > 5000
+      const needsApproval = liData.some(li => li.qty > 20) || totalAmount > 5000;
+      const initialStatus = needsApproval ? 'pending_approval' : 'producing';
+
       const poRow = {
         agent_id: agentId,
         po_number: poNum,
         source: 'shopify',
         supplier: g.supplierName,
         product: liData.map(x => x.title_cn || x.title_en).join(' / '),
-        status: 'producing',
+        status: initialStatus,
         promised_date: common.promisedDate,
         line_items: liData,
         box_note: common.boxNote,
@@ -12085,7 +12176,12 @@ async function poFormDoSave(groups, common) {
     }).eq('id', so.id);
     if (soErr) console.warn('更新销售订单 line_items 失败：', soErr.message);
 
-    toast(`✓ 成功开 ${allInserts.length} 张采购单`);
+    const hasPending = allInserts.some(po => po.status === 'pending_approval');
+    if (hasPending) {
+      toast(`✓ 已开 ${allInserts.length} 张采购单，${allInserts.filter(p=>p.status==='pending_approval').length} 张待主管审批`, 'info');
+    } else {
+      toast(`✓ 成功开 ${allInserts.length} 张采购单`);
+    }
     closePoForm();
     SHOPIFY.invalidateOrders();  // 销售单 line_items 已变化，下次进 tab 强制刷新
     PRODUCTS_CACHE.invalidate(); // 产品上次单价/默认供应商已更新
@@ -12402,8 +12498,14 @@ const PO_STATUSES = [
   { value: 'arrived',   label: '已到货',         color: '#ea580c', bg: 'rgba(234,88,12,0.1)' },
   { value: 'received',  label: '已完成入库',     color: '#15803d', bg: 'rgba(21,128,61,0.1)' },
 ];
+// 特殊状态
+const PO_SPECIAL_STATUSES = {
+  pending_approval: { label: '⏳ 待主管审批', color: '#b45309', bg: 'rgba(180,83,9,0.12)' },
+  rejected:         { label: '❌ 已驳回',     color: '#b91c1c', bg: 'rgba(185,28,28,0.12)' },
+  cancelled:        { label: '⊘ 已取消',     color: '#78716c', bg: 'rgba(120,113,108,0.12)' },
+};
 function poStatusInfo(value) {
-  return PO_STATUSES.find(s => s.value === value) || { value, label: value || '未知', color: '#888', bg: '#eee' };
+  return PO_SPECIAL_STATUSES[value] || PO_STATUSES.find(s => s.value === value) || { label: value || '未知', color: '#888', bg: '#eee' };
 }
 function poNextStatus(value) {
   const i = PO_STATUSES.findIndex(s => s.value === value);
@@ -12424,17 +12526,21 @@ async function renderPo() {
 }
 
 function poRefreshCounts() {
-  const counts = { all: PO_LIST.length, active: 0, done: 0, cancelled: 0 };
+  const counts = { all: PO_LIST.length, active: 0, done: 0, cancelled: 0, pending: 0 };
   PO_LIST.forEach(p => {
     if (p.status === 'cancelled') counts.cancelled++;
     else if (p.status === 'received') counts.done++;
     else counts.active++;
+    if (p.status === 'pending_approval') counts.pending++;
   });
   document.getElementById('poCntAll').textContent = counts.all;
   document.getElementById('poCntActive').textContent = counts.active;
   document.getElementById('poCntDone').textContent = counts.done;
   document.getElementById('poCntCancelled').textContent = counts.cancelled;
-  if (typeof setBadge === 'function') setBadge('badgePo', counts.active);
+  const pendingEl = document.getElementById('poCntPending');
+  if (pendingEl) pendingEl.textContent = counts.pending;
+  // badge: 主管显示待审批数，跟单显示进行中
+  if (typeof setBadge === 'function') setBadge('badgePo', IS_ADMIN && counts.pending > 0 ? counts.pending : counts.active);
 }
 
 function poShowFilter(f) {
@@ -12445,7 +12551,8 @@ function poShowFilter(f) {
 
 function renderPoList() {
   let list = PO_LIST;
-  if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
+  if (PO_FILTER === 'pending') list = list.filter(p => p.status === 'pending_approval');
+  else if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
   else if (PO_FILTER === 'done') list = list.filter(p => p.status === 'received');
   else if (PO_FILTER === 'active') list = list.filter(p => p.status !== 'cancelled' && p.status !== 'received');
 
@@ -12458,11 +12565,21 @@ function renderPoList() {
     const items = p.line_items || [];
     const created = p.created_at ? new Date(p.created_at).toISOString().slice(0,10) : '';
     const isCancelled = p.status === 'cancelled';
+    const isPending = p.status === 'pending_approval';
+    const isRejected = p.status === 'rejected';
     const statusInfo = poStatusInfo(p.status);
-    const next = poNextStatus(p.status);
-    const prev = poPrevStatus(p.status);
+    const next = !isPending && !isRejected && !isCancelled ? poNextStatus(p.status) : null;
+    const prev = !isPending && !isRejected && !isCancelled ? poPrevStatus(p.status) : null;
+
+    // 触发审批的原因
+    const bigQtyItems = items.filter(li => (li.qty || 0) > 20);
+    const isBigTotal = Number(p.total_amount || 0) > 5000;
+    let approvalReasons = [];
+    if (bigQtyItems.length > 0) approvalReasons.push(`产品数量过大 (${bigQtyItems.map(li => (li.title_cn||li.title_en)+' '+li.qty+'件').join(', ')})`);
+    if (isBigTotal) approvalReasons.push(`金额 ¥${Number(p.total_amount).toFixed(2)} > 5000`);
+
     return `
-      <div class="po-card ${isCancelled ? 'cancelled' : ''}">
+      <div class="po-card ${isCancelled ? 'cancelled' : ''}" style="${isPending ? 'border-color:var(--warning); border-width:2px;' : isRejected ? 'border-color:var(--danger); border-width:2px;' : ''}">
         <div class="po-card-top">
           <div>
             <span class="po-no">${escapeHtml(p.po_number || '')}</span>
@@ -12471,9 +12588,11 @@ function renderPoList() {
           <div class="po-meta">供应商：<b>${escapeHtml(p.supplier || '')}</b></div>
           <div class="po-meta" style="text-align:right; font-family: 'JetBrains Mono', monospace;">¥ ${Number(p.total_amount || 0).toFixed(2)}</div>
         </div>
+        ${isPending ? `<div style="background:rgba(180,83,9,0.08); padding:8px 14px; border-bottom:1px solid var(--border-subtle); font-size:12px;"><b style="color:var(--warning);">⚠️ 待主管审批：</b><span style="color:var(--text-secondary);">${approvalReasons.join('；') || '触发审批阈值'}</span></div>` : ''}
+        ${isRejected && p.approval_note ? `<div style="background:rgba(185,28,28,0.08); padding:8px 14px; border-bottom:1px solid var(--border-subtle); font-size:12px;"><b style="color:var(--danger);">❌ 驳回原因：</b><span style="color:var(--text-primary);">${escapeHtml(p.approval_note)}</span>${p.approved_by ? ` <span style="color:var(--text-tertiary);">· 由 ${escapeHtml(p.approved_by)} 驳回</span>` : ''}</div>` : ''}
         <div class="po-card-body" style="display: grid; grid-template-columns: 1fr 200px; gap: 12px; font-size: 12px;">
           <div>
-            ${items.slice(0,3).map(li => `<div style="margin-bottom:4px;">${escapeHtml(li.title_cn || li.title_en)} <span style="color:var(--text-tertiary)">× ${li.qty}</span> @ ¥${Number(li.price).toFixed(2)}</div>`).join('')}
+            ${items.slice(0,3).map(li => `<div style="margin-bottom:4px;">${escapeHtml(li.title_cn || li.title_en)} <span style="color:${(li.qty||0)>20 ? 'var(--danger); font-weight:600;' : 'var(--text-tertiary);'}">× ${li.qty}</span> @ ¥${Number(li.price).toFixed(2)}</div>`).join('')}
             ${items.length > 3 ? `<div style="color:var(--text-tertiary); font-size:11px;">还有 ${items.length-3} 行…</div>` : ''}
             <div style="color:var(--text-secondary); margin-top:6px;">📦 ${escapeHtml(p.box_note || '')}</div>
           </div>
@@ -12481,24 +12600,74 @@ function renderPoList() {
             <div>开单：${created}</div>
             <div>下单日期：${escapeHtml(p.promised_date || '—')}</div>
             <div style="margin-top: 4px;">
-              <span style="display:inline-block; padding:2px 8px; border-radius:4px; background:${isCancelled ? 'rgba(185,28,28,0.1)' : statusInfo.bg}; color:${isCancelled ? '#b91c1c' : statusInfo.color}; font-size:11px; font-weight:500;">
-                ${isCancelled ? '⊘ 已取消' : statusInfo.label}
+              <span style="display:inline-block; padding:2px 8px; border-radius:4px; background:${statusInfo.bg}; color:${statusInfo.color}; font-size:11px; font-weight:500;">
+                ${statusInfo.label}
               </span>
             </div>
             <div>跟单：${escapeHtml(p.creator_name || '')}</div>
+            ${p.approved_by && !isRejected ? `<div style="color:var(--success); font-size:11px;">✓ 由 ${escapeHtml(p.approved_by)} 批准</div>` : ''}
           </div>
         </div>
         <div class="po-card-actions">
           <div style="font-size: 11px; color: var(--text-tertiary);">${items.length} 个产品行 · ${items.reduce((s,x) => s + (x.qty||0), 0)} 件</div>
           <div style="display: flex; gap: 6px; align-items:center; flex-wrap:wrap;">
-            ${!isCancelled && next ? `<button class="so-action-btn primary" onclick="poAdvance('${p.id}', '${next.value}', '${next.label}')" title="推进到下一步">▶ ${next.label}</button>` : ''}
-            ${!isCancelled && prev ? `<button class="so-action-btn" onclick="poRevert('${p.id}', '${prev.value}', '${prev.label}')" title="退回上一步">↩ 退回</button>` : ''}
+            ${isPending && IS_ADMIN ? `<button class="so-action-btn primary" onclick="poApprove('${p.id}')">✓ 批准</button><button class="so-action-btn danger" onclick="poReject('${p.id}')">❌ 驳回</button>` : ''}
+            ${isPending && !IS_ADMIN ? `<span style="font-size:11px; color:var(--warning);">等待主管审批</span>` : ''}
+            ${isRejected ? `<button class="so-action-btn primary" onclick="poResubmit('${p.id}')">↻ 重新提交审批</button>` : ''}
+            ${next ? `<button class="so-action-btn primary" onclick="poAdvance('${p.id}', '${next.value}', '${next.label}')" title="推进到下一步">▶ ${next.label}</button>` : ''}
+            ${prev ? `<button class="so-action-btn" onclick="poRevert('${p.id}', '${prev.value}', '${prev.label}')" title="退回上一步">↩ 退回</button>` : ''}
             <button class="so-action-btn" onclick="poOpenPrint('${p.id}')">🖨 打印</button>
             ${!isCancelled ? `<button class="so-action-btn danger" onclick="poCancel('${p.id}')">⊘ 取消</button>` : ''}
           </div>
         </div>
       </div>`;
   }).join('');
+}
+
+async function poApprove(poId) {
+  if (!IS_ADMIN) { toast('只有主管能批准', 'err'); return; }
+  if (!confirm('批准这张采购单？批准后跟单可继续推进流程。')) return;
+  try {
+    await sb.from('orders').update({
+      status: 'producing',
+      approved_by: CURRENT_AGENT,
+      approval_note: '已批准',
+      updated_at: new Date().toISOString(),
+    }).eq('id', poId);
+    toast('✓ 已批准');
+    await renderPo();
+  } catch (e) { toast('失败：' + (e.message || e), 'err'); }
+}
+
+async function poReject(poId) {
+  if (!IS_ADMIN) { toast('只有主管能驳回', 'err'); return; }
+  const reason = prompt('驳回原因（会显示给跟单作为修改依据）：');
+  if (reason === null) return;
+  if (!reason.trim()) { toast('请填驳回原因', 'warn'); return; }
+  try {
+    await sb.from('orders').update({
+      status: 'rejected',
+      approved_by: CURRENT_AGENT,
+      approval_note: reason.trim(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', poId);
+    toast('已驳回');
+    await renderPo();
+  } catch (e) { toast('失败：' + (e.message || e), 'err'); }
+}
+
+async function poResubmit(poId) {
+  if (!confirm('重新提交审批？\n（请确认已修正驳回原因里提到的问题）')) return;
+  try {
+    await sb.from('orders').update({
+      status: 'pending_approval',
+      approval_note: null,
+      approved_by: null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', poId);
+    toast('已重新提交，等主管审批');
+    await renderPo();
+  } catch (e) { toast('失败：' + (e.message || e), 'err'); }
 }
 
 async function poAdvance(poId, nextStatus, nextLabel) {
