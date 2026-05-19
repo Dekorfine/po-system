@@ -10793,7 +10793,11 @@ const SHOPIFY = {
     return this._stores;
   },
 
-  async loadOrdersFromDB() {
+  async loadOrdersFromDB(force = false) {
+    const CACHE_MS = 60 * 1000;  // 1 分钟内重复进 tab 不重新查
+    if (!force && this._ordersLoadedAt && (Date.now() - this._ordersLoadedAt < CACHE_MS) && this._orders.length > 0) {
+      return this._orders;
+    }
     const { data, error } = await sb
       .from('shopify_orders')
       .select('*')
@@ -10801,8 +10805,10 @@ const SHOPIFY = {
       .limit(500);
     if (error) throw error;
     this._orders = data || [];
+    this._ordersLoadedAt = Date.now();
     return this._orders;
   },
+  invalidateOrders() { this._ordersLoadedAt = 0; },
 
   async loadProductImageMap(skus) {
     if (!skus || skus.length === 0) return {};
@@ -10975,7 +10981,7 @@ async function shopifyFetchOrders() {
     if (r.new_products) msg += ` · 新建产品 ${r.new_products}`;
     hint.textContent = `${msg} · ${new Date().toLocaleTimeString()}`;
     toast(msg);
-    await shopifyReloadOrdersAndRender();
+    await shopifyReloadOrdersAndRender(true);  // force=true 跳过缓存
   } catch (e) {
     toast('同步失败：' + (e.message || e), 'err');
     hint.textContent = '同步失败';
@@ -10984,8 +10990,8 @@ async function shopifyFetchOrders() {
   }
 }
 
-async function shopifyReloadOrdersAndRender() {
-  await SHOPIFY.loadOrdersFromDB();
+async function shopifyReloadOrdersAndRender(force = false) {
+  await SHOPIFY.loadOrdersFromDB(force);
   // 加载所有出现过的 SKU 的图片
   const skus = [];
   SHOPIFY._orders.forEach(o => (o.line_items || []).forEach(li => { if (li.sku) skus.push(li.sku); }));
@@ -11267,8 +11273,16 @@ async function renderSales() {
     SHOPIFY._initialized = true;
     if (shopifyAutoSyncOn()) shopifyStartAutoSync();
   }
-  await shopifyReloadStores();
-  await shopifyReloadOrdersAndRender();
+  // 切回 tab：优先用缓存（renderShopifyOrders 用已有数据）；缓存过期或为空时才查 DB
+  if (SHOPIFY._orders.length > 0 && SHOPIFY._ordersLoadedAt && (Date.now() - SHOPIFY._ordersLoadedAt < 60000)) {
+    // 缓存仍新鲜：直接渲染
+    if (SHOPIFY._stores.length === 0) await shopifyReloadStores();
+    shopifyRefreshCounts();
+    renderShopifyOrders();
+  } else {
+    await shopifyReloadStores();
+    await shopifyReloadOrdersAndRender();
+  }
 }
 
 // ============================================================
@@ -11277,12 +11291,19 @@ async function renderSales() {
 
 const SUPPLIERS = {
   _list: [],
-  async loadAll() {
+  _lastLoaded: 0,
+  CACHE_MS: 5 * 60 * 1000,  // 5 分钟缓存
+  async loadAll(force = false) {
+    if (!force && this._lastLoaded && (Date.now() - this._lastLoaded < this.CACHE_MS) && this._list.length > 0) {
+      return this._list;  // 使用缓存
+    }
     const { data, error } = await sb.from('suppliers').select('*').eq('is_active', true).order('name');
     if (error) throw error;
     this._list = data || [];
+    this._lastLoaded = Date.now();
     return this._list;
   },
+  invalidate() { this._lastLoaded = 0; },
   byName(name) { return this._list.find(s => s.name === name); },
   byId(id) { return this._list.find(s => s.id === id); },
   search(q) {
@@ -11400,15 +11421,22 @@ const PRODUCTS_CACHE = {
   _bySku: {},
   _byId: {},
   _all: [],
-  async loadAll() {
+  _lastLoaded: 0,
+  CACHE_MS: 5 * 60 * 1000,
+  async loadAll(force = false) {
+    if (!force && this._lastLoaded && (Date.now() - this._lastLoaded < this.CACHE_MS) && this._all.length > 0) {
+      return this._all;
+    }
     const { data, error } = await sb.from('products').select('*').order('created_at', { ascending: false });
     if (error) throw error;
     this._all = data || [];
     this._bySku = {};
     this._byId = {};
     (data || []).forEach(p => { this._bySku[p.sku] = p; this._byId[p.id] = p; });
+    this._lastLoaded = Date.now();
     return this._all;
   },
+  invalidate() { this._lastLoaded = 0; },
   // 通过 SKU 查产品，自动穿透 master_product_id
   effectiveBySku(sku) {
     const p = this._bySku[sku];
@@ -11496,7 +11524,8 @@ async function openPoForm(salesOrderId) {
     selectedSupplierId: null,
     selectedSupplierName: '',
     lineItemSelections: {},  // shopify_line_item_id => { checked, qty, price, supplierName }
-    otherNote: undefined,    // 自动提取后填充；undefined 表示尚未填充
+    otherNote: '',
+    otherNoteManuallyEdited: false,
   };
 
   // 默认勾选未分配且未取消的 line items
@@ -11575,18 +11604,16 @@ function renderPoForm() {
   const autoNote = `销售订单：${so.shopify_order_number || ''}`;
 
   // 自动从所有勾选 line items 的 variant_title 提取信息到"其他备注"
-  if (PO_FORM_STATE.otherNote === undefined || PO_FORM_STATE.otherNote === null) {
+  // 每次勾选变化都重新生成；如果用户手动改过则保留用户的内容
+  if (!PO_FORM_STATE.otherNoteManuallyEdited) {
     const segments = [];
     selected.forEach(([liid]) => {
       const li = items.find(x => x.shopify_line_item_id === liid);
       if (!li) return;
       const info = extractVariantInfo(li.variant_title || '');
-      if (info) {
-        const skuLabel = (PRODUCTS_CACHE.effectiveBySku(li.sku) || {}).sku || li.sku;
-        segments.push(`【${skuLabel}】\n${info}`);
-      }
+      if (info) segments.push(info);  // 不带 SKU 标签
     });
-    PO_FORM_STATE.otherNote = segments.join('\n\n');
+    PO_FORM_STATE.otherNote = segments.join('\n');
   }
 
   body.innerHTML = `
@@ -11610,13 +11637,16 @@ function renderPoForm() {
     <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
       <div>
         <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">供应商 *</label>
-        <div class="supplier-picker">
-          <input type="text" id="poFormSupplierInput" placeholder="🔍 输入供应商名搜索…"
-            value="${escapeHtml(PO_FORM_STATE.selectedSupplierName)}"
-            oninput="poFormSupplierSearch(this.value)"
-            onfocus="poFormSupplierSearch(this.value)"
-            onblur="setTimeout(() => document.getElementById('poFormSupplierResults').classList.remove('show'), 200)">
-          <div class="picker-results" id="poFormSupplierResults"></div>
+        <div class="supplier-picker" style="display:flex; gap:6px;">
+          <div style="flex:1; position:relative;">
+            <input type="text" id="poFormSupplierInput" placeholder="🔍 输入供应商名搜索 / 直接添加…" style="width:100%;"
+              value="${escapeHtml(PO_FORM_STATE.selectedSupplierName)}"
+              oninput="poFormSupplierSearch(this.value)"
+              onfocus="poFormSupplierSearch(this.value)"
+              onblur="setTimeout(() => document.getElementById('poFormSupplierResults').classList.remove('show'), 200)">
+            <div class="picker-results" id="poFormSupplierResults"></div>
+          </div>
+          <button type="button" class="btn small" onclick="poFormAddSupplierFromInput()" style="white-space:nowrap;" title="把输入框里的名字添加为新供应商">+ 新增</button>
         </div>
       </div>
       <div>
@@ -11629,7 +11659,7 @@ function renderPoForm() {
       </div>
       <div style="grid-column: 1/-1;">
         <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">其他备注 <span style="color:var(--text-tertiary); font-weight:normal;">(自动提取尺寸/色温/材质，可编辑)</span></label>
-        <textarea id="poFormNote" class="form-control" rows="5" placeholder="特殊要求、加急、配件…" oninput="PO_FORM_STATE.otherNote = this.value">${escapeHtml(PO_FORM_STATE.otherNote || '')}</textarea>
+        <textarea id="poFormNote" class="form-control" rows="5" placeholder="特殊要求、加急、配件…" oninput="PO_FORM_STATE.otherNote = this.value; PO_FORM_STATE.otherNoteManuallyEdited = true;">${escapeHtml(PO_FORM_STATE.otherNote || '')}</textarea>
       </div>
     </div>
 
@@ -11688,6 +11718,25 @@ async function poFormQuickAddSupplier(name) {
     poFormPickSupplier(data.id, data.name);
     toast('已新增供应商');
   } catch (e) { toast('新增失败：' + (e.message || e), 'err'); }
+}
+
+async function poFormAddSupplierFromInput() {
+  const input = document.getElementById('poFormSupplierInput');
+  const name = (input.value || '').trim();
+  if (!name) {
+    // 输入框为空 → 弹出完整新增供应商表单
+    openSupplierEdit(null);
+    return;
+  }
+  // 检查是否已存在
+  const existing = SUPPLIERS.byName(name);
+  if (existing) {
+    poFormPickSupplier(existing.id, existing.name);
+    toast('供应商已存在，已选中', 'info');
+    return;
+  }
+  // 新增
+  await poFormQuickAddSupplier(name);
 }
 
 function closePoForm() {
@@ -11893,7 +11942,10 @@ async function poFormDoSave(groups, common) {
 
     toast(`✓ 成功开 ${allInserts.length} 张采购单`);
     closePoForm();
-    await shopifyReloadOrdersAndRender();
+    SHOPIFY.invalidateOrders();  // 销售单 line_items 已变化，下次进 tab 强制刷新
+    PRODUCTS_CACHE.invalidate(); // 产品上次单价/默认供应商已更新
+    SUPPLIERS.invalidate();      // 供应商累计已更新
+    await shopifyReloadOrdersAndRender(true);
   } catch (e) {
     console.error('保存采购单错误：', e);
     toast('保存失败：' + (e.message || JSON.stringify(e) || '未知错误'), 'err');
