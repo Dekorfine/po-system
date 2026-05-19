@@ -11595,39 +11595,56 @@ function extractVariantInfo(variantTitle) {
   }
 
   for (const part of parts) {
-    // 1. 尺寸（含英寸）→ 全部转整数 cm；同时把 N-Lights 也翻译
+    // === 1. 尺寸（独立维度，跑完继续看后面的调光/色温） ===
+    let hadSize = false;
     if (/\d+(?:\.\d+)?\s*["'″]/.test(part)) {
       let cmText = part.replace(/(\d+(?:\.\d+)?)\s*["'″]/g, (_, n) => inchToCm(n));
       cmText = translateLights(cmText);
       addDimension(cmText);
-      continue;
-    }
-    // 2. 已是 cm
-    if (/\d+(?:\.\d+)?\s*cm/i.test(part)) {
+      hadSize = true;
+    } else if (/\d+(?:\.\d+)?\s*cm/i.test(part)) {
       addDimension(translateLights(part));
-      continue;
-    }
-    // 3. 是 mm
-    if (/\d+(?:\.\d+)?\s*mm/i.test(part)) {
+      hadSize = true;
+    } else if (/\d+(?:\.\d+)?\s*mm/i.test(part)) {
       addDimension(translateLights(part));
+      hadSize = true;
+    }
+
+    // === 2. 调光（独立检测） ===
+    let dimming = null;
+    if (/triac.*dimm|dimmable.*triac/i.test(part)) dimming = '可控硅调光';
+    else if (/0-10\s*v/i.test(part)) dimming = '0-10V调光';
+    else if (/dimmable|dimming/i.test(part)) dimming = '可调光';
+
+    // === 3. 色温（独立检测） ===
+    let colorTemp = null;
+    if (/warm\s*(light|white)|3000\s*k/i.test(part)) colorTemp = '暖光 3000K';
+    else if (/cool\s*(light|white)|6000\s*k|6500\s*k/i.test(part)) colorTemp = '冷光 6000K';
+    else if (/natural\s*(light|white)|neutral\s*white|4000\s*k/i.test(part)) colorTemp = '中性光 4000K';
+    else if (/daylight|5000\s*k/i.test(part)) colorTemp = '日光 5000K';
+
+    // === 调光 + 色温 合并输出（如 "可控硅调光 暖光 3000K"）===
+    if (dimming && colorTemp) {
+      out.push(`${dimming} ${colorTemp}`);
+      continue;
+    } else if (dimming) {
+      out.push(dimming);
+      continue;
+    } else if (colorTemp) {
+      out.push('色温：' + colorTemp);
       continue;
     }
-    // 4. 单独的 N-Lights（无尺寸）
-    if (/\d+\s*-?\s*(light|lights|head|heads|bulbs?)\b/i.test(part) && !/(warm|cool|natural|daylight)/i.test(part)) {
+
+    // 已识别尺寸的 part 不再继续检测灯头/材质
+    if (hadSize) continue;
+
+    // === 4. 单独的 N-Lights（无尺寸） ===
+    if (/\d+\s*-?\s*(light|lights|head|heads|bulbs?)\b/i.test(part) && !/(warm|cool|natural|daylight|dimm)/i.test(part)) {
       out.push('灯头：' + translateLights(part));
       continue;
     }
-    // 5. 色温
-    if (/warm\s*(light|white)|3000\s*k/i.test(part)) { out.push('色温：暖光 3000K'); continue; }
-    if (/cool\s*(light|white)|6000\s*k|6500\s*k/i.test(part)) { out.push('色温：冷光 6000K'); continue; }
-    if (/natural\s*(light|white)|neutral\s*white|4000\s*k/i.test(part)) { out.push('色温：中性光 4000K'); continue; }
-    if (/daylight|5000\s*k/i.test(part)) { out.push('色温：日光 5000K'); continue; }
-    // 6. 可调光
-    if (/triac.*dimm|dimmable.*triac/i.test(part)) { out.push('可控硅调光'); continue; }
-    if (/0-10v|0-?10\s*v/i.test(part)) { out.push('0-10V 调光'); continue; }
-    if (/dimmable/i.test(part)) { out.push('可调光'); continue; }
 
-    // 7. 材质
+    // === 5. 材质 ===
     let foundMat = null;
     const lower = part.toLowerCase();
     for (const [en, cn] of Object.entries(MATERIAL_MAP)) {
@@ -11641,30 +11658,30 @@ function extractVariantInfo(variantTitle) {
   return result;
 }
 
-// ============ 国家 → 电气标准（用于订单备注） ============
+// ============ 国家 → 电气标准（含电压；用于订单备注） ============
 function getElectricalStandard(countryCode, fallbackCountry) {
   const code = (countryCode || '').toUpperCase().trim();
   const NA   = ['US','CA','MX'];                                                  // 北美 110V
-  const UK   = ['GB','UK','IE'];                                                  // 英规 230V BS
+  const UK   = ['GB','UK','IE'];                                                  // 英规 220V
   const EU   = ['DE','FR','ES','IT','NL','BE','PT','AT','SE','FI','DK','PL','CZ','GR','HU','RO','BG','HR','SK','SI','LT','LV','EE','LU','MT','CY','NO','CH','IS','LI'];
   const AUS  = ['AU','NZ','FJ'];
-  if (NA.includes(code))  return '美规';
-  if (UK.includes(code))  return '英规';
-  if (EU.includes(code))  return '欧规';
-  if (AUS.includes(code)) return '澳规';
-  if (code === 'CN') return '中规';
-  if (code === 'JP') return '日规';
-  if (code === 'KR') return '韩规';
-  if (code === 'IN' || code === 'PK' || code === 'ZA') return '英规';
-  if (code === 'IL') return '欧规';
-  if (code === 'BR') return '巴标';
-  if (code === 'AR' || code === 'CL') return '南美规';
+  if (NA.includes(code))  return '美规110V电压';
+  if (UK.includes(code))  return '英规220V电压';
+  if (EU.includes(code))  return '欧规220V电压';
+  if (AUS.includes(code)) return '澳规220V电压';
+  if (code === 'CN') return '中规220V电压';
+  if (code === 'JP') return '日规100V电压';
+  if (code === 'KR') return '韩规220V电压';
+  if (code === 'IN' || code === 'PK' || code === 'ZA') return '英规220V电压';
+  if (code === 'IL') return '欧规220V电压';
+  if (code === 'BR') return '巴标220V电压';
+  if (code === 'AR' || code === 'CL') return '南美规220V电压';
   if (fallbackCountry) {
     const fc = fallbackCountry.toLowerCase();
-    if (/united states|usa|canada|mexico/.test(fc)) return '美规';
-    if (/united kingdom|britain|ireland/.test(fc)) return '英规';
-    if (/germany|france|spain|italy|netherlands|europe/.test(fc)) return '欧规';
-    if (/australia|new zealand/.test(fc)) return '澳规';
+    if (/united states|usa|canada|mexico/.test(fc)) return '美规110V电压';
+    if (/united kingdom|britain|ireland/.test(fc)) return '英规220V电压';
+    if (/germany|france|spain|italy|netherlands|europe/.test(fc)) return '欧规220V电压';
+    if (/australia|new zealand/.test(fc)) return '澳规220V电压';
   }
   return '';
 }
@@ -11752,8 +11769,9 @@ function renderPoForm() {
           ${eff.default_supplier ? `<div class="li-default-supplier">默认: ${escapeHtml(eff.default_supplier)}</div>` : ''}
           <div style="margin-top:4px; font-size:11px;">
             <span style="color: var(--text-tertiary);">SKU 备注：</span>
-            <span style="color: var(--text-primary);">${eff.notes ? escapeHtml(eff.notes).slice(0, 60) + (eff.notes.length > 60 ? '…' : '') : '<i style="color:var(--text-tertiary)">未维护</i>'}</span>
+            <span style="color: var(--text-primary);">${eff.notes ? escapeHtml(eff.notes).slice(0, 60) + (eff.notes.length > 60 ? '…' : '') : '<i style="color:var(--text-tertiary)">未维护，自动用 variant 提取</i>'}</span>
             <a href="javascript:void(0)" onclick="editSkuNotes('${escapeHtml(li.sku).replace(/'/g,"\\'")}')" style="margin-left:6px; color:var(--accent); text-decoration:none; font-size:11px;">✏️ ${eff.notes ? '编辑' : '添加'}</a>
+            ${eff.notes ? `<span style="margin-left:6px; font-size:10px; color:var(--success);">✓ 已用此备注</span>` : ''}
           </div>
         </div>
         <input type="number" min="1" max="${sel.remaining}" value="${sel.qty}" placeholder="数量"
@@ -11778,9 +11796,10 @@ function renderPoForm() {
   const standard = getElectricalStandard(countryCode, so.shipping_address?.country || so.shipping_country);
   const autoNote = standard ? `${standard} ${so.shopify_order_number || ''}`.trim() : `${so.shopify_order_number || ''}`;
 
-  // 自动从所有勾选 line items 的 variant_title 提取信息到"其他备注"
-  // 同时合并 products.notes（每个 SKU 跟单手动维护的备注）
-  // 每次勾选变化都重新生成；如果用户手动改过则保留用户的内容
+  // 其他备注自动生成：
+  // - 如果该 SKU 有维护 notes（products.notes）→ 优先使用 notes（避免和自动提取重复）
+  // - 如果没维护 → 自动从 variant_title 提取尺寸/色温
+  // 每次勾选变化都重新生成；用户手动改过则保留
   if (!PO_FORM_STATE.otherNoteManuallyEdited) {
     const segments = [];
     console.log('%c[PoForm] 准备提取 variant 信息', 'color:#2563eb; font-weight:bold');
@@ -11788,15 +11807,15 @@ function renderPoForm() {
       const li = items.find(x => x.shopify_line_item_id === liid);
       if (!li) return;
       const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
-      console.log('  - SKU:', li.sku, '| variant_title:', JSON.stringify(li.variant_title || '(空)'));
-      const extracted = extractVariantInfo(li.variant_title || '');
       const userNotes = (eff.notes || '').trim();
-      console.log('  → 提取:', JSON.stringify(extracted), '| SKU 备注:', JSON.stringify(userNotes));
-      // 合并：自动提取 + 跟单维护的 SKU 备注
-      const lines = [];
-      if (extracted) lines.push(extracted);
-      if (userNotes) lines.push(userNotes);
-      if (lines.length > 0) segments.push(lines.join('\n'));
+      console.log('  - SKU:', li.sku, '| variant_title:', JSON.stringify(li.variant_title || '(空)'), '| SKU 备注:', JSON.stringify(userNotes));
+      // 优先级：用户维护的 notes > 自动提取
+      if (userNotes) {
+        segments.push(userNotes);
+      } else {
+        const extracted = extractVariantInfo(li.variant_title || '');
+        if (extracted) segments.push(extracted);
+      }
     });
     PO_FORM_STATE.otherNote = segments.join('\n\n');
     console.log('%c[PoForm] 最终其他备注:', 'color:#2563eb; font-weight:bold', JSON.stringify(PO_FORM_STATE.otherNote));
