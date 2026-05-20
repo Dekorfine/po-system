@@ -1803,7 +1803,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 /* ============ 批次 4 新增弹窗 overlay（修复位置 bug） ============ */
 /* 6 个新弹窗的 .modal 不能用原系统的卡片样式，要 reset 成全屏遮罩 */
 #poFormModal, #suppliersModal, #supplierEditModal,
-#masterBindModal, #multiSupplierConfirm, #poPrintModal, #internalNoteModal, #genericPromptModal {
+#masterBindModal, #multiSupplierConfirm, #poPrintModal, #internalNoteModal, #genericPromptModal, #customOrderModal {
   position: fixed !important; inset: 0 !important;
   background: rgba(28,25,23,0.5) !important;
   backdrop-filter: blur(4px);
@@ -1817,7 +1817,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 #genericPromptModal { z-index: 9500 !important; }  /* 在其他 modal 之上 */
 #poFormModal[style*="flex"], #suppliersModal[style*="flex"], #supplierEditModal[style*="flex"],
-#masterBindModal[style*="flex"], #multiSupplierConfirm[style*="flex"], #poPrintModal[style*="flex"], #internalNoteModal[style*="flex"], #genericPromptModal[style*="flex"] {
+#masterBindModal[style*="flex"], #multiSupplierConfirm[style*="flex"], #poPrintModal[style*="flex"], #internalNoteModal[style*="flex"], #genericPromptModal[style*="flex"], #customOrderModal[style*="flex"] {
   display: flex !important;
 }
 .modal-content {
@@ -1839,7 +1839,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
 #poFormModal .modal-close, #suppliersModal .modal-close, #supplierEditModal .modal-close,
-#masterBindModal .modal-close, #multiSupplierConfirm .modal-close, #poPrintModal .modal-close, #internalNoteModal .modal-close, #genericPromptModal .modal-close {
+#masterBindModal .modal-close, #multiSupplierConfirm .modal-close, #poPrintModal .modal-close, #internalNoteModal .modal-close, #genericPromptModal .modal-close, #customOrderModal .modal-close {
   position: static !important; top: auto !important; right: auto !important;
   width: 30px; height: 30px;
   background: transparent; border: none; cursor: pointer;
@@ -1847,7 +1847,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   border-radius: 6px;
 }
 #poFormModal .modal-close:hover, #suppliersModal .modal-close:hover, #supplierEditModal .modal-close:hover,
-#masterBindModal .modal-close:hover, #multiSupplierConfirm .modal-close:hover, #poPrintModal .modal-close:hover, #internalNoteModal .modal-close:hover, #genericPromptModal .modal-close:hover {
+#masterBindModal .modal-close:hover, #multiSupplierConfirm .modal-close:hover, #poPrintModal .modal-close:hover, #internalNoteModal .modal-close:hover, #genericPromptModal .modal-close:hover, #customOrderModal .modal-close:hover {
   background: var(--bg-elevated); color: var(--text-primary);
 }
 .modal-body {
@@ -2526,7 +2526,8 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="fb-card" id="salesFetchCard" style="margin-top: 14px;">
       <div class="fb-head" style="cursor: default;">
         <div class="fb-title">📥 销售订单</div>
-        <div class="fb-tabs" style="cursor: default;">
+        <div class="fb-tabs" style="cursor: default; gap: 8px;">
+          <button class="btn" onclick="openCustomOrderModal()" title="手动录入线下购买的订单">➕ 自定义订单</button>
           <span id="salesFetchHint" style="font-size: 11px; color: var(--text-tertiary);"></span>
         </div>
       </div>
@@ -2638,6 +2639,21 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="modal-body" id="masterBindBody" style="max-height: 70vh; overflow-y: auto;"></div>
     <div class="modal-footer">
       <button class="btn" onclick="closeMasterBind()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 自定义订单弹窗（线下购买的订单手动创建） ============ -->
+<div id="customOrderModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width: 880px; max-height: 92vh;">
+    <div class="modal-header">
+      <h3>📥 创建自定义订单 <span style="font-weight:400; color:var(--text-tertiary); font-size:12px; margin-left:8px;">（线下购买 / 手动录入）</span></h3>
+      <button class="modal-close" onclick="closeCustomOrderModal()">✕</button>
+    </div>
+    <div class="modal-body" id="customOrderBody" style="overflow-y: auto; padding: 16px 20px;"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeCustomOrderModal()">取消</button>
+      <button class="btn primary" onclick="saveCustomOrder()">💾 创建订单</button>
     </div>
   </div>
 </div>
@@ -10952,6 +10968,7 @@ const SHOPIFY = {
   },
 
   shopifyAdminUrl(domain, shopifyOrderId) {
+    if (domain === 'manual') return '';  // 自定义订单无外链
     return `https://admin.shopify.com/store/${domain.replace('.myshopify.com', '')}/orders/${shopifyOrderId}`;
   },
 
@@ -10972,6 +10989,7 @@ const SHOPIFY = {
   },
 
   siteCodeOf(shopDomain) {
+    if (shopDomain === 'manual') return 'MN';  // 自定义订单标记
     const m = this.STORES_META.find(s => s.domain === shopDomain);
     return m?.site_code || '';
   },
@@ -11308,12 +11326,12 @@ function renderShopifyOrders() {
       <div class="so-card ${o.local_status === 'done' || o.local_status === 'cancelled' ? 'imported' : ''}" data-id="${o.id}" style="${isFullyRefunded ? 'border-color: var(--danger); border-width: 2px;' : isPartiallyRefunded ? 'border-color: var(--warning); border-width: 2px;' : ''}">
         <div class="so-card-top">
           <div class="so-top-checkbox">
-            ${siteCode ? `<span class="site-pill" style="background:var(--accent); color:white; font-size:11px; padding:2px 7px; border-radius:4px; font-weight:700;">${siteCode}</span>` : ''}
+            ${siteCode ? `<span class="site-pill" style="background:${shop === 'manual' ? 'var(--warning)' : 'var(--accent)'}; color:white; font-size:11px; padding:2px 7px; border-radius:4px; font-weight:700;" title="${shop === 'manual' ? '手动创建的订单' : ''}">${siteCode}</span>` : ''}
           </div>
           <div class="so-top-meta">
-            <a href="${adminLink}" target="_blank" rel="noopener" class="so-order-no" title="在 Shopify 后台打开">
+            ${adminLink ? `<a href="${adminLink}" target="_blank" rel="noopener" class="so-order-no" title="在 Shopify 后台打开">
               ${escapeHtml(o.shopify_order_number || '#' + (o.shopify_order_id || ''))} <span class="ext">↗</span>
-            </a>
+            </a>` : `<span class="so-order-no" style="color:var(--text-primary); font-weight:600;" title="手动创建的订单">${escapeHtml(o.shopify_order_number || '#' + (o.shopify_order_id || ''))} <span style="font-size:10px; color:var(--text-tertiary);">(手动)</span></span>`}
             <span>下单 <b>${dateStr} ${timeStr}</b></span>
           </div>
           <div class="so-top-status">
@@ -11368,6 +11386,385 @@ function getRefundStatus(o) {
   return { level: 'none', label: '', color: '', bg: '' };
 }
 
+// ============ 自定义订单（线下购买手动录入） ============
+let CUSTOM_ORDER_STATE = null;
+function openCustomOrderModal() {
+  const today = new Date();
+  const ymd = today.toISOString().slice(0, 10).replace(/-/g, '');
+  const seq = String(Math.floor(Math.random() * 9999) + 1).padStart(4, '0');
+  CUSTOM_ORDER_STATE = {
+    orderNumber: `MANUAL-${ymd}-${seq}`,
+    customerName: '',
+    customerEmail: '',
+    customerPhone: '',
+    shipCountry: '',
+    shipCity: '',
+    shipAddress: '',
+    currency: 'USD',
+    note: '',
+    lineItems: [
+      { id: 'line-1', sku: '', title: '', variant_title: '', image_url: '', quantity: 1, price: 0 }
+    ],
+  };
+  document.getElementById('customOrderModal').style.display = 'flex';
+  renderCustomOrder();
+}
+
+function closeCustomOrderModal() {
+  document.getElementById('customOrderModal').style.display = 'none';
+  CUSTOM_ORDER_STATE = null;
+}
+
+function _coInput(id, label, value, opts = {}) {
+  const type = opts.type || 'text';
+  const placeholder = opts.placeholder || '';
+  const required = opts.required ? ' <span style="color:var(--danger);">*</span>' : '';
+  return `
+    <div>
+      <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:3px;">${label}${required}</label>
+      <input type="${type}" id="${id}" value="${escapeHtml(String(value || ''))}" placeholder="${escapeHtml(placeholder)}"
+        oninput="_coUpdateField('${id}', this.value)"
+        style="width:100%; padding:7px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary);">
+    </div>`;
+}
+
+function _coUpdateField(id, val) {
+  const map = {
+    coOrderNumber: 'orderNumber', coCurrency: 'currency',
+    coCustName: 'customerName', coCustEmail: 'customerEmail', coCustPhone: 'customerPhone',
+    coShipCountry: 'shipCountry', coShipCity: 'shipCity', coShipAddr: 'shipAddress',
+    coNote: 'note',
+  };
+  const key = map[id];
+  if (key) CUSTOM_ORDER_STATE[key] = val;
+  // 货币和国家变化时更新总金额显示
+  if (id === 'coCurrency' || id.startsWith('coLi_')) updateCoTotal();
+}
+
+function renderCustomOrder() {
+  const s = CUSTOM_ORDER_STATE;
+  const body = document.getElementById('customOrderBody');
+  const lineItemsHtml = s.lineItems.map((li, i) => `
+    <div style="display:grid; grid-template-columns: 90px 1fr 80px 90px 90px 36px; gap:8px; padding:10px; border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:8px; align-items:start;">
+      <div data-li-img="${li.id}">
+        ${li.image_url ? `<img src="${escapeHtml(li.image_url)}" style="width:90px; height:90px; object-fit:cover; border-radius:6px; cursor:pointer;" onclick="coEditLineImage('${li.id}')">` : `<div onclick="coEditLineImage('${li.id}')" style="width:90px; height:90px; border:2px dashed var(--border); border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text-tertiary); font-size:11px; text-align:center;">📷<br>添加图片</div>`}
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <input type="text" placeholder="SKU * (如 VKW-251110-31)" value="${escapeHtml(li.sku)}" oninput="coSetLine('${li.id}','sku',this.value)" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;">
+        <input type="text" placeholder="产品名称 *" value="${escapeHtml(li.title)}" oninput="coSetLine('${li.id}','title',this.value)" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;">
+        <input type="text" placeholder="变体/规格（如 黑色 / Triac Dimmable）" value="${escapeHtml(li.variant_title)}" oninput="coSetLine('${li.id}','variant_title',this.value)" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;">
+      </div>
+      <input type="number" min="1" placeholder="数量" value="${li.quantity}" oninput="coSetLine('${li.id}','quantity',this.value); updateCoTotal();" style="width:100%; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:5px; text-align:center; ${Number(li.quantity) >= 2 ? 'background:rgba(220,38,38,0.08); border:2px solid #dc2626; color:#dc2626; font-weight:700;' : ''}">
+      <input type="number" min="0" step="0.01" placeholder="单价" value="${li.price}" oninput="coSetLine('${li.id}','price',this.value); updateCoTotal();" style="width:100%; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:5px; text-align:center;">
+      <div style="text-align:right; font-family:monospace; font-size:12px; align-self:center;" data-li-subtotal="${li.id}">${(Number(li.quantity) * Number(li.price)).toFixed(2)}</div>
+      <button class="btn small" onclick="coRemoveLine('${li.id}')" style="align-self:center; ${s.lineItems.length <= 1 ? 'opacity:0.4; pointer-events:none;' : 'color:var(--danger);'}" title="${s.lineItems.length <= 1 ? '至少需要一行' : '删除此行'}">✕</button>
+    </div>
+  `).join('');
+
+  body.innerHTML = `
+    <div style="background: rgba(37,99,235,0.06); padding: 10px 12px; border-radius: 6px; border-left: 3px solid var(--accent); font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">
+      💡 用于线下购买、补单、批发等不通过 Shopify 后台的订单。<br>
+      保存后会出现在销售单列表里，可正常开 PO、加备注、流转所有流程。
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <h4 style="margin: 0 0 8px; font-size: 13px; color: var(--text-secondary);">📋 订单信息</h4>
+      <div style="display:grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+        ${_coInput('coOrderNumber', '订单编号', s.orderNumber, { required: true, placeholder: 'MANUAL-XXXXX' })}
+        ${_coInput('coCurrency', '货币', s.currency, { placeholder: 'USD / AUD / EUR / CNY' })}
+      </div>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <h4 style="margin: 0 0 8px; font-size: 13px; color: var(--text-secondary);">👤 客户信息</h4>
+      <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+        ${_coInput('coCustName', '客户姓名', s.customerName, { required: true })}
+        ${_coInput('coCustEmail', '邮箱', s.customerEmail, { type: 'email' })}
+        ${_coInput('coCustPhone', '电话', s.customerPhone)}
+      </div>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <h4 style="margin: 0 0 8px; font-size: 13px; color: var(--text-secondary);">📦 收货地址（用于自动判定电气标准）</h4>
+      <div style="display:grid; grid-template-columns: 100px 1fr 2fr; gap: 10px;">
+        ${_coInput('coShipCountry', '国家代码', s.shipCountry, { placeholder: 'US/CN/AU/GB...', required: true })}
+        ${_coInput('coShipCity', '城市', s.shipCity)}
+        ${_coInput('coShipAddr', '详细地址', s.shipAddress)}
+      </div>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <h4 style="margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); display:flex; justify-content:space-between; align-items:center;">
+        <span>🛒 产品明细</span>
+        <span style="font-size:11px; font-weight:400; color:var(--text-tertiary);">总金额: <b id="coTotalDisplay" style="color:var(--accent); font-family:monospace; font-size:14px;">${s.currency} 0.00</b></span>
+      </h4>
+      <div style="background: var(--bg-elevated); padding: 8px 10px; border-radius: 6px 6px 0 0; display: grid; grid-template-columns: 90px 1fr 80px 90px 90px 36px; gap: 8px; font-size: 10px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase;">
+        <div>图片</div><div>SKU/名称/变体</div><div style="text-align:center;">数量</div><div style="text-align:center;">单价</div><div style="text-align:right;">小计</div><div></div>
+      </div>
+      <div id="coLineItemsContainer" style="margin-top:0;">${lineItemsHtml}</div>
+      <button class="btn small" onclick="coAddLine()" style="margin-top: 4px;">+ 添加产品行</button>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <h4 style="margin: 0 0 8px; font-size: 13px; color: var(--text-secondary);">📝 备注（可选）</h4>
+      <textarea id="coNote" oninput="_coUpdateField('coNote', this.value)" rows="2" placeholder="如：客户特殊要求、批发折扣说明等" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); resize:vertical; font-family:inherit;">${escapeHtml(s.note)}</textarea>
+    </div>
+  `;
+  updateCoTotal();
+}
+
+function coSetLine(id, field, val) {
+  const li = CUSTOM_ORDER_STATE.lineItems.find(x => x.id === id);
+  if (!li) return;
+  if (field === 'quantity') li[field] = parseInt(val) || 0;
+  else if (field === 'price') li[field] = parseFloat(val) || 0;
+  else li[field] = val;
+  // 更新本行小计
+  const subEl = document.querySelector(`[data-li-subtotal="${id}"]`);
+  if (subEl) subEl.textContent = (Number(li.quantity) * Number(li.price)).toFixed(2);
+}
+
+function coAddLine() {
+  const newId = 'line-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+  CUSTOM_ORDER_STATE.lineItems.push({ id: newId, sku: '', title: '', variant_title: '', image_url: '', quantity: 1, price: 0 });
+  renderCustomOrder();
+}
+
+function coRemoveLine(id) {
+  if (CUSTOM_ORDER_STATE.lineItems.length <= 1) return;
+  CUSTOM_ORDER_STATE.lineItems = CUSTOM_ORDER_STATE.lineItems.filter(li => li.id !== id);
+  renderCustomOrder();
+}
+
+async function coEditLineImage(lineId) {
+  const li = CUSTOM_ORDER_STATE.lineItems.find(x => x.id === lineId);
+  if (!li) return;
+  const result = await showPrompt({
+    title: '🖼 产品图片',
+    fields: [
+      { key: 'img', label: '图片', value: li.image_url || '', type: 'image', hint: '上传 / 粘贴 / 拖入 / URL' },
+    ],
+  });
+  if (result === null) return;
+  li.image_url = (result.img || '').trim();
+  renderCustomOrder();
+}
+
+function updateCoTotal() {
+  if (!CUSTOM_ORDER_STATE) return;
+  const total = CUSTOM_ORDER_STATE.lineItems.reduce((s, x) => s + (Number(x.quantity) || 0) * (Number(x.price) || 0), 0);
+  const el = document.getElementById('coTotalDisplay');
+  if (el) el.textContent = `${CUSTOM_ORDER_STATE.currency || ''} ${total.toFixed(2)}`;
+}
+
+async function saveCustomOrder() {
+  const s = CUSTOM_ORDER_STATE;
+  if (!s) return;
+  // 校验
+  if (!s.orderNumber.trim()) { toast('订单编号必填', 'warn'); return; }
+  if (!s.customerName.trim()) { toast('客户姓名必填', 'warn'); return; }
+  if (!s.shipCountry.trim()) { toast('国家代码必填（决定电气标准）', 'warn'); return; }
+  const validLines = s.lineItems.filter(li => li.sku.trim() && li.title.trim() && li.quantity > 0);
+  if (validLines.length === 0) { toast('至少需要一条有效的产品行（SKU、名称、数量必填）', 'warn'); return; }
+
+  // 检查订单号是否重复
+  const { data: existing } = await sb.from('shopify_orders').select('id').eq('shopify_order_number', s.orderNumber.trim()).maybeSingle();
+  if (existing) { toast(`订单号 ${s.orderNumber} 已存在`, 'err'); return; }
+
+  // 组装订单数据
+  const totalPrice = validLines.reduce((sum, li) => sum + Number(li.quantity) * Number(li.price), 0);
+  const manualOrderId = 'manual-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+  const lineItemsData = validLines.map((li, i) => ({
+    shopify_line_item_id: `manual-li-${manualOrderId}-${i}`,
+    title: li.title.trim(),
+    variant_title: li.variant_title.trim(),
+    sku: li.sku.trim(),
+    quantity: Number(li.quantity),
+    price: String(li.price),
+    image_url: li.image_url,
+    product_id: null,
+    variant_id: null,
+    po_assignments: [],
+  }));
+
+  const row = {
+    shop_domain: 'manual',
+    shopify_order_id: manualOrderId,
+    shopify_order_number: s.orderNumber.trim(),
+    customer_name: s.customerName.trim(),
+    customer_email: s.customerEmail.trim(),
+    customer_phone: s.customerPhone.trim(),
+    shipping_address: {
+      country_code: s.shipCountry.trim().toUpperCase(),
+      city: s.shipCity.trim(),
+      address1: s.shipAddress.trim(),
+      name: s.customerName.trim(),
+    },
+    line_items: lineItemsData,
+    financial_status: 'paid',
+    fulfillment_status: null,
+    local_status: 'processing',  // 直接进待处理
+    total_price: totalPrice,
+    currency: (s.currency || 'USD').toUpperCase(),
+    customer_note: s.note.trim(),
+    shopify_created_at: new Date().toISOString(),
+    raw_payload: { _manual: true, _created_by: CURRENT_AGENT || 'unknown' },
+    imported_at: new Date().toISOString(),
+  };
+  // imported_by 用 supabase user id
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (user) row.imported_by = user.id;
+  } catch (_) {}
+
+  try {
+    const { error } = await sb.from('shopify_orders').insert(row);
+    if (error) throw error;
+    toast(`✓ 自定义订单 ${s.orderNumber} 创建成功`);
+    closeCustomOrderModal();
+    // 同步上传到产品表（如果 SKU 不在的话）
+    for (const li of validLines) {
+      try {
+        const { data: existingProd } = await sb.from('products').select('id').eq('sku', li.sku.trim()).maybeSingle();
+        if (!existingProd) {
+          await sb.from('products').insert({
+            sku: li.sku.trim(),
+            name_en: li.title.trim(),
+            spec_en: li.variant_title.trim(),
+            image_url: li.image_url || null,
+          });
+        } else if (li.image_url) {
+          await sb.from('products').update({ image_url: li.image_url }).eq('id', existingProd.id);
+        }
+      } catch (e) { console.warn('同步产品失败:', e); }
+    }
+    // 刷新销售单列表
+    SHOPIFY.invalidateOrders();
+    await shopifyReloadOrdersAndRender(true);
+  } catch (e) {
+    toast('保存失败：' + (e.message || e), 'err');
+  }
+}
+
+// ============ 图片上传到 Supabase Storage ============
+async function uploadImageToStorage(file) {
+  if (!file) throw new Error('未选择文件');
+  if (!file.type?.startsWith('image/')) throw new Error('请选择图片文件');
+  if (file.size > 10 * 1024 * 1024) throw new Error('图片不能大于 10MB');
+  const ext = (file.name?.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+  const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  const { data, error } = await sb.storage.from('product-images').upload(safeName, file, { upsert: false });
+  if (error) {
+    if (error.message?.includes('Bucket not found') || error.message?.includes('not found')) {
+      throw new Error('图片存储未配置，请先在 Supabase 跑 create-storage-bucket.sql');
+    }
+    throw error;
+  }
+  const { data: { publicUrl } } = sb.storage.from('product-images').getPublicUrl(safeName);
+  return publicUrl;
+}
+
+// 图片上传相关交互（在 showPrompt 内部使用）
+function _setupImageFieldHandlers(modalEl, body) {
+  body.querySelectorAll('.image-field-wrapper').forEach(wrapper => {
+    const fileInput = wrapper.querySelector('input[type=file]');
+    const urlInput = wrapper.querySelector('input[data-key]');
+    const preview = wrapper.querySelector('[data-preview]');
+    const uploadBtn = wrapper.querySelector('[data-action=upload]');
+    const clearBtn = wrapper.querySelector('[data-action=clear]');
+    const statusEl = wrapper.querySelector('[data-status]');
+
+    function updatePreview(url) {
+      if (url) preview.innerHTML = `<img src="${url}" style="max-width:100%; max-height:140px; border-radius:6px; object-fit:contain;">`;
+      else preview.innerHTML = '<div style="color:var(--text-tertiary); font-size:12px; padding:20px;">📷 无图片</div>';
+    }
+    async function doUpload(file) {
+      statusEl.textContent = '⏳ 上传中…';
+      statusEl.style.color = 'var(--accent)';
+      try {
+        const url = await uploadImageToStorage(file);
+        urlInput.value = url;
+        updatePreview(url);
+        statusEl.textContent = '✓ 上传成功';
+        statusEl.style.color = 'var(--success)';
+        setTimeout(() => { statusEl.textContent = '支持 粘贴(Ctrl+V) / 上传 / 拖拽 / URL'; statusEl.style.color = 'var(--text-tertiary)'; }, 2000);
+      } catch (e) {
+        statusEl.textContent = '✗ ' + (e.message || e);
+        statusEl.style.color = 'var(--danger)';
+      }
+    }
+
+    // 文件选择
+    uploadBtn?.addEventListener('click', () => fileInput.click());
+    fileInput?.addEventListener('change', e => { if (e.target.files[0]) doUpload(e.target.files[0]); });
+    // URL 手动改 → 同步预览
+    urlInput?.addEventListener('input', () => updatePreview(urlInput.value.trim()));
+    // 清空
+    clearBtn?.addEventListener('click', () => { urlInput.value = ''; updatePreview(''); });
+    // 拖拽
+    preview?.addEventListener('dragover', e => { e.preventDefault(); preview.style.borderColor = 'var(--accent)'; });
+    preview?.addEventListener('dragleave', e => { preview.style.borderColor = 'var(--border)'; });
+    preview?.addEventListener('drop', e => {
+      e.preventDefault();
+      preview.style.borderColor = 'var(--border)';
+      const file = e.dataTransfer?.files?.[0];
+      if (file && file.type.startsWith('image/')) doUpload(file);
+    });
+    // 当前 wrapper 也接受粘贴（点过它后焦点在内时）
+    wrapper.addEventListener('paste', async e => {
+      const items = e.clipboardData?.items || [];
+      for (const item of items) {
+        if (item.type?.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) await doUpload(file);
+          return;
+        }
+      }
+    });
+  });
+
+  // 全局粘贴：modal 打开时整个文档监听一次（对当前激活的图片字段生效）
+  const pasteHandler = async (e) => {
+    if (modalEl.style.display !== 'flex') return;
+    // 焦点不在文本输入里时才捕获图片粘贴
+    const active = document.activeElement;
+    const isTextInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && !active.closest('.image-field-wrapper');
+    if (isTextInput) return;
+    const items = e.clipboardData?.items || [];
+    for (const item of items) {
+      if (item.type?.startsWith('image/')) {
+        // 找到第一个图片字段
+        const wrapper = body.querySelector('.image-field-wrapper');
+        if (!wrapper) return;
+        const file = item.getAsFile();
+        if (!file) return;
+        // 触发该 wrapper 的上传流程
+        const urlInput = wrapper.querySelector('input[data-key]');
+        const preview = wrapper.querySelector('[data-preview]');
+        const statusEl = wrapper.querySelector('[data-status]');
+        statusEl.textContent = '⏳ 粘贴上传中…';
+        statusEl.style.color = 'var(--accent)';
+        try {
+          const url = await uploadImageToStorage(file);
+          urlInput.value = url;
+          preview.innerHTML = `<img src="${url}" style="max-width:100%; max-height:140px; border-radius:6px; object-fit:contain;">`;
+          statusEl.textContent = '✓ 粘贴上传成功';
+          statusEl.style.color = 'var(--success)';
+          setTimeout(() => { statusEl.textContent = '支持 粘贴(Ctrl+V) / 上传 / 拖拽 / URL'; statusEl.style.color = 'var(--text-tertiary)'; }, 2000);
+        } catch (err) {
+          statusEl.textContent = '✗ ' + (err.message || err);
+          statusEl.style.color = 'var(--danger)';
+        }
+        return;
+      }
+    }
+  };
+  document.addEventListener('paste', pasteHandler);
+  // 返回清理函数
+  return () => document.removeEventListener('paste', pasteHandler);
+}
+
 // ============ 通用 prompt 替代浏览器原生（更好看 + 支持多字段） ============
 // 用法：
 //   const val = await showPrompt({ title: '改店铺名', field: { label: '名称', value: '原名' } });
@@ -11398,6 +11795,21 @@ function showPrompt(opts) {
         inputHtml = `<textarea ${inputAttrs} rows="${f.rows || 4}" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); font-family:inherit; resize:vertical;">${escapeHtml(val)}</textarea>`;
       } else if (f.type === 'number') {
         inputHtml = `<input type="number" ${f.min != null ? `min="${f.min}"` : ''} ${f.step ? `step="${f.step}"` : 'step="any"'} value="${escapeHtml(val)}" ${inputAttrs}>`;
+      } else if (f.type === 'image') {
+        // 图片字段：含预览 + 上传按钮 + 粘贴/拖拽 + URL 输入
+        inputHtml = `
+          <div class="image-field-wrapper" tabindex="0" style="border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px; background: var(--bg-elevated);">
+            <div data-preview style="border: 2px dashed var(--border); border-radius: 6px; padding: 6px; min-height: 80px; display: flex; align-items: center; justify-content: center; background: var(--bg-card); transition: border-color 0.15s;">
+              ${val ? `<img src="${escapeHtml(val)}" style="max-width:100%; max-height:140px; border-radius:6px; object-fit:contain;">` : '<div style="color:var(--text-tertiary); font-size:12px; padding:20px;">📷 无图片</div>'}
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap;">
+              <button type="button" class="btn small" data-action="upload">📁 选择文件</button>
+              <input type="file" accept="image/*" style="display:none;">
+              ${val ? `<button type="button" class="btn small" data-action="clear">✕ 清空</button>` : ''}
+              <span data-status style="font-size: 11px; color: var(--text-tertiary); margin-left: 4px;">支持 粘贴(Ctrl+V) / 上传 / 拖拽 / URL</span>
+            </div>
+            <input type="text" value="${escapeHtml(val)}" ${inputAttrs.replace('width:100%', 'width:100%; margin-top:8px; font-size:11px; font-family:monospace')} placeholder="或直接粘贴图片 URL">
+          </div>`;
       } else {
         inputHtml = `<input type="text" value="${escapeHtml(val)}" ${inputAttrs}>`;
       }
@@ -11409,12 +11821,17 @@ function showPrompt(opts) {
         </div>`;
     }).join('');
 
+    // 如果有 image 字段，设置上传/粘贴交互（返回 cleanup 函数）
+    const hasImageField = fields.some(f => f.type === 'image');
+    const imageCleanup = hasImageField ? _setupImageFieldHandlers(modal, body) : null;
+
     const cleanup = (val) => {
       modal.style.display = 'none';
       document.getElementById('genericPromptOk').onclick = null;
       document.getElementById('genericPromptCancel').onclick = null;
       document.getElementById('genericPromptClose').onclick = null;
       document.removeEventListener('keydown', keyHandler, true);
+      if (imageCleanup) imageCleanup();
       resolve(val);
     };
     const onOk = () => {
@@ -12278,7 +12695,7 @@ async function poFormEditLine(liid) {
     fields: [
       { key: 'sku',   label: '新 SKU',      value: sel.customSku || eff.sku || li.sku, hint: '客户买的是 A，实际要发 B，填 B 的 SKU' },
       { key: 'title', label: '新中文名',     value: sel.customTitleCn || eff.name_cn || li.title || '' },
-      { key: 'img',   label: '新图片 URL',   value: sel.customImageUrl || eff.image_url || li.image_url || '', hint: '把新产品的图片 URL 粘贴进来' },
+      { key: 'img',   label: '产品图片',     value: sel.customImageUrl || eff.image_url || li.image_url || '', type: 'image', hint: '可上传文件 / Ctrl+V 粘贴截图 / 直接拖入 / 输入 URL' },
     ],
   });
   if (!result) return;
@@ -12310,7 +12727,7 @@ async function poFormAddCustomLine() {
       { key: 'title', label: '中文名',    value: '',  required: true, hint: '如：差价补充 / 配件 / 换货 A→B' },
       { key: 'qty',   label: '数量',      value: '1', type: 'number', required: true },
       { key: 'price', label: '单价 ¥',    value: '0', type: 'number', required: true },
-      { key: 'img',   label: '图片 URL',  value: '',  hint: '可选' },
+      { key: 'img',   label: '产品图片',  value: '',  type: 'image', hint: '可上传 / 粘贴 / 拖入 / URL（可选）' },
     ],
   });
   if (!result) return;
@@ -12337,7 +12754,7 @@ async function poFormEditCustomLine(id) {
     fields: [
       { key: 'sku',   label: 'SKU 编号', value: cl.sku,      required: true },
       { key: 'title', label: '中文名',   value: cl.title_cn, required: true },
-      { key: 'img',   label: '图片 URL', value: cl.image_url || '', hint: '可选' },
+      { key: 'img',   label: '产品图片', value: cl.image_url || '', type: 'image', hint: '可上传 / 粘贴 / 拖入 / URL（可选）' },
     ],
   });
   if (!result) return;
