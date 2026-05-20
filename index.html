@@ -1803,7 +1803,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 /* ============ 批次 4 新增弹窗 overlay（修复位置 bug） ============ */
 /* 6 个新弹窗的 .modal 不能用原系统的卡片样式，要 reset 成全屏遮罩 */
 #poFormModal, #suppliersModal, #supplierEditModal,
-#masterBindModal, #multiSupplierConfirm, #poPrintModal {
+#masterBindModal, #multiSupplierConfirm, #poPrintModal, #internalNoteModal, #genericPromptModal {
   position: fixed !important; inset: 0 !important;
   background: rgba(28,25,23,0.5) !important;
   backdrop-filter: blur(4px);
@@ -1815,8 +1815,9 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   box-shadow: none !important; animation: none !important;
   overflow: hidden !important;
 }
+#genericPromptModal { z-index: 9500 !important; }  /* 在其他 modal 之上 */
 #poFormModal[style*="flex"], #suppliersModal[style*="flex"], #supplierEditModal[style*="flex"],
-#masterBindModal[style*="flex"], #multiSupplierConfirm[style*="flex"], #poPrintModal[style*="flex"] {
+#masterBindModal[style*="flex"], #multiSupplierConfirm[style*="flex"], #poPrintModal[style*="flex"], #internalNoteModal[style*="flex"], #genericPromptModal[style*="flex"] {
   display: flex !important;
 }
 .modal-content {
@@ -1838,7 +1839,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
 #poFormModal .modal-close, #suppliersModal .modal-close, #supplierEditModal .modal-close,
-#masterBindModal .modal-close, #multiSupplierConfirm .modal-close, #poPrintModal .modal-close {
+#masterBindModal .modal-close, #multiSupplierConfirm .modal-close, #poPrintModal .modal-close, #internalNoteModal .modal-close, #genericPromptModal .modal-close {
   position: static !important; top: auto !important; right: auto !important;
   width: 30px; height: 30px;
   background: transparent; border: none; cursor: pointer;
@@ -1846,7 +1847,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   border-radius: 6px;
 }
 #poFormModal .modal-close:hover, #suppliersModal .modal-close:hover, #supplierEditModal .modal-close:hover,
-#masterBindModal .modal-close:hover, #multiSupplierConfirm .modal-close:hover, #poPrintModal .modal-close:hover {
+#masterBindModal .modal-close:hover, #multiSupplierConfirm .modal-close:hover, #poPrintModal .modal-close:hover, #internalNoteModal .modal-close:hover, #genericPromptModal .modal-close:hover {
   background: var(--bg-elevated); color: var(--text-primary);
 }
 .modal-body {
@@ -2520,6 +2521,8 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       <div id="salesStoresGrid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 8px 0 4px;"></div>
     </div>
 
+    <div id="salesStatsContainer" style="margin-top: 14px;"></div>
+
     <div class="fb-card" id="salesFetchCard" style="margin-top: 14px;">
       <div class="fb-head" style="cursor: default;">
         <div class="fb-title">📥 销售订单</div>
@@ -2532,15 +2535,25 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <select class="filter-select" id="salesFetchShop" style="min-width: 200px;">
           <option value="">— 选择店铺 —</option>
         </select>
-        <input type="date" class="filter-select" id="salesFetchFrom" style="min-width: 140px;">
+        <select class="filter-select" id="salesQuickRange" onchange="salesQuickRangeChange()" style="min-width:130px;">
+          <option value="7">近 7 天</option>
+          <option value="15">近 15 天</option>
+          <option value="30" selected>近 30 天</option>
+          <option value="90">近 90 天 (一季度)</option>
+          <option value="180">近 180 天 (半年)</option>
+          <option value="365">近 1 年</option>
+          <option value="custom">自定义</option>
+        </select>
+        <input type="date" class="filter-select" id="salesFetchFrom" style="min-width: 130px;">
         <span style="color: var(--text-tertiary); font-size: 12px;">至</span>
-        <input type="date" class="filter-select" id="salesFetchTo" style="min-width: 140px;">
+        <input type="date" class="filter-select" id="salesFetchTo" style="min-width: 130px;">
         <select class="filter-select" id="salesFetchStatus">
           <option value="open">未关闭</option>
           <option value="any">全部</option>
           <option value="closed">已关闭</option>
         </select>
-        <button class="btn primary" onclick="shopifyFetchOrders()">🔄 同步</button>
+        <button class="btn" onclick="shopifyReloadOrdersAndRender(true)" title="只从本地读取（毫秒级）">📂 本地</button>
+        <button class="btn primary" onclick="shopifyFetchOrders()" title="拉 Shopify 最新数据">🔄 同步</button>
       </div>
 
       <div class="sales-subtabs" id="salesSubtabs" style="margin-top: 14px;">
@@ -2625,6 +2638,44 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="modal-body" id="masterBindBody" style="max-height: 70vh; overflow-y: auto;"></div>
     <div class="modal-footer">
       <button class="btn" onclick="closeMasterBind()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 通用自定义 prompt 弹窗（替代浏览器原生 prompt） ============ -->
+<div id="genericPromptModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width: 520px;">
+    <div class="modal-header">
+      <h3 id="genericPromptTitle">请输入</h3>
+      <button class="modal-close" id="genericPromptClose">✕</button>
+    </div>
+    <div class="modal-body" id="genericPromptBody" style="padding: 16px 20px; max-height: 60vh; overflow-y: auto;"></div>
+    <div class="modal-footer">
+      <button class="btn" id="genericPromptCancel">取消</button>
+      <button class="btn primary" id="genericPromptOk">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 内部备注弹窗 ============ -->
+<div id="internalNoteModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width: 560px;">
+    <div class="modal-header">
+      <h3>📝 编辑内部备注 <span style="font-weight:400; color:var(--text-tertiary); font-size:13px; margin-left:6px;" id="internalNoteOrderNo"></span></h3>
+      <button class="modal-close" onclick="closeInternalNoteModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding: 16px 20px;">
+      <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; background: rgba(37,99,235,0.06); padding: 8px 10px; border-radius: 6px; border-left: 3px solid var(--accent);">
+        💡 跟单团队内部备注，<b>不会同步回 Shopify</b>。用于和同事沟通处理思路、提醒事项、客户特殊要求确认等。
+      </div>
+      <textarea id="internalNoteText" rows="6" placeholder="输入内部备注…" style="width: 100%; padding: 10px 12px; font-size: 13px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); resize: vertical; font-family: inherit;"></textarea>
+      <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;">
+        ⓘ 该备注会显示在销售单卡片和开 PO 弹窗顶部
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeInternalNoteModal()">取消</button>
+      <button class="btn primary" onclick="saveInternalNote()">💾 保存</button>
     </div>
   </div>
 </div>
@@ -9315,7 +9366,7 @@ async function rejectPurchase() {
   const p = arr.find(x => x._id === _currentItemId);
   if (!p) return;
   if (!IS_ADMIN) { toast('只有主管能驳回', 'err'); return; }
-  const reason = prompt('驳回原因（必填）：');
+  const reason = await showPrompt({ title: '⊗ 驳回采购单', message: '驳回原因会显示给跟单作为修改依据。', field: { label: '驳回原因', value: '', type: 'textarea', rows: 3, placeholder: '例：单价偏高，请重新询价', required: true } });
   if (!reason || !reason.trim()) return;
   
   persistCurrentPurchase(x => {
@@ -9336,7 +9387,7 @@ async function quickReject(id, agent) {
   const p = arr.find(x => x._id === id);
   if (!p) return;
   if (!IS_ADMIN) { toast('只有主管能驳回', 'err'); return; }
-  const reason = prompt('驳回原因（必填）：');
+  const reason = await showPrompt({ title: '⊗ 驳回采购单', message: '驳回原因会显示给跟单作为修改依据。', field: { label: '驳回原因', value: '', type: 'textarea', rows: 3, placeholder: '例：单价偏高，请重新询价', required: true } });
   if (!reason || !reason.trim()) return;
   
   p.status = 'rejected';
@@ -10083,16 +10134,11 @@ async function renameAgent(agentIdx) {
   const agent = CONFIG.agents[agentIdx];
   if (!agent) return;
   
-  const newName = prompt(
-    `修改 "${agent.name}" 的显示姓名\n\n` +
-    `💡 用途：\n` +
-    `  · 改成中文名字（如 Sylvie → 王思雨）\n` +
-    `  · 改成英文名字\n` +
-    `  · 跟单离职后，账号给新人接管时改名\n\n` +
-    `⚠ 注意：只改显示名字，登录邮箱和密码不变。\n` +
-    `历史数据（订单、售后等）自动跟着新名字走，不会丢。`,
-    agent.name
-  );
+  const newName = await showPrompt({
+    title: `修改 "${agent.name}" 的显示姓名`,
+    message: '💡 用途：改成中文名字、改英文名字、或跟单离职后给新人接管时改名。\n⚠ 只改显示名，登录邮箱和密码不变。历史数据自动跟着新名字走，不会丢。',
+    field: { label: '新姓名', value: agent.name, placeholder: '如：王思雨' },
+  });
   
   if (!newName) return;
   const trimmed = newName.trim();
@@ -10859,22 +10905,25 @@ const SHOPIFY = {
     return this._stores;
   },
 
-  async loadOrdersFromDB(force = false) {
-    const CACHE_MS = 60 * 1000;  // 1 分钟内重复进 tab 不重新查
-    if (!force && this._ordersLoadedAt && (Date.now() - this._ordersLoadedAt < CACHE_MS) && this._orders.length > 0) {
+  async loadOrdersFromDB(force = false, opts = {}) {
+    const CACHE_MS = 60 * 1000;
+    const cacheKey = JSON.stringify({ shop: opts.shop || '', from: opts.from || '', to: opts.to || '' });
+    if (!force && this._ordersCacheKey === cacheKey && this._ordersLoadedAt && (Date.now() - this._ordersLoadedAt < CACHE_MS) && this._orders.length > 0) {
       return this._orders;
     }
-    const { data, error } = await sb
-      .from('shopify_orders')
-      .select('*')
-      .order('shopify_created_at', { ascending: false })
-      .limit(500);
+    let q = sb.from('shopify_orders').select('*');
+    if (opts.shop) q = q.eq('shop_domain', opts.shop);
+    if (opts.from) q = q.gte('shopify_created_at', opts.from + 'T00:00:00Z');
+    if (opts.to)   q = q.lte('shopify_created_at', opts.to + 'T23:59:59Z');
+    q = q.order('shopify_created_at', { ascending: false }).limit(500);
+    const { data, error } = await q;
     if (error) throw error;
     this._orders = data || [];
     this._ordersLoadedAt = Date.now();
+    this._ordersCacheKey = cacheKey;
     return this._orders;
   },
-  invalidateOrders() { this._ordersLoadedAt = 0; },
+  invalidateOrders() { this._ordersLoadedAt = 0; this._ordersCacheKey = null; },
 
   async loadProductImageMap(skus) {
     if (!skus || skus.length === 0) return {};
@@ -10974,15 +11023,17 @@ function renderShopifyStores() {
 }
 
 async function shopifyRenameStore(storeId, currentName) {
-  const newName = prompt('改店铺显示名（建议用真实品牌名）', currentName);
+  const newName = await showPrompt({
+    title: '改店铺显示名',
+    message: '建议改成真实品牌名，方便在销售订单/采购单中识别。',
+    field: { label: '店铺显示名', value: currentName, placeholder: '例如：Vakker Lighting' },
+  });
   if (newName === null || newName.trim() === currentName) return;
   try {
     await SHOPIFY.renameStore(storeId, newName);
-    toast('改名成功');
+    toast('✓ 改名成功');
     await shopifyReloadStores();
-  } catch (e) {
-    toast('改名失败：' + (e.message || e), 'err');
-  }
+  } catch (e) { toast('改名失败：' + (e.message || e), 'err'); }
 }
 
 function shopifyInstall(domain) {
@@ -11057,13 +11108,93 @@ async function shopifyFetchOrders() {
 }
 
 async function shopifyReloadOrdersAndRender(force = false) {
-  await SHOPIFY.loadOrdersFromDB(force);
-  // 加载所有出现过的 SKU 的图片
+  const shop = document.getElementById('salesFetchShop')?.value || '';
+  const from = document.getElementById('salesFetchFrom')?.value || '';
+  const to   = document.getElementById('salesFetchTo')?.value || '';
+  await SHOPIFY.loadOrdersFromDB(force, { shop, from, to });
   const skus = [];
   SHOPIFY._orders.forEach(o => (o.line_items || []).forEach(li => { if (li.sku) skus.push(li.sku); }));
   SHOPIFY._productMap = await SHOPIFY.loadProductImageMap([...new Set(skus)]);
   shopifyRefreshCounts();
   renderShopifyOrders();
+  renderSalesStats();  // 业绩面板
+}
+
+// 销售额业绩面板（按 7/30/90/180/365 天分段；销售额数据仅主管可见）
+async function renderSalesStats() {
+  const container = document.getElementById('salesStatsContainer');
+  if (!container) return;
+
+  const now = new Date();
+  const periods = [
+    { label: '今天',   days: 1 },
+    { label: '近7天',  days: 7 },
+    { label: '近30天', days: 30 },
+    { label: '近90天', days: 90 },
+    { label: '近1年',  days: 365 },
+  ];
+
+  // 在当前店铺范围内查每段销售额（管理员）或单数（跟单都能看）
+  const shop = document.getElementById('salesFetchShop')?.value || '';
+  // 取近 1 年所有订单（前端切片，比多次查询快）
+  const since = new Date(now.getTime() - 365 * 86400000).toISOString();
+  let q = sb.from('shopify_orders').select('total_price, currency, shopify_created_at, financial_status, local_status, shop_domain').gte('shopify_created_at', since);
+  if (shop) q = q.eq('shop_domain', shop);
+  const { data, error } = await q;
+  if (error) { console.warn('销售业绩加载失败:', error); container.innerHTML = ''; return; }
+
+  const rows = data || [];
+
+  // 按时间段切片（排除已取消 cancelled）
+  const stats = periods.map(p => {
+    const since = new Date(now.getTime() - (p.days === 1 ? 0 : p.days) * 86400000);
+    if (p.days === 1) {
+      since.setHours(0, 0, 0, 0);
+    }
+    const sinceIso = since.toISOString();
+    const rs = rows.filter(r => r.shopify_created_at >= sinceIso && r.local_status !== 'cancelled');
+    const totalAmount = rs.reduce((s, x) => s + Number(x.total_price || 0), 0);
+    return { label: p.label, count: rs.length, amount: totalAmount };
+  });
+
+  // 货币（取最常见的）
+  const currCount = {};
+  rows.forEach(r => { const c = r.currency || ''; if (c) currCount[c] = (currCount[c] || 0) + 1; });
+  const mainCurrency = Object.entries(currCount).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
+
+  container.innerHTML = `
+    <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">📊 销售业绩 <span style="font-weight:400; color:var(--text-tertiary); margin-left:6px; font-size:11px;">${shop ? escapeHtml(shop) : '全部店铺'}${IS_ADMIN ? '' : ' · 仅订单数（销售额限主管查看）'}</span></div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;">
+        ${stats.map(s => `
+          <div style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 11px; color: var(--text-tertiary);">${s.label}</div>
+            <div style="font-size: 20px; font-weight: 700; color: var(--accent); margin-top:2px;">${s.count}<span style="font-size: 11px; font-weight: 400; color: var(--text-tertiary); margin-left: 3px;">单</span></div>
+            ${IS_ADMIN ? `<div style="font-size: 11px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">${mainCurrency} ${s.amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>` : '<div style="font-size: 11px; color: var(--text-tertiary);">🔒 销售额</div>'}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// 快捷时间下拉变化
+function salesQuickRangeChange() {
+  const sel = document.getElementById('salesQuickRange');
+  const v = sel.value;
+  const fromEl = document.getElementById('salesFetchFrom');
+  const toEl = document.getElementById('salesFetchTo');
+  if (v === 'custom') return;  // 让用户自己选
+  const days = parseInt(v, 10);
+  const today = new Date();
+  const from = new Date(today.getTime() - days * 86400000);
+  const fmt = d => d.toISOString().slice(0, 10);
+  fromEl.value = fmt(from);
+  toEl.value = fmt(today);
+  // 立刻按新区间从本地读
+  shopifyReloadOrdersAndRender(true);
 }
 
 function shopifyShowFilter(filter) {
@@ -11146,14 +11277,19 @@ function renderShopifyOrders() {
         </div>`;
     }).join('') : `<div style="font-size:12px; color:var(--text-tertiary); padding:8px 0;">（无产品行）</div>`;
 
+    // 退款检测
+    const refund = getRefundStatus(o);
+    const isFullyRefunded = refund.level === 'full';
+    const isPartiallyRefunded = refund.level === 'partial';
+
     let actionsHtml = '';
     if (o.local_status === 'pending') {
       actionsHtml = `
-        <button class="so-action-btn primary" onclick="shopifyStartProcessing('${o.id}')">👁 开始处理</button>
+        <button class="so-action-btn primary" onclick="shopifyStartProcessing('${o.id}')" ${isFullyRefunded ? 'disabled style="opacity:0.4; cursor:not-allowed;" title="此订单已全额退款，禁止开采购单"' : ''}>👁 开始处理</button>
         <button class="so-action-btn" onclick="shopifyCancelOrder('${o.id}')">取消</button>`;
     } else if (o.local_status === 'processing') {
       actionsHtml = `
-        <button class="so-action-btn primary" onclick="shopifyOpenPoForm('${o.id}')">📦 开采购单</button>
+        <button class="so-action-btn primary" onclick="${isFullyRefunded ? `toast('该订单已全额退款，禁止开采购单，请先取消订单','err')` : `shopifyOpenPoForm('${o.id}')`}" ${isFullyRefunded ? 'disabled style="opacity:0.4; cursor:not-allowed;" title="此订单已全额退款，禁止开采购单"' : ''}>📦 开采购单</button>
         <button class="so-action-btn" onclick="shopifyMarkDone('${o.id}')" title="所有产品都开采购单后点此完成">✓ 标记完成</button>`;
     } else if (o.local_status === 'done') {
       actionsHtml = `<button class="so-action-btn" onclick="shopifyReopenOrder('${o.id}')">↺ 重新打开</button>`;
@@ -11169,7 +11305,7 @@ function renderShopifyOrders() {
     })[o.local_status] || '';
 
     return `
-      <div class="so-card ${o.local_status === 'done' || o.local_status === 'cancelled' ? 'imported' : ''}" data-id="${o.id}">
+      <div class="so-card ${o.local_status === 'done' || o.local_status === 'cancelled' ? 'imported' : ''}" data-id="${o.id}" style="${isFullyRefunded ? 'border-color: var(--danger); border-width: 2px;' : isPartiallyRefunded ? 'border-color: var(--warning); border-width: 2px;' : ''}">
         <div class="so-card-top">
           <div class="so-top-checkbox">
             ${siteCode ? `<span class="site-pill" style="background:var(--accent); color:white; font-size:11px; padding:2px 7px; border-radius:4px; font-weight:700;">${siteCode}</span>` : ''}
@@ -11181,10 +11317,13 @@ function renderShopifyOrders() {
             <span>下单 <b>${dateStr} ${timeStr}</b></span>
           </div>
           <div class="so-top-status">
-            ${o.financial_status ? `<span class="so-status-pill ${o.financial_status}">${o.financial_status}</span>` : ''}
+            ${refund.level !== 'none' ? `<span style="display:inline-block; padding:2px 8px; border-radius:4px; background:${refund.bg}; color:${refund.color}; font-size:11px; font-weight:600; margin-right:4px;">${refund.label}</span>` : ''}
+            ${o.financial_status && refund.level === 'none' ? `<span class="so-status-pill ${o.financial_status}">${o.financial_status}</span>` : ''}
             ${localStatusPill}
           </div>
         </div>
+        ${isFullyRefunded ? `<div style="background:rgba(220,38,38,0.08); padding:8px 14px; font-size:12px; border-top:1px solid var(--border-subtle); border-bottom:1px solid var(--border-subtle); color:var(--danger);"><b>⚠️ 订单已全额退款</b> · 禁止开采购单（避免下错单造成损失）。如需操作请先取消订单或联系主管。</div>` : ''}
+        ${isPartiallyRefunded ? `<div style="background:rgba(217,119,6,0.08); padding:8px 14px; font-size:12px; border-top:1px solid var(--border-subtle); border-bottom:1px solid var(--border-subtle); color:var(--warning);"><b>⚠️ 订单已部分退款</b> · 开采购单前请核对实际需采购的产品/数量。</div>` : ''}
         ${(() => {
           const customerNote = (o.customer_note || '').trim();
           const internalNote = (o.internal_note || '').trim();
@@ -11219,20 +11358,126 @@ function renderShopifyOrders() {
   }).join('');
 }
 
-// 编辑工作台内部备注（不同步到 Shopify）
-async function editInternalNote(orderId) {
+// 检测订单退款状态
+// 返回 { level: 'none'|'partial'|'full'|'voided', label, color, badge }
+function getRefundStatus(o) {
+  const fs = (o.financial_status || '').toLowerCase();
+  if (fs === 'refunded') return { level: 'full',    label: '💸 全额退款',   color: '#dc2626', bg: 'rgba(220,38,38,0.12)' };
+  if (fs === 'partially_refunded') return { level: 'partial', label: '⚠️ 部分退款', color: '#d97706', bg: 'rgba(217,119,6,0.12)' };
+  if (fs === 'voided')   return { level: 'voided',  label: '⊘ 已作废',     color: '#78716c', bg: 'rgba(120,113,108,0.15)' };
+  return { level: 'none', label: '', color: '', bg: '' };
+}
+
+// ============ 通用 prompt 替代浏览器原生（更好看 + 支持多字段） ============
+// 用法：
+//   const val = await showPrompt({ title: '改店铺名', field: { label: '名称', value: '原名' } });
+//   const result = await showPrompt({ title: '编辑产品', fields: [
+//     { key: 'sku', label: 'SKU', value: '...', required: true },
+//     { key: 'name', label: '中文名', value: '...', hint: '留空恢复默认' },
+//     { key: 'price', label: '单价', type: 'number', value: 100 },
+//     { key: 'note', label: '备注', type: 'textarea', rows: 4, value: '' },
+//   ]});
+// 取消返回 null；多字段返回对象；单字段返回字符串
+function showPrompt(opts) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('genericPromptModal');
+    if (!modal) { console.error('genericPromptModal not found'); resolve(null); return; }
+    document.getElementById('genericPromptTitle').textContent = opts.title || '请输入';
+    const body = document.getElementById('genericPromptBody');
+    // 兼容单字段：opts.field 转为 fields 数组
+    const isSingle = !!opts.field && !opts.fields;
+    const fields = opts.fields || (opts.field ? [{ key: '__single', ...opts.field }] : []);
+    const messageHtml = opts.message
+      ? `<div style="background: rgba(37,99,235,0.06); padding: 8px 10px; border-radius: 6px; border-left: 3px solid var(--accent); font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; white-space: pre-wrap;">${escapeHtml(opts.message)}</div>`
+      : '';
+    body.innerHTML = messageHtml + fields.map(f => {
+      const val = f.value == null ? '' : String(f.value);
+      const inputAttrs = `data-key="${escapeHtml(f.key)}" placeholder="${escapeHtml(f.placeholder || '')}" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); font-family:inherit;"`;
+      let inputHtml;
+      if (f.type === 'textarea') {
+        inputHtml = `<textarea ${inputAttrs} rows="${f.rows || 4}" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); font-family:inherit; resize:vertical;">${escapeHtml(val)}</textarea>`;
+      } else if (f.type === 'number') {
+        inputHtml = `<input type="number" ${f.min != null ? `min="${f.min}"` : ''} ${f.step ? `step="${f.step}"` : 'step="any"'} value="${escapeHtml(val)}" ${inputAttrs}>`;
+      } else {
+        inputHtml = `<input type="text" value="${escapeHtml(val)}" ${inputAttrs}>`;
+      }
+      return `
+        <div style="margin-bottom: 14px;">
+          ${f.label ? `<label style="display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(f.label)}${f.required ? ' <span style="color:var(--danger);">*</span>' : ''}</label>` : ''}
+          ${inputHtml}
+          ${f.hint ? `<div style="font-size:11px; color:var(--text-tertiary); margin-top:4px;">${escapeHtml(f.hint)}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    const cleanup = (val) => {
+      modal.style.display = 'none';
+      document.getElementById('genericPromptOk').onclick = null;
+      document.getElementById('genericPromptCancel').onclick = null;
+      document.getElementById('genericPromptClose').onclick = null;
+      document.removeEventListener('keydown', keyHandler, true);
+      resolve(val);
+    };
+    const onOk = () => {
+      const result = {};
+      body.querySelectorAll('[data-key]').forEach(inp => { result[inp.dataset.key] = inp.value; });
+      for (const f of fields) {
+        if (f.required && !(result[f.key] || '').trim()) {
+          toast(`${f.label || '该字段'} 必填`, 'warn');
+          return;
+        }
+      }
+      cleanup(isSingle ? (result['__single'] || '') : result);
+    };
+    const keyHandler = (e) => {
+      if (modal.style.display !== 'flex') return;
+      if (e.key === 'Escape') { e.preventDefault(); cleanup(null); }
+      else if (e.key === 'Enter' && fields.length === 1 && fields[0].type !== 'textarea') {
+        e.preventDefault();
+        onOk();
+      }
+    };
+    document.getElementById('genericPromptOk').onclick = onOk;
+    document.getElementById('genericPromptCancel').onclick = () => cleanup(null);
+    document.getElementById('genericPromptClose').onclick = () => cleanup(null);
+    document.addEventListener('keydown', keyHandler, true);
+    modal.style.display = 'flex';
+    setTimeout(() => {
+      const firstInput = body.querySelector('[data-key]');
+      if (firstInput) { firstInput.focus(); if (firstInput.select) firstInput.select(); }
+    }, 100);
+  });
+}
+
+// 编辑工作台内部备注（不同步到 Shopify）- 用自定义弹窗
+let INTERNAL_NOTE_EDITING_ID = null;
+function editInternalNote(orderId) {
   const o = SHOPIFY._orders.find(x => x.id === orderId);
   if (!o) return;
-  const current = o.internal_note || '';
-  const newNote = prompt(`编辑内部备注（${o.shopify_order_number || ''}）\n\n这是跟单团队内部的备注，不会同步回 Shopify。\n用于：和同事沟通处理思路、提醒事项、客户特殊要求确认等。`, current);
-  if (newNote === null) return;
+  INTERNAL_NOTE_EDITING_ID = orderId;
+  document.getElementById('internalNoteOrderNo').textContent = o.shopify_order_number || '';
+  document.getElementById('internalNoteText').value = o.internal_note || '';
+  document.getElementById('internalNoteModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('internalNoteText').focus(), 100);
+}
+
+function closeInternalNoteModal() {
+  document.getElementById('internalNoteModal').style.display = 'none';
+  INTERNAL_NOTE_EDITING_ID = null;
+}
+
+async function saveInternalNote() {
+  if (!INTERNAL_NOTE_EDITING_ID) return;
+  const o = SHOPIFY._orders.find(x => x.id === INTERNAL_NOTE_EDITING_ID);
+  if (!o) return;
+  const newNote = document.getElementById('internalNoteText').value.trim();
   try {
     await sb.from('shopify_orders').update({
-      internal_note: newNote.trim(),
+      internal_note: newNote,
       updated_at: new Date().toISOString(),
-    }).eq('id', orderId);
-    o.internal_note = newNote.trim();
-    toast('已保存');
+    }).eq('id', INTERNAL_NOTE_EDITING_ID);
+    o.internal_note = newNote;
+    toast('✓ 已保存内部备注');
+    closeInternalNoteModal();
     renderShopifyOrders();
   } catch (e) { toast('保存失败：' + (e.message || e), 'err'); }
 }
@@ -11917,6 +12162,12 @@ function renderPoForm() {
   }
 
   body.innerHTML = `
+    ${(() => {
+      const r = getRefundStatus(so);
+      if (r.level === 'full') return `<div style="background:rgba(220,38,38,0.1); border:2px solid var(--danger); padding:12px 14px; border-radius:8px; margin-bottom:14px;"><div style="font-weight:700; color:var(--danger); font-size:14px;">⛔ 警告：订单已全额退款</div><div style="font-size:12px; color:var(--text-primary); margin-top:4px;">此订单不应再开采购单，请关闭并联系主管。</div></div>`;
+      if (r.level === 'partial') return `<div style="background:rgba(217,119,6,0.1); border:2px solid var(--warning); padding:12px 14px; border-radius:8px; margin-bottom:14px;"><div style="font-weight:700; color:var(--warning); font-size:14px;">⚠️ 警告：订单已部分退款</div><div style="font-size:12px; color:var(--text-primary); margin-top:4px;">请核对实际需要采购的产品和数量，避免下错单。建议先取消勾选客户已退款的产品。</div></div>`;
+      return '';
+    })()}
     <div style="background: var(--bg-elevated); padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 12px;">
       <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
         <div><b>销售订单：</b>${escapeHtml(so.shopify_order_number || '')} <span style="color:var(--text-tertiary);">(${siteCode})</span></div>
@@ -12016,22 +12267,26 @@ function poFormSetPrice(liid, val) {
 }
 
 // 修改销售单原始 line item 的 SKU / 中文名 / 图（用于换货 A→B 等场景）
-function poFormEditLine(liid) {
+async function poFormEditLine(liid) {
   const sel = PO_FORM_STATE.lineItemSelections[liid];
   const li = (PO_FORM_STATE.salesOrder.line_items || []).find(x => x.shopify_line_item_id === liid);
   if (!sel || !li) return;
   const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
-  const newSku = prompt('新 SKU（留空恢复原值）：', sel.customSku || eff.sku || li.sku);
-  if (newSku === null) return;
-  const newTitle = prompt('新中文名（留空恢复原值）：', sel.customTitleCn || eff.name_cn || li.title || '');
-  if (newTitle === null) return;
-  const newImg = prompt('新图片 URL（留空保留当前图）：', sel.customImageUrl || eff.image_url || li.image_url || '');
-  if (newImg === null) return;
-  sel.customSku = newSku.trim() || null;
-  sel.customTitleCn = newTitle.trim() || null;
-  sel.customImageUrl = newImg.trim() || null;
+  const result = await showPrompt({
+    title: '🔧 修改产品 (换货 / 差价 / 替换)',
+    message: '把客户买的产品替换成实际要发的产品。留空表示保留原值。',
+    fields: [
+      { key: 'sku',   label: '新 SKU',      value: sel.customSku || eff.sku || li.sku, hint: '客户买的是 A，实际要发 B，填 B 的 SKU' },
+      { key: 'title', label: '新中文名',     value: sel.customTitleCn || eff.name_cn || li.title || '' },
+      { key: 'img',   label: '新图片 URL',   value: sel.customImageUrl || eff.image_url || li.image_url || '', hint: '把新产品的图片 URL 粘贴进来' },
+    ],
+  });
+  if (!result) return;
+  sel.customSku = result.sku.trim() || null;
+  sel.customTitleCn = result.title.trim() || null;
+  sel.customImageUrl = result.img.trim() || null;
   renderPoForm();
-  toast('已修改');
+  toast('✓ 已修改');
 }
 
 // 恢复销售单原始 line item 默认值
@@ -12046,46 +12301,51 @@ function poFormResetLine(liid) {
 }
 
 // 自定义额外产品行（差价/配件/换货）
-function poFormAddCustomLine() {
-  const sku = prompt('SKU 编号（如：DIFF-001 / ACCESSORY-X / CUSTOM-XX）');
-  if (sku === null) return;
-  if (!sku.trim()) { toast('SKU 必填', 'warn'); return; }
-  const title = prompt('中文名（如：差价补充 / 配件 / 换货 A→B）：');
-  if (title === null) return;
-  const qty = prompt('数量：', '1');
-  if (qty === null) return;
-  const price = prompt('单价 ¥：', '0');
-  if (price === null) return;
-  const img = prompt('图片 URL（可选）：', '');
+async function poFormAddCustomLine() {
+  const result = await showPrompt({
+    title: '+ 添加自定义产品行',
+    message: '用于：差价补充 / 加配件 / A→B 换货等场景。',
+    fields: [
+      { key: 'sku',   label: 'SKU 编号',  value: '',  required: true, hint: '如 DIFF-001 / ACCESSORY-X / CUSTOM-XX' },
+      { key: 'title', label: '中文名',    value: '',  required: true, hint: '如：差价补充 / 配件 / 换货 A→B' },
+      { key: 'qty',   label: '数量',      value: '1', type: 'number', required: true },
+      { key: 'price', label: '单价 ¥',    value: '0', type: 'number', required: true },
+      { key: 'img',   label: '图片 URL',  value: '',  hint: '可选' },
+    ],
+  });
+  if (!result) return;
   PO_FORM_STATE.customLines.push({
     id: 'custom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
-    sku: sku.trim(),
-    title_cn: title.trim(),
+    sku: result.sku.trim(),
+    title_cn: result.title.trim(),
     title_en: '',
     variant: '',
-    image_url: (img || '').trim(),
-    qty: parseInt(qty) || 1,
-    price: parseFloat(price) || 0,
+    image_url: (result.img || '').trim(),
+    qty: parseInt(result.qty) || 1,
+    price: parseFloat(result.price) || 0,
     is_custom: true,
   });
   renderPoForm();
-  toast('已添加自定义产品行');
+  toast('✓ 已添加自定义产品行');
 }
 
-function poFormEditCustomLine(id) {
+async function poFormEditCustomLine(id) {
   const cl = PO_FORM_STATE.customLines.find(x => x.id === id);
   if (!cl) return;
-  const sku = prompt('SKU 编号：', cl.sku);
-  if (sku === null) return;
-  const title = prompt('中文名：', cl.title_cn);
-  if (title === null) return;
-  const img = prompt('图片 URL（可选）：', cl.image_url || '');
-  if (img === null) return;
-  cl.sku = sku.trim();
-  cl.title_cn = title.trim();
-  cl.image_url = img.trim();
+  const result = await showPrompt({
+    title: '🔧 修改自定义产品行',
+    fields: [
+      { key: 'sku',   label: 'SKU 编号', value: cl.sku,      required: true },
+      { key: 'title', label: '中文名',   value: cl.title_cn, required: true },
+      { key: 'img',   label: '图片 URL', value: cl.image_url || '', hint: '可选' },
+    ],
+  });
+  if (!result) return;
+  cl.sku = result.sku.trim();
+  cl.title_cn = result.title.trim();
+  cl.image_url = result.img.trim();
   renderPoForm();
-  toast('已修改');
+  toast('✓ 已修改');
 }
 
 function poFormRemoveCustomLine(id) {
@@ -12110,14 +12370,16 @@ async function editSkuNotes(sku) {
   // 走 master 穿透：编辑的是主产品的备注
   const eff = PRODUCTS_CACHE.effectiveBySku(sku);
   if (!eff) { toast('产品不存在', 'err'); return; }
-  const current = eff.notes || '';
-  const newNotes = prompt(`编辑「${eff.sku}」SKU 备注\n\n这段备注会绑定到这个 SKU（含同款组），下次开采购单时自动追加进"其他备注"。\n常用于：翻译纠正、特殊要求、定制细节。`, current);
-  if (newNotes === null) return;  // 取消
+  const newNotes = await showPrompt({
+    title: `编辑 SKU 备注 「${eff.sku}」`,
+    message: '这段备注会绑定到该 SKU（含同款组），下次开采购单时自动用作"其他备注"。\n常用于：翻译纠正、特殊要求、定制细节、配件标注等。',
+    field: { label: 'SKU 备注', value: eff.notes || '', type: 'textarea', rows: 5, placeholder: '例：黑色铁艺 + E27 灯头 × 3 + 带遥控调光 + 美规插头' },
+  });
+  if (newNotes === null) return;
   try {
     await sb.from('products').update({ notes: newNotes.trim() }).eq('id', eff.id);
-    eff.notes = newNotes.trim();  // 缓存同步
-    toast('已保存');
-    // 让 otherNote 重新生成（如果用户没手动改过）
+    eff.notes = newNotes.trim();
+    toast('✓ 已保存');
     PO_FORM_STATE.otherNoteManuallyEdited = false;
     renderPoForm();
   } catch (e) { toast('保存失败：' + (e.message || e), 'err'); }
@@ -12618,15 +12880,20 @@ function renderProductsList() {
   `;
 }
 
-function openProductEdit(productId) {
+async function openProductEdit(productId) {
   const p = PRODUCTS_CACHE._byId[productId];
   if (!p) return;
-  const newCn = prompt(`编辑「${p.sku}」中文名`, p.name_cn || '');
-  if (newCn === null) return;
-  sb.from('products').update({ name_cn: newCn.trim() }).eq('id', productId).then(({error}) => {
-    if (error) toast('保存失败', 'err');
-    else { toast('已保存'); renderProducts(); }
+  const newCn = await showPrompt({
+    title: `编辑产品中文名「${p.sku}」`,
+    message: '这个中文名会替代英文名，显示在销售单、采购单、打印预览中。',
+    field: { label: '中文名', value: p.name_cn || '', placeholder: '例如：极简北欧落地灯' },
   });
+  if (newCn === null) return;
+  try {
+    await sb.from('products').update({ name_cn: newCn.trim() }).eq('id', productId);
+    toast('✓ 已保存');
+    renderProducts();
+  } catch (e) { toast('保存失败：' + (e.message || e), 'err'); }
 }
 
 // ============ 同款绑定 ============
@@ -13006,7 +13273,7 @@ async function poApprove(poId) {
 
 async function poReject(poId) {
   if (!IS_ADMIN) { toast('只有主管能驳回', 'err'); return; }
-  const reason = prompt('驳回原因（会显示给跟单作为修改依据）：');
+  const reason = await showPrompt({ title: '⊗ 驳回采购单', message: '驳回原因会显示给跟单作为修改依据。', field: { label: '驳回原因', value: '', type: 'textarea', rows: 3, placeholder: '例：单价偏高，请重新询价', required: true } });
   if (reason === null) return;
   if (!reason.trim()) { toast('请填驳回原因', 'warn'); return; }
   try {
@@ -13050,13 +13317,11 @@ async function poAdvance(poId, nextStatus, nextLabel) {
     }).join('\n');
     const defaultAppend = `[财务录入 ${today}] 采购单 ${po.po_number} 已到货：\n${defaultLines}`;
 
-    const extraNote = prompt(
-      `确认 ${po.po_number} 已到货？\n` +
-      `\n会自动追加以下内容到 Shopify 订单备注（保留原有备注）：\n` +
-      `${'-'.repeat(40)}\n${defaultAppend}\n${'-'.repeat(40)}\n` +
-      `\n额外备注（可选，会追加到末尾）：`,
-      ''
-    );
+    const extraNote = await showPrompt({
+      title: `✓ 确认 ${po.po_number} 已到货？`,
+      message: `会自动追加以下内容到 Shopify 订单备注（保留原有客户备注）：\n${'─'.repeat(38)}\n${defaultAppend}\n${'─'.repeat(38)}`,
+      field: { label: '额外备注（可选）', value: '', type: 'textarea', rows: 3, placeholder: '如：完好，无破损 / 缺 1 个待补 / 包装稍有变形' },
+    });
     if (extraNote === null) return;  // 取消
 
     const appendText = extraNote.trim()
