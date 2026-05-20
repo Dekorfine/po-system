@@ -1803,7 +1803,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 /* ============ 批次 4 新增弹窗 overlay（修复位置 bug） ============ */
 /* 6 个新弹窗的 .modal 不能用原系统的卡片样式，要 reset 成全屏遮罩 */
 #poFormModal, #suppliersModal, #supplierEditModal,
-#masterBindModal, #multiSupplierConfirm, #poPrintModal, #internalNoteModal, #genericPromptModal, #customOrderModal {
+#masterBindModal, #multiSupplierConfirm, #poPrintModal, #internalNoteModal, #genericPromptModal, #customOrderModal, #customPoModal {
   position: fixed !important; inset: 0 !important;
   background: rgba(28,25,23,0.5) !important;
   backdrop-filter: blur(4px);
@@ -1817,7 +1817,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 #genericPromptModal { z-index: 9500 !important; }  /* 在其他 modal 之上 */
 #poFormModal[style*="flex"], #suppliersModal[style*="flex"], #supplierEditModal[style*="flex"],
-#masterBindModal[style*="flex"], #multiSupplierConfirm[style*="flex"], #poPrintModal[style*="flex"], #internalNoteModal[style*="flex"], #genericPromptModal[style*="flex"], #customOrderModal[style*="flex"] {
+#masterBindModal[style*="flex"], #multiSupplierConfirm[style*="flex"], #poPrintModal[style*="flex"], #internalNoteModal[style*="flex"], #genericPromptModal[style*="flex"], #customOrderModal[style*="flex"], #customPoModal[style*="flex"] {
   display: flex !important;
 }
 .modal-content {
@@ -1839,7 +1839,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
 #poFormModal .modal-close, #suppliersModal .modal-close, #supplierEditModal .modal-close,
-#masterBindModal .modal-close, #multiSupplierConfirm .modal-close, #poPrintModal .modal-close, #internalNoteModal .modal-close, #genericPromptModal .modal-close, #customOrderModal .modal-close {
+#masterBindModal .modal-close, #multiSupplierConfirm .modal-close, #poPrintModal .modal-close, #internalNoteModal .modal-close, #genericPromptModal .modal-close, #customOrderModal .modal-close, #customPoModal .modal-close {
   position: static !important; top: auto !important; right: auto !important;
   width: 30px; height: 30px;
   background: transparent; border: none; cursor: pointer;
@@ -1847,7 +1847,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   border-radius: 6px;
 }
 #poFormModal .modal-close:hover, #suppliersModal .modal-close:hover, #supplierEditModal .modal-close:hover,
-#masterBindModal .modal-close:hover, #multiSupplierConfirm .modal-close:hover, #poPrintModal .modal-close:hover, #internalNoteModal .modal-close:hover, #genericPromptModal .modal-close:hover, #customOrderModal .modal-close:hover {
+#masterBindModal .modal-close:hover, #multiSupplierConfirm .modal-close:hover, #poPrintModal .modal-close:hover, #internalNoteModal .modal-close:hover, #genericPromptModal .modal-close:hover, #customOrderModal .modal-close:hover, #customPoModal .modal-close:hover {
   background: var(--bg-elevated); color: var(--text-primary);
 }
 .modal-body {
@@ -2562,6 +2562,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <button class="sub-tab-btn" data-filter="pending" onclick="shopifyShowFilter('pending')">🔵 待审核 <span class="cnt" id="cntPending">0</span></button>
         <button class="sub-tab-btn" data-filter="processing" onclick="shopifyShowFilter('processing')">🟡 待处理 <span class="cnt" id="cntProcessing">0</span></button>
         <button class="sub-tab-btn" data-filter="done" onclick="shopifyShowFilter('done')">✅ 已完成 <span class="cnt" id="cntDone">0</span></button>
+        <button class="sub-tab-btn" data-filter="cancelled" onclick="shopifyShowFilter('cancelled')">⊘ 已取消 <span class="cnt" id="cntCancelled">0</span></button>
       </div>
 
       <div id="salesOrdersBody" style="margin-top: 8px;"></div>
@@ -2639,6 +2640,21 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="modal-body" id="masterBindBody" style="max-height: 70vh; overflow-y: auto;"></div>
     <div class="modal-footer">
       <button class="btn" onclick="closeMasterBind()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 自定义采购单弹窗（线下/补货/定制单） ============ -->
+<div id="customPoModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width: 920px; max-height: 92vh;">
+    <div class="modal-header">
+      <h3>➕ 新建自定义采购单 <span style="font-weight:400; color:var(--text-tertiary); font-size:12px; margin-left:8px;">（线下 / 补货 / 备货 / 定制）</span></h3>
+      <button class="modal-close" onclick="closeCustomPoModal()">✕</button>
+    </div>
+    <div class="modal-body" id="customPoBody" style="overflow-y: auto; padding: 16px 20px;"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeCustomPoModal()">取消</button>
+      <button class="btn primary" onclick="saveCustomPo()">💾 创建采购单</button>
     </div>
   </div>
 </div>
@@ -2733,7 +2749,8 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="fb-card" style="margin-top: 14px;">
       <div class="fb-head" style="cursor: default;">
         <div class="fb-title">📦 采购单</div>
-        <div class="fb-tabs" style="cursor: default;">
+        <div class="fb-tabs" style="cursor: default; gap: 8px;">
+          <button class="btn primary small" onclick="openCustomPoModal()" style="font-size:12px;" title="不基于销售单，直接新建采购单（线下/补货/定制）">➕ 新建采购单</button>
           <button class="btn small" onclick="openSuppliersManager()" style="font-size:12px;">🏭 供应商档案</button>
         </div>
       </div>
@@ -11223,17 +11240,22 @@ function shopifyShowFilter(filter) {
 
 function shopifyRefreshCounts() {
   const orders = SHOPIFY._orders;
-  const counts = { all: orders.length, pending: 0, processing: 0, done: 0 };
+  const counts = { all: 0, pending: 0, processing: 0, done: 0, cancelled: 0 };
   orders.forEach(o => {
-    if (o.local_status === 'pending') counts.pending++;
-    else if (o.local_status === 'processing') counts.processing++;
-    else if (o.local_status === 'done') counts.done++;
+    if (o.local_status === 'cancelled') counts.cancelled++;
+    else {
+      counts.all++;  // "全部" 排除已取消
+      if (o.local_status === 'pending') counts.pending++;
+      else if (o.local_status === 'processing') counts.processing++;
+      else if (o.local_status === 'done') counts.done++;
+    }
   });
   document.getElementById('cntAll').textContent = counts.all;
   document.getElementById('cntPending').textContent = counts.pending;
   document.getElementById('cntProcessing').textContent = counts.processing;
   document.getElementById('cntDone').textContent = counts.done;
-  // badge
+  const cancelledEl = document.getElementById('cntCancelled');
+  if (cancelledEl) cancelledEl.textContent = counts.cancelled;
   if (typeof setBadge === 'function') setBadge('badgeSales', counts.pending);
 }
 
@@ -11242,12 +11264,15 @@ function renderShopifyOrders() {
   if (!body) return;
   const filter = SHOPIFY._currentFilter;
   const all = SHOPIFY._orders;
-  const orders = filter === 'all' ? all : all.filter(o => o.local_status === filter);
+  const orders = filter === 'all'
+    ? all.filter(o => o.local_status !== 'cancelled')  // 全部排除已取消
+    : all.filter(o => o.local_status === filter);
 
   if (orders.length === 0) {
+    const labelMap = { pending: '待审核', processing: '待处理', done: '已完成', cancelled: '已取消' };
     const hint = filter === 'all'
       ? '还没有订单。选店铺 + 时间范围，点 🔄 同步从 Shopify 拉取'
-      : `没有 "${({pending:'待审核',processing:'待处理',done:'已完成'})[filter]||filter}" 状态的订单`;
+      : `没有 "${labelMap[filter] || filter}" 状态的订单`;
     body.innerHTML = `<div style="padding: 32px; text-align: center; color: var(--text-tertiary); font-size: 13px;">${hint}</div>`;
     return;
   }
@@ -11384,6 +11409,313 @@ function getRefundStatus(o) {
   if (fs === 'partially_refunded') return { level: 'partial', label: '⚠️ 部分退款', color: '#d97706', bg: 'rgba(217,119,6,0.12)' };
   if (fs === 'voided')   return { level: 'voided',  label: '⊘ 已作废',     color: '#78716c', bg: 'rgba(120,113,108,0.15)' };
   return { level: 'none', label: '', color: '', bg: '' };
+}
+
+// ============ 自定义采购单（不基于销售单，线下/补货/定制） ============
+let CUSTOM_PO_STATE = null;
+async function openCustomPoModal() {
+  // 确保供应商列表已加载
+  await SUPPLIERS.loadAll();
+  const today = new Date().toISOString().slice(0, 10);
+  CUSTOM_PO_STATE = {
+    supplierName: '',
+    supplierId: null,
+    promisedDate: today,
+    boxNote: '',
+    otherNote: '',
+    lineItems: [
+      { id: 'cpo-1', sku: '', title: '', variant: '', image_url: '', qty: 1, price: 0 }
+    ],
+  };
+  document.getElementById('customPoModal').style.display = 'flex';
+  renderCustomPo();
+}
+
+function closeCustomPoModal() {
+  document.getElementById('customPoModal').style.display = 'none';
+  CUSTOM_PO_STATE = null;
+}
+
+function renderCustomPo() {
+  const s = CUSTOM_PO_STATE;
+  const body = document.getElementById('customPoBody');
+  const lineItemsHtml = s.lineItems.map((li, i) => `
+    <div style="display:grid; grid-template-columns: 90px 1fr 80px 90px 90px 36px; gap:8px; padding:10px; border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:8px; align-items:start;">
+      <div data-li-img="${li.id}">
+        ${li.image_url ? `<img src="${escapeHtml(li.image_url)}" style="width:90px; height:90px; object-fit:cover; border-radius:6px; cursor:pointer;" onclick="cpoEditLineImage('${li.id}')">` : `<div onclick="cpoEditLineImage('${li.id}')" style="width:90px; height:90px; border:2px dashed var(--border); border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text-tertiary); font-size:11px; text-align:center;">📷<br>添加图片</div>`}
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <input type="text" placeholder="SKU * (如 VKW-XX 或 CUSTOM-001)" value="${escapeHtml(li.sku)}" oninput="cpoSetLine('${li.id}','sku',this.value)" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;">
+        <input type="text" placeholder="产品中文名 *" value="${escapeHtml(li.title)}" oninput="cpoSetLine('${li.id}','title',this.value)" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;">
+        <input type="text" placeholder="变体/规格（如 80cm 黑色）" value="${escapeHtml(li.variant)}" oninput="cpoSetLine('${li.id}','variant',this.value)" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;">
+      </div>
+      <input type="number" min="1" placeholder="数量" value="${li.qty}" oninput="cpoSetLine('${li.id}','qty',this.value); updateCpoTotal();" style="width:100%; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:5px; text-align:center; ${Number(li.qty) >= 2 ? 'background:rgba(220,38,38,0.08); border:2px solid #dc2626; color:#dc2626; font-weight:700;' : ''}">
+      <input type="number" min="0" step="0.01" placeholder="单价" value="${li.price}" oninput="cpoSetLine('${li.id}','price',this.value); updateCpoTotal();" style="width:100%; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:5px; text-align:center;">
+      <div style="text-align:right; font-family:monospace; font-size:12px; align-self:center;" data-li-subtotal="${li.id}">${(Number(li.qty) * Number(li.price)).toFixed(2)}</div>
+      <button class="btn small" onclick="cpoRemoveLine('${li.id}')" style="align-self:center; ${s.lineItems.length <= 1 ? 'opacity:0.4; pointer-events:none;' : 'color:var(--danger);'}" title="${s.lineItems.length <= 1 ? '至少需要一行' : '删除此行'}">✕</button>
+    </div>
+  `).join('');
+
+  body.innerHTML = `
+    <div style="background: rgba(37,99,235,0.06); padding: 10px 12px; border-radius: 6px; border-left: 3px solid var(--accent); font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">
+      💡 用于不通过销售单的采购：补货、备货、定制单、线下采购等。<br>
+      保存后会出现在采购单列表里，可正常走审批/发供应商/到货/入库全流程。
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+      <div>
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:3px;">供应商 <span style="color:var(--danger);">*</span></label>
+        <div style="display:flex; gap:6px; position:relative;">
+          <input type="text" id="cpoSupplierInput" value="${escapeHtml(s.supplierName)}" placeholder="🔍 输入供应商名搜索 / 直接添加..." 
+            oninput="cpoSupplierSearch(this.value)" onfocus="cpoSupplierSearch(this.value)" onblur="setTimeout(()=>document.getElementById('cpoSupplierResults').style.display='none', 200)"
+            style="flex:1; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">
+          <button class="btn small" onclick="cpoAddNewSupplier()" style="font-size:11px;">+ 新增</button>
+          <div id="cpoSupplierResults" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:10; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; max-height:240px; overflow-y:auto; box-shadow:var(--shadow-md); margin-top:4px;"></div>
+        </div>
+      </div>
+      <div>
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:3px;">下单日期 <span style="color:var(--danger);">*</span></label>
+        <input type="date" value="${s.promisedDate}" oninput="CUSTOM_PO_STATE.promisedDate=this.value" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">
+      </div>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:3px;">订单备注（写在纸箱上，供应商对单用）</label>
+      <input type="text" value="${escapeHtml(s.boxNote)}" oninput="CUSTOM_PO_STATE.boxNote=this.value" placeholder="例：备货 / 美规110V电压 / 客户编号 XX" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <h4 style="margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); display:flex; justify-content:space-between; align-items:center;">
+        <span>🛒 产品明细</span>
+        <span style="font-size:11px; font-weight:400; color:var(--text-tertiary);">总金额: <b id="cpoTotalDisplay" style="color:var(--accent); font-family:monospace; font-size:14px;">¥ 0.00</b></span>
+      </h4>
+      <div style="background: var(--bg-elevated); padding: 8px 10px; border-radius: 6px 6px 0 0; display: grid; grid-template-columns: 90px 1fr 80px 90px 90px 36px; gap: 8px; font-size: 10px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase;">
+        <div>图片</div><div>SKU/名称/变体</div><div style="text-align:center;">数量</div><div style="text-align:center;">单价¥</div><div style="text-align:right;">小计</div><div></div>
+      </div>
+      <div id="cpoLineItemsContainer">${lineItemsHtml}</div>
+      <button class="btn small" onclick="cpoAddLine()" style="margin-top: 4px;">+ 添加产品行</button>
+      <div id="cpoApprovalWarning" style="margin-top:10px;"></div>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:3px;">其他备注（可选）</label>
+      <textarea oninput="CUSTOM_PO_STATE.otherNote=this.value" rows="3" placeholder="例：尺寸 80cm / 暖光 3000K / 包装要求等" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); resize:vertical; font-family:inherit;">${escapeHtml(s.otherNote)}</textarea>
+    </div>
+  `;
+  updateCpoTotal();
+}
+
+function cpoSetLine(id, field, val) {
+  const li = CUSTOM_PO_STATE.lineItems.find(x => x.id === id);
+  if (!li) return;
+  if (field === 'qty') li[field] = parseInt(val) || 0;
+  else if (field === 'price') li[field] = parseFloat(val) || 0;
+  else li[field] = val;
+  const subEl = document.querySelector(`[data-li-subtotal="${id}"]`);
+  if (subEl) subEl.textContent = (Number(li.qty) * Number(li.price)).toFixed(2);
+}
+
+function cpoAddLine() {
+  const newId = 'cpo-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+  CUSTOM_PO_STATE.lineItems.push({ id: newId, sku: '', title: '', variant: '', image_url: '', qty: 1, price: 0 });
+  renderCustomPo();
+}
+
+function cpoRemoveLine(id) {
+  if (CUSTOM_PO_STATE.lineItems.length <= 1) return;
+  CUSTOM_PO_STATE.lineItems = CUSTOM_PO_STATE.lineItems.filter(li => li.id !== id);
+  renderCustomPo();
+}
+
+async function cpoEditLineImage(lineId) {
+  const li = CUSTOM_PO_STATE.lineItems.find(x => x.id === lineId);
+  if (!li) return;
+  const result = await showPrompt({
+    title: '🖼 产品图片',
+    fields: [
+      { key: 'img', label: '图片', value: li.image_url || '', type: 'image', hint: '上传 / 粘贴 / 拖入 / URL' },
+    ],
+  });
+  if (result === null) return;
+  li.image_url = (result.img || '').trim();
+  renderCustomPo();
+}
+
+function updateCpoTotal() {
+  if (!CUSTOM_PO_STATE) return;
+  const total = CUSTOM_PO_STATE.lineItems.reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.price) || 0), 0);
+  const el = document.getElementById('cpoTotalDisplay');
+  if (el) el.textContent = `¥ ${total.toFixed(2)}`;
+
+  // 实时显示审批预警
+  const hasLargeQty = CUSTOM_PO_STATE.lineItems.some(li => Number(li.qty) > 20);
+  const hasLargeTotal = total > 5000;
+  const warnEl = document.getElementById('cpoApprovalWarning');
+  if (warnEl) {
+    if (hasLargeQty || hasLargeTotal) {
+      const reasons = [];
+      if (hasLargeQty) reasons.push('有产品数量 > 20 件');
+      if (hasLargeTotal) reasons.push('总金额 > ¥5000');
+      warnEl.innerHTML = `<div style="padding:10px 14px; background:rgba(180,83,9,0.08); border-left:3px solid var(--warning); border-radius:6px;">
+        <div style="font-size:13px; font-weight:600; color:var(--warning);">⚠️ 本采购单需主管审批</div>
+        <div style="font-size:12px; color:var(--text-secondary); margin-top:3px;">触发条件：${reasons.join('、')}。保存后状态为「待主管审批」。</div>
+      </div>`;
+    } else {
+      warnEl.innerHTML = '';
+    }
+  }
+}
+
+// 供应商搜索（独立于 PO 表单）
+function cpoSupplierSearch(q) {
+  const matches = SUPPLIERS.search(q);
+  const exists = SUPPLIERS.byName((q || '').trim());
+  const results = document.getElementById('cpoSupplierResults');
+  let html = matches.map(s => `
+    <div class="picker-item" onmousedown="cpoPickSupplier('${s.id}', '${escapeHtml(s.name).replace(/'/g,"\\'")}')">
+      <div>${escapeHtml(s.name)}</div>
+      <div style="font-size:11px; color:var(--text-tertiary);">${s.contact_name ? escapeHtml(s.contact_name) + ' · ' : ''}${s.contact_phone ? escapeHtml(s.contact_phone) : ''}${s.total_orders ? ` · 共 ${s.total_orders} 单` : ''}</div>
+    </div>
+  `).join('');
+  if (q && q.trim() && !exists) {
+    html += `<div class="picker-item" style="background: rgba(37,99,235,0.04); color: var(--accent);" onmousedown="cpoAddNewSupplier()">
+      <div>➕ 新增供应商「${escapeHtml(q.trim())}」</div>
+      <div style="font-size:11px; color:var(--text-tertiary);">点此快速添加</div>
+    </div>`;
+  }
+  results.innerHTML = html || '<div style="padding:10px; color:var(--text-tertiary); font-size:12px;">无匹配，请输入新供应商名</div>';
+  results.style.display = 'block';
+}
+
+function cpoPickSupplier(id, name) {
+  CUSTOM_PO_STATE.supplierId = id;
+  CUSTOM_PO_STATE.supplierName = name;
+  document.getElementById('cpoSupplierInput').value = name;
+  document.getElementById('cpoSupplierResults').style.display = 'none';
+}
+
+async function cpoAddNewSupplier() {
+  const input = document.getElementById('cpoSupplierInput');
+  const name = (input.value || '').trim();
+  if (!name) { toast('请输入供应商名', 'warn'); return; }
+  const existing = SUPPLIERS.byName(name);
+  if (existing) {
+    cpoPickSupplier(existing.id, existing.name);
+    return;
+  }
+  try {
+    const { data, error } = await sb.from('suppliers').insert({ name }).select().single();
+    if (error) throw error;
+    SUPPLIERS._list.push(data);
+    cpoPickSupplier(data.id, data.name);
+    toast(`✓ 新增供应商「${name}」`);
+  } catch (e) { toast('新增失败：' + (e.message || e), 'err'); }
+}
+
+async function saveCustomPo() {
+  const s = CUSTOM_PO_STATE;
+  if (!s) return;
+
+  // 校验：供应商
+  const supName = document.getElementById('cpoSupplierInput').value.trim();
+  if (!supName) { toast('请选择/输入供应商', 'warn'); return; }
+  let supId = s.supplierId;
+  if (!supId || (SUPPLIERS.byId(supId)?.name !== supName)) {
+    const found = SUPPLIERS.byName(supName);
+    if (found) supId = found.id;
+    else {
+      const { data, error } = await sb.from('suppliers').insert({ name: supName }).select().single();
+      if (error) { toast('新增供应商失败：' + error.message, 'err'); return; }
+      SUPPLIERS._list.push(data);
+      supId = data.id;
+    }
+  }
+
+  // 校验：日期 + 产品行
+  if (!s.promisedDate) { toast('请填下单日期', 'warn'); return; }
+  const validLines = s.lineItems.filter(li => li.sku.trim() && li.title.trim() && li.qty > 0 && li.price > 0);
+  if (validLines.length === 0) { toast('至少需要一条有效的产品行（SKU、名称、数量、单价必填且 >0）', 'warn'); return; }
+
+  // 拼装 line_items
+  const liData = validLines.map((li, i) => ({
+    shopify_line_item_id: null,
+    sku: li.sku.trim(),
+    title_cn: li.title.trim(),
+    title_en: '',
+    variant: li.variant.trim(),
+    image_url: li.image_url || '',
+    qty: Number(li.qty),
+    price: Number(li.price),
+    subtotal: Number(li.qty) * Number(li.price),
+    is_custom: true,
+  }));
+  const totalAmount = liData.reduce((s, x) => s + x.subtotal, 0);
+
+  // 是否需要审批
+  const needsApproval = liData.some(li => li.qty > 20) || totalAmount > 5000;
+  const initialStatus = needsApproval ? 'pending_approval' : 'producing';
+
+  // 拿 PO 编号
+  let poNum;
+  try {
+    const { data: pn, error: pnErr } = await sb.rpc('generate_po_number');
+    if (pnErr) throw pnErr;
+    poNum = pn;
+  } catch (e) { toast('生成 PO 编号失败：' + (e.message || e), 'err'); return; }
+
+  // 当前用户 ID
+  let agentId = CURRENT_USER_ID;
+  if (!agentId) {
+    try { const { data: { user } } = await sb.auth.getUser(); agentId = user?.id; } catch (_) {}
+  }
+  if (!agentId) { toast('未登录', 'err'); return; }
+
+  const poRow = {
+    agent_id: agentId,
+    po_number: poNum,
+    source: 'manual',  // 自定义 PO 来源
+    supplier: supName,
+    product: liData.map(x => x.title_cn).join(' / '),
+    status: initialStatus,
+    promised_date: s.promisedDate,
+    line_items: liData,
+    box_note: s.boxNote.trim(),
+    total_amount: totalAmount,
+    sales_order_id: null,  // 不关联销售单
+    creator_name: CURRENT_AGENT || '未知',
+    site: '',
+    order_no: '',
+    note: s.otherNote.trim(),
+    followups: [],
+  };
+
+  try {
+    const { error } = await sb.from('orders').insert(poRow);
+    if (error) throw error;
+    // 同步产品表（新 SKU 入库）
+    for (const li of validLines) {
+      try {
+        const { data: existing } = await sb.from('products').select('id').eq('sku', li.sku.trim()).maybeSingle();
+        if (!existing) {
+          await sb.from('products').insert({
+            sku: li.sku.trim(),
+            name_cn: li.title.trim(),
+            spec_en: li.variant.trim(),
+            image_url: li.image_url || null,
+            last_purchase_price: li.price,
+            default_supplier: supName,
+            last_purchased_at: new Date().toISOString(),
+          });
+        }
+      } catch (e) { console.warn('同步产品失败:', e); }
+    }
+    toast(needsApproval ? `✓ 已创建 ${poNum}，等主管审批` : `✓ 已创建采购单 ${poNum}`);
+    closeCustomPoModal();
+    await renderPo();  // 刷新 PO 列表
+    if (PO_FILTER !== 'pending' && needsApproval) toast('请进「⏳ 待审批」子tab 查看', 'info');
+  } catch (e) {
+    toast('保存失败：' + (e.message || e), 'err');
+  }
 }
 
 // ============ 自定义订单（线下购买手动录入） ============
@@ -12227,11 +12559,13 @@ function extractVariantInfo(variantTitle) {
   const seenDimensions = new Set();  // 去重：网站同时给英寸和 cm 时只保留一个
   const parts = variantTitle.split(/[/|]/).map(s => s.trim()).filter(Boolean);
 
-  // 标准化尺寸字符串（忽略空格/大小写/.0 结尾/直径符号同义词，便于比较去重）
+  // 标准化尺寸字符串（忽略空格/大小写/.0 结尾/直径符号同义词/括号附注，便于比较去重）
   function normSize(s) {
     let n = s.toLowerCase().replace(/\s+/g, '');
-    // 把所有"直径"同义词统一为 d（注意：\b 在字母-数字之间不算边界，所以用 lookahead）
-    n = n.replace(/[ø⌀]/g, 'd');
+    n = n.replace(/\([^)]*\)/g, '');  // 去掉括号内容（如 (2 hooks)），不影响尺寸唯一性
+    // 把所有"直径"同义词统一为 d
+    // Ø (U+00D8) ø (U+00F8) ⌀ (U+2300 直径符) ∅ (U+2205 空集，常被误用为直径) Φ φ (希腊 Phi)
+    n = n.replace(/[øØ⌀∅Φφ]/g, 'd');
     n = n.replace(/diameter/g, 'd');           // 先匹配长的
     n = n.replace(/dia(?![a-z])/g, 'd');       // "dia80" 替换，"diagonal" 不替换
     // 标准化 .0 结尾（80.0cm → 80cm）
@@ -12295,33 +12629,42 @@ function extractVariantInfo(variantTitle) {
   }
 
   for (const part of parts) {
+    // === 0. 抽取括号内的 N-hooks/lights/heads/bulbs（独立成"灯头"信息，避免影响尺寸去重） ===
+    let cleanedPart = part;
+    const hookMatch = part.match(/\(\s*(\d+)\s*(hooks?|lights?|heads?|bulbs?)\s*\)/i);
+    if (hookMatch) {
+      const headLine = '灯头：' + hookMatch[1] + ' 头';
+      if (!out.includes(headLine)) out.push(headLine);
+      cleanedPart = part.replace(/\(\s*\d+\s*(hooks?|lights?|heads?|bulbs?)\s*\)/i, '').trim();
+    }
+
     // === 1. 尺寸（独立维度，跑完继续看后面的调光/色温） ===
     let hadSize = false;
-    if (/\d+(?:\.\d+)?\s*["'″]/.test(part)) {
-      let cmText = part.replace(/(\d+(?:\.\d+)?)\s*["'″]/g, (_, n) => inchToCm(n));
+    if (/\d+(?:\.\d+)?\s*["'″]/.test(cleanedPart)) {
+      let cmText = cleanedPart.replace(/(\d+(?:\.\d+)?)\s*["'″]/g, (_, n) => inchToCm(n));
       cmText = translateLights(cmText);
       addDimension(cmText);
       hadSize = true;
-    } else if (/\d+(?:\.\d+)?\s*cm/i.test(part)) {
-      addDimension(translateLights(part));
+    } else if (/\d+(?:\.\d+)?\s*cm/i.test(cleanedPart)) {
+      addDimension(translateLights(cleanedPart));
       hadSize = true;
-    } else if (/\d+(?:\.\d+)?\s*mm/i.test(part)) {
-      addDimension(translateLights(part));
+    } else if (/\d+(?:\.\d+)?\s*mm/i.test(cleanedPart)) {
+      addDimension(translateLights(cleanedPart));
       hadSize = true;
     }
 
     // === 2. 调光（独立检测） ===
     let dimming = null;
-    if (/triac.*dimm|dimmable.*triac/i.test(part)) dimming = '可控硅调光';
-    else if (/0-10\s*v/i.test(part)) dimming = '0-10V调光';
-    else if (/dimmable|dimming/i.test(part)) dimming = '可调光';
+    if (/triac.*dimm|dimmable.*triac/i.test(cleanedPart)) dimming = '可控硅调光';
+    else if (/0-10\s*v/i.test(cleanedPart)) dimming = '0-10V调光';
+    else if (/dimmable|dimming/i.test(cleanedPart)) dimming = '可调光';
 
     // === 3. 色温（独立检测） ===
     let colorTemp = null;
-    if (/warm\s*(light|white)|3000\s*k/i.test(part)) colorTemp = '暖光 3000K';
-    else if (/cool\s*(light|white)|6000\s*k|6500\s*k/i.test(part)) colorTemp = '冷光 6000K';
-    else if (/natural\s*(light|white)|neutral\s*white|4000\s*k/i.test(part)) colorTemp = '中性光 4000K';
-    else if (/daylight|5000\s*k/i.test(part)) colorTemp = '日光 5000K';
+    if (/warm\s*(light|white)|3000\s*k/i.test(cleanedPart)) colorTemp = '暖光 3000K';
+    else if (/cool\s*(light|white)|6000\s*k|6500\s*k/i.test(cleanedPart)) colorTemp = '冷光 6000K';
+    else if (/natural\s*(light|white)|neutral\s*white|4000\s*k/i.test(cleanedPart)) colorTemp = '中性光 4000K';
+    else if (/daylight|5000\s*k/i.test(cleanedPart)) colorTemp = '日光 5000K';
 
     // === 调光 + 色温 合并输出（如 "可控硅调光 暖光 3000K"）===
     if (dimming && colorTemp) {
@@ -12339,28 +12682,26 @@ function extractVariantInfo(variantTitle) {
     if (hadSize) continue;
 
     // === 4. 单独的 N-Lights（无尺寸） ===
-    if (/\d+\s*-?\s*(light|lights|head|heads|bulbs?)\b/i.test(part) && !/(warm|cool|natural|daylight|dimm)/i.test(part)) {
-      out.push('灯头：' + translateLights(part));
+    if (/\d+\s*-?\s*(light|lights|head|heads|bulbs?)\b/i.test(cleanedPart) && !/(warm|cool|natural|daylight|dimm)/i.test(cleanedPart)) {
+      const headLine = '灯头：' + translateLights(cleanedPart);
+      if (!out.includes(headLine)) out.push(headLine);
       continue;
     }
 
     // === 5. 颜色 / 材质 综合翻译（如 "Black+Walnut Wood" → "黑色 + 胡桃木"）===
-    const lower = part.toLowerCase();
+    const lower = cleanedPart.toLowerCase();
     const hasColor = Object.keys(COLOR_MAP).some(k => new RegExp('\\b' + k + '\\b', 'i').test(lower));
     const hasMat = Object.keys(MATERIAL_MAP).some(k => new RegExp('\\b' + k + '\\b', 'i').test(lower));
     if (hasColor || hasMat) {
-      // 全量整段翻译：先长后短，避免 "rose" 替换 "rose gold"
-      let translated = part;
+      let translated = cleanedPart;
       const allMaps = { ...MATERIAL_MAP, ...COLOR_MAP };
       const sortedKeys = Object.keys(allMaps).sort((a, b) => b.length - a.length);
       for (const k of sortedKeys) {
         translated = translated.replace(new RegExp('\\b' + k + '\\b', 'gi'), allMaps[k]);
       }
-      // 标准化连接符 + 清理残留的 wood/material 修饰词 + 去重复空格
       translated = translated.replace(/\+/g, ' + ').replace(/\s+&\s+|\s+and\s+/gi, ' + ');
       translated = translated.replace(/\b(wood|material|finish|color|colour)\b/gi, '').replace(/\s+/g, ' ').trim();
-      translated = translated.replace(/\s+\+\s+/g, ' + ');  // 再次标准化
-      // 选择前缀
+      translated = translated.replace(/\s+\+\s+/g, ' + ');
       const prefix = (hasColor && hasMat) ? '配色/材质：' : (hasColor ? '颜色：' : '材质：');
       out.push(prefix + translated);
       continue;
@@ -13567,13 +13908,16 @@ function poStatsToggleTeam() {
 }
 
 function poRefreshCounts() {
-  const counts = { all: PO_LIST.length, producing: 0, ordered: 0, done: 0, cancelled: 0, pending: 0 };
+  const counts = { all: 0, producing: 0, ordered: 0, done: 0, cancelled: 0, pending: 0 };
   PO_LIST.forEach(p => {
     if (p.status === 'cancelled') counts.cancelled++;
-    else if (p.status === 'received') counts.done++;
-    else if (p.status === 'pending_approval') counts.pending++;
-    else if (p.status === 'producing') counts.producing++;
-    else if (['sent', 'confirmed', 'arrived'].includes(p.status)) counts.ordered++;
+    else {
+      counts.all++;  // "全部" 排除已取消
+      if (p.status === 'received') counts.done++;
+      else if (p.status === 'pending_approval') counts.pending++;
+      else if (p.status === 'producing') counts.producing++;
+      else if (['sent', 'confirmed', 'arrived'].includes(p.status)) counts.ordered++;
+    }
   });
   document.getElementById('poCntAll').textContent = counts.all;
   document.getElementById('poCntProducing').textContent = counts.producing;
@@ -13598,6 +13942,7 @@ function renderPoList() {
   else if (PO_FILTER === 'ordered') list = list.filter(p => ['sent', 'confirmed', 'arrived'].includes(p.status));
   else if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
   else if (PO_FILTER === 'done') list = list.filter(p => p.status === 'received');
+  else if (PO_FILTER === 'all') list = list.filter(p => p.status !== 'cancelled');  // 全部排除已取消
 
   const body = document.getElementById('poListBody');
   if (list.length === 0) {
