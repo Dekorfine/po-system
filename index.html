@@ -56,7 +56,7 @@ body {
 /* Header */
 .app-header {
   position: sticky; top: 0; z-index: 50;
-  background: rgba(255,255,255,0.92); backdrop-filter: blur(10px);
+  background: rgba(255,255,255,0.92); /* backdrop-filter removed for performance */
   border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
 }
@@ -446,7 +446,7 @@ body {
 .empty-state .text { font-size: 13px; margin-bottom: 14px; }
 
 /* Modal */
-.modal-bg { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(28,25,23,0.4); z-index: 100; backdrop-filter: blur(4px); }
+.modal-bg { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(28,25,23,0.4); z-index: 100; /* backdrop-filter removed for performance */ }
 .modal-bg.show { display: flex; align-items: center; justify-content: center; }
 .modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 28px; width: 720px; max-width: 92vw; max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow-lg); animation: modalIn 0.2s ease; position: relative; }
 @keyframes modalIn { from { transform: scale(0.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -719,7 +719,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   padding: 4px 10px; border-radius: 4px;
   font-size: 11px; font-weight: 700;
   background: rgba(255,255,255,0.92);
-  backdrop-filter: blur(8px);
+  /* backdrop-filter removed for performance */
   display: inline-flex; align-items: center; gap: 4px;
 }
 .missing-card .cover .status-badge::before {
@@ -1175,7 +1175,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   gap: 10px; align-items: center;
   padding: 10px 12px;
   background: rgba(255,255,255,0.7);
-  backdrop-filter: blur(4px);
+  /* backdrop-filter removed for performance */
   border-radius: 8px;
   cursor: pointer;
   border: 1px solid transparent;
@@ -1806,7 +1806,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 #masterBindModal, #multiSupplierConfirm, #poPrintModal, #internalNoteModal, #genericPromptModal, #customOrderModal, #customPoModal {
   position: fixed !important; inset: 0 !important;
   background: rgba(28,25,23,0.5) !important;
-  backdrop-filter: blur(4px);
+  /* backdrop-filter removed for performance */
   z-index: 9000 !important;
   align-items: center !important;
   justify-content: center !important;
@@ -11232,12 +11232,6 @@ function salesQuickRangeChange() {
   shopifyReloadOrdersAndRender(true);
 }
 
-function shopifyShowFilter(filter) {
-  SHOPIFY._currentFilter = filter;
-  document.querySelectorAll('.sub-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === filter));
-  renderShopifyOrders();
-}
-
 function shopifyRefreshCounts() {
   const orders = SHOPIFY._orders;
   const counts = { all: 0, pending: 0, processing: 0, done: 0, cancelled: 0 };
@@ -11259,13 +11253,29 @@ function shopifyRefreshCounts() {
   if (typeof setBadge === 'function') setBadge('badgeSales', counts.pending);
 }
 
+let SHOPIFY_PAGE = 1;
+const SHOPIFY_PAGE_SIZE = 50;
+function shopifyGoPage(p) {
+  SHOPIFY_PAGE = Math.max(1, p);
+  renderShopifyOrders();
+  const el = document.getElementById('salesOrdersBody');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function shopifyShowFilter(f) {
+  SHOPIFY._currentFilter = f;
+  SHOPIFY_PAGE = 1;  // 切换 sub-tab 时重置页码
+  document.querySelectorAll('.sub-tab-btn[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === f));
+  renderShopifyOrders();
+}
+
 function renderShopifyOrders() {
   const body = document.getElementById('salesOrdersBody');
   if (!body) return;
   const filter = SHOPIFY._currentFilter;
   const all = SHOPIFY._orders;
   const orders = filter === 'all'
-    ? all.filter(o => o.local_status !== 'cancelled')  // 全部排除已取消
+    ? all.filter(o => o.local_status !== 'cancelled')
     : all.filter(o => o.local_status === filter);
 
   if (orders.length === 0) {
@@ -11277,9 +11287,15 @@ function renderShopifyOrders() {
     return;
   }
 
+  // 分页
+  const totalPages = Math.max(1, Math.ceil(orders.length / SHOPIFY_PAGE_SIZE));
+  if (SHOPIFY_PAGE > totalPages) SHOPIFY_PAGE = totalPages;
+  const start = (SHOPIFY_PAGE - 1) * SHOPIFY_PAGE_SIZE;
+  const pagedOrders = orders.slice(start, start + SHOPIFY_PAGE_SIZE);
+
   const productMap = SHOPIFY._productMap || {};
 
-  body.innerHTML = orders.map(o => {
+  const cardsHtml = pagedOrders.map(o => {
     const shop = o.shop_domain;
     const customerName = o.customer_name || '(无名)';
     const customerEmail = o.customer_email || '';
@@ -11305,7 +11321,7 @@ function renderShopifyOrders() {
       const hasPo = (li.po_assignments || []).length > 0;
       return `
         <div class="so-product-line">
-          ${imgUrl ? `<img class="so-prod-img" src="${escapeHtml(imgUrl)}" data-fullsrc="${escapeHtml(imgUrl)}" onclick="openImgLightbox(this.dataset.fullsrc)" alt="">` : `<div class="so-prod-noimg">📷</div>`}
+          ${imgUrl ? `<img loading="lazy" class="so-prod-img" src="${escapeHtml(imgUrl)}" data-fullsrc="${escapeHtml(imgUrl)}" onclick="openImgLightbox(this.dataset.fullsrc)" alt="">` : `<div class="so-prod-noimg">📷</div>`}
           <div class="so-prod-info">
             ${li.sku ? `<div class="so-prod-sku">SKU: ${escapeHtml(li.sku)}${hasPo ? ' · <span style="color:var(--success)">✓ 已开 PO</span>' : ''}</div>` : ''}
             <div class="so-prod-name">${escapeHtml(title)}${nameCn ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(li.title || '')}</span>` : ''}</div>
@@ -11399,6 +11415,31 @@ function renderShopifyOrders() {
         </div>
       </div>`;
   }).join('');
+
+  // 分页 footer
+  let pagerHtml = '';
+  if (totalPages > 1) {
+    const pageBtns = [];
+    const maxBtns = 7;
+    let s = Math.max(1, SHOPIFY_PAGE - 3);
+    let e = Math.min(totalPages, s + maxBtns - 1);
+    s = Math.max(1, e - maxBtns + 1);
+    for (let i = s; i <= e; i++) {
+      pageBtns.push(`<button class="btn small ${i === SHOPIFY_PAGE ? 'primary' : ''}" onclick="shopifyGoPage(${i})" style="min-width:32px;">${i}</button>`);
+    }
+    pagerHtml = `
+      <div style="display:flex; justify-content:center; align-items:center; gap:6px; padding:16px; flex-wrap:wrap;">
+        <button class="btn small" onclick="shopifyGoPage(1)" ${SHOPIFY_PAGE === 1 ? 'disabled' : ''}>« 首页</button>
+        <button class="btn small" onclick="shopifyGoPage(${SHOPIFY_PAGE - 1})" ${SHOPIFY_PAGE === 1 ? 'disabled' : ''}>‹ 上一页</button>
+        ${pageBtns.join('')}
+        <button class="btn small" onclick="shopifyGoPage(${SHOPIFY_PAGE + 1})" ${SHOPIFY_PAGE === totalPages ? 'disabled' : ''}>下一页 ›</button>
+        <button class="btn small" onclick="shopifyGoPage(${totalPages})" ${SHOPIFY_PAGE === totalPages ? 'disabled' : ''}>末页 »</button>
+        <span style="margin-left:12px; font-size:12px; color:var(--text-tertiary);">共 <b>${orders.length}</b> 条 · 第 ${SHOPIFY_PAGE}/${totalPages} 页</span>
+      </div>`;
+  } else {
+    pagerHtml = `<div style="text-align:center; padding:10px; font-size:11px; color:var(--text-tertiary);">共 ${orders.length} 条</div>`;
+  }
+  body.innerHTML = cardsHtml + pagerHtml;
 }
 
 // 检测订单退款状态
@@ -12283,9 +12324,22 @@ function openImgLightbox(url) {
   const box = document.getElementById('imgLightbox');
   const img = document.getElementById('imgLightboxImg');
   if (!box || !img) return;
-  img.src = url;
+  // 先显示加载占位（避免大图加载时卡顿感）
+  img.removeAttribute('src');
+  img.style.opacity = '0.3';
   box.classList.add('show');
   document.body.style.overflow = 'hidden';
+  // 异步加载新图
+  const tmp = new Image();
+  tmp.onload = () => {
+    img.src = url;
+    img.style.opacity = '1';
+  };
+  tmp.onerror = () => {
+    img.style.opacity = '1';
+    img.src = url;  // 也设置一下，让原生错误图标显示
+  };
+  tmp.src = url;
 }
 
 function closeImgLightbox(e) {
@@ -12819,7 +12873,7 @@ function renderPoForm() {
       <div class="po-li-row ${sel.checked ? 'checked' : ''} ${fullyAssigned ? 'assigned' : ''}">
         <input type="checkbox" ${sel.checked ? 'checked' : ''} ${fullyAssigned ? 'disabled' : ''}
           onchange="poFormToggleItem('${li.shopify_line_item_id}', this.checked)">
-        ${imgUrl ? `<img class="li-img" src="${escapeHtml(imgUrl)}" onclick="openImgLightbox('${escapeHtml(imgUrl)}')">` : `<div class="li-noimg">📷</div>`}
+        ${imgUrl ? `<img loading="lazy" class="li-img" src="${escapeHtml(imgUrl)}" onclick="openImgLightbox('${escapeHtml(imgUrl)}')">` : `<div class="li-noimg">📷</div>`}
         <div class="li-info">
           <div class="sku">${escapeHtml(displaySku)}${wasEdited ? '<span style="margin-left:6px; font-size:10px; padding:1px 6px; background:rgba(124,58,237,0.12); color:#7c3aed; border-radius:3px;">已修改</span>' : ''}</div>
           <div class="name">${escapeHtml(displayTitle)}</div>
@@ -12856,7 +12910,7 @@ function renderPoForm() {
     return `
       <div class="po-li-row checked" style="background: rgba(124,58,237,0.04); border-left: 3px solid #7c3aed;">
         <input type="checkbox" checked disabled title="自定义产品行">
-        ${cl.image_url ? `<img class="li-img" src="${escapeHtml(cl.image_url)}" onclick="openImgLightbox('${escapeHtml(cl.image_url)}')">` : `<div class="li-noimg">📷</div>`}
+        ${cl.image_url ? `<img loading="lazy" class="li-img" src="${escapeHtml(cl.image_url)}" onclick="openImgLightbox('${escapeHtml(cl.image_url)}')">` : `<div class="li-noimg">📷</div>`}
         <div class="li-info">
           <div class="sku">${escapeHtml(cl.sku || '')} <span style="margin-left:6px; font-size:10px; padding:1px 6px; background:rgba(124,58,237,0.12); color:#7c3aed; border-radius:3px;">自定义</span></div>
           <div class="name">${escapeHtml(cl.title_cn || cl.title_en || '(无名)')}</div>
@@ -13759,7 +13813,10 @@ async function masterUnbindSelf() {
 // ============ 采购单 tab ============
 let PO_LIST = [];
 let PO_FILTER = 'all';
-let PO_SALES_ORDERS_MAP = {};  // sales_order_id → { shopify_order_id, shop_domain }
+let PO_SALES_ORDERS_MAP = {};
+let PO_SUPPLIER_FILTER = '';  // 供应商筛选
+let PO_PAGE = 1;
+const PO_PAGE_SIZE = 50;
 
 // 5 步状态流：producing → sent → confirmed → arrived → received
 const PO_STATUSES = [
@@ -13931,8 +13988,23 @@ function poRefreshCounts() {
 
 function poShowFilter(f) {
   PO_FILTER = f;
+  PO_PAGE = 1;  // 切换 tab 时重置页码
   document.querySelectorAll('.sub-tab-btn[data-pofilter]').forEach(b => b.classList.toggle('active', b.dataset.pofilter === f));
   renderPoList();
+}
+
+function poChangeSupplierFilter(val) {
+  PO_SUPPLIER_FILTER = val || '';
+  PO_PAGE = 1;
+  renderPoList();
+}
+
+function poGoPage(p) {
+  PO_PAGE = Math.max(1, p);
+  renderPoList();
+  // 滚动到列表顶
+  const el = document.getElementById('poListBody');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function renderPoList() {
@@ -13942,14 +14014,39 @@ function renderPoList() {
   else if (PO_FILTER === 'ordered') list = list.filter(p => ['sent', 'confirmed', 'arrived'].includes(p.status));
   else if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
   else if (PO_FILTER === 'done') list = list.filter(p => p.status === 'received');
-  else if (PO_FILTER === 'all') list = list.filter(p => p.status !== 'cancelled');  // 全部排除已取消
+  else if (PO_FILTER === 'all') list = list.filter(p => p.status !== 'cancelled');
+
+  // 供应商筛选
+  if (PO_SUPPLIER_FILTER) list = list.filter(p => (p.supplier || '') === PO_SUPPLIER_FILTER);
 
   const body = document.getElementById('poListBody');
   if (list.length === 0) {
     body.innerHTML = '<div style="padding:32px; text-align:center; color:var(--text-tertiary);">无采购单</div>';
     return;
   }
-  body.innerHTML = list.map(p => {
+
+  // 分页
+  const totalPages = Math.max(1, Math.ceil(list.length / PO_PAGE_SIZE));
+  if (PO_PAGE > totalPages) PO_PAGE = totalPages;
+  const start = (PO_PAGE - 1) * PO_PAGE_SIZE;
+  const pagedList = list.slice(start, start + PO_PAGE_SIZE);
+
+  // 收集所有供应商（用于筛选下拉）
+  const allSuppliers = [...new Set(PO_LIST.filter(p => p.status !== 'cancelled').map(p => p.supplier).filter(Boolean))].sort();
+  const supplierFilterHtml = `
+    <div style="display:flex; gap:10px; align-items:center; padding:10px 0; flex-wrap:wrap;">
+      <select onchange="poChangeSupplierFilter(this.value)" style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); min-width:200px;">
+        <option value="">— 全部供应商 (${allSuppliers.length}) —</option>
+        ${allSuppliers.map(s => `<option value="${escapeHtml(s)}" ${PO_SUPPLIER_FILTER === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
+      </select>
+      ${PO_SUPPLIER_FILTER ? `
+        <span style="font-size:12px; color:var(--text-secondary);">筛选 <b>${escapeHtml(PO_SUPPLIER_FILTER)}</b>：<b style="color:var(--accent);">${list.length}</b> 张</span>
+        <button class="btn small" onclick="poExportSupplier()" title="导出该供应商的对单表（用于催单/对账）">📤 导出 ${escapeHtml(PO_SUPPLIER_FILTER)} 对单表</button>
+      ` : ''}
+    </div>
+  `;
+
+  const cardsHtml = pagedList.map(p => {
     const items = p.line_items || [];
     const created = p.created_at ? new Date(p.created_at).toISOString().slice(0,10) : '';
     const isCancelled = p.status === 'cancelled';
@@ -13986,7 +14083,16 @@ function renderPoList() {
         ${isRejected && p.approval_note ? `<div style="background:rgba(185,28,28,0.08); padding:8px 14px; border-bottom:1px solid var(--border-subtle); font-size:12px;"><b style="color:var(--danger);">❌ 驳回原因：</b><span style="color:var(--text-primary);">${escapeHtml(p.approval_note)}</span>${p.approved_by ? ` <span style="color:var(--text-tertiary);">· 由 ${escapeHtml(p.approved_by)} 驳回</span>` : ''}</div>` : ''}
         <div class="po-card-body" style="display: grid; grid-template-columns: 1fr 200px; gap: 12px; font-size: 12px;">
           <div>
-            ${items.slice(0,3).map(li => `<div style="margin-bottom:4px;">${escapeHtml(li.title_cn || li.title_en)} ${(li.qty||0) >= 2 ? `<span style="background:var(--danger); color:white; padding:2px 8px; border-radius:5px; font-weight:700; font-size:14px; margin:0 4px;">× ${li.qty}</span>` : `<span style="color:var(--text-tertiary)">× ${li.qty}</span>`} @ ¥${Number(li.price).toFixed(2)}</div>`).join('')}
+            ${items.slice(0,3).map(li => `
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+                ${li.image_url
+                  ? `<img src="${escapeHtml(li.image_url)}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid var(--border-subtle); cursor:zoom-in; flex-shrink:0;" onclick="openImgLightbox('${escapeHtml(li.image_url)}')">`
+                  : `<div style="width:50px; height:50px; border-radius:6px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:18px; flex-shrink:0;">📷</div>`}
+                <div style="flex:1; min-width:0; font-size:12px;">
+                  <div style="color:var(--text-tertiary); font-family:monospace; font-size:10px;">${escapeHtml(li.sku || '')}</div>
+                  <div style="color:var(--text-primary);">${escapeHtml(li.title_cn || li.title_en)} ${(li.qty||0) >= 2 ? `<span style="background:var(--danger); color:white; padding:2px 8px; border-radius:5px; font-weight:700; font-size:14px; margin:0 4px;">× ${li.qty}</span>` : `<span style="color:var(--text-tertiary)">× ${li.qty}</span>`} @ ¥${Number(li.price).toFixed(2)}</div>
+                </div>
+              </div>`).join('')}
             ${items.length > 3 ? `<div style="color:var(--text-tertiary); font-size:11px;">还有 ${items.length-3} 行…</div>` : ''}
             <div style="color:var(--text-secondary); margin-top:6px;">📦 ${escapeHtml(p.box_note || '')}</div>
           </div>
@@ -14016,6 +14122,167 @@ function renderPoList() {
         </div>
       </div>`;
   }).join('');
+
+  // 分页 footer
+  let pagerHtml = '';
+  if (totalPages > 1) {
+    const pageBtns = [];
+    const maxBtns = 7;
+    let s = Math.max(1, PO_PAGE - 3);
+    let e = Math.min(totalPages, s + maxBtns - 1);
+    s = Math.max(1, e - maxBtns + 1);
+    for (let i = s; i <= e; i++) {
+      pageBtns.push(`<button class="btn small ${i === PO_PAGE ? 'primary' : ''}" onclick="poGoPage(${i})" style="min-width:32px;">${i}</button>`);
+    }
+    pagerHtml = `
+      <div style="display:flex; justify-content:center; align-items:center; gap:6px; padding:16px; flex-wrap:wrap;">
+        <button class="btn small" onclick="poGoPage(1)" ${PO_PAGE === 1 ? 'disabled' : ''}>« 首页</button>
+        <button class="btn small" onclick="poGoPage(${PO_PAGE - 1})" ${PO_PAGE === 1 ? 'disabled' : ''}>‹ 上一页</button>
+        ${pageBtns.join('')}
+        <button class="btn small" onclick="poGoPage(${PO_PAGE + 1})" ${PO_PAGE === totalPages ? 'disabled' : ''}>下一页 ›</button>
+        <button class="btn small" onclick="poGoPage(${totalPages})" ${PO_PAGE === totalPages ? 'disabled' : ''}>末页 »</button>
+        <span style="margin-left:12px; font-size:12px; color:var(--text-tertiary);">共 <b>${list.length}</b> 条 · 第 ${PO_PAGE}/${totalPages} 页</span>
+      </div>`;
+  } else {
+    pagerHtml = `<div style="text-align:center; padding:10px; font-size:11px; color:var(--text-tertiary);">共 ${list.length} 条</div>`;
+  }
+
+  body.innerHTML = supplierFilterHtml + cardsHtml + pagerHtml;
+}
+
+// 导出当前筛选的供应商所有 PO（生成对单表，新窗口打开，可打印 PDF / 复制到 Excel）
+function poExportSupplier() {
+  if (!PO_SUPPLIER_FILTER) { toast('请先选择供应商', 'warn'); return; }
+  const supplier = PO_SUPPLIER_FILTER;
+  // 收集该供应商所有非取消的 PO（按当前 sub-tab 过滤）
+  let list = PO_LIST.filter(p => (p.supplier || '') === supplier);
+  if (PO_FILTER === 'pending') list = list.filter(p => p.status === 'pending_approval');
+  else if (PO_FILTER === 'producing') list = list.filter(p => p.status === 'producing');
+  else if (PO_FILTER === 'ordered') list = list.filter(p => ['sent', 'confirmed', 'arrived'].includes(p.status));
+  else if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
+  else if (PO_FILTER === 'done') list = list.filter(p => p.status === 'received');
+  else list = list.filter(p => p.status !== 'cancelled');
+
+  if (list.length === 0) { toast(`供应商「${supplier}」下没有符合条件的 PO`, 'warn'); return; }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const totalAmount = list.reduce((s, p) => s + Number(p.total_amount || 0), 0);
+  const totalQty = list.reduce((s, p) => s + (p.line_items || []).reduce((q, li) => q + Number(li.qty || 0), 0), 0);
+
+  const labelMap = { all: '进行中（全部）', pending: '待审批', producing: '待发供应商', ordered: '已下单', done: '已完成', cancelled: '已取消' };
+  const filterLabel = labelMap[PO_FILTER] || PO_FILTER;
+
+  // 收集所有 line items（按 PO 平铺）
+  const allRows = [];
+  list.forEach(p => {
+    (p.line_items || []).forEach(li => {
+      allRows.push({
+        po_number: p.po_number,
+        order_no: p.order_no,
+        site: p.site,
+        created: p.created_at?.slice(0, 10) || '',
+        promised: p.promised_date || '',
+        status: poStatusInfo(p.status).label,
+        box_note: p.box_note || '',
+        sku: li.sku || '',
+        title: li.title_cn || li.title_en || '',
+        variant: li.variant || '',
+        image_url: li.image_url || '',
+        qty: li.qty || 0,
+        price: li.price || 0,
+        subtotal: (Number(li.qty) || 0) * (Number(li.price) || 0),
+      });
+    });
+  });
+
+  const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>${supplier} 对单表 - ${today}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Microsoft YaHei", sans-serif; padding: 20px; color: #1c1917; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .meta { color: #78716c; font-size: 12px; margin-bottom: 16px; }
+  .summary { background: #f5f5f4; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; display: flex; gap: 24px; font-size: 13px; }
+  .summary b { font-size: 16px; color: #2563eb; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  thead { background: #f5f5f4; }
+  th, td { border: 1px solid #d6d3d1; padding: 6px 8px; vertical-align: middle; }
+  th { font-weight: 600; text-align: left; }
+  .qty-big { background: #dc2626; color: white; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 14px; }
+  img { display: block; width: 60px; height: 60px; object-fit: cover; border-radius: 4px; border: 1px solid #d6d3d1; }
+  .actions { margin: 14px 0; }
+  .actions button { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-right: 8px; }
+  .actions button:hover { background: #1d4ed8; }
+  @media print {
+    .actions { display: none; }
+    body { padding: 8px; }
+    table { font-size: 10px; }
+    img { width: 50px; height: 50px; }
+  }
+</style>
+</head>
+<body>
+<h1>📋 ${supplier} 对单表</h1>
+<div class="meta">导出日期：${today} · 状态范围：${filterLabel} · 用于催单 / 对账 / 内部沟通</div>
+<div class="summary">
+  <div>采购单总数：<b>${list.length}</b></div>
+  <div>产品行数：<b>${allRows.length}</b></div>
+  <div>总件数：<b>${totalQty}</b></div>
+  <div>总金额：<b>¥ ${totalAmount.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}</b></div>
+</div>
+<div class="actions">
+  <button onclick="window.print()">🖨 打印 / 保存为 PDF</button>
+  <button onclick="navigator.clipboard.writeText(document.querySelector('table').outerHTML).then(() => alert('已复制 HTML，可粘贴到 Excel/Word'))">📋 复制表格</button>
+  <span style="font-size:12px; color:#78716c;">提示：浏览器打印窗口可选"另存为 PDF"</span>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th style="width: 70px;">图片</th>
+      <th>采购单号</th>
+      <th>销售单</th>
+      <th>SKU / 产品</th>
+      <th>规格</th>
+      <th style="width: 60px; text-align: center;">数量</th>
+      <th style="width: 80px; text-align: right;">单价</th>
+      <th style="width: 90px; text-align: right;">小计</th>
+      <th style="width: 100px;">订单备注</th>
+      <th style="width: 80px;">开单日</th>
+      <th>状态</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${allRows.map(r => `
+      <tr>
+        <td>${r.image_url ? `<img src="${r.image_url}">` : '—'}</td>
+        <td style="font-family: monospace; font-size: 11px;">${r.po_number}</td>
+        <td>${r.order_no || ''} <span style="color:#78716c; font-size:10px;">${r.site || ''}</span></td>
+        <td><b>${r.title}</b><br><span style="color:#78716c; font-size:10px; font-family:monospace;">${r.sku}</span></td>
+        <td style="font-size: 11px; color: #44403c;">${r.variant}</td>
+        <td style="text-align: center;">${Number(r.qty) >= 2 ? `<span class="qty-big">${r.qty}</span>` : r.qty}</td>
+        <td style="text-align: right; font-family: monospace;">¥${Number(r.price).toFixed(2)}</td>
+        <td style="text-align: right; font-family: monospace;"><b>¥${Number(r.subtotal).toFixed(2)}</b></td>
+        <td style="font-size: 11px;">${r.box_note}</td>
+        <td style="font-size: 11px;">${r.created}</td>
+        <td style="font-size: 11px;">${r.status}</td>
+      </tr>
+    `).join('')}
+  </tbody>
+</table>
+<div style="margin-top: 16px; font-size: 11px; color: #78716c; text-align: right;">
+  跟单团队工作台 · 共 ${allRows.length} 行 · 总额 ¥${totalAmount.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
+</div>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) { toast('浏览器阻止了新窗口，请允许弹窗', 'err'); return; }
+  win.document.write(html);
+  win.document.close();
+  toast(`✓ ${supplier} 对单表已打开，可打印/导出 PDF`);
 }
 
 async function poApprove(poId) {
