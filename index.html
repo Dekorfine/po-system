@@ -2558,10 +2558,10 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       </div>
 
       <div class="sales-subtabs" id="salesSubtabs" style="margin-top: 14px;">
-        <button class="sub-tab-btn active" data-filter="all" onclick="shopifyShowFilter('all')">📋 全部 <span class="cnt" id="cntAll">0</span></button>
+        <button class="sub-tab-btn active" data-filter="all" onclick="shopifyShowFilter('all')" title="待办：待审核 + 待处理（不含已完成/已取消）">📋 全部 <span class="cnt" id="cntAll">0</span></button>
         <button class="sub-tab-btn" data-filter="pending" onclick="shopifyShowFilter('pending')">🔵 待审核 <span class="cnt" id="cntPending">0</span></button>
         <button class="sub-tab-btn" data-filter="processing" onclick="shopifyShowFilter('processing')">🟡 待处理 <span class="cnt" id="cntProcessing">0</span></button>
-        <button class="sub-tab-btn" data-filter="done" onclick="shopifyShowFilter('done')">✅ 已完成 <span class="cnt" id="cntDone">0</span></button>
+        <button class="sub-tab-btn" data-filter="done" onclick="shopifyShowFilter('done')" title="所有产品都已开 PO 的订单（自动归档）">✅ 已完成 <span class="cnt" id="cntDone">0</span></button>
         <button class="sub-tab-btn" data-filter="cancelled" onclick="shopifyShowFilter('cancelled')">⊘ 已取消 <span class="cnt" id="cntCancelled">0</span></button>
       </div>
 
@@ -11237,11 +11237,11 @@ function shopifyRefreshCounts() {
   const counts = { all: 0, pending: 0, processing: 0, done: 0, cancelled: 0 };
   orders.forEach(o => {
     if (o.local_status === 'cancelled') counts.cancelled++;
+    else if (o.local_status === 'done') counts.done++;
     else {
-      counts.all++;  // "全部" 排除已取消
+      counts.all++;  // "全部" = 进行中（pending + processing），不含 done / cancelled
       if (o.local_status === 'pending') counts.pending++;
       else if (o.local_status === 'processing') counts.processing++;
-      else if (o.local_status === 'done') counts.done++;
     }
   });
   document.getElementById('cntAll').textContent = counts.all;
@@ -11275,7 +11275,7 @@ function renderShopifyOrders() {
   const filter = SHOPIFY._currentFilter;
   const all = SHOPIFY._orders;
   const orders = filter === 'all'
-    ? all.filter(o => o.local_status !== 'cancelled')
+    ? all.filter(o => o.local_status !== 'cancelled' && o.local_status !== 'done')  // 全部 = 待办（不含已完成/已取消）
     : all.filter(o => o.local_status === filter);
 
   if (orders.length === 0) {
@@ -13500,10 +13500,17 @@ async function poFormDoSave(groups, common) {
       }
     }
 
+    // 检测：是否所有 line_items 都已全部分配 PO 了 → 自动标记销售单为 done（移出待办列表）
+    const allFullyAssigned = allLineItemUpdates.every(li => {
+      const totalAssigned = (li.po_assignments || []).reduce((s, a) => s + (Number(a.qty) || 0), 0);
+      return totalAssigned >= (Number(li.quantity) || 0);
+    });
+    const newLocalStatus = allFullyAssigned ? 'done' : 'processing';
+
     // 把更新后的 line_items 写回 shopify_orders
     const { error: soErr } = await sb.from('shopify_orders').update({
       line_items: allLineItemUpdates,
-      local_status: 'processing',
+      local_status: newLocalStatus,
       updated_at: new Date().toISOString(),
     }).eq('id', so.id);
     if (soErr) console.warn('更新销售订单 line_items 失败：', soErr.message);
@@ -13511,6 +13518,8 @@ async function poFormDoSave(groups, common) {
     const hasPending = allInserts.some(po => po.status === 'pending_approval');
     if (hasPending) {
       toast(`✓ 已开 ${allInserts.length} 张采购单，${allInserts.filter(p=>p.status==='pending_approval').length} 张待主管审批`, 'info');
+    } else if (allFullyAssigned) {
+      toast(`✓ 成功开 ${allInserts.length} 张采购单，销售单已全部分配，自动移至「已完成」`);
     } else {
       toast(`✓ 成功开 ${allInserts.length} 张采购单`);
     }
@@ -14333,13 +14342,21 @@ async function poReject(poId) {
     }).eq('id', poId);
     // 释放 line_items 的 po_assignments，让跟单可以重新开
     if (po && po.sales_order_id) {
-      const { data: so } = await sb.from('shopify_orders').select('line_items').eq('id', po.sales_order_id).single();
+      const { data: so } = await sb.from('shopify_orders').select('line_items, local_status').eq('id', po.sales_order_id).single();
       if (so) {
         const updatedItems = (so.line_items || []).map(li => ({
           ...li,
           po_assignments: (li.po_assignments || []).filter(a => a.po_id !== poId),
         }));
-        await sb.from('shopify_orders').update({ line_items: updatedItems, updated_at: new Date().toISOString() }).eq('id', po.sales_order_id);
+        const stillFullyAssigned = updatedItems.every(li => {
+          const totalAssigned = (li.po_assignments || []).reduce((s, a) => s + (Number(a.qty) || 0), 0);
+          return totalAssigned >= (Number(li.quantity) || 0);
+        });
+        const updateData = { line_items: updatedItems, updated_at: new Date().toISOString() };
+        if (so.local_status === 'done' && !stillFullyAssigned) {
+          updateData.local_status = 'processing';
+        }
+        await sb.from('shopify_orders').update(updateData).eq('id', po.sales_order_id);
       }
     }
     toast('已驳回，line item 已释放可重开');
@@ -14453,16 +14470,35 @@ async function poCancel(poId) {
     await sb.from('orders').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', poId);
     // 释放 sales_order line_items 中对应的 po_assignments
     if (po.sales_order_id) {
-      const { data: so } = await sb.from('shopify_orders').select('line_items').eq('id', po.sales_order_id).single();
+      const { data: so } = await sb.from('shopify_orders').select('line_items, local_status').eq('id', po.sales_order_id).single();
       if (so) {
         const updatedItems = (so.line_items || []).map(li => ({
           ...li,
           po_assignments: (li.po_assignments || []).filter(a => a.po_id !== poId),
         }));
-        await sb.from('shopify_orders').update({ line_items: updatedItems, updated_at: new Date().toISOString() }).eq('id', po.sales_order_id);
+        // 重新检测：现在是否还全部分配？如果不是 → 把销售单从 done 拉回 processing
+        const stillFullyAssigned = updatedItems.every(li => {
+          const totalAssigned = (li.po_assignments || []).reduce((s, a) => s + (Number(a.qty) || 0), 0);
+          return totalAssigned >= (Number(li.quantity) || 0);
+        });
+        const updateData = { line_items: updatedItems, updated_at: new Date().toISOString() };
+        // 之前是 done 且现在不满足 → 拉回 processing 让跟单继续处理
+        if (so.local_status === 'done' && !stillFullyAssigned) {
+          updateData.local_status = 'processing';
+        }
+        await sb.from('shopify_orders').update(updateData).eq('id', po.sales_order_id);
+        if (so.local_status === 'done' && !stillFullyAssigned) {
+          toast('已取消，对应销售单从「已完成」拉回「待处理」');
+        } else {
+          toast('已取消');
+        }
+      } else {
+        toast('已取消');
       }
+    } else {
+      toast('已取消');
     }
-    toast('已取消');
+    SHOPIFY.invalidateOrders();
     await renderPo();
   } catch (e) { toast('取消失败：' + (e.message || e), 'err'); }
 }
