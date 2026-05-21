@@ -12821,8 +12821,15 @@ async function openPoForm(salesOrderId) {
   };
 
   // 默认勾选未分配且未取消的 line items
+  // 注意：要过滤掉指向"已取消 / 已驳回"PO 的 assignment（不算占用名额）
+  // PO_LIST 可能还没加载，需要主动加载
+  const { data: poStatusData } = await sb.from('orders').select('id, status').not('po_number', 'is', null);
+  const invalidPoIds = new Set((poStatusData || []).filter(p => p.status === 'cancelled' || p.status === 'rejected').map(p => p.id));
+
   (so.line_items || []).forEach(li => {
-    const remaining = (li.quantity || 0) - ((li.po_assignments || []).reduce((s, a) => s + (a.qty || 0), 0));
+    // 只统计有效 PO 的 assignment
+    const validAssignments = (li.po_assignments || []).filter(a => !invalidPoIds.has(a.po_id));
+    const remaining = (li.quantity || 0) - validAssignments.reduce((s, a) => s + (a.qty || 0), 0);
     const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
     PO_FORM_STATE.lineItemSelections[li.shopify_line_item_id] = {
       checked: remaining > 0,
@@ -14306,13 +14313,26 @@ async function poReject(poId) {
   if (reason === null) return;
   if (!reason.trim()) { toast('请填驳回原因', 'warn'); return; }
   try {
+    const po = PO_LIST.find(x => x.id === poId);
     await sb.from('orders').update({
       status: 'rejected',
       approved_by: CURRENT_AGENT,
       approval_note: reason.trim(),
       updated_at: new Date().toISOString(),
     }).eq('id', poId);
-    toast('已驳回');
+    // 释放 line_items 的 po_assignments，让跟单可以重新开
+    if (po && po.sales_order_id) {
+      const { data: so } = await sb.from('shopify_orders').select('line_items').eq('id', po.sales_order_id).single();
+      if (so) {
+        const updatedItems = (so.line_items || []).map(li => ({
+          ...li,
+          po_assignments: (li.po_assignments || []).filter(a => a.po_id !== poId),
+        }));
+        await sb.from('shopify_orders').update({ line_items: updatedItems, updated_at: new Date().toISOString() }).eq('id', po.sales_order_id);
+      }
+    }
+    toast('已驳回，line item 已释放可重开');
+    SHOPIFY.invalidateOrders();
     await renderPo();
   } catch (e) { toast('失败：' + (e.message || e), 'err'); }
 }
