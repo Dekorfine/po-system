@@ -1342,7 +1342,7 @@
     const App = () => {
         // 多包装数组：每个包装独立尺寸/重量/数量/纸箱木箱
         const [packages, setPackages] = useState([
-            { id: 1, l: '', w: '', h: '', weight: '', qty: '1', isCrate: false, forceSingleBox: false }
+            { id: 1, l: '', w: '', h: '', weight: '', qty: '1', isCrate: false, forceSingleBox: false, productNote: '' }
         ]);
         const [glassLamp, setGlassLamp] = useState(false);
         const [targetCN, setTargetCN] = useState('美国');  // 目的国（中文名）
@@ -1361,8 +1361,19 @@
         const addPackage = () => {
             setPackages([...packages, {
                 id: Date.now() + Math.random(),
-                l: '', w: '', h: '', weight: '', qty: '1', isCrate: false, forceSingleBox: false
+                l: '', w: '', h: '', weight: '', qty: '1', isCrate: false, forceSingleBox: false, productNote: ''
             }]);
+        };
+
+        // 一键复制一行（场景：一套灯多个包装）
+        const duplicatePackage = (id) => {
+            const orig = packages.find(p => p.id === id);
+            if (!orig) return;
+            const idx = packages.findIndex(p => p.id === id);
+            const copy = { ...orig, id: Date.now() + Math.random(), qty: '1' };
+            const newPackages = [...packages];
+            newPackages.splice(idx + 1, 0, copy);
+            setPackages(newPackages);
         };
 
         const removePackage = (id) => {
@@ -1385,7 +1396,10 @@
                 const saved = localStorage.getItem(SAVE_KEY);
                 if (!saved) return;
                 const s = JSON.parse(saved);
-                if (Array.isArray(s.packages) && s.packages.length > 0) setPackages(s.packages);
+                if (Array.isArray(s.packages) && s.packages.length > 0) {
+                    // 兼容旧数据：补上 productNote 字段
+                    setPackages(s.packages.map(p => ({ productNote: '', ...p })));
+                }
                 if (s.glassLamp !== undefined) setGlassLamp(s.glassLamp);
                 if (s.targetCN !== undefined) setTargetCN(s.targetCN);
                 else if (s.country !== undefined) {
@@ -1768,13 +1782,13 @@
                     reasons.push('超规包装 × 2 件，拆分发货成本较低，但需 2× 附加费');
                 }
             }
-            // 规则5: 总实重 ≥ 101kg → 云鼎起收线（仅美国）
-            else if (yundingAvailable && totalWeight >= 101) {
-                if (planYunding.totalCost <= sortedByCost[0].cost * 1.1) {
-                    best = yundingCand;
-                    ruleFlags.push('rule_heavy_total');
-                    reasons.push(`总实重 ${totalWeight.toFixed(1)}kg 已达云鼎起收线`);
-                }
+            // 规则5: 总实重 ≥ 100kg → 优先云鼎（仅美国，重货云鼎按重量阶梯，明显比快递便宜）
+            else if (yundingAvailable && totalWeight >= 100) {
+                best = yundingCand;
+                ruleFlags.push('rule_heavy_total');
+                reasons.push(`总实重 ${totalWeight.toFixed(1)}kg ≥ 100kg，已达云鼎起收线`);
+                reasons.push(`云鼎运费 ¥${Math.round(planYunding.totalCost)}（按重计费，重货优势明显）`);
+                reasons.push('快递按计费重 + 大件附加费 + 派送费会非常贵，请用云鼎核算卖价');
             }
             // 规则6: 云鼎显著更便宜（合箱比云鼎贵 30% 以上）→ 用云鼎（仅美国）
             else if (yundingAvailable && planYunding.totalCost * 1.3 < planConsol.totalCost) {
@@ -1970,6 +1984,23 @@
                                 </span>
                             </div>
 
+                            {/* 场景说明：教用户分清 "一套灯 N 包装" vs "N 套灯 各 1 包装" */}
+                            <div className="rounded-lg p-3 mb-4" style={{background: 'var(--accent-soft)', border: '1px dashed var(--accent)'}}>
+                                <div className="text-[11px] font-bold mb-2" style={{color: 'var(--accent)'}}>
+                                    💡 多包装场景识别（重要）
+                                </div>
+                                <div className="text-[10px] leading-relaxed" style={{color: 'var(--ink-2)'}}>
+                                    <div className="mb-1.5"><span className="font-bold">场景 A —— 一套灯多个包装</span>（如 3 头吊灯有 3 箱）：</div>
+                                    <div className="pl-3 mb-2" style={{color: 'var(--ink-3)'}}>
+                                        加 3 行，每行 <b>数量填 1</b>，可点 <b>⧉ 复制</b> 快速添加。备注里写"灯体"/"灯臂"/"灯罩"。
+                                    </div>
+                                    <div className="mb-1.5"><span className="font-bold">场景 B —— N 套相同灯</span>（如客户买了 3 套相同壁灯）：</div>
+                                    <div className="pl-3" style={{color: 'var(--ink-3)'}}>
+                                        加 1 行，<b>数量填 3</b>，系统按 3 件计算重量和合箱。
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Multi-package list */}
                             <div className="space-y-3">
                                 {packages.map((p, idx) => (
@@ -1982,6 +2013,7 @@
                                         onToggleCrate={(isCrate) => togglePkgCrate(p.id, isCrate)}
                                         onToggleForceSingle={(val) => updatePkg(p.id, 'forceSingleBox', val)}
                                         onRemove={() => removePackage(p.id)}
+                                        onDuplicate={() => duplicatePackage(p.id)}
                                         weightSuggest={suggestWeightIds.includes(p.id)}
                                     />
                                 ))}
@@ -2183,6 +2215,26 @@
                             <EmptyState />
                         ) : (
                             <>
+                                {/* 总重 ≥100kg 时大字横幅：强烈建议走云鼎 */}
+                                {hasInput && totalWeight >= 100 && country === 'US' && planYunding && (
+                                    <div className="paper rounded-2xl p-5 shadow-md" style={{background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '2px solid #f59e0b'}}>
+                                        <div className="flex items-start gap-3">
+                                            <div className="text-3xl">🚛</div>
+                                            <div className="flex-1">
+                                                <div className="font-bold text-lg mb-1" style={{color: '#92400e'}}>
+                                                    总实重 {totalWeight.toFixed(1)} kg ≥ 100kg —— 强烈建议走云鼎卡车
+                                                </div>
+                                                <div className="text-sm" style={{color: '#78350f'}}>
+                                                    • 云鼎运费：<b className="font-mono">¥ {Math.round(planYunding.totalCost).toLocaleString()}</b>
+                                                    （含派送费 ¥{planYunding.delivery || 500}）<br/>
+                                                    • 快递（FedEx/UPS/DHL）按计费重收费，超过 100kg 会非常贵<br/>
+                                                    • 云鼎按重量阶梯计算，重货优势明显，请优先用云鼎的运费来核算卖价
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* VERDICT CARD */}
                                 {recommendation && (
                                     <VerdictCard
@@ -2687,7 +2739,7 @@
     };
 
     // === 包装行输入组件 ===
-    const PackageRow = ({ pkg, idx, canRemove, onUpdate, onToggleCrate, onToggleForceSingle, onRemove, weightSuggest }) => {
+    const PackageRow = ({ pkg, idx, canRemove, onUpdate, onToggleCrate, onToggleForceSingle, onRemove, onDuplicate, weightSuggest }) => {
         return (
             <div className="rounded-xl p-4 transition-all" style={{
                 background: pkg.isCrate ? 'var(--warn-soft)' : 'var(--bg)',
@@ -2705,14 +2757,32 @@
                             {pkg.isCrate ? '木箱 +5cm 缓冲' : '纸箱 +2cm 缓冲'}
                         </span>
                     </div>
-                    {canRemove && (
-                        <button onClick={onRemove}
-                            className="p-1 rounded-md transition-all hover:bg-rose-100"
-                            style={{background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-4)'}}
-                            title="删除此包装">
-                            <Icon name="x" className="w-3.5 h-3.5" />
-                        </button>
-                    )}
+                    <div className="flex items-center gap-1">
+                        {onDuplicate && (
+                            <button onClick={onDuplicate}
+                                className="px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase transition-all"
+                                style={{background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent)', cursor: 'pointer'}}
+                                title="复制：同一套灯多个包装时方便"
+                            >
+                                ⧉ 复制
+                            </button>
+                        )}
+                        {canRemove && (
+                            <button onClick={onRemove}
+                                className="p-1 rounded-md transition-all hover:bg-rose-100"
+                                style={{background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-4)'}}
+                                title="删除此包装">
+                                <Icon name="x" className="w-3.5 h-3.5" />
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* 产品备注 (可选，标注这是哪个灯的包装) */}
+                <div className="mb-3">
+                    <input type="text" value={pkg.productNote || ''} onChange={(e) => onUpdate('productNote', e.target.value)}
+                        className="field-input field-input-sm"
+                        placeholder="产品备注（可选，如：吊灯主体 / 灯臂 / 灯罩）" />
                 </div>
 
                 {/* L W H */}
