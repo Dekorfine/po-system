@@ -12876,6 +12876,8 @@ function renderPoForm() {
     const displayTitle = sel.customTitleCn || eff.name_cn || ownProd.name_cn || li.title || '(无名)';
     const wasEdited = !!(sel.customSku || sel.customTitleCn || sel.customImageUrl);
     const fullyAssigned = sel.remaining === 0;
+    // 已分配的 PO 列表（用于显示哪几张 PO 占用了名额）
+    const validAssignments = (li.po_assignments || []).filter(a => !sel._invalidPoIds || !sel._invalidPoIds.has(a.po_id));
     return `
       <div class="po-li-row ${sel.checked ? 'checked' : ''} ${fullyAssigned ? 'assigned' : ''}">
         <input type="checkbox" ${sel.checked ? 'checked' : ''} ${fullyAssigned ? 'disabled' : ''}
@@ -12885,6 +12887,14 @@ function renderPoForm() {
           <div class="sku">${escapeHtml(displaySku)}${wasEdited ? '<span style="margin-left:6px; font-size:10px; padding:1px 6px; background:rgba(124,58,237,0.12); color:#7c3aed; border-radius:3px;">已修改</span>' : ''}</div>
           <div class="name">${escapeHtml(displayTitle)}</div>
           <div class="variant">${escapeHtml(li.variant_title || '')}${fullyAssigned ? ' · <span style="color:var(--success)">✓ 已全部开 PO</span>' : sel.assignedQty > 0 ? ` · 剩 ${sel.remaining}/${li.quantity}` : ''}</div>
+          ${fullyAssigned && validAssignments.length > 0 ? `
+            <div style="margin-top:4px; padding:6px 8px; background:rgba(234,179,8,0.08); border-left:3px solid var(--warning); border-radius:4px; font-size:11px;">
+              <b style="color:var(--warning);">⚠ 已开过 PO：</b>${validAssignments.map(a => `
+                <a href="javascript:void(0)" onclick="closePoForm(); switchTab('po'); setTimeout(() => { document.querySelector('[data-pofilter=\\'all\\']')?.click(); }, 100);" style="color:var(--accent); text-decoration:none; font-weight:600;" title="跳到采购单 tab 查看/取消">
+                  ${escapeHtml(a.po_number)} (${escapeHtml(a.supplier || '')}) × ${a.qty}
+                </a>`).join('、')}
+              <div style="color:var(--text-tertiary); margin-top:3px;">如需重开请到采购单 tab 先取消该 PO；或在采购单卡片直接修改</div>
+            </div>` : ''}
           ${eff.default_supplier ? `<div class="li-default-supplier">默认: ${escapeHtml(eff.default_supplier)}</div>` : ''}
           <div style="margin-top:4px; font-size:11px; display:flex; gap:10px; flex-wrap:wrap;">
             <span>
@@ -14123,6 +14133,7 @@ function renderPoList() {
             ${isRejected ? `<button class="so-action-btn primary" onclick="poResubmit('${p.id}')">↻ 重新提交审批</button>` : ''}
             ${next ? `<button class="so-action-btn primary" onclick="poAdvance('${p.id}', '${next.value}', '${next.label}')" title="推进到下一步">▶ ${next.label}</button>` : ''}
             ${prev ? `<button class="so-action-btn" onclick="poRevert('${p.id}', '${prev.value}', '${prev.label}')" title="退回上一步">↩ 退回</button>` : ''}
+            ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditPrices('${p.id}')" title="修改 PO 内每个产品的数量和单价">✏️ 改价</button>` : ''}
             <button class="so-action-btn" onclick="poOpenPrint('${p.id}')">🖨 打印</button>
             ${!isCancelled ? `<button class="so-action-btn danger" onclick="poCancel('${p.id}')">⊘ 取消</button>` : ''}
           </div>
@@ -14457,6 +14468,80 @@ async function poCancel(poId) {
 }
 
 // ============ 打印预览 ============
+// 编辑现有 PO 的价格/数量（方便：发现下错单时，无需取消重开）
+async function poEditPrices(poId) {
+  const po = PO_LIST.find(x => x.id === poId);
+  if (!po) return;
+  const items = po.line_items || [];
+  if (items.length === 0) { toast('该 PO 无产品行', 'warn'); return; }
+
+  // 构建 fields 数组：每个产品 2 个字段（数量 + 单价）
+  const fields = [];
+  items.forEach((li, idx) => {
+    fields.push({
+      key: `qty_${idx}`,
+      label: `${idx + 1}. ${li.title_cn || li.title_en || li.sku} 数量`,
+      value: li.qty,
+      type: 'number',
+      min: 1,
+      required: true,
+    });
+    fields.push({
+      key: `price_${idx}`,
+      label: `${idx + 1}. ${li.title_cn || li.title_en || li.sku} 单价 ¥`,
+      value: li.price,
+      type: 'number',
+      min: 0,
+      required: true,
+    });
+  });
+
+  const result = await showPrompt({
+    title: `✏️ 修改 ${po.po_number} 价格/数量`,
+    message: `供应商：${po.supplier || ''} · 当前状态：${poStatusInfo(po.status).label}\n注意：修改后会重新计算 PO 总金额。如金额超过 ¥5000 或某产品数量超 20，会进入待审批。`,
+    fields,
+  });
+  if (!result) return;
+
+  // 重组 line_items
+  const newLineItems = items.map((li, idx) => {
+    const qty = Number(result[`qty_${idx}`]) || li.qty;
+    const price = Number(result[`price_${idx}`]) || li.price;
+    return { ...li, qty, price, subtotal: qty * price };
+  });
+  const newTotal = newLineItems.reduce((s, x) => s + x.subtotal, 0);
+
+  // 判断是否需要重新审批（数量过大或金额过大）
+  const needsApproval = newLineItems.some(li => li.qty > 20) || newTotal > 5000;
+  const wasApproval = po.status === 'pending_approval';
+  let newStatus = po.status;
+  let approvalNote = po.approval_note;
+  let approvedBy = po.approved_by;
+  // 如果当前是 producing/sent 等批准后状态，但改后超阈值 → 回退到 pending_approval
+  if (needsApproval && !wasApproval && po.status !== 'received' && po.status !== 'cancelled' && po.status !== 'rejected') {
+    if (confirm(`修改后 PO 触发审批阈值（数量>20 或总金额>¥5000），需重新审批。\n是否继续修改？\n\n点确定 → PO 状态回到「待审批」`)) {
+      newStatus = 'pending_approval';
+      approvalNote = null;
+      approvedBy = null;
+    } else {
+      return;
+    }
+  }
+
+  try {
+    await sb.from('orders').update({
+      line_items: newLineItems,
+      total_amount: newTotal,
+      status: newStatus,
+      approval_note: approvalNote,
+      approved_by: approvedBy,
+      updated_at: new Date().toISOString(),
+    }).eq('id', poId);
+    toast(`✓ 已更新 ${po.po_number}`);
+    await renderPo();
+  } catch (e) { toast('更新失败：' + (e.message || e), 'err'); }
+}
+
 function poOpenPrint(poId) {
   const po = PO_LIST.find(x => x.id === poId);
   if (!po) return;
