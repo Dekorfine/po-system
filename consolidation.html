@@ -14,25 +14,26 @@
 
     <style>
         :root {
-            --bg: #f4f1ea;
-            --bg-warm: #faf8f3;
+            /* === 统一为工作台风格（浅暖灰 + 蓝色） === */
+            --bg: #fafaf9;
+            --bg-warm: #ffffff;
             --paper: #ffffff;
-            --ink: #1a1815;
-            --ink-2: #3f3a33;
-            --ink-3: #6b6259;
+            --ink: #1c1917;
+            --ink-2: #57534e;
+            --ink-3: #78716c;
             --ink-4: #a8a29e;
-            --line: #d8d3c8;
-            --line-soft: #e8e4dc;
-            --accent: #b8462e;
-            --accent-2: #d4694e;
-            --accent-soft: #fbe9e1;
-            --good: #166534;
+            --line: #e7e5e4;
+            --line-soft: #f5f5f4;
+            --accent: #2563eb;
+            --accent-2: #1d4ed8;
+            --accent-soft: #eff6ff;
+            --good: #15803d;
             --good-soft: #dcfce7;
             --good-line: #86efac;
-            --warn: #92400e;
+            --warn: #b45309;
             --warn-soft: #fef3c7;
             --warn-line: #fbbf24;
-            --bad: #991b1b;
+            --bad: #b91c1c;
             --bad-soft: #fee2e2;
             --bad-line: #fca5a5;
             --ydng: #1e293b;
@@ -40,6 +41,18 @@
         }
 
         * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+        /* === 优雅细滚动条（Webkit + Firefox） === */
+        * { scrollbar-width: thin; scrollbar-color: rgba(168,162,158,0.4) transparent; }
+        *::-webkit-scrollbar { width: 6px; height: 6px; }
+        *::-webkit-scrollbar-track { background: transparent; }
+        *::-webkit-scrollbar-thumb {
+            background: rgba(168,162,158,0.4);
+            border-radius: 3px;
+            transition: background 0.15s;
+        }
+        *::-webkit-scrollbar-thumb:hover { background: rgba(120,113,108,0.7); }
+        *::-webkit-scrollbar-corner { background: transparent; }
 
         body {
             font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
@@ -74,11 +87,12 @@
         }
         .paper-warm { background: var(--bg-warm); }
 
-        /* Top rule */
+        /* Top rule - 改成浅色调，跟工作台一致 */
         .top-rule {
-            background: var(--ink);
-            color: var(--bg);
-            border-bottom: 3px double var(--ink);
+            background: var(--bg-warm);
+            color: var(--ink);
+            border-bottom: 1px solid var(--line);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
         }
 
         /* Display number */
@@ -258,41 +272,40 @@
         }
 
         .nav-link {
-            color: var(--ink-4);
+            color: var(--accent);
             text-decoration: none;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
-            letter-spacing: 0.05em;
-            text-transform: uppercase;
+            letter-spacing: 0.02em;
             transition: color 0.15s;
         }
-        .nav-link:hover { color: var(--bg); }
+        .nav-link:hover { color: var(--accent-2); }
 
         .save-badge {
             display: inline-flex; align-items: center; gap: 6px;
-            font-size: 10px; font-weight: 700; color: #86efac;
+            font-size: 11px; font-weight: 600; color: var(--good);
             font-variant-numeric: tabular-nums;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.02em;
         }
         .save-badge::before {
             content: ''; width: 6px; height: 6px;
-            background: #86efac; border-radius: 50%;
-            box-shadow: 0 0 0 0 #86efac;
+            background: var(--good); border-radius: 50%;
+            box-shadow: 0 0 0 0 var(--good);
             animation: pulse-soft 2s infinite;
         }
 
         .btn-action {
             display: inline-flex; align-items: center; gap: 6px;
             padding: 6px 14px; border-radius: 6px;
-            font-size: 11px; font-weight: 700;
-            letter-spacing: 0.05em; text-transform: uppercase;
+            font-size: 11px; font-weight: 600;
+            letter-spacing: 0.02em;
             cursor: pointer; transition: all 0.15s;
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.2);
-            color: var(--ink-4);
+            background: var(--bg);
+            border: 1px solid var(--line);
+            color: var(--ink-2);
             font-family: inherit;
         }
-        .btn-action:hover { color: var(--bg); border-color: rgba(255,255,255,0.4); }
+        .btn-action:hover { color: var(--ink); background: var(--bg-warm); border-color: var(--ink-3); }
 
         /* Boxed metric */
         .metric-box {
@@ -339,9 +352,9 @@
     <div class="top-rule">
         <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
             <div class="flex items-center gap-4">
-                <a href="index.html" target="_top" class="nav-link">← 返回工作台</a>
-                <span class="text-stone-600 text-xs">/</span>
-                <span class="text-stone-300 text-xs font-bold uppercase tracking-wider">运营工具 · Ops Tool</span>
+                <a href="index.html" target="_top" class="nav-link" style="color:var(--accent); font-weight:600;">← 返回工作台</a>
+                <span class="text-xs" style="color: var(--ink-4);">/</span>
+                <span class="text-xs font-bold uppercase tracking-wider" style="color: var(--ink-3);">运营工具 · Ops Tool</span>
             </div>
             <div class="flex items-center gap-3">
                 <span class="save-badge" id="autosave-indicator">已自动保存</span>
