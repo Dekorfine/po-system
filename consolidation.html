@@ -340,11 +340,7 @@
         /* Smooth scroll */
         html { scroll-behavior: smooth; }
 
-        /* Hide scrollbar polish */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
+        /* === iframe 自适应：通知父页面调整高度，消除内部滚动条 === */
     </style>
 </head>
 <body>
@@ -3985,6 +3981,52 @@
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
+    </script>
+
+    <!-- iframe 自适应高度：通知父页面（工作台）调整 iframe 高度，消除内部滚动条 -->
+    <script>
+      (function() {
+        // 仅在 iframe 内运行
+        if (window.parent === window) return;
+        
+        let lastHeight = 0;
+        let rafId = null;
+        
+        function reportHeight() {
+          const h = Math.max(
+            document.documentElement.scrollHeight,
+            document.body.scrollHeight,
+            document.documentElement.offsetHeight,
+            document.body.offsetHeight
+          );
+          if (Math.abs(h - lastHeight) < 5) return;  // 抖动忽略
+          lastHeight = h;
+          try {
+            window.parent.postMessage({ type: 'consolidation-height', height: h }, '*');
+          } catch (e) { /* 跨域忽略 */ }
+        }
+        
+        function scheduleReport() {
+          if (rafId) cancelAnimationFrame(rafId);
+          rafId = requestAnimationFrame(reportHeight);
+        }
+        
+        // 初次加载
+        if (document.readyState === 'complete') {
+          setTimeout(reportHeight, 200);
+        } else {
+          window.addEventListener('load', () => setTimeout(reportHeight, 200));
+        }
+        
+        // 内容尺寸变化时（React 重渲染后）
+        if (window.ResizeObserver) {
+          const ro = new ResizeObserver(scheduleReport);
+          ro.observe(document.body);
+        }
+        
+        // 兜底：每秒检测一次
+        setInterval(scheduleReport, 1000);
+      })();
     </script>
 </body>
 </html>

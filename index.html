@@ -2817,11 +2817,23 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 <div class="tab-content" data-tab="consolidation">
   <div class="section-block" style="padding: 0;">
     <iframe id="consolidationFrame" src="consolidation.html"
-      style="width:100%; height: calc(100vh - 140px); border: none; background: transparent; border-radius: 12px;"
+      style="width:100%; height: 800px; border: none; background: transparent; border-radius: 12px; display: block; transition: height 0.2s ease;"
+      scrolling="no"
       loading="lazy">
     </iframe>
   </div>
 </div>
+
+<script>
+  // 监听合箱 iframe 发来的高度通知，自动调整 iframe 高度（消除内部滚动条）
+  window.addEventListener('message', function(e) {
+    if (!e.data || e.data.type !== 'consolidation-height') return;
+    const frame = document.getElementById('consolidationFrame');
+    if (frame && e.data.height > 100) {
+      frame.style.height = (e.data.height + 20) + 'px';
+    }
+  });
+</script>
 
 <!-- ============ TAB 6: 绩效统计 ============ -->
 <div class="tab-content" data-tab="performance">
