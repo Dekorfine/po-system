@@ -1,0 +1,1153 @@
+// ============================================================
+// 跟单团队工作台 · orders.js
+// 催单（V3 改造）· 数据源：PO 派生（orders 表 po_number IS NOT NULL 且未发货）
+// ============================================================
+// 依赖：core.js · utils.js · po.js（共享 PO 状态机/审批）
+// ============================================================
+
+// ============================================================
+// PO 派生催单 · 数据加载层
+// ============================================================
+// 加载条件：是 PO（po_number 非空）+ 未删除
+// 一次查全量 PO，前端分流到两个数组：CHASE_ORDERS（未发货）+ ALL_PO_ORDERS（全量含已发货）
+async function loadChaseOrders() {
+  try {
+    let q = sb.from('orders').select('*')
+      .not('po_number', 'is', null)
+      .is('deleted_at', null);
+    // 非主管：只看自己的 PO
+    if (!IS_ADMIN && CURRENT_USER_ID) q = q.eq('agent_id', CURRENT_USER_ID);
+    const { data, error } = await q.order('created_at', { ascending: false });
+    if (error) throw error;
+
+    // userId → agent name 映射
+    const userIdToName = {};
+    (CONFIG.agents || []).forEach(a => { if (a._userId) userIdToName[a._userId] = a.name; });
+
+    // 全量 PO（绩效/历史统计用）
+    ALL_PO_ORDERS = (data || []).map(po => _toChaseOrder(po, userIdToName));
+    // 仅未发货 + 未取消/驳回/到货 的（催单 tab 用）
+    CHASE_ORDERS = ALL_PO_ORDERS.filter(o =>
+      !['cancelled', 'rejected', 'arrived'].includes(o.status) &&
+      !o.shippedDate
+    );
+    _chaseLastLoad = Date.now();
+  } catch (e) {
+    console.error('loadChaseOrders 失败:', e);
+    CHASE_ORDERS = [];
+    ALL_PO_ORDERS = [];
+    throw e;
+  }
+}
+
+// 把 PO 行转换成催单页期望的"订单"结构（让旧渲染代码尽量复用）
+function _toChaseOrder(po, userIdToName) {
+  const itemTitles = (po.line_items || []).map(li => li.title_cn || li.title_en || li.sku).filter(Boolean);
+  const product = po.product || itemTitles.join(' / ') || '(无产品)';
+  return {
+    _id: po.id,
+    _isPO: true,                       // 标识为 PO 派生
+    _po: po,                           // 原始 PO 引用
+    _agent: userIdToName[po.agent_id] || po.creator_name || '未知',
+    orderNo: po.po_number,             // 显示用 PO 编号
+    site: po.site || '',
+    product,
+    supplier: po.supplier || '',
+    status: po.status || 'producing',
+    orderDate: (po.created_at || '').slice(0, 10),
+    promisedDate: po.promised_date,
+    shippedDate: po.shipped_date,
+    arrivedDate: po.arrived_date,
+    nextFollow: po.next_follow,
+    followups: po.followups || [],
+    notes: po.note || '',
+    screenshots: po.screenshots || [],
+    createdAt: po.created_at,
+    totalAmount: parseFloat(po.total_amount) || 0,
+    lineItems: po.line_items || [],
+    poNumber: po.po_number,
+    salesOrderId: po.sales_order_id,
+  };
+}
+
+// 计算下单距今天数（不含发货日期，专注"下单到现在"）
+function chaseDaysSince(o) {
+  const ts = o.createdAt || o.orderDate;
+  if (!ts) return 0;
+  return Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
+}
+
+// ============================================================
+// 催单阈值 chip 渲染
+// ============================================================
+function renderChaseThresholdChips() {
+  const el = document.getElementById('chaseThresholdChips');
+  if (!el) return;
+  const thresholds = (typeof DATA !== 'undefined' && DATA.getChaseThresholds) ? DATA.getChaseThresholds() : [3, 7, 15, 30];
+  const total = CHASE_ORDERS.length;
+  el.innerHTML = `
+    <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">催单阈值:</span>
+    <button class="rule-chip ${_chaseThresholdFilter === 0 ? 'active' : ''}" onclick="setChaseThreshold(0)">📋 全部 <span class="cnt-mini">${total}</span></button>
+    ${thresholds.map(d => {
+      const cnt = CHASE_ORDERS.filter(o => chaseDaysSince(o) >= d).length;
+      return `<button class="rule-chip ${_chaseThresholdFilter === d ? 'active' : ''}" onclick="setChaseThreshold(${d})">⏰ ≥${d}天 <span class="cnt-mini">${cnt}</span></button>`;
+    }).join('')}
+    <span style="margin-left:auto; font-size: 11px; color: var(--text-tertiary);">数据来自采购单 · 仅显示未发货</span>
+  `;
+}
+
+function setChaseThreshold(days) {
+  _chaseThresholdFilter = days;
+  renderOrders();
+}
+
+// MODULE 1: 催单
+// ============================================================
+function renderOrders() {
+  const body = document.getElementById('ordersBody');
+  const card = document.getElementById('ordersCard');
+  if (!body) return;
+
+  // 渲染顶部阈值 chip
+  renderChaseThresholdChips();
+
+  const q = (document.getElementById('oSearch')?.value || '').trim().toLowerCase();
+  const fStatus = document.getElementById('oFilterStatus')?.value || 'active';
+  const fSupplier = document.getElementById('oFilterSupplier')?.value || '';
+  const fSite = document.getElementById('oFilterSite')?.value || '';
+  const sortBy = document.getElementById('oSortBy')?.value || 'urgency';
+
+  let list = CHASE_ORDERS.filter(o => {
+    // 阈值过滤
+    if (_chaseThresholdFilter > 0 && chaseDaysSince(o) < _chaseThresholdFilter) return false;
+    if (q) {
+      const t = [o.orderNo, o.product, o.supplier, o.notes, o._agent, o.site].join(' ').toLowerCase();
+      if (!t.includes(q)) return false;
+    }
+    if (fSupplier && o.supplier !== fSupplier) return false;
+    if (fSite && o.site !== fSite) return false;
+    if (fStatus === 'active') return !['cancelled', 'arrived'].includes(o.status);
+    if (fStatus === 'completed') return ['arrived', 'cancelled'].includes(o.status);
+    if (fStatus === 'overdue') return getOrderEffStatus(o) === 'overdue';
+    if (fStatus === 'all') return true;
+    return o.status === fStatus;
+  });
+  
+  // 排序
+  if (sortBy === 'urgency') {
+    list.sort((a, b) => {
+      const sa = getOrderEffStatus(a), sb = getOrderEffStatus(b);
+      const aIsCatch = !['cancelled','shipped','arrived'].includes(a.status);
+      const bIsCatch = !['cancelled','shipped','arrived'].includes(b.status);
+      if (aIsCatch !== bIsCatch) return aIsCatch ? -1 : 1;
+      if (sa === 'overdue' && sb !== 'overdue') return -1;
+      if (sb === 'overdue' && sa !== 'overdue') return 1;
+      const da = a.nextFollow || a.promisedDate || '9999';
+      const db = b.nextFollow || b.promisedDate || '9999';
+      return da.localeCompare(db);
+    });
+  } else if (sortBy === 'promised_asc') {
+    list.sort((a, b) => (a.promisedDate || '9999').localeCompare(b.promisedDate || '9999'));
+  } else if (sortBy === 'order_date_desc') {
+    list.sort((a, b) => (b.orderDate || '0000').localeCompare(a.orderDate || '0000'));
+  }
+  
+  if (list.length === 0) {
+    card.style.display = 'block';
+    document.getElementById('ordersGroupedContainer')?.remove();
+    const isEmpty = CHASE_ORDERS.length === 0;
+    body.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div class="text">${isEmpty ? '没有待催的采购单（所有 PO 都已发货 / 取消 / 完成）' : '当前阈值或筛选下没有匹配的催单'}</div>${isEmpty ? '<button class="btn primary" onclick="switchTab(\'po\')">📦 去采购单管理</button>' : ''}</div>`;
+    return;
+  }
+  
+  // 按供应商分组视图
+  if (sortBy === 'supplier_grouped') {
+    card.style.display = 'none';
+    let groupedCt = document.getElementById('ordersGroupedContainer');
+    if (!groupedCt) {
+      groupedCt = document.createElement('div');
+      groupedCt.id = 'ordersGroupedContainer';
+      card.parentNode.insertBefore(groupedCt, card);
+    }
+    
+    // 按供应商分组
+    const grouped = {};
+    list.forEach(o => {
+      const s = o.supplier || '未填供应商';
+      if (!grouped[s]) grouped[s] = [];
+      grouped[s].push(o);
+    });
+    // 按订单数倒序
+    const sortedSuppliers = Object.keys(grouped).sort((a, b) => grouped[b].length - grouped[a].length);
+    
+    groupedCt.innerHTML = sortedSuppliers.map(sup => {
+      const items = grouped[sup];
+      const canChase = items.filter(o => !['cancelled','shipped','arrived'].includes(o.status));
+      const overdueCount = items.filter(o => getOrderEffStatus(o) === 'overdue').length;
+      const allMine = !IS_ADMIN; // 主管视角下不显示批量催单（因为可能跨多个跟单员）
+      const totalChase = canChase.reduce((s, o) => s + (o.followups || []).filter(f => f.type === 'chase').length, 0);
+      return `
+        <div class="supplier-group">
+          <div class="supplier-group-head">
+            <div class="name">🏭 ${escapeHtml(sup)}
+              <span class="count-badge">${items.length} 单</span>
+              ${overdueCount > 0 ? `<span class="overdue-badge">🔴 ${overdueCount} 逾期</span>` : ''}
+              ${canChase.length > 0 ? `<span class="count-badge" style="background: rgba(202,138,4,0.1); color: var(--warning);">${canChase.length} 待催</span>` : ''}
+              ${totalChase > 0 ? `<span class="count-badge" style="background: rgba(190,24,93,0.1); color: var(--pink);">累计催 ${totalChase} 次</span>` : ''}
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              ${canChase.length > 0 ? `<button class="export-accounting-btn" onclick="exportSupplierAccounting('${sup.replace(/'/g, "\\'")}')" title="生成对账单 Excel 发给供应商">📋 导出对账单</button>` : ''}
+              ${canChase.length > 0 && allMine ? `<button class="batch-chase-btn" onclick="openBatchChase('${sup.replace(/'/g, "\\'")}')">⚡ 批量催单</button>` : ''}
+            </div>
+          </div>
+          <div class="supplier-group-body">
+            ${items.map((o, i) => renderOrderRow(o, i)).join('')}
+          </div>
+        </div>
+      `;
+    }).join('');
+    return;
+  }
+  
+  // 普通列表视图
+  document.getElementById('ordersGroupedContainer')?.remove();
+  card.style.display = 'block';
+  body.innerHTML = list.map((o, i) => renderOrderRow(o, i)).join('');
+}
+
+function renderOrderRow(o, i) {
+  const eff = getOrderEffStatus(o);
+  const fuCount = (o.followups || []).length;
+  const chaseList = (o.followups || []).filter(f => f.type === 'chase');
+  const chaseCount = chaseList.length;
+  const allScreenshots = [...(o.screenshots || []), ...((o.followups || []).flatMap(f => f.screenshots || []))];
+  const promisedCls = getDateClass(o.promisedDate);
+  const related = hasRelatedAftersales(o);
+  const siteBadge = o.site ? `<span class="site-badge s-${o.site}">${escapeHtml(o.site)}</span>` : '';
+  const afterBadge = related && related.length > 0 ? `<span class="related-after-badge" title="该订单有 ${related.length} 个未解决的售后单">🔧 售后${related.length}</span>` : '';
+  // V3 PO 派生标识 + 总金额
+  const poBadge = o._isPO ? `<span class="site-badge" style="background: rgba(124,58,237,0.12); color: #7c3aed; border: 1px solid rgba(124,58,237,0.3);" title="数据来自采购单 PO">📦 PO</span>` : '';
+  const amountBadge = (o._isPO && o.totalAmount > 0) ? `<span class="site-badge" style="background: rgba(16,185,129,0.10); color: #059669; border: 1px solid rgba(16,185,129,0.3);">¥${o.totalAmount.toLocaleString('zh-CN', {maximumFractionDigits: 0})}</span>` : '';
+  
+  // 已 N 天（下单至今）—— V3 用阈值高亮：超过最大阈值标红，超过最小阈值标黄
+  const days = chaseDaysSince(o);
+  const thresholds = (typeof DATA !== 'undefined' && DATA.getChaseThresholds) ? DATA.getChaseThresholds() : [3, 7, 15, 30];
+  const maxTh = thresholds[thresholds.length - 1] || 30;
+  const minTh = thresholds[0] || 3;
+  let daysCls = '';
+  if (days >= maxTh) daysCls = 'crit';
+  else if (days >= minTh) daysCls = 'warn';
+  const daysHtml = days > 0 ? `<div class="days-ago ${daysCls}">${days}天</div>` : '';
+  
+  // 缩略图（最多 3 张）
+  const thumbsHtml = allScreenshots.length > 0 
+    ? allScreenshots.slice(0, 3).map(s => 
+        `<img src="${s}" class="after-thumb" onclick="event.stopPropagation(); viewImage('${s}')">`
+      ).join('') + (allScreenshots.length > 3 ? `<span class="more-thumb">+${allScreenshots.length - 3}</span>` : '')
+    : '<span class="no-img">无图</span>';
+  
+  // 催单历史框：展示每次催单的日期 + 最近一次的备注
+  let chaseBoxHtml = '';
+  if (chaseCount > 0) {
+    const lastChase = chaseList[chaseList.length - 1];
+    const chaseDates = chaseList.map(c => formatShortDate(c.date)).join(' · ');
+    const chaseLevelCls = chaseCount >= 5 ? 'critical' : chaseCount >= 3 ? 'warning' : '';
+    chaseBoxHtml = `
+      <div class="chase-history ${chaseLevelCls}">
+        <div class="chase-counts">🔥 已催 <b>${chaseCount}</b> 次 · ${chaseDates}</div>
+        ${lastChase && lastChase.note ? `<div class="chase-last">📞 ${formatShortDate(lastChase.date)}: ${escapeHtml((lastChase.note || '').slice(0, 70))}${(lastChase.note || '').length > 70 ? '...' : ''}</div>` : ''}
+      </div>
+    `;
+  }
+  
+  // 备注框
+  const notesHtml = o.notes ? `<div class="detail-line">📝 ${escapeHtml(o.notes.slice(0, 80))}${o.notes.length > 80 ? '...' : ''}</div>` : '';
+  
+  // 日期：下单 / 承诺 / 下次 / 发货 / 到货
+  const datesHtml = `
+    ${o.orderDate ? `<div class="date-line"><span class="lbl">📅 下单</span>${formatShortDate(o.orderDate)}</div>` : ''}
+    ${o.promisedDate ? `<div class="date-line ${promisedCls}"><span class="lbl">⏰ 承诺</span>${formatShortDate(o.promisedDate)}${eff === 'overdue' ? ' ⚠' : ''}</div>` : ''}
+    ${o.nextFollow ? `<div class="date-line"><span class="lbl">📞 下次</span>${formatShortDate(o.nextFollow)}</div>` : ''}
+    ${o.shippedDate ? `<div class="date-line"><span class="lbl resolved">📦 发货</span>${formatShortDate(o.shippedDate)}</div>` : ''}
+    ${o.arrivedDate ? `<div class="date-line"><span class="lbl resolved">✓ 到货</span>${formatShortDate(o.arrivedDate)}</div>` : ''}
+  `;
+  
+  return `
+    <div class="record-row after-row s-${eff}" onclick="openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')">
+      <div class="row-num">
+        ${i + 1}
+        ${IS_ADMIN && o._agent ? `<div style="font-size:9px;color:var(--text-tertiary);">${escapeHtml(o._agent.slice(0,2))}</div>` : ''}
+        ${daysHtml}
+      </div>
+      <div><span class="status-pill s-${eff}">${ORDER_STATUS_LABELS[o.status] || '未知'}${eff === 'overdue' ? ' ⚠' : ''}</span></div>
+      <div class="cell-main">
+        <div class="order-line">
+          <span class="order-no-big">${escapeHtml(o.orderNo || '⚠ 待填订单号')}</span>
+          ${poBadge}
+          ${siteBadge}
+          ${amountBadge}
+          ${afterBadge}
+        </div>
+        <div class="product-line">📦 ${escapeHtml(o.product || '未填产品')}</div>
+        <div class="supplier-line">🏭 ${escapeHtml(o.supplier || '未填供应商')}</div>
+        ${notesHtml}
+        ${chaseBoxHtml}
+      </div>
+      <div class="thumbs-cell">${thumbsHtml}</div>
+      <div class="dates-cell">${datesHtml || '<span class="no-img">—</span>'}</div>
+      <div class="row-actions">
+        ${o.status !== 'arrived' ? `<button class="action-btn done" title="一键完成（${o.status === 'shipped' ? '已发货 → 已到货' : '标为已发货'}）" onclick="event.stopPropagation(); quickCompleteOrder('${o._id}', '${escapeHtml(o._agent || '')}')">✓</button>` : '<span style="width: 28px;"></span>'}
+        <button class="followup-btn ${fuCount > 0 ? 'has-followups' : ''}" onclick="event.stopPropagation(); openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')">${fuCount > 0 ? `📋${fuCount}` : '📋'}</button>
+        <button class="action-btn delete" title="删除" onclick="event.stopPropagation(); delOrderRow('${o._id}', '${escapeHtml(o._agent || '')}')">🗑</button>
+      </div>
+    </div>
+  `;
+}
+
+async function addOrder() {
+  // V3 改造：催单数据从 PO 派生，不再支持手动新增
+  // 主管想新增"采购单"应该去销售单 tab → 选订单 → 开 PO
+  // 或者去采购单 tab → "+ 自定义采购单"
+  const choice = confirm(
+    '催单功能已升级 —— 不再手动新增订单。\n' +
+    '✅ 现在催单数据自动来自「采购单(PO)」：只要有未发货的 PO，就会出现在这里。\n\n' +
+    '想新增一笔采购单？\n\n' +
+    '· 确定 → 去「📦 采购单」tab（可创建自定义 PO 或基于销售单开 PO）\n' +
+    '· 取消 → 留在本页'
+  );
+  if (choice) {
+    switchTab('po');
+  }
+}
+
+// ============================================================
+// 快捷筛选：点击统计卡片自动切到对应状态
+// ============================================================
+function quickFilterOrders(type) {
+  const filter = document.getElementById('oFilterStatus');
+  if (!filter) return;
+  filter.value = type;
+  renderOrders();
+  toast(`已切换：${filter.options[filter.selectedIndex].text}`);
+}
+
+function quickFilterAfter(type) {
+  const filter = document.getElementById('asFilterStatus');
+  if (!filter) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const thisMonth = today.slice(0, 7);
+  
+  // 特殊筛选用搜索框临时实现，或切对应选项
+  if (type === 'thismonth') {
+    // 显示本月新增
+    filter.value = 'all';
+    renderAftersales();
+    toast('显示全部售后（本月新增已在统计中）');
+    return;
+  }
+  if (type === 'today') {
+    filter.value = 'all';
+    renderAftersales();
+    toast('显示全部售后');
+    return;
+  }
+  if (type === 'overdue') {
+    filter.value = 'active';
+    renderAftersales();
+    toast('显示未解决（含逾期）');
+    return;
+  }
+  filter.value = type;
+  renderAftersales();
+  toast(`已切换：${filter.options[filter.selectedIndex].text}`);
+}
+
+function quickFilterIssues(type) {
+  const filter = document.getElementById('isFilterStatus');
+  if (!filter) return;
+  
+  if (type === 'stuck') {
+    // 沟通 ≥3 次的未解决问题
+    filter.value = 'active';
+    renderIssues();
+    toast('显示未解决问题（含沟通 3 次以上）');
+    return;
+  }
+  filter.value = type;
+  renderIssues();
+  toast(`已切换：${filter.options[filter.selectedIndex].text}`);
+}
+
+function quickFilterMissing(type) {
+  const filter = document.getElementById('mFilterStatus');
+  const searchBox = document.getElementById('mSearch');
+  if (!filter || !searchBox) return;
+  
+  if (type === 'mine') {
+    filter.value = 'all';
+    searchBox.value = CURRENT_AGENT;
+    renderMissing();
+    toast('显示「我发起的」找灯任务');
+    return;
+  }
+  if (type === 'thismonth') {
+    filter.value = 'all';
+    searchBox.value = '';
+    renderMissing();
+    toast('显示全部任务（本月新增已在统计）');
+    return;
+  }
+  searchBox.value = '';
+  filter.value = type;
+  renderMissing();
+  toast(`已切换：${filter.options[filter.selectedIndex].text}`);
+}
+
+function quickGotoPerfDetail(type) {
+  if (type === 'leaderboard') {
+    // 滚动到团队排行榜
+    const el = document.getElementById('perfLeaderboard');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast('查看团队排行榜');
+    }
+    return;
+  }
+  if (type === 'missing') {
+    // 滚动到找灯贡献明细
+    const el = document.getElementById('perfMissingDetail');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast('查看我的找灯贡献明细');
+    }
+    return;
+  }
+  if (type === 'orders') {
+    switchTab('orders');
+    setTimeout(() => {
+      const search = document.getElementById('oSearch');
+      const filter = document.getElementById('oFilterStatus');
+      if (search && IS_ADMIN) search.value = CURRENT_AGENT;  // 主管视角下筛选自己
+      if (filter) filter.value = 'active';
+      renderOrders();
+    }, 50);
+    toast('查看我的订单');
+    return;
+  }
+  if (type === 'aftersales') {
+    switchTab('aftersales');
+    setTimeout(() => {
+      const search = document.getElementById('asSearch');
+      const filter = document.getElementById('asFilterStatus');
+      if (search && IS_ADMIN) search.value = CURRENT_AGENT;
+      if (filter) filter.value = 'all';
+      renderAftersales();
+    }, 50);
+    toast('查看我的售后');
+    return;
+  }
+  if (type === 'issues') {
+    switchTab('issues');
+    setTimeout(() => {
+      const search = document.getElementById('isSearch');
+      const filter = document.getElementById('isFilterStatus');
+      if (search && IS_ADMIN) search.value = CURRENT_AGENT;
+      if (filter) filter.value = 'all';
+      renderIssues();
+    }, 50);
+    toast('查看我的问题');
+    return;
+  }
+}
+
+async function quickCompleteOrder(id, agent) {
+  // V3 改造：CHASE_ORDERS 来自 PO 表，直接更新 orders 表（PO 是 orders 表 po_number 不空的行）
+  const o = CHASE_ORDERS.find(x => x._id === id);
+  if (!o) { toast('找不到该催单记录', 'err'); return; }
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (o.status === 'arrived') {
+    toast('该订单已是「已到货」状态', 'warn');
+    return;
+  }
+
+  let nextStatus, dateCol, dateField, nextLabel, msg;
+  if (o.status === 'shipped') {
+    nextStatus = 'arrived';
+    dateCol = 'arrived_date';
+    dateField = 'arrivedDate';
+    nextLabel = '已到货';
+    msg = `采购单 ${o.orderNo} 已经收到货？\n\n会标记为：✓ 已到货\n到货日期：${today}`;
+  } else {
+    nextStatus = 'shipped';
+    dateCol = 'shipped_date';
+    dateField = 'shippedDate';
+    nextLabel = '已发货';
+    msg = `采购单 ${o.orderNo} 已经发货？\n\n会标记为：✓ 已发货\n发货日期：${today}\n\n(发货后该单会自动从催单列表移除)`;
+  }
+
+  if (!confirm(msg)) return;
+
+  // 直接更新 PO 表
+  const updates = { status: nextStatus, updated_at: new Date().toISOString() };
+  if (!o[dateField]) updates[dateCol] = today;
+
+  try {
+    const { error } = await sb.from('orders').update(updates).eq('id', o._id);
+    if (error) throw error;
+    toast(`✓ 已标记「${nextLabel}」`);
+    // 重新加载 PO 派生数据（标记发货后该单不再在催单列表）
+    await loadChaseOrders();
+    renderOrders(); refreshOrdersFb(); renderUrgentBanner(); updateOrderStats();
+  } catch (err) {
+    console.error('更新 PO 失败:', err);
+    toast('操作失败：' + (err.message || err), 'err');
+  }
+}
+
+function delOrderRow(id, agent) {
+  // V3 改造：催单数据是 PO，不应在催单 tab 删除（应去 PO 模块取消）
+  const o = CHASE_ORDERS.find(x => x._id === id);
+  if (!o) return;
+  const choice = confirm(
+    `催单数据来自采购单 ${o.orderNo}，不能在催单页直接删除。\n\n` +
+    `要"删除"该催单，请去「📦 采购单」tab 把 PO 状态改为「已取消」。\n` +
+    `这样它会自动从催单列表移除。\n\n` +
+    `· 确定 → 现在去采购单 tab\n· 取消 → 留在本页`
+  );
+  if (choice) switchTab('po');
+}
+
+function openOrderModal(id, agent) {
+  // V3 改造：从 CHASE_ORDERS 找记录（PO 派生）
+  const o = CHASE_ORDERS.find(x => x._id === id);
+  if (!o) { toast('找不到该催单记录', 'err'); return; }
+
+  _currentItemId = id;
+  _currentItemType = 'order';
+  _newScreenshots_fu = [];
+  _newScreenshots_orig = [];
+  _currentFuType = 'chase';
+  window._currentItemAgent = o._agent;
+
+  refreshSiteDropdowns();
+  document.getElementById('omSite').value = o.site || '';
+  document.getElementById('omOrderNo').value = o.orderNo || '';
+  document.getElementById('omProduct').value = o.product || '';
+  document.getElementById('omSupplier').value = o.supplier || '';
+  document.getElementById('omNotes').value = o.notes || '';
+  document.getElementById('omOrderDate').value = o.orderDate || '';
+  document.getElementById('omPromisedDate').value = o.promisedDate || '';
+  document.getElementById('omNextFollow').value = o.nextFollow || '';
+  document.getElementById('omNewDate').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('omNewNote').value = '';
+  document.getElementById('omFuThumbs').innerHTML = '';
+  document.querySelectorAll('#omTypeRow .fu-type-btn').forEach(b => b.classList.toggle('selected', b.dataset.type === 'chase'));
+  updateOrderNoHint('omSite', 'omOrderNo', 'omOrderNoHint');
+  // PO 字段不可改（由系统/PO 模块管理）
+  const orderNoInput = document.getElementById('omOrderNo');
+  if (orderNoInput) { orderNoInput.readOnly = true; orderNoInput.title = 'PO 编号不可修改（由系统自动生成）'; orderNoInput.style.opacity = '0.7'; orderNoInput.style.cursor = 'not-allowed'; }
+  const orderDateInput = document.getElementById('omOrderDate');
+  if (orderDateInput) { orderDateInput.readOnly = true; orderDateInput.title = 'PO 下单日期不可修改（采用 PO 创建时间）'; orderDateInput.style.opacity = '0.7'; orderDateInput.style.cursor = 'not-allowed'; }
+
+  renderOrderModalContent();
+  document.getElementById('orderModal').classList.add('show');
+}
+
+function renderOrderModalContent() {
+  const o = currentOrder();
+  if (!o) return;
+  const eff = getOrderEffStatus(o);
+  document.getElementById('omHeader').innerHTML = `
+    <div class="top">
+      <div class="order-no">${escapeHtml(o.orderNo || '(未填订单号)')}</div>
+      ${IS_ADMIN && window._currentItemAgent ? `<span style="font-size:11px;background:rgba(124,58,237,0.1);color:var(--purple);padding:2px 8px;border-radius:4px;font-weight:600;">👤 ${escapeHtml(window._currentItemAgent)}</span>` : ''}
+      <div class="top-status"><span class="status-pill s-${eff}" style="display:inline-flex;padding:5px 12px;">${ORDER_STATUS_LABELS[o.status]}${eff === 'overdue' ? ' ⚠ 已逾期' : ''}</span></div>
+    </div>
+    <div class="meta">
+      ${o.product ? `<span>📦 ${escapeHtml(o.product)}</span>` : ''}
+      ${o.supplier ? `<span>🏭 ${escapeHtml(o.supplier)}</span>` : ''}
+      ${o.notes ? `<span>📝 ${escapeHtml(o.notes)}</span>` : ''}
+    </div>
+  `;
+  document.querySelectorAll('#orderModal .status-grid .status-pill').forEach(p => p.classList.toggle('selected', p.dataset.st === o.status));
+  
+  // 截图
+  const origs = o.screenshots || [];
+  document.getElementById('omOrigCount').textContent = `${origs.length} 张`;
+  document.getElementById('omOrigThumbs').innerHTML = origs.map((s, i) => `<div class="drop-zone-thumb"><img src="${s}" onclick="viewImage('${s}')"><button class="rm" onclick="rmOrderOrig(${i})" title="移除">×</button></div>`).join('');
+  
+  // 时间线
+  const fu = o.followups || [];
+  document.getElementById('omTimelineCount').textContent = `${fu.length} 条`;
+  const tl = document.getElementById('omTimeline');
+  if (fu.length === 0) {
+    tl.innerHTML = '<div class="timeline-empty">还没有跟进记录</div>';
+  } else {
+    tl.innerHTML = fu.map((f, i) => `
+      <div class="timeline-item">
+        <div class="timeline-dot" style="background:var(--accent);">${i + 1}</div>
+        <div class="timeline-content">
+          <div class="timeline-meta"><span>📅 ${f.date} ${f.time || ''}</span><span class="timeline-type">${ORDER_TYPE_LABELS[f.type] || '其他'}</span></div>
+          <div class="timeline-text">${escapeHtml(f.note || '')}</div>
+          ${(f.screenshots && f.screenshots.length > 0) ? `<div class="timeline-screenshots">${f.screenshots.map(s => `<img src="${s}" class="screenshot-thumb" onclick="viewImage('${s}')">`).join('')}</div>` : ''}
+          <div class="actions"><button class="del-btn" onclick="delOrderFollowup(${i})">删除</button></div>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+function currentOrder() {
+  if (!_currentItemId) return null;
+  // V3：从 CHASE_ORDERS 找
+  return CHASE_ORDERS.find(o => o._id === _currentItemId);
+}
+
+// V3 改造：直接写 PO 表（orders 表 po_number 非空的行）
+function persistCurrentOrder(updater, immediate = false) {
+  const o = currentOrder();
+  if (!o) return;
+  updater(o);
+  o.updatedAt = new Date().toISOString();
+  // 异步推送到 supabase（PO 表）
+  const updates = {
+    site: o.site || '',
+    product: o.product || '',
+    supplier: o.supplier || '',
+    status: o.status || 'producing',
+    promised_date: o.promisedDate || null,
+    shipped_date: o.shippedDate || null,
+    arrived_date: o.arrivedDate || null,
+    next_follow: o.nextFollow || null,
+    note: o.notes || '',
+    screenshots: o.screenshots || [],
+    followups: o.followups || [],
+    updated_at: new Date().toISOString(),
+  };
+  const p = sb.from('orders').update(updates).eq('id', o._id);
+  if (immediate) {
+    return p.then(({ error }) => {
+      if (error) { console.error('保存 PO 失败:', error); toast('保存失败：' + error.message, 'err'); }
+    });
+  } else {
+    p.then(({ error }) => {
+      if (error) { console.error('保存 PO 失败:', error); toast('保存失败：' + error.message, 'err'); }
+    });
+  }
+}
+
+function onOrderField(field, value) {
+  persistCurrentOrder(o => {
+    o[field] = value;
+    if (field === 'promisedDate' && value && o.status === 'pending') o.status = 'producing';
+  });
+  if (field === 'site') updateOrderNoHint('omSite', 'omOrderNo', 'omOrderNoHint');
+  renderOrderModalContent();
+  renderOrders();
+  updateOrderStats();
+  refreshOrdersFb();
+}
+
+async function setOrderStatus(st) {
+  persistCurrentOrder(o => {
+    o.status = st;
+    if (st === 'shipped' && !o.shippedDate) {
+      o.shippedDate = new Date().toISOString().slice(0, 10);
+    }
+    if (st === 'arrived' && !o.arrivedDate) {
+      o.arrivedDate = new Date().toISOString().slice(0, 10);
+    }
+  }, true);
+  renderOrderModalContent();
+  // 状态变更可能影响 PO 是否还在催单列表（如改成 shipped/arrived/cancelled 就不在了）
+  await loadChaseOrders();
+  renderOrders(); refreshOrdersFb(); renderUrgentBanner(); updateOrderStats();
+  if (['shipped', 'arrived', 'cancelled'].includes(st)) {
+    toast(`✓ 状态已切到「${ORDER_STATUS_LABELS[st] || st}」，该单已从催单列表移除`);
+    closeModal('orderModal');
+  }
+}
+
+function deleteCurrentOrder() {
+  // V3 改造：催单数据是 PO，不应在这里删
+  const o = currentOrder();
+  if (!o) return;
+  const choice = confirm(
+    `催单数据来自采购单 ${o.orderNo}，不能在催单页删除。\n\n` +
+    `如需删除，请去「📦 采购单」tab 把该 PO 取消或删除。\n\n` +
+    `· 确定 → 现在去采购单 tab\n· 取消 → 留在本页`
+  );
+  if (choice) { closeModal('orderModal'); switchTab('po'); }
+}
+
+function setOmFuType(t) {
+  _currentFuType = t;
+  document.querySelectorAll('#omTypeRow .fu-type-btn').forEach(b => b.classList.toggle('selected', b.dataset.type === t));
+}
+
+function addOrderFollowup() {
+  const note = document.getElementById('omNewNote').value.trim();
+  const date = document.getElementById('omNewDate').value || new Date().toISOString().slice(0, 10);
+  if (!note && _newScreenshots_fu.length === 0) { toast('请输入跟进内容或上传截图', 'warn'); return; }
+  
+  persistCurrentOrder(o => {
+    if (!o.followups) o.followups = [];
+    o.followups.push({
+      type: _currentFuType, date,
+      time: new Date().toTimeString().slice(0, 5),
+      note, screenshots: [..._newScreenshots_fu],
+    });
+    if (_currentFuType === 'ship' && ['pending','producing'].includes(o.status)) {
+      o.status = 'shipped';
+      if (!o.shippedDate) o.shippedDate = date;
+    }
+    if (_currentFuType === 'arrive' && o.status === 'shipped') {
+      o.status = 'arrived';
+      if (!o.arrivedDate) o.arrivedDate = date;
+    }
+  }, true);
+  
+  document.getElementById('omNewNote').value = '';
+  document.getElementById('omFuThumbs').innerHTML = '';
+  _newScreenshots_fu = [];
+  renderOrderModalContent();
+  renderOrders();
+  updateOrderStats();
+  refreshOrdersFb();
+  toast(`✓ 已记录（${ORDER_TYPE_LABELS[_currentFuType]}）`);
+}
+
+function delOrderFollowup(idx) {
+  if (!confirm('删除这条跟进？')) return;
+  persistCurrentOrder(o => o.followups.splice(idx, 1), true);
+  renderOrderModalContent();
+  renderOrders();
+  refreshOrdersFb();
+}
+
+function rmOrderOrig(i) {
+  persistCurrentOrder(o => o.screenshots.splice(i, 1), true);
+  renderOrderModalContent();
+}
+
+// 催单统计
+function updateOrderStats() {
+  const today = new Date().toISOString().slice(0, 10);
+  const thisMonth = today.slice(0, 7);
+  let active = 0, producing = 0, shipped = 0, arrivedThisMonth = 0, overdue = 0, todayCount = 0;
+  CHASE_ORDERS.forEach(o => {
+    const eff = getOrderEffStatus(o);
+    if (!['cancelled'].includes(o.status)) {
+      active++;
+      if (o.status === 'producing') producing++;
+      if (o.status === 'shipped') shipped++;
+      if (eff === 'overdue') overdue++;
+      if ((o.nextFollow === today) || (o.promisedDate === today && o.status === 'producing')) todayCount++;
+    }
+    if (o.arrivedDate && o.arrivedDate.startsWith(thisMonth)) arrivedThisMonth++;
+  });
+  document.getElementById('oActive').textContent = active;
+  document.getElementById('oActiveSub').textContent = active > 0 ? '未取消' : '✓ 全部完成';
+  document.getElementById('oProducing').textContent = producing;
+  document.getElementById('oShipped').textContent = shipped;
+  document.getElementById('oArrived').textContent = arrivedThisMonth;
+  document.getElementById('oOverdue').textContent = overdue;
+  document.getElementById('oToday').textContent = todayCount;
+  document.getElementById('oUrgentSub').textContent = overdue > 0 ? '🔴 立即处理' : todayCount > 0 ? '🟡 今日跟进' : '✓ 无紧急';
+  updateBadges();
+  renderUrgentBanner();
+}
+
+// 催单 banner
+function refreshOrdersFb() {
+  const today = new Date().toISOString().slice(0, 10);
+  const buckets = { overdue: [], today: [], upcoming: [] };
+  CHASE_ORDERS.forEach(o => {
+    if (['cancelled','shipped','arrived'].includes(o.status)) return;
+    const triggerDate = o.nextFollow || (o.status === 'producing' ? o.promisedDate : null);
+    if (triggerDate) {
+      if (triggerDate < today) buckets.overdue.push(o);
+      else if (triggerDate === today) buckets.today.push(o);
+      else buckets.upcoming.push(o);
+    }
+  });
+  buckets.overdue.sort((a, b) => (a.nextFollow || a.promisedDate || '').localeCompare(b.nextFollow || b.promisedDate || ''));
+  buckets.upcoming.sort((a, b) => (a.nextFollow || a.promisedDate || '').localeCompare(b.nextFollow || b.promisedDate || ''));
+  
+  document.getElementById('ordersFbOverdue').textContent = buckets.overdue.length;
+  document.getElementById('ordersFbToday').textContent = buckets.today.length;
+  document.getElementById('ordersFbUpcoming').textContent = buckets.upcoming.length;
+  
+  const total = new Set([...buckets.overdue, ...buckets.today, ...buckets.upcoming].map(o => o._id)).size;
+  document.getElementById('ordersFbTotal').textContent = `共 ${total} 单`;
+  
+  const card = document.getElementById('ordersFb');
+  if (!card.dataset.userToggled) {
+    card.classList.toggle('collapsed', buckets.overdue.length === 0 && buckets.today.length === 0);
+  }
+  
+  if (buckets[_ordersFbTab].length === 0) {
+    for (const t of ['overdue','today','upcoming']) { if (buckets[t].length > 0) { _ordersFbTab = t; break; } }
+  }
+  document.querySelectorAll('#ordersFb .fb-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === _ordersFbTab));
+  
+  const list = document.getElementById('ordersFbList');
+  const items = buckets[_ordersFbTab];
+  if (items.length === 0) {
+    list.innerHTML = `<div class="fb-empty">✓ ${_ordersFbTab === 'overdue' ? '没有逾期订单' : _ordersFbTab === 'today' ? '今天没有要跟进的' : '没有未来跟进计划'}</div>`;
+    return;
+  }
+  list.innerHTML = items.slice(0, 12).map(o => {
+    const eff = getOrderEffStatus(o);
+    const td = o.nextFollow || o.promisedDate || '';
+    const days = diffDays(td);
+    let label = formatShortDate(td), cls = '';
+    if (td) {
+      if (days < 0) { label = `逾期 ${-days} 天`; cls = 'overdue'; }
+      else if (days === 0) { label = '今日'; cls = 'today'; }
+      else { label = `${days} 天后`; cls = 'upcoming'; }
+    }
+    return `
+      <div class="fb-item" onclick="openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')">
+        <div class="dot" style="background:var(--status-${eff});"></div>
+        <div class="order-no">${escapeHtml(o.orderNo || '—')}</div>
+        <div class="product">${escapeHtml(o.product || '(无描述)')}${IS_ADMIN && o._agent ? ` · 👤${escapeHtml(o._agent)}` : ''}</div>
+        <div class="badge">${ORDER_STATUS_LABELS[o.status]}</div>
+        <div class="next ${cls}">${label}</div>
+        <button class="action-btn">处理</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function switchOrdersFb(t) { _ordersFbTab = t; document.getElementById('ordersFb').classList.remove('collapsed'); refreshOrdersFb(); }
+
+// ============ 🚨 紧急告警 Banner（橙/红预警订单）============
+function renderUrgentBanner() {
+  const banner = document.getElementById('urgentAlert');
+  if (!banner) return;
+  
+  const urgent = CHASE_ORDERS.filter(o => {
+    const lvl = getOrderUrgencyLevel(o);
+    return lvl === 'red' || lvl === 'orange';
+  });
+  
+  if (urgent.length === 0) {
+    banner.style.display = 'none';
+    return;
+  }
+  
+  banner.style.display = 'block';
+  document.getElementById('urgentCount').textContent = urgent.length;
+  
+  const redCount = urgent.filter(o => getOrderUrgencyLevel(o) === 'red').length;
+  const orangeCount = urgent.length - redCount;
+  
+  banner.classList.toggle('no-red', redCount === 0);
+  
+  let subtitle = '';
+  if (redCount > 0) subtitle += `🔴 ${redCount} 严重预警 · `;
+  if (orangeCount > 0) subtitle += `🟠 ${orangeCount} 警告 · `;
+  subtitle += '逾期 + 多次催单未发货';
+  if (IS_ADMIN) subtitle = '👑 主管视角 · ' + subtitle;
+  document.getElementById('urgentSubtitle').textContent = subtitle;
+  
+  // 排序：红色优先，逾期天数倒序，催单次数倒序
+  urgent.sort((a, b) => {
+    const la = getOrderUrgencyLevel(a) === 'red' ? 0 : 1;
+    const lb = getOrderUrgencyLevel(b) === 'red' ? 0 : 1;
+    if (la !== lb) return la - lb;
+    return (a.promisedDate || '9999').localeCompare(b.promisedDate || '9999');
+  });
+  
+  const today = new Date().toISOString().slice(0, 10);
+  const items = urgent.slice(0, 8).map(o => {
+    const lvl = getOrderUrgencyLevel(o);
+    const days = o.promisedDate ? Math.max(0, Math.floor((new Date(today) - new Date(o.promisedDate)) / 86400000)) : 0;
+    const chaseCount = (o.followups || []).filter(f => f.type === 'chase').length;
+    const icon = lvl === 'red' ? '🔴' : '🟠';
+    const ownerInfo = IS_ADMIN && o._agent ? ` · 👤 ${escapeHtml(o._agent)}` : '';
+    return `
+      <div class="urgent-item ${lvl}" onclick="openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')">
+        <div class="level">${icon}</div>
+        <div class="order">${escapeHtml(o.orderNo || '—')}</div>
+        <div class="col-info">
+          <div>${escapeHtml(o.product || '(无产品描述)')}</div>
+          <div class="supplier">🏭 ${escapeHtml(o.supplier || '—')}${ownerInfo}</div>
+        </div>
+        <div class="col-date">承诺 ${formatShortDate(o.promisedDate)}</div>
+        <div class="col-overdue">逾期 ${days} 天</div>
+        <div class="col-chase">催 ${chaseCount} 次</div>
+        <button class="escalate-btn" onclick="event.stopPropagation(); openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')">处理</button>
+      </div>
+    `;
+  }).join('');
+  
+  let html = items;
+  if (urgent.length > 8) {
+    html += `<div class="urgent-more">⚠ 还有 ${urgent.length - 8} 个紧急订单，请用「按供应商分组」视图查看完整列表</div>`;
+  }
+  document.getElementById('urgentList').innerHTML = html;
+}
+
+// ============ 📋 导出供应商对账单 ============
+function exportSupplierAccounting(supplier) {
+  // V3：从 PO 派生数据找该供应商所有未发货订单
+  const orders = CHASE_ORDERS.filter(o => o.supplier === supplier && !['cancelled','shipped','arrived'].includes(o.status));
+  
+  if (orders.length === 0) { toast('该供应商没有待催的订单', 'warn'); return; }
+  
+  // 按下单日期排序（最早下单的在前，最该催）
+  orders.sort((a, b) => (a.orderDate || '9999').localeCompare(b.orderDate || '9999'));
+  
+  const today = new Date().toISOString().slice(0, 10);
+  const dateStr = today.replace(/-/g, '/');
+  
+  // 统计
+  let totalOverdueDays = 0;
+  let overdueCount = 0;
+  let totalChase = 0;
+  orders.forEach(o => {
+    if (o.promisedDate && o.promisedDate < today) {
+      const days = Math.floor((new Date(today) - new Date(o.promisedDate)) / 86400000);
+      totalOverdueDays += days;
+      overdueCount++;
+    }
+    totalChase += (o.followups || []).filter(f => f.type === 'chase').length;
+  });
+  const avgOverdue = overdueCount > 0 ? Math.round(totalOverdueDays / overdueCount) : 0;
+  
+  const headers = ['序号','订单号','产品 / SKU','下单日期','原承诺发货日','当前状态','已逾期(天)','已催次数','最后跟进','我方备注'];
+  
+  const rows = orders.map((o, i) => {
+    const days = o.promisedDate && o.promisedDate < today ? Math.floor((new Date(today) - new Date(o.promisedDate)) / 86400000) : 0;
+    const chaseCount = (o.followups || []).filter(f => f.type === 'chase').length;
+    const last = o.followups && o.followups.length > 0 ? o.followups[o.followups.length - 1] : null;
+    return [
+      i + 1, o.orderNo || '', o.product || '',
+      o.orderDate || '', o.promisedDate || '',
+      ORDER_STATUS_LABELS[o.status] || '',
+      days > 0 ? days : '',
+      chaseCount > 0 ? chaseCount : '',
+      last ? `[${last.date}] ${last.note}` : '',
+      o.notes || '',
+    ];
+  });
+  
+  // 构造工作表
+  const wb = XLSX.utils.book_new();
+  const data = [
+    [`${supplier} - 滞留订单对账清单`],
+    [`生成日期: ${dateStr}    共 ${orders.length} 单待发货    其中逾期 ${overdueCount} 单    平均逾期 ${avgOverdue} 天    累计催单 ${totalChase} 次`],
+    [''],
+    ['请贵司核对以下订单并尽快回复发货计划：'],
+    [''],
+    headers,
+    ...rows,
+    [''],
+    ['说明：'],
+    ['1. 以上订单均为我司已下采购单但贵司尚未发货的订单'],
+    ['2. 「原承诺发货日」为贵司当初承诺的发货日期，请贵司确认'],
+    ['3. 请于收到此表 3 个工作日内回复每单的最新发货计划'],
+    ['4. 如有特殊情况，请及时与对接跟单员联系'],
+  ];
+  
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  
+  // 合并标题
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } },
+    { s: { r: 3, c: 0 }, e: { r: 3, c: headers.length - 1 } },
+    { s: { r: 6 + rows.length + 1, c: 0 }, e: { r: 6 + rows.length + 1, c: headers.length - 1 } },
+    { s: { r: 6 + rows.length + 2, c: 0 }, e: { r: 6 + rows.length + 2, c: headers.length - 1 } },
+    { s: { r: 6 + rows.length + 3, c: 0 }, e: { r: 6 + rows.length + 3, c: headers.length - 1 } },
+    { s: { r: 6 + rows.length + 4, c: 0 }, e: { r: 6 + rows.length + 4, c: headers.length - 1 } },
+    { s: { r: 6 + rows.length + 5, c: 0 }, e: { r: 6 + rows.length + 5, c: headers.length - 1 } },
+  ];
+  
+  ws['!cols'] = [{wch:5},{wch:14},{wch:26},{wch:11},{wch:11},{wch:10},{wch:10},{wch:8},{wch:35},{wch:25}];
+  
+  XLSX.utils.book_append_sheet(wb, ws, supplier.slice(0, 30) || 'sheet');
+  XLSX.writeFile(wb, `${supplier}_滞留订单对账_${today}.xlsx`);
+  toast(`✓ 已导出 ${orders.length} 单对账清单`);
+}
+
+// ============ 批量催单 ============
+let _bcSupplier = null;
+let _bcType = 'chase';
+let _bcScreenshots = [];
+let _bcSelectedIds = new Set();
+
+function openBatchChase(supplier) {
+  _bcSupplier = supplier;
+  _bcType = 'chase';
+  _bcScreenshots = [];
+  _bcSelectedIds = new Set();
+  
+  // V3：从 PO 派生数据找该供应商所有待催 PO
+  const items = CHASE_ORDERS.filter(o => o.supplier === supplier && !['cancelled','shipped','arrived'].includes(o.status));
+  
+  if (items.length === 0) { toast('该供应商没有待催的订单', 'warn'); return; }
+  
+  // 默认全选
+  items.forEach(o => _bcSelectedIds.add(o._id));
+  
+  // 渲染
+  document.getElementById('bcSupplierTitle').textContent = `供应商：${supplier} · ${items.length} 单待催`;
+  document.getElementById('bcDate').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('bcNote').value = '';
+  document.getElementById('bcThumbs').innerHTML = '';
+  document.querySelectorAll('#batchChaseModal .fu-type-btn').forEach(b => b.classList.toggle('selected', b.dataset.type === 'chase'));
+  
+  renderBcOrdersList(items);
+  document.getElementById('batchChaseModal').classList.add('show');
+}
+
+function renderBcOrdersList(items) {
+  const html = items.map(o => {
+    const eff = getOrderEffStatus(o);
+    const promisedCls = getDateClass(o.promisedDate);
+    const chaseCount = (o.followups || []).filter(f => f.type === 'chase').length;
+    const checked = _bcSelectedIds.has(o._id);
+    return `
+      <div class="bc-order-item" onclick="bcToggle('${o._id}')">
+        <input type="checkbox" ${checked ? 'checked' : ''} data-id="${o._id}" onclick="event.stopPropagation();" onchange="bcToggle('${o._id}')">
+        <div class="order-no">${escapeHtml(o.orderNo || '—')}</div>
+        <div class="product">${escapeHtml(o.product || '(无产品描述)')}</div>
+        <div class="promised ${promisedCls}">${formatShortDate(o.promisedDate)}${eff === 'overdue' ? ' ⚠' : ''}</div>
+        <div class="chase-count ${chaseCount >= 3 ? 'high' : ''}">已催${chaseCount}次</div>
+      </div>
+    `;
+  }).join('');
+  document.getElementById('bcOrdersList').innerHTML = html;
+  updateBcCount();
+}
+
+function bcToggle(id) {
+  if (_bcSelectedIds.has(id)) _bcSelectedIds.delete(id);
+  else _bcSelectedIds.add(id);
+  // 重新渲染（更新 checked 状态）—— V3 用 CHASE_ORDERS
+  const items = CHASE_ORDERS.filter(o => o.supplier === _bcSupplier && !['cancelled','shipped','arrived'].includes(o.status));
+  renderBcOrdersList(items);
+}
+
+function bcSelectAll(yes) {
+  const items = CHASE_ORDERS.filter(o => o.supplier === _bcSupplier && !['cancelled','shipped','arrived'].includes(o.status));
+  if (yes) items.forEach(o => _bcSelectedIds.add(o._id));
+  else _bcSelectedIds.clear();
+  renderBcOrdersList(items);
+}
+
+function updateBcCount() {
+  document.getElementById('bcSelectedCount').textContent = `已选 ${_bcSelectedIds.size} 单`;
+}
+
+function setBcType(t) {
+  _bcType = t;
+  document.querySelectorAll('#batchChaseModal .fu-type-btn').forEach(b => b.classList.toggle('selected', b.dataset.type === t));
+}
+
+async function saveBatchChase() {
+  if (_bcSelectedIds.size === 0) { toast('请至少选 1 单', 'warn'); return; }
+  const note = document.getElementById('bcNote').value.trim();
+  const date = document.getElementById('bcDate').value || new Date().toISOString().slice(0, 10);
+  if (!note && _bcScreenshots.length === 0) { toast('请输入催单内容或上传截图', 'warn'); return; }
+  
+  // V3：每个 PO 直接调 supabase update（不再走旧 DATA.saveOrders）
+  const targets = CHASE_ORDERS.filter(o => _bcSelectedIds.has(o._id));
+  let count = 0;
+  const errors = [];
+  for (const o of targets) {
+    const newFollowup = {
+      type: _bcType, date,
+      time: new Date().toTimeString().slice(0, 5),
+      note,
+      screenshots: [..._bcScreenshots],
+      _batch: true,
+    };
+    const newFollowups = [...(o.followups || []), newFollowup];
+    o.followups = newFollowups; // 同步更新本地缓存
+    const updates = {
+      followups: newFollowups,
+      updated_at: new Date().toISOString(),
+    };
+    // ship/arrive 类型可能自动切状态
+    if (_bcType === 'ship' && ['pending','producing'].includes(o.status)) {
+      updates.status = 'shipped';
+      if (!o.shippedDate) { updates.shipped_date = date; o.shippedDate = date; }
+      o.status = 'shipped';
+    }
+    if (_bcType === 'arrive' && o.status === 'shipped') {
+      updates.status = 'arrived';
+      if (!o.arrivedDate) { updates.arrived_date = date; o.arrivedDate = date; }
+      o.status = 'arrived';
+    }
+    try {
+      const { error } = await sb.from('orders').update(updates).eq('id', o._id);
+      if (error) throw error;
+      count++;
+    } catch (err) {
+      errors.push(`${o.orderNo}: ${err.message || err}`);
+    }
+  }
+  
+  closeModal('batchChaseModal');
+  // 重新加载 PO 派生数据
+  await loadChaseOrders();
+  renderOrders();
+  updateOrderStats();
+  refreshOrdersFb();
+  if (errors.length > 0) {
+    toast(`✓ 批量催单 ${count} 单成功，${errors.length} 单失败`, 'warn', 6000);
+    console.error('批量催单失败明细:', errors);
+  } else {
+    toast(`✓ 已批量催单 ${count} 个订单`);
+  }
+}
+
+// ============ 批量催单截图（用 _pasteTarget 复用全局粘贴）============
+function setupBatchChaseScreenshot() {
+  const dz = document.getElementById('bcDropZone');
+  const fi = document.getElementById('bcFileInput');
+  if (!dz || !fi || dz.dataset.bound) return;
+  dz.dataset.bound = '1';
+  dz.addEventListener('click', e => { if (e.target.tagName !== 'A') fi.click(); });
+  fi.addEventListener('change', e => handleBcFiles(e.target.files));
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); _pasteTarget = 'batch_chase'; });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); handleBcFiles(e.dataTransfer.files); });
+  dz.addEventListener('mouseenter', () => { _pasteTarget = 'batch_chase'; });
+}
+
+async function handleBcFiles(files) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) { toast(`${file.name} 不是图片`, 'err'); continue; }
+    try {
+      const dataURL = await compressImage(file);
+      const url = await uploadScreenshotToStorage(dataURL);
+      _bcScreenshots.push(url);
+      renderBcThumbs();
+    } catch (err) {
+      console.error(err);
+      toast('图片上传失败：' + (err.message || err), 'err');
+    }
+  }
+}
+
+function renderBcThumbs() {
+  document.getElementById('bcThumbs').innerHTML = _bcScreenshots.map((s, i) => `
+    <div class="drop-zone-thumb">
+      <img src="${s}" onclick="viewImage('${s}')">
+      <button class="rm" onclick="rmBcThumb(${i})">×</button>
+    </div>
+  `).join('');
+}
+
+function rmBcThumb(i) {
+  _bcScreenshots.splice(i, 1);
+  renderBcThumbs();
+}
+
