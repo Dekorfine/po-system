@@ -1552,6 +1552,26 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .store-chip-status { font-size: 11px; font-weight: 700; color: var(--success); }
 .store-chip-status.install { color: var(--accent); }
 
+/* 销售业绩可点击卡片 */
+.sales-stat-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.sales-stat-card:hover {
+  background: var(--accent-soft, #eff6ff);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+.sales-stat-card:active {
+  transform: translateY(0);
+}
+
 /* 旧版大卡片样式（保留兼容，已不使用） */
 .shopify-store-card {
   border: 1px solid var(--border);
@@ -2076,31 +2096,65 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px;
 }
 
-/* 打印预览 - 模仿 PO 模板 */
+/* 采购单截图预览 - 紧凑横版，方便快速截图发供应商 */
 .po-print {
-  background: white; color: #000; padding: 30px; font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  background: white; color: #000; padding: 18px 22px; font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  max-width: 920px;
 }
-.po-print h1 { font-size: 22px; text-align: center; margin: 0 0 4px; font-weight: 700; }
-.po-print .sub { text-align: center; color: #555; font-size: 12px; margin-bottom: 18px; }
-.po-print .meta-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px;
-  font-size: 13px; margin-bottom: 18px;
-  padding: 10px 12px; background: #fafafa; border-radius: 4px;
+.po-print .po-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 10px; border-bottom: 2px solid #1c1917; margin-bottom: 10px;
 }
-.po-print .meta-grid b { color: #333; }
-.po-print table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 14px; }
-.po-print th { background: #f0f0f0; padding: 8px 6px; text-align: left; border: 1px solid #ddd; font-weight: 600; }
-.po-print td { padding: 8px 6px; border: 1px solid #ddd; vertical-align: top; }
-.po-print td img { max-width: 100px; max-height: 100px; border-radius: 4px; }
-.po-print .total-row td { background: #f7f7f7; font-weight: 600; }
+.po-print .po-title {
+  font-size: 17px; font-weight: 700; letter-spacing: 1px;
+}
+.po-print .po-title .po-no {
+  margin-left: 10px; font-size: 14px; color: #2563eb; font-family: monospace;
+}
+.po-print .po-header .po-meta-right {
+  font-size: 11px; color: #555;
+}
+.po-print .meta-bar {
+  display: flex; flex-wrap: wrap; gap: 4px 18px;
+  font-size: 12px; padding: 6px 10px; background: #f5f5f4; border-radius: 4px;
+  margin-bottom: 8px;
+}
+.po-print .meta-bar span { white-space: nowrap; }
+.po-print .meta-bar b { color: #333; font-weight: 600; }
+.po-print table {
+  width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px;
+}
+.po-print th {
+  background: #f0f0f0; padding: 5px 6px; text-align: left; border: 1px solid #ccc;
+  font-weight: 600; font-size: 11px;
+}
+.po-print td {
+  padding: 5px 6px; border: 1px solid #ddd; vertical-align: middle;
+}
+.po-print td img {
+  width: 56px; height: 56px; object-fit: cover; border-radius: 3px; display: block;
+}
+.po-print .total-row td {
+  background: #f7f7f7; font-weight: 700; font-size: 13px;
+}
+.po-print .notes-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin-bottom: 4px;
+}
 .po-print .note-box {
-  border: 1px solid #ddd; padding: 10px; min-height: 50px; font-size: 12px; color: #444;
-  background: #fffbeb; border-radius: 4px; margin-bottom: 10px;
+  border: 1px solid #fbbf24; padding: 6px 9px; min-height: 36px;
+  font-size: 12px; color: #1c1917;
+  background: #fffbeb; border-radius: 3px;
 }
-.po-print .signature {
-  margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; font-size: 12px;
+.po-print .note-box.danger { border-color: #dc2626; background: #fef2f2; }
+.po-print .note-box .label {
+  font-size: 10px; color: #92400e; font-weight: 700; margin-bottom: 2px; display: block;
 }
-.po-print .signature .line { border-bottom: 1px solid #999; padding-bottom: 3px; min-height: 30px; }
+.po-print .note-box.danger .label { color: #dc2626; }
+.po-print .note-box .content {
+  font-size: 13px; font-weight: 600; font-family: monospace; word-break: break-all;
+}
+.po-print .note-box.danger .content { font-family: inherit; font-weight: 500; }
 
 @media print {
   body * { visibility: hidden; }
@@ -2923,15 +2977,16 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 
 <!-- ============ 打印预览弹窗 ============ -->
 <div id="poPrintModal" class="modal" style="display:none;">
-  <div class="modal-content" style="max-width: 900px;">
+  <div class="modal-content" style="max-width: 960px;">
     <div class="modal-header">
-      <h3>🖨 采购单打印预览</h3>
+      <h3>📋 采购单预览（截图发供应商）</h3>
       <button class="modal-close" onclick="closePoPrint()">✕</button>
     </div>
     <div class="modal-body" id="poPrintBody" style="max-height: 75vh; overflow-y: auto;"></div>
     <div class="modal-footer">
       <button class="btn" onclick="closePoPrint()">关闭</button>
-      <button class="btn primary" onclick="poPrintNow()">🖨 打印</button>
+      <button class="btn" onclick="poPrintNow()" title="如果需要纸质打印">🖨 打印</button>
+      <button class="btn primary" onclick="poScreenshot()" title="把预览区域复制为图片，可直接粘贴到微信/QQ">📸 截图复制</button>
     </div>
   </div>
 </div>
@@ -11856,11 +11911,11 @@ async function renderSalesStats() {
   container.innerHTML = `
     <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-        <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">📊 销售业绩 <span style="font-weight:400; color:var(--text-tertiary); margin-left:6px; font-size:11px;">${shop ? escapeHtml(shop) : '全部店铺'}${IS_ADMIN ? '' : ' · 仅订单数（销售额限主管查看）'}</span></div>
+        <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">📊 销售业绩 <span style="font-weight:400; color:var(--text-tertiary); margin-left:6px; font-size:11px;">${shop ? escapeHtml(shop) : '全部店铺'}${IS_ADMIN ? '' : ' · 仅订单数（销售额限主管查看）'} · 点击卡片查看订单</span></div>
       </div>
       <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;">
-        ${stats.map(s => `
-          <div style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px;">
+        ${stats.map((s, i) => `
+          <div class="sales-stat-card" onclick="shopifyFilterByPeriod(${periods[i].days})" title="点击：筛选出${s.label}的订单">
             <div style="font-size: 11px; color: var(--text-tertiary);">${s.label}</div>
             <div style="font-size: 20px; font-weight: 700; color: var(--accent); margin-top:2px;">${s.count}<span style="font-size: 11px; font-weight: 400; color: var(--text-tertiary); margin-left: 3px;">单</span></div>
             ${IS_ADMIN ? `<div style="font-size: 11px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">${mainCurrency} ${s.amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>` : '<div style="font-size: 11px; color: var(--text-tertiary);">🔒 销售额</div>'}
@@ -11869,6 +11924,38 @@ async function renderSalesStats() {
       </div>
     </div>
   `;
+}
+
+// 点击业绩卡片 → 在订单列表里按时间筛选
+function shopifyFilterByPeriod(days) {
+  // 设置 quickRange 下拉
+  const sel = document.getElementById('salesQuickRange');
+  const fromEl = document.getElementById('salesFetchFrom');
+  const toEl = document.getElementById('salesFetchTo');
+  
+  // days=1 表示今天，找最接近的下拉值
+  if (days === 1) {
+    // 今天用自定义
+    const today = new Date();
+    const ymd = today.toISOString().slice(0, 10);
+    if (sel) sel.value = 'custom';
+    if (fromEl) fromEl.value = ymd;
+    if (toEl) toEl.value = ymd;
+  } else {
+    // 7/30/90/365 直接选下拉值
+    if (sel) {
+      sel.value = String(days);
+      salesQuickRangeChange();  // 触发下拉变化逻辑
+    }
+  }
+  // 重新加载订单 + 渲染
+  shopifyReloadOrdersAndRender(true);
+  // 滚动到订单列表顶部
+  setTimeout(() => {
+    const ordersEl = document.getElementById('salesOrdersBody');
+    if (ordersEl) ordersEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 200);
+  toast(`✓ 已筛选：${days === 1 ? '今天' : '近 ' + days + ' 天'}`, 'info');
 }
 
 // 快捷时间下拉变化
@@ -15048,7 +15135,8 @@ async function masterUnbindSelf() {
 let PO_LIST = [];
 let PO_FILTER = 'all';
 let PO_SALES_ORDERS_MAP = {};
-let PO_SUPPLIER_FILTER = '';  // 供应商筛选
+let PO_SUPPLIER_FILTER = '';
+let PO_DATE_FILTER = null;  // {days, creator?} 时间范围筛选
 let PO_PAGE = 1;
 const PO_PAGE_SIZE = 50;
 
@@ -15126,20 +15214,21 @@ async function loadPoStats() {
   const myRows = (data || []).filter(r => r.creator_name === me);
   const allRows = data || [];
 
-  const myStats = periods.map(p => {
+  const myStats = periods.map((p, idx) => {
     const rows = myRows.filter(r => r.created_at >= p.since);
-    return { label: p.label, count: rows.length, amount: rows.reduce((s, x) => s + Number(x.total_amount || 0), 0) };
+    const days = idx === 0 ? 1 : [7, 30, 90, 365][idx - 1];
+    return { label: p.label, count: rows.length, amount: rows.reduce((s, x) => s + Number(x.total_amount || 0), 0), days };
   });
 
   let html = `
     <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-        <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">📊 我的业绩 <span style="font-weight:400; color:var(--text-tertiary); margin-left:6px;">${escapeHtml(me)}</span></div>
+        <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">📊 我的业绩 <span style="font-weight:400; color:var(--text-tertiary); margin-left:6px;">${escapeHtml(me)}<span style="margin-left:6px; font-size:11px;">· 点击卡片查看对应 PO</span></span></div>
         ${IS_ADMIN ? '<button class="btn small" onclick="poStatsToggleTeam()" style="font-size:11px;" id="poStatsToggleBtn">👥 查看全员</button>' : ''}
       </div>
       <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;">
         ${myStats.map(s => `
-          <div style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px;">
+          <div class="sales-stat-card" onclick="poFilterByPeriod(${s.days})" title="点击：筛选出${s.label}由我创建的采购单">
             <div style="font-size: 11px; color: var(--text-tertiary);">${s.label}</div>
             <div style="font-size: 20px; font-weight: 700; color: var(--accent); margin-top:2px;">${s.count}<span style="font-size: 11px; font-weight: 400; color: var(--text-tertiary); margin-left: 3px;">张</span></div>
             <div style="font-size: 10px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">¥ ${s.amount.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</div>
@@ -15233,6 +15322,26 @@ function poChangeSupplierFilter(val) {
   renderPoList();
 }
 
+// 点击业绩卡片：按时间 + 当前用户筛选 PO
+function poFilterByPeriod(days) {
+  PO_DATE_FILTER = { days, creator: CURRENT_AGENT };
+  PO_FILTER = 'all';  // 切换到全部 tab（仍然排除已取消）
+  PO_PAGE = 1;
+  // 同步 sub-tab UI
+  document.querySelectorAll('.sub-tab-btn[data-pofilter]').forEach(b => b.classList.toggle('active', b.dataset.pofilter === 'all'));
+  renderPoList();
+  setTimeout(() => {
+    const el = document.getElementById('poListBody');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
+  toast(`✓ 已筛选：${days === 1 ? '今天' : '近 ' + days + ' 天'} · ${CURRENT_AGENT}`);
+}
+
+function poClearDateFilter() {
+  PO_DATE_FILTER = null;
+  renderPoList();
+}
+
 function poGoPage(p) {
   PO_PAGE = Math.max(1, p);
   renderPoList();
@@ -15253,6 +15362,15 @@ function renderPoList() {
   // 供应商筛选
   if (PO_SUPPLIER_FILTER) list = list.filter(p => (p.supplier || '') === PO_SUPPLIER_FILTER);
 
+  // 日期筛选（点击业绩卡片）
+  if (PO_DATE_FILTER) {
+    const cutoff = PO_DATE_FILTER.days === 1
+      ? new Date(new Date().setHours(0, 0, 0, 0)).toISOString()
+      : new Date(Date.now() - PO_DATE_FILTER.days * 86400000).toISOString();
+    list = list.filter(p => (p.created_at || '') >= cutoff);
+    if (PO_DATE_FILTER.creator) list = list.filter(p => p.creator_name === PO_DATE_FILTER.creator);
+  }
+
   const body = document.getElementById('poListBody');
   if (list.length === 0) {
     body.innerHTML = '<div style="padding:32px; text-align:center; color:var(--text-tertiary);">无采购单</div>';
@@ -15269,6 +15387,12 @@ function renderPoList() {
   const allSuppliers = [...new Set(PO_LIST.filter(p => p.status !== 'cancelled').map(p => p.supplier).filter(Boolean))].sort();
   const supplierFilterHtml = `
     <div style="display:flex; gap:10px; align-items:center; padding:10px 0; flex-wrap:wrap;">
+      ${PO_DATE_FILTER ? `
+        <span style="display:inline-flex; align-items:center; gap:4px; padding: 4px 10px; background: var(--accent-soft, #eff6ff); border: 1px solid var(--accent); border-radius: 14px; font-size: 12px; color: var(--accent); font-weight: 600;">
+          📅 ${PO_DATE_FILTER.days === 1 ? '今天' : '近' + PO_DATE_FILTER.days + '天'}${PO_DATE_FILTER.creator ? ' · ' + escapeHtml(PO_DATE_FILTER.creator) : ''}
+          <span onclick="poClearDateFilter()" style="cursor:pointer; margin-left:4px; padding: 0 4px;" title="清除日期筛选">✕</span>
+        </span>
+      ` : ''}
       <select onchange="poChangeSupplierFilter(this.value)" style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); min-width:200px;">
         <option value="">— 全部供应商 (${allSuppliers.length}) —</option>
         ${allSuppliers.map(s => `<option value="${escapeHtml(s)}" ${PO_SUPPLIER_FILTER === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
@@ -15834,46 +15958,63 @@ function poOpenPrint(poId) {
 
   document.getElementById('poPrintBody').innerHTML = `
     <div class="po-print" id="poPrintContent">
-      <h1>采 购 单</h1>
-      <div class="sub">PURCHASE ORDER</div>
-      <div class="meta-grid">
-        <div><b>采购单号：</b>${escapeHtml(po.po_number)}</div>
-        <div><b>开单日期：</b>${new Date(po.created_at).toLocaleDateString()}</div>
-        <div><b>供 应 商：</b>${escapeHtml(po.supplier)}</div>
-        <div><b>下单日期：</b>${escapeHtml(po.promised_date || '—')}</div>
-        <div><b>关联销售：</b>${escapeHtml(po.order_no || '')}</div>
-        <div><b>跟  单：</b>${escapeHtml(po.creator_name || '')}</div>
+      <!-- 紧凑顶栏：左标题号 右日期/跟单 -->
+      <div class="po-header">
+        <div class="po-title">
+          📋 采购单 <span class="po-no">${escapeHtml(po.po_number)}</span>
+        </div>
+        <div class="po-meta-right">
+          开单 ${new Date(po.created_at).toLocaleDateString()} · 跟单 ${escapeHtml(po.creator_name || '')}
+        </div>
       </div>
+      <!-- 关键信息一行展示 -->
+      <div class="meta-bar">
+        <span><b>供应商：</b>${escapeHtml(po.supplier)}</span>
+        <span><b>关联销售：</b>${escapeHtml(po.order_no || '—')}</span>
+        ${po.promised_date ? `<span><b>交期：</b>${escapeHtml(po.promised_date)}</span>` : ''}
+        <span><b>合计：</b><span style="color:#dc2626; font-weight:700;">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span></span>
+      </div>
+      <!-- 产品表格 -->
       <table>
-        <thead><tr><th width="50">序号</th><th width="110">图片</th><th>产品规格</th><th width="60">数量</th><th width="80">单价</th><th width="100">小计</th></tr></thead>
+        <thead><tr>
+          <th width="32" style="text-align:center;">#</th>
+          <th width="66">图片</th>
+          <th>产品规格</th>
+          <th width="56" style="text-align:center;">数量</th>
+          <th width="80" style="text-align:right;">单价</th>
+          <th width="92" style="text-align:right;">小计</th>
+        </tr></thead>
         <tbody>
           ${items.map((li, i) => {
-            // 提取规格信息（用 extractVariantInfo 转换好的内容），不显示英文名/SKU
             const specs = extractVariantInfo(li.variant || '');
             return `
             <tr>
               <td style="text-align:center;">${i+1}</td>
-              <td style="text-align:center;">${li.image_url ? `<img src="${escapeHtml(li.image_url)}">` : '—'}</td>
-              <td>${li.title_cn ? `<div style="font-weight:600;">${escapeHtml(li.title_cn)}</div>` : ''}${specs ? `<div style="color:#444; font-size:11px; white-space:pre-line; margin-top:3px;">${escapeHtml(specs)}</div>` : (li.title_cn ? '' : '<span style="color:#888;">—</span>')}</td>
-              <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:4px 10px; border-radius:6px; font-weight:700; font-size:16px; display:inline-block;">${li.qty}</span>` : li.qty}</td>
-              <td style="text-align:right;">¥ ${Number(li.price).toFixed(2)}</td>
-              <td style="text-align:right;">¥ ${Number(li.subtotal).toFixed(2)}</td>
+              <td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}">` : '<span style="color:#aaa;">—</span>'}</td>
+              <td>${li.title_cn ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(li.title_cn)}</div>` : ''}${specs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(specs)}</div>` : (li.title_cn ? '' : '<span style="color:#888;">—</span>')}</td>
+              <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px; display:inline-block;">${li.qty}</span>` : li.qty}</td>
+              <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
+              <td style="text-align:right; font-family:monospace; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
             </tr>`;
           }).join('')}
           <tr class="total-row">
-            <td colspan="3" style="text-align:right;">合计</td>
+            <td colspan="3" style="text-align:right;">合 计</td>
             <td style="text-align:center;">${totalQty}</td>
             <td></td>
-            <td style="text-align:right;">¥ ${totalAmount.toFixed(2)}</td>
+            <td style="text-align:right; font-family:monospace; color:#dc2626;">¥ ${totalAmount.toFixed(2)}</td>
           </tr>
         </tbody>
       </table>
-      <div><b style="font-size:13px;">⚠ 订单备注（请写在纸箱上）：</b></div>
-      <div class="note-box" style="font-size:16px; font-weight:600; font-family:monospace;">${escapeHtml(po.box_note || '—')}</div>
-      ${po.note ? `<div><b style="font-size:13px;">其他备注：</b></div><div class="note-box">${escapeHtml(po.note)}</div>` : ''}
-      <div class="signature">
-        <div><b>采购方签字：</b><div class="line"></div></div>
-        <div><b>供应商签字：</b><div class="line"></div></div>
+      <!-- 备注：订单备注 + 其他备注 并排 -->
+      <div class="notes-grid">
+        <div class="note-box danger">
+          <span class="label">⚠ 订单备注（请写在纸箱上）</span>
+          <div class="content">${escapeHtml(po.box_note || '—')}</div>
+        </div>
+        <div class="note-box">
+          <span class="label">其他备注</span>
+          <div class="content" style="font-weight:500; font-family:inherit;">${escapeHtml(po.note || '—')}</div>
+        </div>
       </div>
     </div>
   `;
@@ -15881,6 +16022,62 @@ function poOpenPrint(poId) {
 }
 function closePoPrint() { document.getElementById('poPrintModal').style.display = 'none'; }
 function poPrintNow() { window.print(); }
+
+// 截图复制到剪贴板（动态加载 html2canvas，首次用时下载 ~150KB）
+async function poScreenshot() {
+  const el = document.getElementById('poPrintContent');
+  if (!el) { toast('找不到预览内容', 'err'); return; }
+
+  // 动态加载 html2canvas
+  if (typeof window.html2canvas === 'undefined') {
+    toast('正在加载截图工具…', 'info');
+    try {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('CDN 加载失败'));
+        document.head.appendChild(s);
+        setTimeout(() => reject(new Error('加载超时')), 12000);
+      });
+    } catch (e) {
+      toast('截图工具加载失败，请用系统截图工具（PrtSc / 微信截图 Ctrl+Alt+A）', 'err');
+      return;
+    }
+  }
+
+  try {
+    const canvas = await window.html2canvas(el, {
+      backgroundColor: '#ffffff',
+      scale: 2,        // 2 倍清晰度
+      useCORS: true,   // 允许跨域图片
+      logging: false,
+    });
+    canvas.toBlob(async (blob) => {
+      if (!blob) { toast('生成图片失败', 'err'); return; }
+      // 尝试写剪贴板
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        toast('✓ 图片已复制，可直接粘贴到微信/QQ');
+      } catch (e) {
+        // 降级：下载文件
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const po = PO_LIST.find(x => document.getElementById('poPrintContent').innerHTML.includes(x.po_number));
+        a.href = url;
+        a.download = `采购单_${po?.po_number || Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast('✓ 已下载图片（剪贴板权限被拒）');
+      }
+    }, 'image/png');
+  } catch (e) {
+    console.error('截图失败:', e);
+    toast('截图失败：' + (e.message || e) + '（产品图可能跨域无法捕获）', 'err');
+  }
+}
 // 兼容旧引用
 
 // ============ 接入 renderActiveTab ============
