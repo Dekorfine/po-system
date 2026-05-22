@@ -1353,6 +1353,18 @@
         const [packages, setPackages] = useState([
             { id: 1, l: '', w: '', h: '', weight: '', qty: '1', isCrate: false, forceSingleBox: false, productNote: '' }
         ]);
+
+        // 打木箱风险评估（用户勾选 → 给建议）
+        const [crateAssessment, setCrateAssessment] = useState({
+            structure_large_diameter: false,    // 直径>80cm 大尺寸
+            structure_irregular: false,         // 树杈/异形/不规则
+            structure_unstable: false,          // 重心不稳/结构复杂
+            material_fragile: false,            // 云石/玻璃/水晶等易碎
+            material_scratchable: false,        // 易刮花/易变形
+            attr_custom: false,                 // 非标定制/不可二次销售
+            attr_high_value: false,             // 高货值/补货周期长/维修成本高
+        });
+        const [showAssessment, setShowAssessment] = useState(false);
         const [glassLamp, setGlassLamp] = useState(false);
         const [targetCN, setTargetCN] = useState('美国');  // 目的国（中文名）
         const country = CN_TO_REGION[targetCN] || null;  // 衍生区域（4 主区或 null=仅中邮）
@@ -1383,6 +1395,44 @@
             const newPackages = [...packages];
             newPackages.splice(idx + 1, 0, copy);
             setPackages(newPackages);
+        };
+
+        // 木箱评估自动检测：根据已输入的包装尺寸，提醒大尺寸
+        const autoDetectedReasons = useMemo(() => {
+            const reasons = [];
+            packages.forEach((p, i) => {
+                const l = Number(p.l) || 0, w = Number(p.w) || 0, h = Number(p.h) || 0;
+                const maxDim = Math.max(l, w, h);
+                if (maxDim >= 80) {
+                    reasons.push(`包装 ${i + 1} 最大边 ${maxDim}cm ≥ 80cm（大尺寸）`);
+                }
+            });
+            return reasons;
+        }, [packages]);
+
+        // 综合评估结论
+        const assessmentResult = useMemo(() => {
+            const flags = Object.entries(crateAssessment).filter(([k, v]) => v).map(([k]) => k);
+            const totalScore = flags.length + (autoDetectedReasons.length > 0 ? 1 : 0);
+            // 任意一项命中 → 建议木箱
+            const recommend = totalScore >= 1;
+            return {
+                recommend,
+                flagsCount: flags.length,
+                hasAutoDetected: autoDetectedReasons.length > 0,
+                totalScore,
+                allCrated: packages.every(p => p.isCrate),
+                anyCrated: packages.some(p => p.isCrate),
+            };
+        }, [crateAssessment, autoDetectedReasons, packages]);
+
+        // 一键把所有包装改为木箱
+        const applyAllCrate = () => {
+            setPackages(packages.map(p => ({ ...p, isCrate: true })));
+        };
+        // 一键全改回纸箱
+        const applyAllCarton = () => {
+            setPackages(packages.map(p => ({ ...p, isCrate: false })));
         };
 
         const removePackage = (id) => {
@@ -2043,6 +2093,131 @@
                                 <Icon name="package-plus" className="w-4 h-4" />
                                 添加另一种包装尺寸
                             </button>
+
+                            {/* === 📋 打木箱风险评估器 === */}
+                            <div className="mt-4 rounded-xl overflow-hidden" style={{border: '1.5px solid var(--line)', background: 'var(--bg-warm)'}}>
+                                {/* Header: 展开/折叠 */}
+                                <button
+                                    onClick={() => setShowAssessment(!showAssessment)}
+                                    className="w-full px-4 py-3 flex items-center justify-between text-left transition-colors"
+                                    style={{background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit'}}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-base">📋</span>
+                                        <span className="text-sm font-bold" style={{color: 'var(--ink)'}}>打木箱风险评估</span>
+                                        {assessmentResult.recommend && (
+                                            <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded" style={{background: 'var(--warn-soft)', color: 'var(--warn)', border: '1px solid var(--warn-line)'}}>
+                                                ⚠ 建议打木箱
+                                            </span>
+                                        )}
+                                        {!assessmentResult.recommend && assessmentResult.totalScore === 0 && (
+                                            <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded" style={{background: 'var(--good-soft)', color: 'var(--good)', border: '1px solid var(--good-line)'}}>
+                                                ✓ 普通纸箱即可
+                                            </span>
+                                        )}
+                                    </div>
+                                    <span className="text-xs" style={{color: 'var(--ink-3)'}}>{showAssessment ? '▲ 收起' : '▼ 展开'}</span>
+                                </button>
+
+                                {showAssessment && (
+                                    <div className="px-4 pb-4 pt-1" style={{borderTop: '1px solid var(--line-soft)'}}>
+                                        {/* 自动检测的提示 */}
+                                        {autoDetectedReasons.length > 0 && (
+                                            <div className="rounded-lg p-3 mb-3 text-xs" style={{background: 'var(--warn-soft)', border: '1px solid var(--warn-line)', color: 'var(--warn)'}}>
+                                                <div className="font-bold mb-1">⚠ 系统检测到大尺寸：</div>
+                                                {autoDetectedReasons.map((r, i) => <div key={i} className="pl-3">• {r}</div>)}
+                                            </div>
+                                        )}
+
+                                        <p className="text-[11px] mb-3" style={{color: 'var(--ink-3)'}}>
+                                            根据产品实际情况勾选，系统综合给建议（任意一项命中即建议木箱）：
+                                        </p>
+
+                                        {/* 1. 结构 */}
+                                        <div className="mb-3">
+                                            <div className="text-[11px] font-bold mb-1.5 flex items-center gap-1" style={{color: 'var(--ink-2)'}}>
+                                                <span className="px-1.5 py-0.5 rounded text-[10px]" style={{background: 'var(--accent-soft)', color: 'var(--accent)'}}>1. 看产品结构</span>
+                                            </div>
+                                            <label className="flex items-start gap-2 cursor-pointer py-1 text-xs" style={{color: 'var(--ink-2)'}}>
+                                                <input type="checkbox" checked={crateAssessment.structure_large_diameter} onChange={(e) => setCrateAssessment({...crateAssessment, structure_large_diameter: e.target.checked})} className="mt-0.5" />
+                                                <span><b>整体结构、不可拆卸</b>，直径 &gt; 80cm</span>
+                                            </label>
+                                            <label className="flex items-start gap-2 cursor-pointer py-1 text-xs" style={{color: 'var(--ink-2)'}}>
+                                                <input type="checkbox" checked={crateAssessment.structure_irregular} onChange={(e) => setCrateAssessment({...crateAssessment, structure_irregular: e.target.checked})} className="mt-0.5" />
+                                                <span><b>树杈造型、异形结构、不规则外观</b>（易压变形/碰撞）</span>
+                                            </label>
+                                            <label className="flex items-start gap-2 cursor-pointer py-1 text-xs" style={{color: 'var(--ink-2)'}}>
+                                                <input type="checkbox" checked={crateAssessment.structure_unstable} onChange={(e) => setCrateAssessment({...crateAssessment, structure_unstable: e.target.checked})} className="mt-0.5" />
+                                                <span><b>体积较大、重心不稳或结构复杂</b>（需加强保护）</span>
+                                            </label>
+                                        </div>
+
+                                        {/* 2. 材质 */}
+                                        <div className="mb-3">
+                                            <div className="text-[11px] font-bold mb-1.5 flex items-center gap-1" style={{color: 'var(--ink-2)'}}>
+                                                <span className="px-1.5 py-0.5 rounded text-[10px]" style={{background: 'var(--accent-soft)', color: 'var(--accent)'}}>2. 看产品材质</span>
+                                            </div>
+                                            <label className="flex items-start gap-2 cursor-pointer py-1 text-xs" style={{color: 'var(--ink-2)'}}>
+                                                <input type="checkbox" checked={crateAssessment.material_fragile} onChange={(e) => setCrateAssessment({...crateAssessment, material_fragile: e.target.checked})} className="mt-0.5" />
+                                                <span><b>大尺寸云石、玻璃、水晶</b>等易碎材质</span>
+                                            </label>
+                                            <label className="flex items-start gap-2 cursor-pointer py-1 text-xs" style={{color: 'var(--ink-2)'}}>
+                                                <input type="checkbox" checked={crateAssessment.material_scratchable} onChange={(e) => setCrateAssessment({...crateAssessment, material_scratchable: e.target.checked})} className="mt-0.5" />
+                                                <span><b>表面易刮花、易变形或易损伤</b>的材质</span>
+                                            </label>
+                                        </div>
+
+                                        {/* 3. 属性 */}
+                                        <div className="mb-3">
+                                            <div className="text-[11px] font-bold mb-1.5 flex items-center gap-1" style={{color: 'var(--ink-2)'}}>
+                                                <span className="px-1.5 py-0.5 rounded text-[10px]" style={{background: 'var(--accent-soft)', color: 'var(--accent)'}}>3. 看产品属性</span>
+                                            </div>
+                                            <label className="flex items-start gap-2 cursor-pointer py-1 text-xs" style={{color: 'var(--ink-2)'}}>
+                                                <input type="checkbox" checked={crateAssessment.attr_custom} onChange={(e) => setCrateAssessment({...crateAssessment, attr_custom: e.target.checked})} className="mt-0.5" />
+                                                <span><b>非标定制、不可二次销售</b>产品</span>
+                                            </label>
+                                            <label className="flex items-start gap-2 cursor-pointer py-1 text-xs" style={{color: 'var(--ink-2)'}}>
+                                                <input type="checkbox" checked={crateAssessment.attr_high_value} onChange={(e) => setCrateAssessment({...crateAssessment, attr_high_value: e.target.checked})} className="mt-0.5" />
+                                                <span><b>高货值、补货周期长、维修成本高</b>，需重点防护</span>
+                                            </label>
+                                        </div>
+
+                                        {/* 结论 + 一键应用 */}
+                                        <div className="mt-4 p-3 rounded-lg" style={{background: assessmentResult.recommend ? 'var(--warn-soft)' : 'var(--good-soft)', border: `1.5px solid ${assessmentResult.recommend ? 'var(--warn-line)' : 'var(--good-line)'}`}}>
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="flex-1">
+                                                    <div className="text-sm font-bold mb-1" style={{color: assessmentResult.recommend ? 'var(--warn)' : 'var(--good)'}}>
+                                                        {assessmentResult.recommend
+                                                            ? `⚠ 建议：打木箱（命中 ${assessmentResult.totalScore} 项风险）`
+                                                            : '✓ 普通纸箱即可（未命中风险项）'}
+                                                    </div>
+                                                    <div className="text-[10px]" style={{color: 'var(--ink-3)'}}>
+                                                        {assessmentResult.recommend
+                                                            ? '木箱可有效防止碰撞/受压/划伤，但会增加材料费 + 运费'
+                                                            : '若产品确实坚固/可二次销售，纸箱即可节省成本'}
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col gap-1.5">
+                                                    {assessmentResult.recommend && !assessmentResult.allCrated && (
+                                                        <button onClick={applyAllCrate}
+                                                            className="px-3 py-1.5 rounded-md text-[11px] font-bold whitespace-nowrap transition-all"
+                                                            style={{background: 'var(--warn)', color: 'white', border: 'none', cursor: 'pointer'}}>
+                                                            一键全打木箱
+                                                        </button>
+                                                    )}
+                                                    {!assessmentResult.recommend && assessmentResult.anyCrated && (
+                                                        <button onClick={applyAllCarton}
+                                                            className="px-3 py-1.5 rounded-md text-[11px] font-bold whitespace-nowrap transition-all"
+                                                            style={{background: 'var(--good)', color: 'white', border: 'none', cursor: 'pointer'}}>
+                                                            一键全改纸箱
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
 
                             <div className="dotted-div"></div>
 
