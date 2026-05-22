@@ -1528,6 +1528,32 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 
 /* ============ 销售单 tab（Shopify 订单池） ============ */
 .shopify-store-card {
+/* 旧版大卡片样式保留兼容（已不用） */
+}
+
+/* 紧凑店铺 chip（新版） */
+.store-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 8px 3px 4px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 12px; font-size: 11px; cursor: pointer;
+  transition: all 0.15s; user-select: none;
+}
+.store-chip:hover { background: var(--bg-card); border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.store-chip.connected { background: rgba(21,128,61,0.06); border-color: rgba(21,128,61,0.25); }
+.store-chip.connected:hover { background: rgba(21,128,61,0.1); border-color: var(--success); }
+.store-chip-code {
+  display: inline-block; padding: 1px 6px; border-radius: 6px;
+  background: var(--text-tertiary); color: white;
+  font-family: monospace; font-weight: 700; font-size: 10px;
+}
+.store-chip.connected .store-chip-code { background: var(--success); }
+.store-chip-name { color: var(--text-primary); font-weight: 500; }
+.store-chip-status { font-size: 11px; font-weight: 700; color: var(--success); }
+.store-chip-status.install { color: var(--accent); }
+
+/* 旧版大卡片样式（保留兼容，已不使用） */
+.shopify-store-card {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 12px;
@@ -2568,19 +2594,14 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 <div class="tab-content" data-tab="sales">
   <div class="section-block">
 
-    <div class="fb-card" id="salesStoresCard" style="margin-top: 14px;">
-      <div class="fb-head" style="cursor: default;">
-        <div class="fb-title">
-          🏪 店铺连接
-          <span class="fb-total" id="salesStoresTotal">0 / 9 已连接</span>
-        </div>
-        <div class="fb-tabs" style="cursor: default;">
-          <span id="salesAutoSyncIndicator" style="font-size: 11px; color: var(--text-tertiary); margin-right: 8px;"></span>
-          <button class="btn ghost" onclick="shopifyToggleAutoSync()" id="salesAutoSyncBtn" title="自动同步开关">⏱️ 自动</button>
-          <button class="btn" onclick="shopifyReloadStores()" title="刷新店铺状态">🔄 刷新</button>
-        </div>
-      </div>
-      <div id="salesStoresGrid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 8px 0 4px;"></div>
+    <!-- 紧凑店铺连接条（一行显示） -->
+    <div id="salesStoresCard" style="margin-top: 10px; padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+      <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600;">🏪 店铺</span>
+      <span class="fb-total" id="salesStoresTotal" style="font-size: 11px; color: var(--text-tertiary);">0 / 9</span>
+      <div id="salesStoresGrid" style="display: flex; gap: 5px; flex-wrap: wrap; flex: 1;"></div>
+      <span id="salesAutoSyncIndicator" style="font-size: 11px; color: var(--text-tertiary);"></span>
+      <button class="btn small" onclick="shopifyToggleAutoSync()" id="salesAutoSyncBtn" title="自动同步开关">⏱️ 自动</button>
+      <button class="btn small" onclick="shopifyReloadStores()" title="刷新店铺状态">🔄 刷新</button>
     </div>
 
     <div id="salesStatsContainer" style="margin-top: 14px;"></div>
@@ -11666,32 +11687,28 @@ function renderShopifyStores() {
   if (!grid) return;
   const stores = SHOPIFY._stores;
   const connected = stores.filter(s => s.connected).length;
-  document.getElementById('salesStoresTotal').textContent = `${connected} / 9 已连接`;
+  document.getElementById('salesStoresTotal').textContent = `${connected}/9`;
 
   grid.innerHTML = stores.map(s => {
     if (s.connected) {
+      // 已连接：绿色 chip + ✓ 标记 + 双击改名 + 点击同步
       return `
-        <div class="shopify-store-card connected">
-          <span class="site-pill">${s.site_code}</span>
-          <div class="store-mid">
-            <div class="store-name">
-              ${escapeHtml(s.display_name)}
-              <span class="store-rename" onclick="shopifyRenameStore('${s.id}', '${escapeHtml(s.display_name).replace(/'/g,"\\'")}')" title="改名">✏️</span>
-            </div>
-            <div class="store-meta"><span class="ok">✓ 已连</span>${SHOPIFY.formatRelativeTime(s.last_sync_at)}同步</div>
-          </div>
-          <button class="store-fetch-btn" onclick="shopifyQuickFetchFromCard('${s.domain}')">⇄ 同步</button>
-        </div>`;
+        <span class="store-chip connected" 
+          onclick="shopifyQuickFetchFromCard('${s.domain}')"
+          ondblclick="shopifyRenameStore('${s.id}', '${escapeHtml(s.display_name).replace(/'/g,"\\'")}')"
+          title="${escapeHtml(s.display_name)} · 已连接 · ${SHOPIFY.formatRelativeTime(s.last_sync_at)}同步 (双击改名)">
+          <span class="store-chip-code">${s.site_code}</span>
+          <span class="store-chip-name">${escapeHtml(s.display_name)}</span>
+          <span class="store-chip-status">✓</span>
+        </span>`;
     } else {
+      // 未连接：灰色 chip + 安装入口
       return `
-        <div class="shopify-store-card">
-          <span class="site-pill">${s.site_code}</span>
-          <div class="store-mid">
-            <div class="store-name">${escapeHtml(s.display_name)}</div>
-            <div class="store-meta">未连接</div>
-          </div>
-          <button class="store-install-btn" onclick="shopifyInstall('${s.domain}')">安装</button>
-        </div>`;
+        <span class="store-chip" onclick="shopifyInstall('${s.domain}')" title="${escapeHtml(s.display_name)} · 未连接，点击安装">
+          <span class="store-chip-code">${s.site_code}</span>
+          <span class="store-chip-name">${escapeHtml(s.display_name)}</span>
+          <span class="store-chip-status install">+ 安装</span>
+        </span>`;
     }
   }).join('');
 }
