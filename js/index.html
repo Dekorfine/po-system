@@ -2340,7 +2340,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <option value="promised_asc">按承诺日 ↑</option>
         <option value="order_date_desc">最新下单 ↓</option>
       </select>
-      <button class="btn primary" onclick="addOrder()" style="margin-left: auto;" title="催单数据自动来自采购单(PO)，新增请去采购单 tab">📦 去采购单</button>
+      <button class="btn primary" onclick="addOrder()" style="margin-left: auto;" title="新增催单（可选：PO 派生 或 手动催单）">+ 新增催单</button>
     </div>
     <!-- V3：催单阈值 chip（按下单距今天数过滤未发货 PO，主管可在配置里自定义）-->
     <div id="chaseThresholdChips" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding: 10px 14px; background: var(--bg-elevated); border-radius: 10px; border: 1px solid var(--border-subtle);"></div>
@@ -2350,7 +2350,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <div>截图</div><div>日期</div><div style="text-align: right;">操作</div>
       </div>
       <div id="ordersBody"></div>
-      <div class="add-row" onclick="addOrder()">📦 催单来自采购单 · 点这里去采购单管理</div>
+      <div class="add-row" onclick="addOrder()">+ 新增催单（可选 PO 派生 或 手动）</div>
     </div>
   </div>
 </div>

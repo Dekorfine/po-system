@@ -8,14 +8,13 @@
 // ============================================================
 // PO 派生催单 · 数据加载层
 // ============================================================
-// 加载条件：是 PO（po_number 非空）+ 未删除
-// 一次查全量 PO，前端分流到两个数组：CHASE_ORDERS（未发货）+ ALL_PO_ORDERS（全量含已发货）
+// 加载条件：未删除 + 未发货/取消/到货的 orders
+// 前端分流：CHASE_ORDERS（所有未结的，含旧手动 + PO 派生），ALL_PO_ORDERS（仅 PO 含已完成，用于绩效）
 async function loadChaseOrders() {
   try {
     let q = sb.from('orders').select('*')
-      .not('po_number', 'is', null)
       .is('deleted_at', null);
-    // 非主管：只看自己的 PO
+    // 非主管：只看自己的订单
     if (!IS_ADMIN && CURRENT_USER_ID) q = q.eq('agent_id', CURRENT_USER_ID);
     const { data, error } = await q.order('created_at', { ascending: false });
     if (error) throw error;
@@ -24,10 +23,12 @@ async function loadChaseOrders() {
     const userIdToName = {};
     (CONFIG.agents || []).forEach(a => { if (a._userId) userIdToName[a._userId] = a.name; });
 
-    // 全量 PO（绩效/历史统计用）
-    ALL_PO_ORDERS = (data || []).map(po => _toChaseOrder(po, userIdToName));
-    // 仅未发货 + 未取消/驳回/到货 的（催单 tab 用）
-    CHASE_ORDERS = ALL_PO_ORDERS.filter(o =>
+    // 转换所有行
+    const all = (data || []).map(row => _toChaseOrder(row, userIdToName));
+    // 全量 PO（绩效/历史统计用）—— 仅含 po_number 非空的
+    ALL_PO_ORDERS = all.filter(o => o._isPO);
+    // 仅"待催"的（未发货 + 未取消/驳回/到货）—— 含旧手动 + PO 派生
+    CHASE_ORDERS = all.filter(o =>
       !['cancelled', 'rejected', 'arrived'].includes(o.status) &&
       !o.shippedDate
     );
@@ -40,33 +41,35 @@ async function loadChaseOrders() {
   }
 }
 
-// 把 PO 行转换成催单页期望的"订单"结构（让旧渲染代码尽量复用）
-function _toChaseOrder(po, userIdToName) {
-  const itemTitles = (po.line_items || []).map(li => li.title_cn || li.title_en || li.sku).filter(Boolean);
-  const product = po.product || itemTitles.join(' / ') || '(无产品)';
+// 把 orders 表的一行转换成催单页期望的结构（兼容 PO 派生 + 旧手动催单）
+function _toChaseOrder(row, userIdToName) {
+  const isPO = !!row.po_number;
+  const itemTitles = (row.line_items || []).map(li => li.title_cn || li.title_en || li.sku).filter(Boolean);
+  const product = row.product || (isPO ? itemTitles.join(' / ') : '') || '(无产品)';
   return {
-    _id: po.id,
-    _isPO: true,                       // 标识为 PO 派生
-    _po: po,                           // 原始 PO 引用
-    _agent: userIdToName[po.agent_id] || po.creator_name || '未知',
-    orderNo: po.po_number,             // 显示用 PO 编号
-    site: po.site || '',
+    _id: row.id,
+    _isPO: isPO,                       // true=PO 派生, false=旧手动催单
+    _po: isPO ? row : null,            // 原始 PO 引用（仅 PO 派生有）
+    _agent: userIdToName[row.agent_id] || row.creator_name || '未知',
+    _agent_id: row.agent_id,
+    orderNo: isPO ? row.po_number : (row.order_no || ''),  // PO 用 po_number，旧手动用 order_no
+    site: row.site || '',
     product,
-    supplier: po.supplier || '',
-    status: po.status || 'producing',
-    orderDate: (po.created_at || '').slice(0, 10),
-    promisedDate: po.promised_date,
-    shippedDate: po.shipped_date,
-    arrivedDate: po.arrived_date,
-    nextFollow: po.next_follow,
-    followups: po.followups || [],
-    notes: po.note || '',
-    screenshots: po.screenshots || [],
-    createdAt: po.created_at,
-    totalAmount: parseFloat(po.total_amount) || 0,
-    lineItems: po.line_items || [],
-    poNumber: po.po_number,
-    salesOrderId: po.sales_order_id,
+    supplier: row.supplier || '',
+    status: row.status || (isPO ? 'producing' : 'pending'),
+    orderDate: (row.order_date || row.created_at || '').slice(0, 10),
+    promisedDate: row.promised_date,
+    shippedDate: row.shipped_date,
+    arrivedDate: row.arrived_date,
+    nextFollow: row.next_follow,
+    followups: row.followups || [],
+    notes: row.notes || row.note || '',  // 兼容：旧用 notes，PO 用 note
+    screenshots: row.screenshots || [],
+    createdAt: row.created_at,
+    totalAmount: parseFloat(row.total_amount) || 0,
+    lineItems: row.line_items || [],
+    poNumber: row.po_number,
+    salesOrderId: row.sales_order_id,
   };
 }
 
@@ -85,6 +88,8 @@ function renderChaseThresholdChips() {
   if (!el) return;
   const thresholds = (typeof DATA !== 'undefined' && DATA.getChaseThresholds) ? DATA.getChaseThresholds() : [3, 7, 15, 30];
   const total = CHASE_ORDERS.length;
+  const poCnt = CHASE_ORDERS.filter(o => o._isPO).length;
+  const manualCnt = total - poCnt;
   el.innerHTML = `
     <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">催单阈值:</span>
     <button class="rule-chip ${_chaseThresholdFilter === 0 ? 'active' : ''}" onclick="setChaseThreshold(0)">📋 全部 <span class="cnt-mini">${total}</span></button>
@@ -92,7 +97,9 @@ function renderChaseThresholdChips() {
       const cnt = CHASE_ORDERS.filter(o => chaseDaysSince(o) >= d).length;
       return `<button class="rule-chip ${_chaseThresholdFilter === d ? 'active' : ''}" onclick="setChaseThreshold(${d})">⏰ ≥${d}天 <span class="cnt-mini">${cnt}</span></button>`;
     }).join('')}
-    <span style="margin-left:auto; font-size: 11px; color: var(--text-tertiary);">数据来自采购单 · 仅显示未发货</span>
+    <span style="margin-left:auto; font-size: 11px; color: var(--text-tertiary);">
+      📦 PO 派生 <b style="color:#7c3aed;">${poCnt}</b> · 📝 手动 <b style="color:#d97706;">${manualCnt}</b>
+    </span>
   `;
 }
 
@@ -156,7 +163,7 @@ function renderOrders() {
     card.style.display = 'block';
     document.getElementById('ordersGroupedContainer')?.remove();
     const isEmpty = CHASE_ORDERS.length === 0;
-    body.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div class="text">${isEmpty ? '没有待催的采购单（所有 PO 都已发货 / 取消 / 完成）' : '当前阈值或筛选下没有匹配的催单'}</div>${isEmpty ? '<button class="btn primary" onclick="switchTab(\'po\')">📦 去采购单管理</button>' : ''}</div>`;
+    body.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div class="text">${isEmpty ? '还没有催单（未发货的 PO 或手动催单都会在这里）' : '当前阈值或筛选下没有匹配的催单'}</div>${isEmpty ? '<button class="btn primary" onclick="addOrder()">+ 新增催单</button>' : ''}</div>`;
     return;
   }
   
@@ -225,8 +232,10 @@ function renderOrderRow(o, i) {
   const related = hasRelatedAftersales(o);
   const siteBadge = o.site ? `<span class="site-badge s-${o.site}">${escapeHtml(o.site)}</span>` : '';
   const afterBadge = related && related.length > 0 ? `<span class="related-after-badge" title="该订单有 ${related.length} 个未解决的售后单">🔧 售后${related.length}</span>` : '';
-  // V3 PO 派生标识 + 总金额
-  const poBadge = o._isPO ? `<span class="site-badge" style="background: rgba(124,58,237,0.12); color: #7c3aed; border: 1px solid rgba(124,58,237,0.3);" title="数据来自采购单 PO">📦 PO</span>` : '';
+  // V3 PO 派生标识 vs 旧手动催单
+  const poBadge = o._isPO 
+    ? `<span class="site-badge" style="background: rgba(124,58,237,0.12); color: #7c3aed; border: 1px solid rgba(124,58,237,0.3);" title="数据来自采购单 PO">📦 PO</span>`
+    : `<span class="site-badge" style="background: rgba(245,158,11,0.12); color: #d97706; border: 1px solid rgba(245,158,11,0.3);" title="手动录入的旧催单（建议未来用 PO 流程）">📝 手动</span>`;
   const amountBadge = (o._isPO && o.totalAmount > 0) ? `<span class="site-badge" style="background: rgba(16,185,129,0.10); color: #059669; border: 1px solid rgba(16,185,129,0.3);">¥${o.totalAmount.toLocaleString('zh-CN', {maximumFractionDigits: 0})}</span>` : '';
   
   // 已 N 天（下单至今）—— V3 用阈值高亮：超过最大阈值标红，超过最小阈值标黄
@@ -305,18 +314,46 @@ function renderOrderRow(o, i) {
 }
 
 async function addOrder() {
-  // V3 改造：催单数据从 PO 派生，不再支持手动新增
-  // 主管想新增"采购单"应该去销售单 tab → 选订单 → 开 PO
-  // 或者去采购单 tab → "+ 自定义采购单"
-  const choice = confirm(
-    '催单功能已升级 —— 不再手动新增订单。\n' +
-    '✅ 现在催单数据自动来自「采购单(PO)」：只要有未发货的 PO，就会出现在这里。\n\n' +
-    '想新增一笔采购单？\n\n' +
-    '· 确定 → 去「📦 采购单」tab（可创建自定义 PO 或基于销售单开 PO）\n' +
-    '· 取消 → 留在本页'
+  // V3 合并显示：让用户选两种入口
+  const goPo = confirm(
+    '催单数据有两种来源：\n\n' +
+    '📦 推荐：去「采购单(PO)」tab 创建 PO，自动出现在催单\n' +
+    '📝 兼容：直接新增「手动催单」（不走 PO 的临时催单）\n\n' +
+    '· 点「确定」→ 去采购单 tab\n' +
+    '· 点「取消」→ 新增手动催单'
   );
-  if (choice) {
+  
+  if (goPo) {
     switchTab('po');
+    return;
+  }
+  
+  // 手动催单：直接在 orders 表插一条 po_number 为 NULL 的记录
+  const me = CONFIG.agents.find(a => a.name === CURRENT_AGENT);
+  const defaultSite = (me && me.sites && me.sites.length > 0) ? me.sites[0] : '';
+  const newRow = {
+    agent_id: CURRENT_USER_ID,
+    order_no: '',
+    site: defaultSite,
+    product: '',
+    supplier: '',
+    status: 'pending',
+    order_date: new Date().toISOString().slice(0, 10),
+    notes: '',
+    screenshots: [],
+    followups: [],
+  };
+  try {
+    const { data, error } = await sb.from('orders').insert(newRow).select().single();
+    if (error) throw error;
+    toast('✓ 已新增手动催单，请补充信息');
+    await loadChaseOrders();
+    renderOrders(); refreshOrdersFb(); updateOrderStats();
+    // 自动打开 modal
+    openOrderModal(data.id, CURRENT_AGENT);
+  } catch (err) {
+    console.error('新增手动催单失败:', err);
+    toast('新增失败：' + (err.message || err), 'err');
   }
 }
 
@@ -461,11 +498,11 @@ function quickGotoPerfDetail(type) {
 }
 
 async function quickCompleteOrder(id, agent) {
-  // V3 改造：CHASE_ORDERS 来自 PO 表，直接更新 orders 表（PO 是 orders 表 po_number 不空的行）
   const o = CHASE_ORDERS.find(x => x._id === id);
   if (!o) { toast('找不到该催单记录', 'err'); return; }
 
   const today = new Date().toISOString().slice(0, 10);
+  const noun = o._isPO ? '采购单' : '订单';
 
   if (o.status === 'arrived') {
     toast('该订单已是「已到货」状态', 'warn');
@@ -478,18 +515,18 @@ async function quickCompleteOrder(id, agent) {
     dateCol = 'arrived_date';
     dateField = 'arrivedDate';
     nextLabel = '已到货';
-    msg = `采购单 ${o.orderNo} 已经收到货？\n\n会标记为：✓ 已到货\n到货日期：${today}`;
+    msg = `${noun} ${o.orderNo} 已经收到货？\n\n会标记为：✓ 已到货\n到货日期：${today}`;
   } else {
     nextStatus = 'shipped';
     dateCol = 'shipped_date';
     dateField = 'shippedDate';
     nextLabel = '已发货';
-    msg = `采购单 ${o.orderNo} 已经发货？\n\n会标记为：✓ 已发货\n发货日期：${today}\n\n(发货后该单会自动从催单列表移除)`;
+    msg = `${noun} ${o.orderNo} 已经发货？\n\n会标记为：✓ 已发货\n发货日期：${today}\n\n(发货后该单会自动从催单列表移除)`;
   }
 
   if (!confirm(msg)) return;
 
-  // 直接更新 PO 表
+  // 直接 update orders 表（两类数据都在同一张表）
   const updates = { status: nextStatus, updated_at: new Date().toISOString() };
   if (!o[dateField]) updates[dateCol] = today;
 
@@ -497,26 +534,39 @@ async function quickCompleteOrder(id, agent) {
     const { error } = await sb.from('orders').update(updates).eq('id', o._id);
     if (error) throw error;
     toast(`✓ 已标记「${nextLabel}」`);
-    // 重新加载 PO 派生数据（标记发货后该单不再在催单列表）
     await loadChaseOrders();
     renderOrders(); refreshOrdersFb(); renderUrgentBanner(); updateOrderStats();
   } catch (err) {
-    console.error('更新 PO 失败:', err);
+    console.error('更新订单失败:', err);
     toast('操作失败：' + (err.message || err), 'err');
   }
 }
 
 function delOrderRow(id, agent) {
-  // V3 改造：催单数据是 PO，不应在催单 tab 删除（应去 PO 模块取消）
   const o = CHASE_ORDERS.find(x => x._id === id);
   if (!o) return;
-  const choice = confirm(
-    `催单数据来自采购单 ${o.orderNo}，不能在催单页直接删除。\n\n` +
-    `要"删除"该催单，请去「📦 采购单」tab 把 PO 状态改为「已取消」。\n` +
-    `这样它会自动从催单列表移除。\n\n` +
-    `· 确定 → 现在去采购单 tab\n· 取消 → 留在本页`
-  );
-  if (choice) switchTab('po');
+  
+  if (o._isPO) {
+    // PO 派生：不能在催单页删，跳到 PO 模块
+    const choice = confirm(
+      `这是采购单 ${o.orderNo}，不能在催单页直接删除。\n\n` +
+      `要"删除"该催单，请去「📦 采购单」tab 把 PO 状态改为「已取消」。\n\n` +
+      `· 确定 → 现在去采购单 tab\n· 取消 → 留在本页`
+    );
+    if (choice) switchTab('po');
+  } else {
+    // 旧手动催单：软删除（标 deleted_at，回收站可恢复）
+    if (!confirm('确定删除这个订单？\n\n（删除后会进回收站，30 天内可恢复）')) return;
+    sb.from('orders').update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: CURRENT_AGENT,
+    }).eq('id', o._id).then(async ({ error }) => {
+      if (error) { toast('删除失败：' + error.message, 'err'); return; }
+      await loadChaseOrders();
+      renderOrders(); updateOrderStats(); refreshOrdersFb();
+      toast('已移入回收站');
+    });
+  }
 }
 
 function openOrderModal(id, agent) {
@@ -545,11 +595,16 @@ function openOrderModal(id, agent) {
   document.getElementById('omFuThumbs').innerHTML = '';
   document.querySelectorAll('#omTypeRow .fu-type-btn').forEach(b => b.classList.toggle('selected', b.dataset.type === 'chase'));
   updateOrderNoHint('omSite', 'omOrderNo', 'omOrderNoHint');
-  // PO 字段不可改（由系统/PO 模块管理）
+  // PO 派生 → 编号和下单日期不可改；旧手动催单 → 可改
   const orderNoInput = document.getElementById('omOrderNo');
-  if (orderNoInput) { orderNoInput.readOnly = true; orderNoInput.title = 'PO 编号不可修改（由系统自动生成）'; orderNoInput.style.opacity = '0.7'; orderNoInput.style.cursor = 'not-allowed'; }
   const orderDateInput = document.getElementById('omOrderDate');
-  if (orderDateInput) { orderDateInput.readOnly = true; orderDateInput.title = 'PO 下单日期不可修改（采用 PO 创建时间）'; orderDateInput.style.opacity = '0.7'; orderDateInput.style.cursor = 'not-allowed'; }
+  if (o._isPO) {
+    if (orderNoInput) { orderNoInput.readOnly = true; orderNoInput.title = 'PO 编号不可修改（由系统自动生成）'; orderNoInput.style.opacity = '0.7'; orderNoInput.style.cursor = 'not-allowed'; }
+    if (orderDateInput) { orderDateInput.readOnly = true; orderDateInput.title = 'PO 下单日期不可修改（采用 PO 创建时间）'; orderDateInput.style.opacity = '0.7'; orderDateInput.style.cursor = 'not-allowed'; }
+  } else {
+    if (orderNoInput) { orderNoInput.readOnly = false; orderNoInput.removeAttribute('title'); orderNoInput.style.opacity = ''; orderNoInput.style.cursor = ''; }
+    if (orderDateInput) { orderDateInput.readOnly = false; orderDateInput.removeAttribute('title'); orderDateInput.style.opacity = ''; orderDateInput.style.cursor = ''; }
+  }
 
   renderOrderModalContent();
   document.getElementById('orderModal').classList.add('show');
@@ -605,37 +660,40 @@ function currentOrder() {
   return CHASE_ORDERS.find(o => o._id === _currentItemId);
 }
 
-// V3 改造：直接写 PO 表（orders 表 po_number 非空的行）
+// V3 改造：根据 _isPO 分流写入
+// PO 派生 → 直接 update orders 表（用 note 字段）
+// 旧手动催单 → 直接 update orders 表（用 notes 字段）
 function persistCurrentOrder(updater, immediate = false) {
   const o = currentOrder();
   if (!o) return;
   updater(o);
   o.updatedAt = new Date().toISOString();
-  // 异步推送到 supabase（PO 表）
-  const updates = {
+  
+  // 公共字段
+  const baseUpdates = {
     site: o.site || '',
     product: o.product || '',
     supplier: o.supplier || '',
-    status: o.status || 'producing',
+    status: o.status || (o._isPO ? 'producing' : 'pending'),
     promised_date: o.promisedDate || null,
     shipped_date: o.shippedDate || null,
     arrived_date: o.arrivedDate || null,
     next_follow: o.nextFollow || null,
-    note: o.notes || '',
     screenshots: o.screenshots || [],
     followups: o.followups || [],
     updated_at: new Date().toISOString(),
   };
+  // 备注字段分流（旧 orders 表两个字段同时存在：notes 旧手动用，note PO 用）
+  const updates = o._isPO
+    ? { ...baseUpdates, note: o.notes || '' }
+    : { ...baseUpdates, notes: o.notes || '', order_no: o.orderNo || '', order_date: o.orderDate || null };
+  
   const p = sb.from('orders').update(updates).eq('id', o._id);
-  if (immediate) {
-    return p.then(({ error }) => {
-      if (error) { console.error('保存 PO 失败:', error); toast('保存失败：' + error.message, 'err'); }
-    });
-  } else {
-    p.then(({ error }) => {
-      if (error) { console.error('保存 PO 失败:', error); toast('保存失败：' + error.message, 'err'); }
-    });
-  }
+  const handler = ({ error }) => {
+    if (error) { console.error('保存失败:', error); toast('保存失败：' + error.message, 'err'); }
+  };
+  if (immediate) return p.then(handler);
+  p.then(handler);
 }
 
 function onOrderField(field, value) {
@@ -671,15 +729,30 @@ async function setOrderStatus(st) {
 }
 
 function deleteCurrentOrder() {
-  // V3 改造：催单数据是 PO，不应在这里删
   const o = currentOrder();
   if (!o) return;
-  const choice = confirm(
-    `催单数据来自采购单 ${o.orderNo}，不能在催单页删除。\n\n` +
-    `如需删除，请去「📦 采购单」tab 把该 PO 取消或删除。\n\n` +
-    `· 确定 → 现在去采购单 tab\n· 取消 → 留在本页`
-  );
-  if (choice) { closeModal('orderModal'); switchTab('po'); }
+  
+  if (o._isPO) {
+    const choice = confirm(
+      `这是采购单 ${o.orderNo}，不能在催单页删除。\n\n` +
+      `如需删除，请去「📦 采购单」tab 把该 PO 取消或删除。\n\n` +
+      `· 确定 → 现在去采购单 tab\n· 取消 → 留在本页`
+    );
+    if (choice) { closeModal('orderModal'); switchTab('po'); }
+  } else {
+    // 旧手动催单：软删除
+    if (!confirm('确定删除这个订单？\n\n（删除后会进回收站，30 天内可恢复）')) return;
+    sb.from('orders').update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: CURRENT_AGENT,
+    }).eq('id', o._id).then(async ({ error }) => {
+      if (error) { toast('删除失败：' + error.message, 'err'); return; }
+      closeModal('orderModal');
+      await loadChaseOrders();
+      renderOrders(); updateOrderStats(); refreshOrdersFb();
+      toast('已移入回收站');
+    });
+  }
 }
 
 function setOmFuType(t) {
