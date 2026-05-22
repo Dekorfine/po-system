@@ -5,6 +5,10 @@
 // 依赖：core.js · utils.js
 // ============================================================
 
+// 售后快速筛选模式（叠加在 status filter 之上）
+// 空字符串 = 无叠加；'thismonth' / 'today' / 'overdue' = 按对应维度过滤
+let _aftersalesQuickMode = '';
+
 // ============================================================
 // MODULE 2: 售后
 // ============================================================
@@ -29,6 +33,21 @@ function renderAftersales() {
     if (fs === 'all') return true;
     return a.status === fs;
   });
+
+  // V3：快速筛选模式叠加（来自统计卡片点击）
+  if (_aftersalesQuickMode === 'thismonth') {
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    list = list.filter(a => (a.createdDate || '').startsWith(thisMonth));
+  } else if (_aftersalesQuickMode === 'today') {
+    const today = new Date().toISOString().slice(0, 10);
+    list = list.filter(a => a.createdDate === today);
+  } else if (_aftersalesQuickMode === 'overdue') {
+    const today = new Date().toISOString().slice(0, 10);
+    list = list.filter(a => 
+      !['resolved','cancelled'].includes(a.status) &&
+      a.nextFollow && a.nextFollow < today
+    );
+  }
   
   list.sort((a, b) => {
     const aDone = ['resolved','cancelled'].includes(a.status);

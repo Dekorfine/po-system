@@ -5,6 +5,10 @@
 // 依赖：core.js · utils.js
 // ============================================================
 
+// 找灯快速筛选模式（叠加在 status filter 之上）
+// '' = 无叠加；'thismonth' = 本月新增；'mine' = 我发起的
+let _missingQuickMode = '';
+
 // ============================================================
 // MODULE 4: 找灯（共享）
 // ============================================================
@@ -24,6 +28,14 @@ function renderMissing() {
     if (fs === 'active') return ['searching', 'found'].includes(m.status);  // 包含已找到（但会被折叠）
     return m.status === fs;
   });
+
+  // V3 快速筛选模式叠加（来自统计卡片点击）
+  if (_missingQuickMode === 'thismonth') {
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    list = list.filter(m => (m.createdAt || '').startsWith(thisMonth));
+  } else if (_missingQuickMode === 'mine') {
+    list = list.filter(m => m.creator === CURRENT_AGENT || m._agent === CURRENT_AGENT);
+  }
   
   list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   

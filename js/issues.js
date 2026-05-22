@@ -5,6 +5,10 @@
 // 依赖：core.js（DATA, ISSUES, CONFIG）
 // ============================================================
 
+// 供应商问题快速筛选模式（叠加在 status filter 之上）
+// '' = 无叠加；'stuck' = 沟通≥3次的未解决
+let _issuesQuickMode = '';
+
 // ============================================================
 // MODULE 3: 供应商问题清单
 // ============================================================
@@ -26,6 +30,14 @@ function renderIssues() {
     if (fs === 'all') return true;
     return it.status === fs;
   });
+
+  // V3 快速筛选模式叠加（来自统计卡片点击）
+  if (_issuesQuickMode === 'stuck') {
+    list = list.filter(it =>
+      !['resolved','cancelled'].includes(it.status) &&
+      (it.followups || []).length >= 3
+    );
+  }
   
   if (list.length === 0) {
     container.innerHTML = `<div class="records-card records-card-empty"><div class="empty-state"><div class="icon">⚠</div><div class="text">${ISSUES.length === 0 ? '还没有记录供应商问题。点 "+ 新增问题" 开始' : '没有匹配的问题'}</div>${ISSUES.length === 0 ? '<button class="btn primary" onclick="addIssue()">+ 新增第一个</button>' : ''}</div></div>`;

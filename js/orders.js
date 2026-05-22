@@ -5,6 +5,10 @@
 // 依赖：core.js · utils.js · po.js（共享 PO 状态机/审批）
 // ============================================================
 
+// 催单 tab 快速筛选模式（叠加在 status filter 之上）
+// '' = 无叠加；'thismonth_arrived' = 本月到货；'overdue_or_today' = 逾期或今日要催
+let _ordersQuickMode = '';
+
 // ============================================================
 // PO 派生催单 · 数据加载层
 // ============================================================
@@ -139,6 +143,28 @@ function renderOrders() {
     if (fStatus === 'all') return true;
     return o.status === fStatus;
   });
+
+  // V3 快速筛选模式叠加（来自统计卡片点击）
+  if (_ordersQuickMode === 'thismonth_arrived') {
+    // 注意：本月到货的 PO 通常已不在 CHASE_ORDERS（因为已 arrived 会被过滤掉）
+    // 所以这里从 ALL_PO_ORDERS 取数据
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    const arrivedThisMonth = (ALL_PO_ORDERS || []).filter(o =>
+      o.status === 'arrived' && (o.arrivedDate || '').startsWith(thisMonth)
+    );
+    // 也包含旧手动催单中本月到货的
+    const manualArrivedThisMonth = (typeof ORDERS !== 'undefined' ? ORDERS : []).filter(o =>
+      !o.po_number && o.status === 'arrived' && (o.arrivedDate || '').startsWith(thisMonth)
+    );
+    list = [...arrivedThisMonth, ...manualArrivedThisMonth];
+  } else if (_ordersQuickMode === 'overdue_or_today') {
+    const today = new Date().toISOString().slice(0, 10);
+    list = list.filter(o => {
+      const isOverdue = getOrderEffStatus(o) === 'overdue';
+      const isToday = o.nextFollow === today && !['cancelled','shipped','arrived'].includes(o.status);
+      return isOverdue || isToday;
+    });
+  }
   
   // 排序
   if (sortBy === 'urgency') {
@@ -363,6 +389,27 @@ async function addOrder() {
 function quickFilterOrders(type) {
   const filter = document.getElementById('oFilterStatus');
   if (!filter) return;
+
+  // 先清除上次的快速模式
+  _ordersQuickMode = '';
+
+  if (type === 'arrived') {
+    // 本月到货：限定本月（从 ALL_PO_ORDERS 取，因为已 arrived 不在 CHASE_ORDERS 里）
+    filter.value = 'completed';
+    _ordersQuickMode = 'thismonth_arrived';
+    renderOrders();
+    toast('已筛选：本月到货的订单');
+    return;
+  }
+  if (type === 'overdue') {
+    // 逾期或今日要催
+    filter.value = 'active';
+    _ordersQuickMode = 'overdue_or_today';
+    renderOrders();
+    toast('已筛选：逾期或今日要催');
+    return;
+  }
+  // 常规切换：清除快速模式
   filter.value = type;
   renderOrders();
   toast(`已切换：${filter.options[filter.selectedIndex].text}`);
@@ -371,29 +418,32 @@ function quickFilterOrders(type) {
 function quickFilterAfter(type) {
   const filter = document.getElementById('asFilterStatus');
   if (!filter) return;
-  const today = new Date().toISOString().slice(0, 10);
-  const thisMonth = today.slice(0, 7);
-  
-  // 特殊筛选用搜索框临时实现，或切对应选项
+
+  // 先清除上次的快速模式
+  _aftersalesQuickMode = '';
+
   if (type === 'thismonth') {
-    // 显示本月新增
     filter.value = 'all';
+    _aftersalesQuickMode = 'thismonth';
     renderAftersales();
-    toast('显示全部售后（本月新增已在统计中）');
+    toast('已筛选：本月新增的售后');
     return;
   }
   if (type === 'today') {
     filter.value = 'all';
+    _aftersalesQuickMode = 'today';
     renderAftersales();
-    toast('显示全部售后');
+    toast('已筛选：今天新增的售后');
     return;
   }
   if (type === 'overdue') {
     filter.value = 'active';
+    _aftersalesQuickMode = 'overdue';
     renderAftersales();
-    toast('显示未解决（含逾期）');
+    toast('已筛选：逾期未跟进');
     return;
   }
+  // 常规状态切换：清除快速模式
   filter.value = type;
   renderAftersales();
   toast(`已切换：${filter.options[filter.selectedIndex].text}`);
@@ -402,12 +452,16 @@ function quickFilterAfter(type) {
 function quickFilterIssues(type) {
   const filter = document.getElementById('isFilterStatus');
   if (!filter) return;
-  
+
+  // 先清除快速模式
+  _issuesQuickMode = '';
+
   if (type === 'stuck') {
-    // 沟通 ≥3 次的未解决问题
+    // 沟通 ≥ 3 次的未解决
     filter.value = 'active';
+    _issuesQuickMode = 'stuck';
     renderIssues();
-    toast('显示未解决问题（含沟通 3 次以上）');
+    toast('已筛选：沟通 3 次以上的问题');
     return;
   }
   filter.value = type;
@@ -419,19 +473,24 @@ function quickFilterMissing(type) {
   const filter = document.getElementById('mFilterStatus');
   const searchBox = document.getElementById('mSearch');
   if (!filter || !searchBox) return;
-  
+
+  // 先清除快速模式
+  _missingQuickMode = '';
+
   if (type === 'mine') {
     filter.value = 'all';
-    searchBox.value = CURRENT_AGENT;
+    searchBox.value = '';
+    _missingQuickMode = 'mine';
     renderMissing();
-    toast('显示「我发起的」找灯任务');
+    toast('已筛选：我发起的找灯任务');
     return;
   }
   if (type === 'thismonth') {
     filter.value = 'all';
     searchBox.value = '';
+    _missingQuickMode = 'thismonth';
     renderMissing();
-    toast('显示全部任务（本月新增已在统计）');
+    toast('已筛选：本月新增的找灯任务');
     return;
   }
   searchBox.value = '';

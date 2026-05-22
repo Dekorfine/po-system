@@ -2320,8 +2320,8 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       <div class="stat-card danger clickable" onclick="quickFilterOrders('overdue')" title="点击查看：逾期订单"><div class="label">逾期 / 今日</div><div class="value mono" style="font-size: 22px;"><span id="oOverdue">0</span> / <span id="oToday">0</span></div><div class="sub" id="oUrgentSub">需处理</div></div>
     </div>
     <div class="toolbar">
-      <div class="search-box"><input type="text" id="oSearch" placeholder="搜索 PO 编号、产品、供应商..." oninput="renderOrders()"></div>
-      <select class="filter-select" id="oFilterStatus" onchange="renderOrders()">
+      <div class="search-box"><input type="text" id="oSearch" placeholder="搜索 PO 编号、产品、供应商..." oninput="_ordersQuickMode='';renderOrders()"></div>
+      <select class="filter-select" id="oFilterStatus" onchange="_ordersQuickMode='';renderOrders()">
         <option value="active">🔥 进行中（默认）</option>
         <option value="completed">✓ 已完成</option>
         <option value="all">全部</option>
@@ -2332,9 +2332,9 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <option value="cancelled">已取消</option>
         <option value="overdue">仅逾期</option>
       </select>
-      <select class="filter-select" id="oFilterSite" onchange="renderOrders()"><option value="">📍 全部网站</option></select>
-      <select class="filter-select" id="oFilterSupplier" onchange="renderOrders()"><option value="">全部供应商</option></select>
-      <select class="filter-select" id="oSortBy" onchange="renderOrders()">
+      <select class="filter-select" id="oFilterSite" onchange="_ordersQuickMode='';renderOrders()"><option value="">📍 全部网站</option></select>
+      <select class="filter-select" id="oFilterSupplier" onchange="_ordersQuickMode='';renderOrders()"><option value="">全部供应商</option></select>
+      <select class="filter-select" id="oSortBy" onchange="_ordersQuickMode='';renderOrders()">
         <option value="urgency">智能排序（催单优先）</option>
         <option value="supplier_grouped">🏭 按供应商分组（可批量催）</option>
         <option value="promised_asc">按承诺日 ↑</option>
@@ -2396,8 +2396,8 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     </div>
     
     <div class="toolbar">
-      <div class="search-box"><input type="text" id="asSearch" placeholder="搜索订单号、产品、供应商..." oninput="renderAftersales()"></div>
-      <select class="filter-select" id="asFilterStatus" onchange="renderAftersales()">
+      <div class="search-box"><input type="text" id="asSearch" placeholder="搜索订单号、产品、供应商..." oninput="_aftersalesQuickMode='';renderAftersales()"></div>
+      <select class="filter-select" id="asFilterStatus" onchange="_aftersalesQuickMode='';renderAftersales()">
         <option value="active">🔥 未解决（默认）</option>
         <option value="completed">✓ 已完成</option>
         <option value="all">全部</option>
@@ -2407,9 +2407,9 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <option value="resolved">已解决</option>
         <option value="cancelled">已取消</option>
       </select>
-      <select class="filter-select" id="asFilterSite" onchange="renderAftersales()"><option value="">📍 全部网站</option></select>
-      <select class="filter-select" id="asFilterSupplier" onchange="renderAftersales()"><option value="">全部供应商</option></select>
-      <select class="filter-select" id="asFilterReason" onchange="renderAftersales()"><option value="">全部原因</option></select>
+      <select class="filter-select" id="asFilterSite" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">📍 全部网站</option></select>
+      <select class="filter-select" id="asFilterSupplier" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">全部供应商</option></select>
+      <select class="filter-select" id="asFilterReason" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">全部原因</option></select>
       <button class="btn primary" onclick="addAftersales()" style="margin-left: auto;">+ 新增售后</button>
     </div>
     <div class="records-card">
@@ -2434,8 +2434,8 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       <div class="stat-card danger clickable" onclick="quickFilterIssues('stuck')" title="点击查看：沟通 3 次以上的问题"><div class="label">沟通≥3次</div><div class="value mono"><span id="isStuck">0</span><span class="unit">项</span></div><div class="sub">考虑升级</div></div>
     </div>
     <div class="toolbar">
-      <div class="search-box"><input type="text" id="isSearch" placeholder="搜索供应商、要求..." oninput="renderIssues()"></div>
-      <select class="filter-select" id="isFilterStatus" onchange="renderIssues()">
+      <div class="search-box"><input type="text" id="isSearch" placeholder="搜索供应商、要求..." oninput="_issuesQuickMode='';renderIssues()"></div>
+      <select class="filter-select" id="isFilterStatus" onchange="_issuesQuickMode='';renderIssues()">
         <option value="active">🔥 未解决（默认）</option>
         <option value="completed">✓ 已完成</option>
         <option value="all">全部</option>
@@ -2444,7 +2444,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <option value="resolved">已解决</option>
         <option value="escalated">已升级</option>
       </select>
-      <select class="filter-select" id="isFilterType" onchange="renderIssues()">
+      <select class="filter-select" id="isFilterType" onchange="_issuesQuickMode='';renderIssues()">
         <option value="">全部类型</option>
         <option value="配件">配件需求</option>
         <option value="工艺">工艺要求</option>
@@ -2477,15 +2477,15 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       <div class="stat-card warning clickable" onclick="quickFilterMissing('all')" title="点击查看：所有任务"><div class="label">总评论数</div><div class="value mono"><span id="mComments">0</span><span class="unit">条</span></div><div class="sub">协作活跃</div></div>
     </div>
     <div class="toolbar">
-      <div class="search-box"><input type="text" id="mSearch" placeholder="搜索灯具描述、订单号..." oninput="renderMissing()"></div>
-      <select class="filter-select" id="mFilterStatus" onchange="renderMissing()">
+      <div class="search-box"><input type="text" id="mSearch" placeholder="搜索灯具描述、订单号..." oninput="_missingQuickMode='';renderMissing()"></div>
+      <select class="filter-select" id="mFilterStatus" onchange="_missingQuickMode='';renderMissing()">
         <option value="active">未结束（默认 · 已找到折叠）</option>
         <option value="searching">仅搜寻中</option>
         <option value="found">仅已找到</option>
         <option value="abandoned">仅已放弃</option>
         <option value="all">全部</option>
       </select>
-      <select class="filter-select" id="mFilterSource" onchange="renderMissing()">
+      <select class="filter-select" id="mFilterSource" onchange="_missingQuickMode='';renderMissing()">
         <option value="">全部来源</option>
         <option value="manual">📝 手动发起</option>
         <option value="purchase">🛒 采购需求</option>
