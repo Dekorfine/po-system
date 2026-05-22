@@ -73,9 +73,9 @@ function _toChaseOrder(row, userIdToName) {
   };
 }
 
-// 计算下单距今天数（不含发货日期，专注"下单到现在"）
+// 计算下单距今天数 —— 优先用 orderDate（用户填的真实下单日期），回退到 createdAt（数据库插入时间）
 function chaseDaysSince(o) {
-  const ts = o.createdAt || o.orderDate;
+  const ts = o.orderDate || o.createdAt;
   if (!ts) return 0;
   return Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
 }
