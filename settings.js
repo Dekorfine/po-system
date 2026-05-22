@@ -160,6 +160,61 @@ function renderSettings() {
     
     if (supCount) supCount.textContent = `（共 ${CONFIG.suppliers.length} 家，按合作量排序）`;
   }
+
+  // === V3：催单阈值编辑（仅主管可见）===
+  const chaseWrap = document.getElementById('settingsChaseThresholds');
+  if (chaseWrap) {
+    chaseWrap.style.display = IS_ADMIN ? 'block' : 'none';
+    if (IS_ADMIN) {
+      const list = (typeof DATA !== 'undefined' && DATA.getChaseThresholds) ? DATA.getChaseThresholds() : [3, 7, 15, 30];
+      const tagsEl = document.getElementById('chaseThresholdsTags');
+      if (tagsEl) {
+        tagsEl.innerHTML = list.map(d => `
+          <span class="tag-item" style="background: rgba(202,138,4,0.08); border-color: rgba(202,138,4,0.3); color: var(--warning, #ca8a04); font-weight: 600;">
+            ⏰ ${d} 天
+            <button class="row-del" onclick="removeChaseThreshold(${d})" style="margin: 0 -4px 0 4px; padding: 0 4px;">✕</button>
+          </span>
+        `).join('') || '<span style="color:var(--text-tertiary); font-size:11px;">（未设置阈值时使用默认 3/7/15/30 天）</span>';
+      }
+    }
+  }
+}
+
+// === V3：催单阈值管理 ===
+async function addChaseThreshold() {
+  if (!IS_ADMIN) { toast('只有主管能修改阈值', 'err'); return; }
+  const input = document.getElementById('newChaseThreshold');
+  const v = parseInt((input?.value || '').trim());
+  if (!v || v <= 0 || v > 365) { toast('请输入 1-365 之间的天数', 'warn'); return; }
+  const current = DATA.getChaseThresholds();
+  if (current.includes(v)) { toast(`${v} 天已存在`, 'warn'); return; }
+  try {
+    await DATA.saveChaseThresholds([...current, v]);
+    if (input) input.value = '';
+    toast(`✓ 已新增阈值 ⏰ ${v} 天`);
+    renderSettings();
+    // 如果催单 tab 开着，刷新 chip
+    if (typeof renderChaseThresholdChips === 'function') renderChaseThresholdChips();
+  } catch (err) {
+    console.error(err);
+    toast('保存失败：' + (err.message || err), 'err');
+  }
+}
+
+async function removeChaseThreshold(days) {
+  if (!IS_ADMIN) { toast('只有主管能修改阈值', 'err'); return; }
+  const current = DATA.getChaseThresholds();
+  if (current.length <= 1) { toast('至少要保留 1 个阈值', 'warn'); return; }
+  if (!confirm(`移除「${days} 天」这个催单阈值？`)) return;
+  try {
+    await DATA.saveChaseThresholds(current.filter(d => d !== days));
+    toast(`✓ 已移除 ⏰ ${days} 天`);
+    renderSettings();
+    if (typeof renderChaseThresholdChips === 'function') renderChaseThresholdChips();
+  } catch (err) {
+    console.error(err);
+    toast('保存失败：' + (err.message || err), 'err');
+  }
 }
 
 async function toggleAgentModule(agentIdx, moduleKey, checked) {

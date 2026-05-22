@@ -372,6 +372,7 @@ body {
   font-weight: 600;
 }
 .after-row .days-ago.warn { background: rgba(202,138,4,0.12); color: var(--warning); }
+.after-row .days-ago.crit { background: rgba(220,38,38,0.12); color: var(--danger); }
 /* 供应商问题 */
 #issuesBody .record-row, #issuesContainer .record-row, .issues-header {
   grid-template-columns: 36px 110px minmax(120px, 1fr) 110px minmax(220px, 2.5fr) 80px 100px 80px;
@@ -2319,7 +2320,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       <div class="stat-card danger clickable" onclick="quickFilterOrders('overdue')" title="点击查看：逾期订单"><div class="label">逾期 / 今日</div><div class="value mono" style="font-size: 22px;"><span id="oOverdue">0</span> / <span id="oToday">0</span></div><div class="sub" id="oUrgentSub">需处理</div></div>
     </div>
     <div class="toolbar">
-      <div class="search-box"><input type="text" id="oSearch" placeholder="搜索订单号、产品、供应商..." oninput="renderOrders()"></div>
+      <div class="search-box"><input type="text" id="oSearch" placeholder="搜索 PO 编号、产品、供应商..." oninput="renderOrders()"></div>
       <select class="filter-select" id="oFilterStatus" onchange="renderOrders()">
         <option value="active">🔥 进行中（默认）</option>
         <option value="completed">✓ 已完成</option>
@@ -2339,15 +2340,17 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <option value="promised_asc">按承诺日 ↑</option>
         <option value="order_date_desc">最新下单 ↓</option>
       </select>
-      <button class="btn primary" onclick="addOrder()" style="margin-left: auto;">+ 新增订单</button>
+      <button class="btn primary" onclick="addOrder()" style="margin-left: auto;" title="催单数据自动来自采购单(PO)，新增请去采购单 tab">📦 去采购单</button>
     </div>
+    <!-- V3：催单阈值 chip（按下单距今天数过滤未发货 PO，主管可在配置里自定义）-->
+    <div id="chaseThresholdChips" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding: 10px 14px; background: var(--bg-elevated); border-radius: 10px; border: 1px solid var(--border-subtle);"></div>
     <div class="records-card" id="ordersCard">
       <div class="records-header orders-header">
         <div>#</div><div>状态</div><div>订单 · 产品 · 催单历史</div>
         <div>截图</div><div>日期</div><div style="text-align: right;">操作</div>
       </div>
       <div id="ordersBody"></div>
-      <div class="add-row" onclick="addOrder()">+ 新增订单</div>
+      <div class="add-row" onclick="addOrder()">📦 催单来自采购单 · 点这里去采购单管理</div>
     </div>
   </div>
 </div>
@@ -3717,6 +3720,19 @@ HOGO
         <button class="btn primary" onclick="addSupplierConfig()">添加</button>
       </div>
       <div class="tag-list" id="settingsSuppliers" style="max-height: 200px; overflow-y: auto;"></div>
+    </div>
+
+    <!-- V3：催单阈值（仅主管可见）-->
+    <div class="form-group" id="settingsChaseThresholds" style="display: none;">
+      <label>⏰ 催单阈值（PO 派生催单使用 · 按下单距今天数提示）</label>
+      <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 8px;">
+        💡 在催单 tab 顶部会显示这些阈值的快速筛选 chip。比如「7 天」表示下单 ≥ 7 天还没发货的 PO。
+      </div>
+      <div class="add-agent-input" style="margin-bottom: 8px;">
+        <input type="number" id="newChaseThreshold" placeholder="新增天数（如 5）" min="1" max="365">
+        <button class="btn primary" onclick="addChaseThreshold()">添加</button>
+      </div>
+      <div class="tag-list" id="chaseThresholdsTags"></div>
     </div>
     
     <!-- 主管专属：模块化重启（危险操作区）-->

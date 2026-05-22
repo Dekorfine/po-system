@@ -348,6 +348,24 @@ const DATA = {
     };
   },
 
+  // 催单阈值（PO 派生催单的预警天数列表）
+  getChaseThresholds() {
+    const v = this._cache.config && this._cache.config.chase_thresholds;
+    if (Array.isArray(v) && v.length > 0) {
+      return v.map(n => parseInt(n)).filter(n => !isNaN(n) && n > 0).sort((a, b) => a - b);
+    }
+    return [3, 7, 15, 30];  // 默认
+  },
+  async saveChaseThresholds(arr) {
+    if (!IS_ADMIN) throw new Error('只有主管能修改催单阈值');
+    const cleaned = (arr || []).map(n => parseInt(n)).filter(n => !isNaN(n) && n > 0);
+    const sorted = [...new Set(cleaned)].sort((a, b) => a - b);
+    if (this._cache.config) this._cache.config.chase_thresholds = sorted;
+    const { error } = await sb.from('config').update({ chase_thresholds: sorted }).eq('id', 1);
+    if (error) throw error;
+    return sorted;
+  },
+
   // 主管聚合视图
   listAllAgents() { return this._cache.agents; },
   getAllOrders() {
@@ -695,6 +713,11 @@ let AFTERSALES = [];
 let ISSUES = [];
 let MISSING_LIGHTS = [];        // 共享数据
 let PURCHASES = [];             // 线上采购
+
+// === 催单系统（V3 改造：从 PO 派生）===
+let CHASE_ORDERS = [];          // 派生的催单数据（来自 PO 表 po_number IS NOT NULL 且未发货）
+let _chaseThresholdFilter = 0;  // 0=全部，>0=按 N 天阈值过滤
+let _chaseLastLoad = 0;         // 上次加载时间（用于缓存判断）
 
 let _currentItemId = null;
 let _currentItemType = null;     // 当前打开的 modal 类型
@@ -1738,10 +1761,22 @@ function loadAllData() {
   MISSING_LIGHTS = DATA.getMissingLights().filter(m => !m.deletedAt);
   refreshAllSupplierDropdowns();
   updateBadges();
+  // 异步加载 PO 派生催单数据（不阻塞 UI）
+  if (typeof loadChaseOrders === 'function') {
+    loadChaseOrders().catch(e => console.warn('PO 派生催单加载失败:', e));
+  }
 }
 
 function renderActiveTab() {
-  if (CURRENT_TAB === 'orders') { renderOrders(); refreshOrdersFb(); renderUrgentBanner(); updateOrderStats(); }
+  if (CURRENT_TAB === 'orders') {
+    // PO 派生数据可能尚未加载完成（异步）—— 先尝试用现有缓存渲染，加载完成后再次刷新
+    renderOrders(); refreshOrdersFb(); renderUrgentBanner(); updateOrderStats();
+    if (typeof loadChaseOrders === 'function') {
+      loadChaseOrders().then(() => {
+        renderOrders(); refreshOrdersFb(); renderUrgentBanner(); updateOrderStats();
+      }).catch(e => console.warn('PO 派生催单加载失败:', e));
+    }
+  }
   else if (CURRENT_TAB === 'aftersales') { renderAftersales(); refreshAsFb(); updateAfterStats(); renderAfterReport(); }
   else if (CURRENT_TAB === 'issues') { renderIssues(); updateIssueStats(); }
   else if (CURRENT_TAB === 'missing') { renderMissing(); updateMissingStats(); }
@@ -1752,9 +1787,10 @@ function renderActiveTab() {
 
 function updateBadges() {
   const today = new Date().toISOString().slice(0, 10);
-  // 催单：紧急（橙/红预警）+ 今日要催
+  // 催单：紧急（橙/红预警）+ 今日要催 —— V3 改造：优先用 PO 派生数据
+  const ordersSource = (typeof CHASE_ORDERS !== 'undefined' && CHASE_ORDERS.length > 0) ? CHASE_ORDERS : ORDERS;
   let oUrgent = 0;
-  ORDERS.forEach(o => {
+  ordersSource.forEach(o => {
     const lvl = getOrderUrgencyLevel(o);
     if (lvl === 'red' || lvl === 'orange') oUrgent++;
     else if (o.nextFollow === today && !['cancelled','shipped','arrived'].includes(o.status)) oUrgent++;
