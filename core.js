@@ -1,0 +1,1978 @@
+// ============================================================
+// 跟单团队工作台 · core.js
+// 核心基础设施：Supabase 客户端、登录、DATA 对象、全局状态、工具函数
+// ============================================================
+// 加载顺序：必须在所有业务模块前加载
+// 改动须慎重 —— 这个文件被所有模块依赖
+// ============================================================
+
+// ============================================================
+// 跟单团队工作台 · 演示版
+// 4 个独立模块 + Tab 切换 + 主管视角
+// ============================================================
+
+// ============ 数据访问层 ============
+// ============================================================
+// Supabase 客户端
+// ============================================================
+const SUPABASE_URL = 'https://pyfmuknvjqfwcqvbrsvw.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_dFjk1WN_Hc0Te6IhXZysZg_SXvKQU4C';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let CURRENT_USER_ID = null;     // auth.uid
+let CURRENT_USER_EMAIL = null;
+let _isBootstrapping = true;
+
+// ============================================================
+// 数据访问层（云端版）
+// ============================================================
+// 设计：
+// - 内部 _cache 缓存所有数据
+// - 同步接口（getXxx/saveXxx）保留，兼容演示版代码
+// - saveXxx 触发防抖异步同步到 Supabase
+// ============================================================
+const DATA = {
+  _cache: {
+    config: { id: 1, suppliers: [], sites: ['VK','DC','RD','DF','MH','MJ','ML','RS','LS','PL','线下'], score_rules: null },
+    agents: [],
+    ordersByAgent: {},
+    aftersalesByAgent: {},
+    issuesByAgent: {},
+    missingLights: [],
+    purchasesByAgent: {},
+  },
+  _syncTimers: {},
+
+  // ============ 异步加载 ============
+  async loadAll() {
+    // 配置
+    const { data: cfg } = await sb.from('config').select('*').eq('id', 1).single();
+    if (cfg) {
+      this._cache.config = cfg;
+      // 首次部署或被清空：自动填充默认供应商列表
+      if (!cfg.suppliers || cfg.suppliers.length === 0) {
+        this._cache.config.suppliers = [...DEFAULT_SUPPLIERS];
+        // 后台异步同步到云端（不阻塞）
+        sb.from('config').update({ suppliers: DEFAULT_SUPPLIERS }).eq('id', 1).then(({ error }) => {
+          if (error) console.warn('Sync default suppliers failed:', error);
+          else console.log('✓ 已自动同步 ' + DEFAULT_SUPPLIERS.length + ' 家默认供应商');
+        });
+      }
+    }
+
+    // Agents
+    const { data: agentRows } = await sb.from('agents').select('*');
+    this._cache.agents = (agentRows || []).map(a => ({
+      _userId: a.user_id,
+      name: a.name,
+      isAdmin: a.is_admin,
+      sites: a.sites || [],
+      modules: a.modules || [...ALL_MODULE_KEYS],
+    }));
+
+    // Orders / Aftersales / Issues / Missing / Purchases 都按 agent 分组（RLS 自动过滤：跟单只能看自己，主管能看所有）
+    const [ordersR, aftersR, issuesR, missingR, purchasesR] = await Promise.all([
+      sb.from('orders').select('*').order('created_at', { ascending: false }),
+      sb.from('aftersales').select('*').order('created_at', { ascending: false }),
+      sb.from('issues').select('*').order('created_at', { ascending: false }),
+      sb.from('missing_lights').select('*').order('created_at', { ascending: false }),
+      sb.from('online_purchases').select('*').order('created_at', { ascending: false }).then(r => r).catch(e => ({ data: [], error: e })),
+    ]);
+
+    // 按 agent_id 分组
+    this._cache.ordersByAgent = this._groupByAgent(ordersR.data || [], 'order');
+    this._cache.aftersalesByAgent = this._groupByAgent(aftersR.data || [], 'after');
+    this._cache.issuesByAgent = this._groupByAgent(issuesR.data || [], 'issue');
+    this._cache.missingLights = (missingR.data || []).map(m => this._fromDbMissing(m));
+    this._cache.purchasesByAgent = this._groupByAgent(purchasesR.data || [], 'purchase');
+  },
+
+  _groupByAgent(rows, type) {
+    const result = {};
+    const userIdToName = {};
+    this._cache.agents.forEach(a => { userIdToName[a._userId] = a.name; });
+
+    rows.forEach(r => {
+      const agentName = userIdToName[r.agent_id] || '未知';
+      if (!result[agentName]) result[agentName] = [];
+      if (type === 'order') result[agentName].push(this._fromDbOrder(r));
+      else if (type === 'after') result[agentName].push(this._fromDbAfter(r));
+      else if (type === 'issue') result[agentName].push(this._fromDbIssue(r));
+      else if (type === 'purchase') result[agentName].push(this._fromDbPurchase(r));
+    });
+    return result;
+  },
+
+  // ============ 字段转换 DB → 内存（snake_case → camelCase）============
+  _fromDbOrder(r) {
+    return {
+      _id: r.id, _agent_id: r.agent_id,
+      orderNo: r.order_no || '', site: r.site || '',
+      product: r.product || '', supplier: r.supplier || '',
+      status: r.status || 'pending',
+      orderDate: r.order_date || '', promisedDate: r.promised_date || '',
+      shippedDate: r.shipped_date || '', arrivedDate: r.arrived_date || '',
+      nextFollow: r.next_follow || '',
+      notes: r.notes || '',
+      screenshots: r.screenshots || [], followups: r.followups || [],
+      createdAt: r.created_at, updatedAt: r.updated_at,
+      deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
+    };
+  },
+  _fromDbAfter(r) {
+    return {
+      _id: r.id, _agent_id: r.agent_id,
+      orderNo: r.order_no || '', site: r.site || '',
+      product: r.product || '', supplier: r.supplier || '',
+      reason: r.reason || '', reasonDetail: r.reason_detail || '',
+      status: r.status || 'pending',
+      createdDate: r.created_date || '', nextFollow: r.next_follow || '', resolvedDate: r.resolved_date || '',
+      screenshots: r.screenshots || [], followups: r.followups || [],
+      createdAt: r.created_at,
+      deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
+    };
+  },
+  _fromDbIssue(r) {
+    return {
+      _id: r.id, _agent_id: r.agent_id,
+      supplier: r.supplier || '', issueType: r.issue_type || '',
+      requirement: r.requirement || '', status: r.status || 'pending',
+      followups: r.followups || [], createdAt: r.created_at,
+      deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
+    };
+  },
+  _fromDbMissing(r) {
+    return {
+      _id: r.id, _creator_id: r.creator_id,
+      description: r.description || '', specs: r.specs || '',
+      customerOrderNo: r.customer_order_no || '',
+      creator: r.creator_name || '',
+      status: r.status || 'searching',
+      screenshots: r.screenshots || [], comments: r.comments || [],
+      realPhotos: r.real_photos || [],
+      adoptedHelper: r.adopted_helper || '', foundAt: r.found_at,
+      source: r.source || 'manual',
+      linkedPurchaseId: r.linked_purchase_id || null,
+      createdAt: r.created_at,
+      deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
+    };
+  },
+  
+  _fromDbPurchase(r) {
+    return {
+      _id: r.id, _agent_id: r.agent_id,
+      orderNo: r.order_no || '',
+      platform: r.platform || '',
+      productUrl: r.product_url || '',
+      sku: r.sku || '',
+      productName: r.product_name || '',
+      description: r.description || '',
+      quantity: r.quantity || 1,
+      unitPrice: parseFloat(r.unit_price) || 0,
+      totalAmount: parseFloat(r.total_amount) || 0,
+      status: r.status || 'draft',
+      approvedBy: r.approved_by || '',
+      approvedAt: r.approved_at,
+      rejectedReason: r.rejected_reason || '',
+      orderedAt: r.ordered_at,
+      receivedAt: r.received_at,
+      screenshots: r.screenshots || [],
+      followups: r.followups || [],
+      notes: r.notes || '',
+      linkedMissingId: r.linked_missing_id || null,
+      approvalThreshold: parseFloat(r.approval_threshold) || 2000,
+      createdAt: r.created_at,
+      deletedAt: r.deleted_at || null,
+      deletedBy: r.deleted_by || null,
+    };
+  },
+
+  // ============ 字段转换 内存 → DB ============
+  _toDbOrder(o, userId) {
+    return {
+      ...(o._id && !o._id.startsWith('O') ? { id: o._id } : {}),
+      agent_id: userId,
+      order_no: o.orderNo || '', site: o.site || '',
+      product: o.product || '', supplier: o.supplier || '',
+      status: o.status || 'pending',
+      order_date: o.orderDate || null, promised_date: o.promisedDate || null,
+      shipped_date: o.shippedDate || null, arrived_date: o.arrivedDate || null,
+      next_follow: o.nextFollow || null, notes: o.notes || '',
+      screenshots: o.screenshots || [], followups: o.followups || [],
+      deleted_at: o.deletedAt || null, deleted_by: o.deletedBy || null,
+    };
+  },
+  _toDbAfter(a, userId) {
+    return {
+      ...(a._id && !a._id.startsWith('A') ? { id: a._id } : {}),
+      agent_id: userId,
+      order_no: a.orderNo || '', site: a.site || '',
+      product: a.product || '', supplier: a.supplier || '',
+      reason: a.reason || '', reason_detail: a.reasonDetail || '',
+      status: a.status || 'pending',
+      created_date: a.createdDate || null, next_follow: a.nextFollow || null, resolved_date: a.resolvedDate || null,
+      screenshots: a.screenshots || [], followups: a.followups || [],
+      deleted_at: a.deletedAt || null, deleted_by: a.deletedBy || null,
+    };
+  },
+  _toDbIssue(i, userId) {
+    return {
+      ...(i._id && !i._id.startsWith('I') ? { id: i._id } : {}),
+      agent_id: userId,
+      supplier: i.supplier || '', issue_type: i.issueType || '',
+      requirement: i.requirement || '', status: i.status || 'pending',
+      followups: i.followups || [],
+      deleted_at: i.deletedAt || null, deleted_by: i.deletedBy || null,
+    };
+  },
+  _toDbMissing(m, userId, userName) {
+    return {
+      ...(m._id && !m._id.startsWith('M') ? { id: m._id } : {}),
+      creator_id: m._creator_id || userId,
+      creator_name: m.creator || userName,
+      description: m.description || '', specs: m.specs || '',
+      customer_order_no: m.customerOrderNo || '',
+      status: m.status || 'searching',
+      screenshots: m.screenshots || [], comments: m.comments || [],
+      real_photos: m.realPhotos || [],
+      adopted_helper: m.adoptedHelper || null,
+      found_at: m.foundAt || null,
+      source: m.source || 'manual',
+      linked_purchase_id: m.linkedPurchaseId || null,
+      deleted_at: m.deletedAt || null, deleted_by: m.deletedBy || null,
+    };
+  },
+  
+  _toDbPurchase(p, userId) {
+    return {
+      ...(p._id && !p._id.startsWith('P') ? { id: p._id } : {}),
+      agent_id: userId,
+      order_no: p.orderNo || '',
+      platform: p.platform || '',
+      product_url: p.productUrl || '',
+      sku: p.sku || '',
+      product_name: p.productName || '',
+      description: p.description || '',
+      quantity: p.quantity || 1,
+      unit_price: p.unitPrice || 0,
+      total_amount: p.totalAmount || 0,
+      status: p.status || 'draft',
+      approved_by: p.approvedBy || null,
+      approved_at: p.approvedAt || null,
+      rejected_reason: p.rejectedReason || null,
+      ordered_at: p.orderedAt || null,
+      received_at: p.receivedAt || null,
+      screenshots: p.screenshots || [],
+      followups: p.followups || [],
+      notes: p.notes || '',
+      linked_missing_id: p.linkedMissingId || null,
+      approval_threshold: p.approvalThreshold || 2000,
+      deleted_at: p.deletedAt || null,
+      deleted_by: p.deletedBy || null,
+    };
+  },
+
+  // ============ 同步接口（演示版兼容）============
+  getConfig() {
+    return {
+      agents: this._cache.agents,
+      suppliers: this._cache.config.suppliers || [],
+      sites: this._cache.config.sites || [],
+    };
+  },
+  saveConfig(cfg) {
+    this._cache.agents = cfg.agents || this._cache.agents;
+    this._cache.config.suppliers = cfg.suppliers || this._cache.config.suppliers;
+    this._cache.config.sites = cfg.sites || this._cache.config.sites;
+    // 权限/网站类改动用立即同步（不防抖），避免主管改完跟单立刻刷新看不到
+    return this._syncConfigAndAgents();
+  },
+
+  getCurrentAgent() { return CURRENT_AGENT; },
+  setCurrentAgent(name) { /* 由登录决定，no-op */ },
+
+  // 订单
+  getOrders(agent) { return this._cache.ordersByAgent[agent] || []; },
+  saveOrders(agent, arr) {
+    this._cache.ordersByAgent[agent] = arr;
+    this._debounce('orders_' + agent, 250, () => fullSyncOrders(agent));
+  },
+
+  // 售后
+  getAftersales(agent) { return this._cache.aftersalesByAgent[agent] || []; },
+  saveAftersales(agent, arr) {
+    this._cache.aftersalesByAgent[agent] = arr;
+    this._debounce('after_' + agent, 250, () => fullSyncAftersales(agent));
+  },
+
+  // 供应商问题
+  getIssues(agent) { return this._cache.issuesByAgent[agent] || []; },
+  saveIssues(agent, arr) {
+    this._cache.issuesByAgent[agent] = arr;
+    this._debounce('issues_' + agent, 250, () => fullSyncIssues(agent));
+  },
+
+  // 找灯
+  getMissingLights() { return this._cache.missingLights; },
+  saveMissingLights(arr) {
+    this._cache.missingLights = arr;
+    this._debounce('missing', 250, () => fullSyncMissing());
+  },
+  
+  // 线上采购
+  getPurchases(agent) { return this._cache.purchasesByAgent[agent] || []; },
+  getAllPurchases() {
+    const all = [];
+    Object.entries(this._cache.purchasesByAgent).forEach(([agent, arr]) => {
+      arr.forEach(p => all.push({ ...p, _agent: agent }));
+    });
+    return all;
+  },
+  savePurchases(agent, arr) {
+    this._cache.purchasesByAgent[agent] = arr;
+    this._debounce('purchases_' + agent, 250, () => fullSyncPurchases(agent));
+  },
+
+  // 评分规则
+  getScoreRules() {
+    return (this._cache.config && this._cache.config.score_rules) || this.defaultScoreRules();
+  },
+  saveScoreRules(rules) {
+    if (this._cache.config) this._cache.config.score_rules = rules;
+    this._debounce('rules', 250, () => this._syncScoreRules(rules));
+  },
+  defaultScoreRules() {
+    return {
+      missingHelp: 10, orderOnTime: 5, orderOverdue: -3, orderDelivered: 2,
+      afterResolved: 3, afterFast: 2, issueResolved: 2, issueEscalated: 3,
+    };
+  },
+
+  // 主管聚合视图
+  listAllAgents() { return this._cache.agents; },
+  getAllOrders() {
+    const all = [];
+    Object.entries(this._cache.ordersByAgent).forEach(([agent, arr]) => {
+      arr.forEach(o => all.push({ ...o, _agent: agent }));
+    });
+    return all;
+  },
+  getAllAftersales() {
+    const all = [];
+    Object.entries(this._cache.aftersalesByAgent).forEach(([agent, arr]) => {
+      arr.forEach(o => all.push({ ...o, _agent: agent }));
+    });
+    return all;
+  },
+  getAllIssues() {
+    const all = [];
+    Object.entries(this._cache.issuesByAgent).forEach(([agent, arr]) => {
+      arr.forEach(o => all.push({ ...o, _agent: agent }));
+    });
+    return all;
+  },
+
+  // ============ 内部同步（防抖）============
+  _pendingFns: {},
+  _debounce(key, ms, fn) {
+    if (_isBootstrapping) return;
+    clearTimeout(this._syncTimers[key]);
+    this._pendingFns[key] = fn;
+    setSyncStatus('pending');
+    this._syncTimers[key] = setTimeout(() => {
+      const f = this._pendingFns[key];
+      delete this._pendingFns[key];
+      delete this._syncTimers[key];
+      if (f) {
+        setSyncStatus('syncing');
+        f().then(() => setSyncStatus('synced')).catch(err => {
+          setSyncStatus('error');
+          console.error('Sync error', key, err);
+          if (typeof toast === 'function') toast('云端同步失败：' + (err.message || err), 'err');
+        });
+      }
+    }, ms);
+  },
+  
+  _cancelDebounce(key) {
+    clearTimeout(this._syncTimers[key]);
+    delete this._syncTimers[key];
+    delete this._pendingFns[key];
+  },
+  
+  // 立即推送（不 debounce）：用于"明确提交动作"如加跟进、删除、状态切换等
+  async saveAndSyncOrders(agent) {
+    this._cancelDebounce('orders_' + agent);
+    setSyncStatus('syncing');
+    try { await fullSyncOrders(agent); setSyncStatus('synced'); }
+    catch (err) { setSyncStatus('error'); throw err; }
+  },
+  async saveAndSyncAftersales(agent) {
+    this._cancelDebounce('after_' + agent);
+    setSyncStatus('syncing');
+    try { await fullSyncAftersales(agent); setSyncStatus('synced'); }
+    catch (err) { setSyncStatus('error'); throw err; }
+  },
+  async saveAndSyncIssues(agent) {
+    this._cancelDebounce('issues_' + agent);
+    setSyncStatus('syncing');
+    try { await fullSyncIssues(agent); setSyncStatus('synced'); }
+    catch (err) { setSyncStatus('error'); throw err; }
+  },
+  async saveAndSyncMissing() {
+    this._cancelDebounce('missing');
+    setSyncStatus('syncing');
+    try { await fullSyncMissing(); setSyncStatus('synced'); }
+    catch (err) { setSyncStatus('error'); throw err; }
+  },
+  async saveAndSyncPurchases(agent) {
+    this._cancelDebounce('purchases_' + agent);
+    setSyncStatus('syncing');
+    try { await fullSyncPurchases(agent); setSyncStatus('synced'); }
+    catch (err) { setSyncStatus('error'); throw err; }
+  },
+  
+  // 立即执行所有 pending 的同步（关闭 modal 时调用，保证数据落库）
+  flushPending() {
+    Object.keys(this._pendingFns).forEach(key => {
+      clearTimeout(this._syncTimers[key]);
+      const f = this._pendingFns[key];
+      delete this._pendingFns[key];
+      delete this._syncTimers[key];
+      if (f) f().catch(err => {
+        console.error('Flush sync error', key, err);
+        if (typeof toast === 'function') toast('云端同步失败：' + (err.message || err), 'err');
+      });
+    });
+  },
+
+  async _syncConfigAndAgents() {
+    if (!IS_ADMIN) return;
+    await sb.from('config').update({
+      suppliers: this._cache.config.suppliers,
+      sites: this._cache.config.sites,
+    }).eq('id', 1);
+    // 同步每个 agent 的 sites / modules / isAdmin
+    for (const a of this._cache.agents) {
+      if (a._userId) {
+        await sb.from('agents').update({
+          name: a.name,
+          is_admin: a.isAdmin,
+          sites: a.sites || [],
+          modules: a.modules || [],
+        }).eq('user_id', a._userId);
+      }
+    }
+  },
+
+  async _syncScoreRules(rules) {
+    if (!IS_ADMIN) return;
+    await sb.from('config').update({ score_rules: rules }).eq('id', 1);
+  },
+};
+
+// ============================================================
+// 全量同步函数（防抖触发）
+// ============================================================
+async function fullSyncOrders(agentName) {
+  const a = CONFIG.agents.find(x => x.name === agentName);
+  if (!a || !a._userId) return;
+  const userId = a._userId;
+  const arr = DATA._cache.ordersByAgent[agentName] || [];
+
+  const { data: existing } = await sb.from('orders').select('id').eq('agent_id', userId);
+  const existingIds = new Set((existing || []).map(o => o.id));
+  const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('O')));
+
+  const toDelete = [...existingIds].filter(id => !localIds.has(id));
+  if (toDelete.length > 0) {
+    await sb.from('orders').delete().in('id', toDelete);
+  }
+
+  const inserts = arr.filter(o => !o._id || o._id.startsWith('O')).map(o => DATA._toDbOrder(o, userId));
+  const updates = arr.filter(o => o._id && !o._id.startsWith('O')).map(o => DATA._toDbOrder(o, userId));
+
+  if (updates.length > 0) {
+    const { error } = await sb.from('orders').upsert(updates);
+    if (error) throw error;
+  }
+  if (inserts.length > 0) {
+    const { data, error } = await sb.from('orders').insert(inserts).select();
+    if (error) throw error;
+    // 回填真实 UUID
+    let i = 0;
+    for (const o of arr) {
+      if (!o._id || o._id.startsWith('O')) {
+        if (data[i]) {
+          const oldId = o._id;
+          o._id = data[i].id;
+          o._agent_id = userId;
+          // 如果当前 modal 打开的就是这个订单，同步更新 _currentItemId
+          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
+            _currentItemId = o._id;
+          }
+          i++;
+        }
+      }
+    }
+  }
+}
+
+async function fullSyncAftersales(agentName) {
+  const a = CONFIG.agents.find(x => x.name === agentName);
+  if (!a || !a._userId) return;
+  const userId = a._userId;
+  const arr = DATA._cache.aftersalesByAgent[agentName] || [];
+
+  const { data: existing } = await sb.from('aftersales').select('id').eq('agent_id', userId);
+  const existingIds = new Set((existing || []).map(o => o.id));
+  const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('A')));
+
+  const toDelete = [...existingIds].filter(id => !localIds.has(id));
+  if (toDelete.length > 0) {
+    await sb.from('aftersales').delete().in('id', toDelete);
+  }
+
+  const inserts = arr.filter(o => !o._id || o._id.startsWith('A')).map(o => DATA._toDbAfter(o, userId));
+  const updates = arr.filter(o => o._id && !o._id.startsWith('A')).map(o => DATA._toDbAfter(o, userId));
+
+  if (updates.length > 0) {
+    const { error } = await sb.from('aftersales').upsert(updates);
+    if (error) throw error;
+  }
+  if (inserts.length > 0) {
+    const { data, error } = await sb.from('aftersales').insert(inserts).select();
+    if (error) throw error;
+    let i = 0;
+    for (const o of arr) {
+      if (!o._id || o._id.startsWith('A')) {
+        if (data[i]) {
+          const oldId = o._id;
+          o._id = data[i].id;
+          o._agent_id = userId;
+          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
+            _currentItemId = o._id;
+          }
+          i++;
+        }
+      }
+    }
+  }
+}
+
+async function fullSyncIssues(agentName) {
+  const a = CONFIG.agents.find(x => x.name === agentName);
+  if (!a || !a._userId) return;
+  const userId = a._userId;
+  const arr = DATA._cache.issuesByAgent[agentName] || [];
+
+  const { data: existing } = await sb.from('issues').select('id').eq('agent_id', userId);
+  const existingIds = new Set((existing || []).map(o => o.id));
+  const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('I')));
+
+  const toDelete = [...existingIds].filter(id => !localIds.has(id));
+  if (toDelete.length > 0) {
+    await sb.from('issues').delete().in('id', toDelete);
+  }
+
+  const inserts = arr.filter(o => !o._id || o._id.startsWith('I')).map(o => DATA._toDbIssue(o, userId));
+  const updates = arr.filter(o => o._id && !o._id.startsWith('I')).map(o => DATA._toDbIssue(o, userId));
+
+  if (updates.length > 0) {
+    const { error } = await sb.from('issues').upsert(updates);
+    if (error) throw error;
+  }
+  if (inserts.length > 0) {
+    const { data, error } = await sb.from('issues').insert(inserts).select();
+    if (error) throw error;
+    let i = 0;
+    for (const o of arr) {
+      if (!o._id || o._id.startsWith('I')) {
+        if (data[i]) {
+          const oldId = o._id;
+          o._id = data[i].id;
+          o._agent_id = userId;
+          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
+            _currentItemId = o._id;
+          }
+          i++;
+        }
+      }
+    }
+  }
+}
+
+async function fullSyncMissing() {
+  const arr = DATA._cache.missingLights;
+
+  // 找灯：所有人共享，按 id 同步
+  const { data: existing } = await sb.from('missing_lights').select('id');
+  const existingIds = new Set((existing || []).map(o => o.id));
+  const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('M')));
+
+  // 只删除自己创建的（RLS 控制）
+  const toDelete = [...existingIds].filter(id => !localIds.has(id));
+  if (toDelete.length > 0) {
+    await sb.from('missing_lights').delete().in('id', toDelete);
+  }
+
+  const inserts = arr.filter(o => !o._id || o._id.startsWith('M')).map(o => DATA._toDbMissing(o, CURRENT_USER_ID, CURRENT_AGENT));
+  const updates = arr.filter(o => o._id && !o._id.startsWith('M')).map(o => DATA._toDbMissing(o, CURRENT_USER_ID, CURRENT_AGENT));
+
+  if (updates.length > 0) {
+    const { error } = await sb.from('missing_lights').upsert(updates);
+    if (error) throw error;
+  }
+  if (inserts.length > 0) {
+    const { data, error } = await sb.from('missing_lights').insert(inserts).select();
+    if (error) throw error;
+    let i = 0;
+    for (const o of arr) {
+      if (!o._id || o._id.startsWith('M')) {
+        if (data[i]) {
+          const oldId = o._id;
+          o._id = data[i].id;
+          o._creator_id = data[i].creator_id;
+          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
+            _currentItemId = o._id;
+          }
+          i++;
+        }
+      }
+    }
+  }
+}
+
+async function fullSyncPurchases(agentName) {
+  const me = DATA._cache.agents.find(a => a.name === agentName);
+  if (!me) return;
+  const userId = me._userId;
+  const arr = DATA._cache.purchasesByAgent[agentName] || [];
+
+  const { data: existing } = await sb.from('online_purchases').select('id').eq('agent_id', userId);
+  const existingIds = new Set((existing || []).map(x => x.id));
+  const localIds = new Set(arr.map(p => p._id).filter(id => id && !id.startsWith('P')));
+
+  const toDelete = [...existingIds].filter(id => !localIds.has(id));
+  if (toDelete.length > 0) {
+    await sb.from('online_purchases').delete().in('id', toDelete);
+  }
+
+  const inserts = arr.filter(p => !p._id || p._id.startsWith('P')).map(p => DATA._toDbPurchase(p, userId));
+  const updates = arr.filter(p => p._id && !p._id.startsWith('P')).map(p => DATA._toDbPurchase(p, userId));
+
+  if (updates.length > 0) {
+    const { error } = await sb.from('online_purchases').upsert(updates);
+    if (error) throw error;
+  }
+  if (inserts.length > 0) {
+    const { data, error } = await sb.from('online_purchases').insert(inserts).select();
+    if (error) throw error;
+    let i = 0;
+    for (const p of arr) {
+      if (!p._id || p._id.startsWith('P')) {
+        if (data[i]) {
+          const oldId = p._id;
+          p._id = data[i].id;
+          p._agent_id = userId;
+          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
+            _currentItemId = p._id;
+          }
+          i++;
+        }
+      }
+    }
+  }
+}
+
+// ============ 全局状态 ============
+let CONFIG = DATA.getConfig();  // 空配置，bootstrap 后填充
+let CURRENT_AGENT = null;       // 字符串：当前账号姓名
+let IS_ADMIN = false;
+let CURRENT_TAB = 'orders';     // orders | aftersales | issues | missing | purchases | performance
+let ORDERS = [];
+let AFTERSALES = [];
+let ISSUES = [];
+let MISSING_LIGHTS = [];        // 共享数据
+let PURCHASES = [];             // 线上采购
+
+let _currentItemId = null;
+let _currentItemType = null;     // 当前打开的 modal 类型
+let _newScreenshots_orig = [];   // 主截图待保存
+let _newScreenshots_fu = [];     // 跟进截图待保存
+let _currentFuType = 'chase';
+let _pasteTarget = null;          // 当前焦点的拖放区，'orig' | 'fu'
+let _ordersFbTab = 'overdue';
+let _asFbTab = 'overdue';
+
+// ============ 常量 ============
+const ORDER_STATUS_LABELS = {
+  pending: '待下采购', producing: '生产中', shipped: '已发货',
+  arrived: '已到货', cancelled: '取消',
+};
+const AFTER_STATUS_LABELS = {
+  pending: '待处理', contacting: '沟通中', repairing: '返修中',
+  resolved: '已解决', cancelled: '已取消',
+};
+const ISSUE_STATUS_LABELS = {
+  pending: '待沟通', in_progress: '沟通中',
+  resolved: '已解决', escalated: '已升级老板',
+};
+const MISSING_STATUS_LABELS = {
+  searching: '搜寻中', found: '已找到', abandoned: '已放弃',
+};
+const ORDER_TYPE_LABELS = {
+  chase: '💬 催单', response: '📨 供应商反馈',
+  ship: '🚚 发货通知', arrive: '📦 到货', other: '📌 其他',
+};
+const REASON_LIST = ['产品瑕疵','给错货物','缺配件','功能故障','物流损坏','安装问题','不符预期','其他'];
+const REASON_TREE = {
+  '产品瑕疵': {
+    icon: '⚠',
+    subs: ['喷漆不良/掉漆', '有划痕/磨损', '生锈/氧化', '玻璃破损/裂纹', '亚克力变形/发黄', '焊点开裂', '材质问题', '污渍/胶痕', '其他瑕疵']
+  },
+  '给错货物': {
+    icon: '🔄',
+    subs: ['款式错误（要 A 给 B）', '颜色错误（如白→黑）', '数量错误（要 2 给 1）', '尺寸错误', '型号错误', '替换货未通知', '其他给错']
+  },
+  '缺配件': {
+    icon: '🧩',
+    subs: ['缺光源/灯泡', '缺驱动/电源', '缺遥控器', '缺安装件（螺丝/挂板）', '缺装饰件（吊坠/水晶等）', '缺连接线/灯头线', '缺说明书', '其他缺件']
+  },
+  '功能故障': {
+    icon: '⚡',
+    subs: ['电压错误（如要 110V 给 220V）', '光源不对（如要单色给三色）', '调光不对（如要可控硅给常规）', '不亮 / 闪烁 / 不稳', '开关不灵 / 损坏', '蓝牙 / 智能控制问题', '光源亮度不达标', '色温不对', '其他功能问题']
+  },
+  '物流损坏': {
+    icon: '📦',
+    subs: ['运输压破', '包装破损', '货物丢失/少箱', '运输延误', '其他物流问题']
+  },
+  '安装问题': {
+    icon: '🔧',
+    subs: ['尺寸不符', '配件不匹配', '说明书不清/缺失', '安装结构问题', '其他安装问题']
+  },
+  '不符预期': {
+    icon: '😕',
+    subs: ['客户主观因素', '色差较大', '风格不符', '尺寸偏大/偏小', '材质感不符', '其他不符']
+  },
+  '其他': {
+    icon: '📌',
+    subs: ['请在详情说明']
+  }
+};
+
+// 订单号格式提示（按网站）
+const ORDER_NO_FORMAT = {
+  VK: 'K114176 或 V114176',
+  DC: 'DC114176',
+  RD: 'RD114176',
+  DF: 'DF114176',
+  MH: 'MH114176',
+  MJ: 'MJ114176',
+  ML: 'ML114176',
+  RS: 'RS114176',
+  LS: 'LS114176',
+  PL: 'PL114176',
+  '线下': '自定义编号',
+};
+
+// 所有模块（用于权限控制）
+const ALL_MODULES = [
+  { key: 'orders', label: '📋 催单' },
+  { key: 'aftersales', label: '🔧 售后' },
+  { key: 'issues', label: '⚠ 供应商问题' },
+  { key: 'missing', label: '🔍 找灯' },
+  { key: 'purchases', label: '🛒 线上采购' },
+  { key: 'sales', label: '📥 销售单' },
+  { key: 'po', label: '📦 采购单' },
+  { key: 'products', label: '📚 产品' },
+  { key: 'consolidation', label: '🧊 合箱' },
+  { key: 'performance', label: '📊 绩效' },
+];
+const ALL_MODULE_KEYS = ALL_MODULES.map(m => m.key);
+
+// 默认供应商列表（首次部署/清空后会自动恢复）
+const DEFAULT_SUPPLIERS = [
+  "3D打印",
+  "7号灯饰",
+  "DAWN艺术居",
+  "HOGO",
+  "casa",
+  "e家/乔茜",
+  "一号货仓/灯格",
+  "一启",
+  "一束光",
+  "一枝灯饰",
+  "一荣",
+  "七分光",
+  "万伟",
+  "万象",
+  "世澜/红林",
+  "东堡",
+  "东舜",
+  "东辰",
+  "东龙",
+  "中慧",
+  "中鸿",
+  "丰欧电子",
+  "丽林",
+  "义婷",
+  "乔通塑料",
+  "九九灯饰",
+  "九岸/图尔光电",
+  "云家",
+  "云雨",
+  "亚穆",
+  "京派",
+  "亮宇",
+  "亮家优品",
+  "亿众",
+  "亿品豪",
+  "亿鑫",
+  "什么灯饰",
+  "任何照明",
+  "伊思莱",
+  "伊晨",
+  "伊诺",
+  "众超",
+  "优大",
+  "优悦",
+  "伟煜",
+  "伟煜树脂",
+  "伯尔",
+  "伯德/柏丰",
+  "佐恩",
+  "佑丰",
+  "佛光配件",
+  "佰款",
+  "佰跃",
+  "佳佳",
+  "佳和",
+  "佳德来",
+  "佳易",
+  "依诺",
+  "保罗",
+  "信得",
+  "信达",
+  "值总/白舟",
+  "健锋",
+  "允控",
+  "元亨/佰宝/元宝",
+  "元品",
+  "元物",
+  "兆虹",
+  "光之屋",
+  "光之影",
+  "光天使",
+  "光尚",
+  "光方（扶桑树）",
+  "光无垠",
+  "光源陈列馆",
+  "光艺能",
+  "光辑",
+  "光遇",
+  "光韵",
+  "克鲁格",
+  "兰膏",
+  "兴宾",
+  "其明",
+  "典灯",
+  "凌戈/森明",
+  "凡克",
+  "凡居",
+  "凡非",
+  "凯丽扬",
+  "凯丽琪",
+  "凯创",
+  "凯泰",
+  "凯瑞思",
+  "刘强",
+  "创佳",
+  "创古奇",
+  "创居乐",
+  "创意",
+  "创意欣",
+  "创慧",
+  "创灯饰",
+  "创艺",
+  "创艺轩/鸿昇",
+  "初芯",
+  "利佳",
+  "利元灯饰",
+  "利濠木艺",
+  "力创",
+  "北斗星光艺",
+  "北欧美家",
+  "北淮",
+  "匠侬",
+  "匠心",
+  "匠舍",
+  "十八号灯铺",
+  "千宏",
+  "千灯坊",
+  "千灯汇",
+  "千誉",
+  "华丽",
+  "华佳/华之佳",
+  "华品",
+  "华德",
+  "华林/雅盛（迎隆）",
+  "华浩",
+  "华灯",
+  "华美旺家",
+  "华荣",
+  "华诗源",
+  "南宫",
+  "南航",
+  "南辰",
+  "博森",
+  "博米",
+  "博美",
+  "卡奈积/大前门",
+  "卡柏",
+  "卡梅尔",
+  "卡铂",
+  "厚蒙",
+  "原御家居",
+  "原艺工坊",
+  "叁叁",
+  "双闪",
+  "古古",
+  "古风",
+  "古高尔",
+  "吉吉",
+  "吉朗达",
+  "名丰",
+  "名灯惠",
+  "向月",
+  "君渡",
+  "启光",
+  "启明",
+  "启点",
+  "启高",
+  "周锋",
+  "和盛",
+  "品匠",
+  "品执",
+  "品月",
+  "品识",
+  "品诚",
+  "哥德利",
+  "唯尔特",
+  "唯展（魅艺）",
+  "商意",
+  "商朵",
+  "喜唐",
+  "喜灯",
+  "嘉世",
+  "嘉业",
+  "嘉仕达",
+  "嘉帝",
+  "嘉美/二星",
+  "因得",
+  "国雅",
+  "图雅钛金",
+  "圈圈灯/寻光灯饰",
+  "圣立",
+  "域上",
+  "域见",
+  "培宇",
+  "塔斯灯",
+  "壕琳",
+  "壹巢灯饰",
+  "壹米滴答",
+  "夏月（顺其）",
+  "夏洛",
+  "夕阳灯",
+  "大前门",
+  "大理石万家灯饰",
+  "大鹏五金",
+  "天宇",
+  "天畅",
+  "太沃/沃盟",
+  "奇异之光",
+  "奈特",
+  "奎光",
+  "奕博",
+  "奢灯/汝好",
+  "奥伦欧",
+  "奥康",
+  "奥梦",
+  "好利欧",
+  "好友",
+  "好美仕",
+  "威威五金",
+  "子衿",
+  "宇佳",
+  "宇宸",
+  "宇阁",
+  "守灯",
+  "安信",
+  "宏品/日月明光",
+  "宏明",
+  "宏通",
+  "定忠/喜盈门",
+  "宜安",
+  "宝佳",
+  "实丰照明",
+  "室内户外壁灯/候月",
+  "家印",
+  "寅平",
+  "封口胶",
+  "尊御",
+  "小品光电",
+  "小庭苑",
+  "小陈风知名",
+  "尚异",
+  "尚成",
+  "尚承",
+  "尚晟",
+  "尼德兰",
+  "居景",
+  "居里扬",
+  "展总蚕丝灯",
+  "巨信螺丝",
+  "希得利",
+  "希曼达",
+  "帝豪",
+  "常瑞",
+  "康佑",
+  "康瑞",
+  "康童",
+  "开辕",
+  "弗莱斯",
+  "彩绘/全汉",
+  "彼莎",
+  "徐广林",
+  "德鑫铝管",
+  "德钰",
+  "心意",
+  "忆晨",
+  "忆涵",
+  "志森",
+  "志爱",
+  "思佳/开心灯饰",
+  "恋家",
+  "惠土",
+  "意饰",
+  "慕佳",
+  "慕意",
+  "慕橙",
+  "戎光",
+  "护角/昱科包装",
+  "拾尚",
+  "振豪",
+  "接线端子",
+  "摩天轮/创唯",
+  "摩派",
+  "摩灯拾光",
+  "摩灯空间",
+  "摩翼",
+  "摩艾佳",
+  "敏行天下",
+  "数据安全系统",
+  "斌新",
+  "斓斑",
+  "斯卡兰",
+  "新悦",
+  "新望",
+  "新源",
+  "新爵",
+  "新越",
+  "新辉",
+  "新迪/米琳",
+  "新鑫小鸟",
+  "方佳圆",
+  "旧胡同",
+  "旭牛",
+  "旺盈/南兮",
+  "昂克赛斯",
+  "昂德斯",
+  "明创",
+  "明影",
+  "明晨",
+  "明玥/古钥",
+  "星之朗",
+  "星庭煌佳",
+  "星星灯",
+  "星星灯饰",
+  "星星点灯",
+  "星晨",
+  "星灯阁/雨鑫",
+  "星诚",
+  "晋南水晶",
+  "晨曦/心烁",
+  "普球",
+  "景致",
+  "智程电脑",
+  "智艺",
+  "曾总",
+  "月光领域",
+  "有盏灯",
+  "朋友圈",
+  "朗元",
+  "朗图",
+  "朝辉五金",
+  "木友",
+  "木本色",
+  "木艺线条灯/木噫",
+  "本杰明",
+  "权景电线",
+  "权浩",
+  "杭成",
+  "杰尔特",
+  "杰灯饰",
+  "极物坊",
+  "林邦",
+  "柏慕",
+  "柯胜（柯盛）",
+  "格丹",
+  "格度",
+  "格灵",
+  "桃缘茗",
+  "梓瑞",
+  "梦艺",
+  "梵可",
+  "梵影",
+  "梵梦",
+  "梵生",
+  "梵简",
+  "森木",
+  "森源",
+  "森耀",
+  "楷丰",
+  "楷铧",
+  "樊灯",
+  "欣之亮",
+  "欣悦",
+  "欣新广告",
+  "欣煜",
+  "欣辰",
+  "欧伯伲",
+  "欧佛尼",
+  "欧华帝豪",
+  "欧司/南帝",
+  "欧宇",
+  "欧文卡莱",
+  "欧晋",
+  "欧西曼/安瑞斯",
+  "正兴",
+  "正天",
+  "正特大齐",
+  "正飞/艺晨",
+  "毅浩",
+  "毅诚泡沫",
+  "江松",
+  "泉红",
+  "泓运/泓亮",
+  "法拉盛",
+  "泽曼",
+  "洛奥灯饰",
+  "海伦铜灯/8号铜灯",
+  "海辉",
+  "淘之苑",
+  "淘宝吾爱灯",
+  "淘宝品艺",
+  "淘宝曼灯饰",
+  "淘宝灯也",
+  "淘宝灯小白",
+  "淘宝美尼思",
+  "淘宝腾达",
+  "淘宝艺术居",
+  "淘淘居",
+  "清韵",
+  "源尚居",
+  "潮漫照明",
+  "澳兰",
+  "澳宸",
+  "澳怡/中雅",
+  "澳斯米兰",
+  "澳特斯/澳迪斯",
+  "灏龙",
+  "火花球",
+  "火车头/HCT灯饰",
+  "灯世界",
+  "灯光画",
+  "灯可爱",
+  "灯奇",
+  "灯巢",
+  "灯工坊",
+  "灯火之家",
+  "灯百汇",
+  "灯语堡/匠舍",
+  "灯调工作室",
+  "灯迷",
+  "灯都精灵",
+  "灯阁",
+  "灯革",
+  "灯顶",
+  "灯风尚",
+  "炎源",
+  "炎锋",
+  "炜英纸箱厂",
+  "焜昱",
+  "焱阳",
+  "煜明",
+  "煜祥",
+  "熠皓",
+  "爱家/乐居",
+  "爱家居",
+  "爱灯堡",
+  "爱碧儿/伊维克",
+  "王庭灯饰",
+  "玖正居",
+  "玥澄灯饰",
+  "玩灯/壹号货仓",
+  "琪琪",
+  "琪琳",
+  "琼瑶",
+  "瑞希",
+  "璀璨",
+  "畅腾/新中式全铜",
+  "百欧/星辰",
+  "百涞福",
+  "的光",
+  "皇玛/天乐",
+  "盈煌",
+  "盛源",
+  "盛腾",
+  "盛迈芮",
+  "知礼礼品",
+  "福布斯",
+  "禹哲",
+  "禾牛",
+  "秦泰数控",
+  "立嘉",
+  "立美",
+  "筑雅居（界雅）",
+  "简隆",
+  "米丰",
+  "米修",
+  "素说",
+  "红灵",
+  "纬特",
+  "纽思",
+  "维比娅",
+  "缔烁",
+  "网艺",
+  "罗丹凯",
+  "美尼思",
+  "美洛",
+  "群希",
+  "羿轩",
+  "翔可",
+  "翔美",
+  "联辰",
+  "聚慧",
+  "胜辰",
+  "腾屹铜",
+  "腾达",
+  "腾远亚克力",
+  "致简",
+  "致诚（铜点）",
+  "臻盛",
+  "艺仟",
+  "艺佳",
+  "艺博/谢俊铠",
+  "艺尚",
+  "艺恺",
+  "艺戈",
+  "艺构/米艺",
+  "艺源",
+  "艺灯灯饰",
+  "艺灯集",
+  "艺灯饰",
+  "艺盟",
+  "艺维",
+  "艺臣",
+  "艺航木箱",
+  "艾嘉",
+  "艾尚",
+  "艾格",
+  "芊顷",
+  "荣泰",
+  "荣缔时光",
+  "荣达",
+  "莱伽",
+  "莱斯欧",
+  "莱美之光",
+  "莱雅/觅高",
+  "营辉/洋影/初色",
+  "蓝屋优美达",
+  "蓝恩",
+  "蓝海",
+  "蓝溪阁",
+  "蓝色星空",
+  "蔡小姐",
+  "蜜匠",
+  "触摸款台灯/骏瑞照明",
+  "诺依",
+  "谱光师（家典）",
+  "豪品",
+  "豪品欣怡/豪品",
+  "豪洁",
+  "豫鑫",
+  "财凤",
+  "赫卡",
+  "赫蒙",
+  "赵璐/四玺文化/恰北北",
+  "起点照明/艾登",
+  "路易",
+  "轩业",
+  "辉企",
+  "辉钜",
+  "辰光水晶",
+  "辰辉",
+  "迈科祺",
+  "远图",
+  "远芬",
+  "迪圣奇户外灯",
+  "迪派斯",
+  "迪都",
+  "追潮",
+  "逆光",
+  "道艺",
+  "酷艺",
+  "金丝燕",
+  "金希",
+  "金水木灯",
+  "金艺/金艺轩",
+  "金辉",
+  "鑫仂仕",
+  "鑫壮",
+  "鑫琪",
+  "鑫美居",
+  "鑫耀",
+  "钰煌",
+  "铂泰",
+  "铂洁",
+  "铜城",
+  "铜密码",
+  "铜欢喜",
+  "铜盟",
+  "铜艺五金厂",
+  "铜艺美",
+  "铭丰",
+  "铭峰",
+  "铭豪",
+  "锐铭",
+  "锦之星",
+  "锦典",
+  "锦绣之光",
+  "镁镁",
+  "长江铜件",
+  "闽皇森",
+  "闽航",
+  "阁楼厂",
+  "阿朵灯饰",
+  "阿玛拉",
+  "陈总光立方",
+  "雅诗曼（众鑫）",
+  "集品会",
+  "集美",
+  "雪丰",
+  "零点壹",
+  "零维",
+  "雷克森/熔岩/偶遇",
+  "雷汉尼/北郡",
+  "顺成",
+  "顺盈",
+  "飞翔五金厂",
+  "飞腾",
+  "香奈儿",
+  "馨妍",
+  "馨恒",
+  "高信",
+  "高巧",
+  "鸿光轨道盒",
+  "鸿兴",
+  "鸿庭",
+  "鸿灯饰",
+  "鸿益",
+  "鸿跃",
+  "鸿运加工厂",
+  "鸿鑫",
+  "鸿鹏",
+  "鹏程",
+  "鹤洲",
+  "鹿森堡",
+  "鹿角灯",
+  "麦佳",
+  "麦克优选",
+  "麦德哆",
+  "麦浪",
+  "麦灯",
+  "黄凤容",
+  "黯光",
+  "鼎欧",
+  "鼎胜",
+  "鼎腾",
+  "龙昌",
+  "龙映",
+  "龙珠阁/本鼎光电",
+  "亿源",
+  "左尚",
+  "往后余生",
+  "星沃",
+  "木修远/黄太阳",
+  "淘缘",
+  "灯匠",
+  "艺岚",
+  "万冠萤火虫",
+  "中木",
+  "丽道",
+  "佑劲/佑莱",
+  "佳文骏/三洪",
+  "佳缘/佳家",
+  "倾慕一居",
+  "光朗",
+  "凝聚",
+  "几何",
+  "凡品",
+  "华晟",
+  "宏壮/宏装",
+  "家乐",
+  "富达",
+  "居皇",
+  "广瑞",
+  "弘文/弘易",
+  "恒福来",
+  "斯克诺",
+  "新匠",
+  "晟辉",
+  "极星/艺星/优亮灯饰",
+  "梵烨",
+  "汉升",
+  "泰聚",
+  "润明",
+  "灯博饰",
+  "灿若星",
+  "爱丹/艾丹",
+  "玖悦/玛瑙",
+  "琪光",
+  "登匠",
+  "祥成",
+  "祥瑞光源",
+  "秀木坊",
+  "立民",
+  "糖果（原塔塔）",
+  "罗尔斯特",
+  "羽浩（祺鑫）",
+  "耀广厂",
+  "老良木箱",
+  "自然源/自然木艺",
+  "艺涵",
+  "豪鸿",
+  "迪澳灯饰",
+  "通明",
+  "金泰源",
+  "铭锋",
+  "隆康包装",
+  "霓禾",
+  "领杭",
+  "飞利浦/博发",
+  "鸵鸟毛",
+  "鸿粤"
+];
+
+
+let SCORE_RULES = DATA.getScoreRules();
+
+// ============ 初始化 ============
+// ============================================================
+// Bootstrap：启动流程（检查登录 → 加载数据 → 显示主界面）
+// ============================================================
+async function bootstrap() {
+  try {
+    // 1. 检查 session
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) {
+      showLoginScreen();
+      return;
+    }
+
+    // 2. 登录成功，初始化
+    await onAuthSuccess(session);
+  } catch (err) {
+    console.error('Bootstrap error:', err);
+    showLoginScreen();
+    showLoginError('启动失败：' + (err.message || err));
+  }
+}
+
+async function onAuthSuccess(session) {
+  CURRENT_USER_ID = session.user.id;
+  CURRENT_USER_EMAIL = session.user.email;
+
+  // 加载所有数据
+  document.getElementById('loadingScreen').style.display = 'flex';
+  document.getElementById('loginScreen').style.display = 'none';
+
+  try {
+    await DATA.loadAll();
+  } catch (err) {
+    console.error('Load data error:', err);
+    showLoginError('加载数据失败：' + (err.message || err) + '。请联系主管。');
+    await sb.auth.signOut();
+    showLoginScreen();
+    return;
+  }
+
+  // 更新 CONFIG
+  CONFIG = DATA.getConfig();
+  SCORE_RULES = DATA.getScoreRules();
+
+  // 找到当前用户对应的 agent
+  const agent = CONFIG.agents.find(a => a._userId === CURRENT_USER_ID);
+  if (!agent) {
+    showLoginError('账号未授权（agents 表中没有此用户）。请联系主管在 agents 表添加记录。');
+    await sb.auth.signOut();
+    showLoginScreen();
+    return;
+  }
+
+  CURRENT_AGENT = agent.name;
+  IS_ADMIN = agent.isAdmin;
+
+  // 主管可见"📈 数据" tab
+  const tabAna = document.getElementById('tabAnalytics');
+  if (tabAna) tabAna.style.display = IS_ADMIN ? '' : 'none';
+
+  // bootstrap 完成，允许同步触发
+  _isBootstrapping = false;
+
+  // 订阅 agents 表实时变化（主管改权限时，跟单端无需刷新即可生效）
+  subscribeAgentsRealtime();
+
+  // 初始化 UI
+  initUI();
+  showMainApp();
+}
+
+// ============================================================
+// Realtime: 订阅 agents 表，权限变更实时同步到客户端
+// ============================================================
+let _agentsChannel = null;
+function subscribeAgentsRealtime() {
+  // 防止重复订阅
+  if (_agentsChannel) {
+    try { sb.removeChannel(_agentsChannel); } catch (e) {}
+    _agentsChannel = null;
+  }
+  _agentsChannel = sb.channel('agents-realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'agents' }, async (payload) => {
+      try {
+        // 拉最新 agents 数据
+        const { data: agentRows } = await sb.from('agents').select('*');
+        if (!agentRows) return;
+        const fresh = agentRows.map(a => ({
+          _userId: a.user_id,
+          name: a.name,
+          isAdmin: a.is_admin,
+          sites: a.sites || [],
+          modules: a.modules || [...ALL_MODULE_KEYS],
+        }));
+        DATA._cache.agents = fresh;
+        CONFIG.agents = fresh;
+
+        // 检查当前用户的权限是否变更
+        const me = fresh.find(a => a._userId === CURRENT_USER_ID);
+        if (!me) return;
+
+        // 自己被改成主管 / 取消主管 → 重新登录最稳妥
+        if (me.isAdmin !== IS_ADMIN) {
+          toast('您的主管身份已变更，3 秒后自动刷新...', 'warn', 3000);
+          setTimeout(() => location.reload(), 3000);
+          return;
+        }
+
+        // 普通跟单的模块/网站变更，直接应用
+        const oldModules = JSON.stringify((CONFIG.agents.find(a => a.name === CURRENT_AGENT) || {}).modules || []);
+        const newModules = JSON.stringify(me.modules || []);
+        if (oldModules !== newModules) {
+          applyModuleVisibility();
+          if (!IS_ADMIN) toast('🔄 您的可见模块已被主管更新');
+        }
+
+        // 主管视角下，设置面板如果开着就刷新
+        if (IS_ADMIN && document.getElementById('settingsModal')?.classList.contains('show')) {
+          renderSettings();
+        }
+      } catch (err) {
+        console.error('Realtime agents 处理失败:', err);
+      }
+    })
+    .subscribe();
+}
+
+function initUI() {
+  const today = new Date().toISOString().slice(0, 10);
+  ['omNewDate','asmNewDate','ismNewDate','asmCreatedDate'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = today;
+  });
+  const rm = document.getElementById('reportMonth');
+  if (rm) rm.textContent = today.slice(0, 7);
+
+  // 直接登录当前用户（不弹 Agent Picker）
+  loginAs(CURRENT_AGENT);
+}
+
+function showLoginScreen() {
+  document.getElementById('loadingScreen').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('mainApp').style.display = 'none';
+}
+
+function showMainApp() {
+  document.getElementById('loadingScreen').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'block';
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('loginError');
+  if (el) {
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginBtn');
+  const err = document.getElementById('loginError');
+  err.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = '登录中...';
+
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    document.getElementById('loginPassword').value = '';
+    await onAuthSuccess(data.session);
+  } catch (e) {
+    showLoginError('登录失败：' + (e.message || e));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '登录';
+  }
+  return false;
+}
+
+async function handleLogout() {
+  if (!confirm('确认登出？')) return;
+  await sb.auth.signOut();
+  location.reload();
+}
+
+// 兼容：保留 init 函数（被各处调用）
+function init() {
+  // 已迁移到 bootstrap，此处空实现
+}
+
+function loginAs(name) {
+  const agent = CONFIG.agents.find(a => a.name === name);
+  if (!agent) return;
+  CURRENT_AGENT = name;
+  IS_ADMIN = agent.isAdmin || false;
+  DATA.setCurrentAgent(name);
+  
+  // 主管可见"📈 数据" tab
+  const tabAna = document.getElementById('tabAnalytics');
+  if (tabAna) tabAna.style.display = IS_ADMIN ? '' : 'none';
+  
+  document.getElementById('curAvatar').textContent = name[0].toUpperCase();
+  
+  const mySites = agent.sites || [];
+  const siteStr = mySites.length > 0 ? mySites.join(' / ') : '未设置';
+  const sitesHTML = IS_ADMIN ? '' : `<span class="my-sites ${mySites.length > 0 ? 'has-sites' : ''}">📍 ${escapeHtml(siteStr)}</span>`;
+  document.getElementById('curName').innerHTML = (IS_ADMIN ? '<span class="admin-badge">主管</span>' : '') + escapeHtml(name) + sitesHTML;
+  document.getElementById('agentPill').classList.toggle('admin', IS_ADMIN);
+  document.getElementById('ordersAdminNote').style.display = IS_ADMIN ? 'inline-flex' : 'none';
+  document.getElementById('asAdminNote').style.display = IS_ADMIN ? 'inline-flex' : 'none';
+  
+  closeModal('agentModal');
+  loadAllData();
+  applyModuleVisibility();
+  restoreLastTab();
+  renderActiveTab();
+}
+
+// 获取当前用户可见的模块
+function getVisibleModules(agent) {
+  if (!agent) return ALL_MODULE_KEYS;
+  if (agent.isAdmin) return ALL_MODULE_KEYS;
+  return agent.modules || ALL_MODULE_KEYS;
+}
+
+// 应用模块可见性（隐藏没权限的 tab）
+function applyModuleVisibility() {
+  const me = CONFIG.agents.find(a => a.name === CURRENT_AGENT);
+  const visible = getVisibleModules(me);
+  document.querySelectorAll('.tab-item[data-tab]').forEach(el => {
+    const key = el.dataset.tab;
+    el.style.display = visible.includes(key) ? '' : 'none';
+  });
+  // 如果当前 tab 不可见，切到第一个可见的
+  if (!visible.includes(CURRENT_TAB)) {
+    const target = visible[0] || 'orders';
+    switchTab(target);
+  }
+}
+
+function loadAllData() {
+  if (IS_ADMIN) {
+    ORDERS = DATA.getAllOrders().filter(o => !o.deletedAt);
+    AFTERSALES = DATA.getAllAftersales().filter(a => !a.deletedAt);
+    ISSUES = DATA.getAllIssues().filter(i => !i.deletedAt);
+    PURCHASES = DATA.getAllPurchases().filter(p => !p.deletedAt);
+  } else {
+    ORDERS = DATA.getOrders(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
+    AFTERSALES = DATA.getAftersales(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
+    ISSUES = DATA.getIssues(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
+    PURCHASES = DATA.getPurchases(CURRENT_AGENT).filter(p => !p.deletedAt).map(p => ({ ...p, _agent: CURRENT_AGENT }));
+  }
+  MISSING_LIGHTS = DATA.getMissingLights().filter(m => !m.deletedAt);
+  refreshAllSupplierDropdowns();
+  updateBadges();
+}
+
+function renderActiveTab() {
+  if (CURRENT_TAB === 'orders') { renderOrders(); refreshOrdersFb(); renderUrgentBanner(); updateOrderStats(); }
+  else if (CURRENT_TAB === 'aftersales') { renderAftersales(); refreshAsFb(); updateAfterStats(); renderAfterReport(); }
+  else if (CURRENT_TAB === 'issues') { renderIssues(); updateIssueStats(); }
+  else if (CURRENT_TAB === 'missing') { renderMissing(); updateMissingStats(); }
+  else if (CURRENT_TAB === 'purchases') { renderPurchases(); updatePurchaseStats(); }
+  else if (CURRENT_TAB === 'analytics') { renderAnalytics(); }
+  else if (CURRENT_TAB === 'performance') { renderPerformance(); }
+}
+
+function updateBadges() {
+  const today = new Date().toISOString().slice(0, 10);
+  // 催单：紧急（橙/红预警）+ 今日要催
+  let oUrgent = 0;
+  ORDERS.forEach(o => {
+    const lvl = getOrderUrgencyLevel(o);
+    if (lvl === 'red' || lvl === 'orange') oUrgent++;
+    else if (o.nextFollow === today && !['cancelled','shipped','arrived'].includes(o.status)) oUrgent++;
+  });
+  // 售后：未解决
+  const asUnresolved = AFTERSALES.filter(a => !['resolved','cancelled'].includes(a.status)).length;
+  // 问题：未解决
+  const isUnresolved = ISSUES.filter(i => !['resolved'].includes(i.status)).length;
+  // 找灯：搜寻中
+  const mActive = MISSING_LIGHTS.filter(m => m.status === 'searching').length;
+  
+  setBadge('badgeOrders', oUrgent);
+  setBadge('badgeAftersales', asUnresolved);
+  setBadge('badgeIssues', isUnresolved);
+  setBadge('badgeMissing', mActive);
+}
+
+function setBadge(id, n) {
+  const el = document.getElementById(id);
+  el.textContent = n;
+  el.classList.toggle('zero', n === 0);
+}
+
+// ============ Tab 切换 ============
+function switchTab(name) {
+  CURRENT_TAB = name;
+  try { localStorage.setItem('current_tab', name); } catch(_) {}
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === name));
+  renderActiveTab();
+}
+
+function restoreLastTab() {
+  try {
+    const last = localStorage.getItem('current_tab');
+    if (!last) return;
+    // 验证 tab 元素存在且当前用户有权限访问
+    const tabEl = document.querySelector(`.tab-item[data-tab="${last}"]`);
+    if (!tabEl) return;
+    const visible = tabEl.offsetParent !== null || window.getComputedStyle(tabEl).display !== 'none';
+    if (!visible) return;
+    switchTab(last);
+  } catch(_) {}
+}
+
+// ============ 公用 - 状态判断 ============
+function getOrderEffStatus(o) {
+  if (['cancelled'].includes(o.status)) return o.status;
+  if (o.status === 'producing' && o.promisedDate) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (o.promisedDate < today) return 'overdue';
+  }
+  return o.status || 'pending';
+}
+
+// 计算订单紧急程度：normal / yellow / orange / red
+function getOrderUrgencyLevel(o) {
+  if (['cancelled','shipped','arrived'].includes(o.status)) return 'normal';
+  if (!o.promisedDate) return 'normal';
+  const today = new Date().toISOString().slice(0, 10);
+  const chaseCount = (o.followups || []).filter(f => f.type === 'chase').length;
+  
+  if (o.promisedDate >= today) {
+    // 还未到期
+    if (chaseCount >= 2) return 'yellow';  // 催了好几次还没回应也算
+    return 'normal';
+  }
+  
+  // 已逾期
+  const daysOverdue = Math.floor((new Date(today) - new Date(o.promisedDate)) / 86400000);
+  
+  if (daysOverdue >= 7 && chaseCount >= 3) return 'red';
+  if (daysOverdue > 3 || chaseCount >= 3) return 'orange';
+  return 'yellow';
+}
+function diffDays(dateStr) {
+  if (!dateStr) return 0;
+  const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00');
+  const t = new Date(dateStr + 'T00:00:00');
+  return Math.round((t - today) / 86400000);
+}
+function getDateClass(d) {
+  if (!d) return 'empty';
+  const today = new Date().toISOString().slice(0, 10);
+  if (d < today) return 'overdue';
+  if (d === today) return 'today';
+  return 'upcoming';
+}
+function formatShortDate(d) { return d ? d.slice(5).replace('-', '/') : '—'; }
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ============ 供应商下拉同步 ============
+function refreshAllSupplierDropdowns() {
+  // 1. 收集所有供应商 + 各模块计数
+  const counts = {};
+  CONFIG.suppliers.forEach(s => {
+    if (s) counts[s] = { orders: 0, after: 0, issues: 0 };
+  });
+  ORDERS.forEach(o => {
+    if (!o.supplier) return;
+    if (!counts[o.supplier]) counts[o.supplier] = { orders: 0, after: 0, issues: 0 };
+    counts[o.supplier].orders++;
+  });
+  AFTERSALES.forEach(a => {
+    if (!a.supplier) return;
+    if (!counts[a.supplier]) counts[a.supplier] = { orders: 0, after: 0, issues: 0 };
+    counts[a.supplier].after++;
+  });
+  ISSUES.forEach(i => {
+    if (!i.supplier) return;
+    if (!counts[i.supplier]) counts[i.supplier] = { orders: 0, after: 0, issues: 0 };
+    counts[i.supplier].issues++;
+  });
+  
+  // 2. 按热度排序：订单数 + 售后数 + 问题数*2（问题加权）；相同则字母升序
+  const sorted = Object.keys(counts).sort((a, b) => {
+    const ca = counts[a], cb = counts[b];
+    const ha = ca.orders + ca.after + ca.issues * 2;
+    const hb = cb.orders + cb.after + cb.issues * 2;
+    if (ha !== hb) return hb - ha;
+    return a.localeCompare(b, 'zh-CN');
+  });
+  
+  // 3. 筛选下拉：显示活动数后缀（订/售/问），活跃供应商排前面
+  ['oFilterSupplier','asFilterSupplier'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const cur = el.value;
+    el.innerHTML = '<option value="">全部供应商</option>' + sorted.map(s => {
+      const c = counts[s];
+      const total = c.orders + c.after + c.issues;
+      const suffix = total > 0 ? ` · 订${c.orders}/售${c.after}/问${c.issues}` : '';
+      return `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)}${suffix}</option>`;
+    }).join('');
+  });
+  
+  const reasonEl = document.getElementById('asFilterReason');
+  if (reasonEl) {
+    const cur = reasonEl.value;
+    reasonEl.innerHTML = '<option value="">全部原因</option>' + REASON_LIST.map(r => `<option value="${r}" ${cur===r?'selected':''}>${r}</option>`).join('');
+  }
+  
+  // 4. datalist 联想：按热度排序（value 干净没后缀，不影响匹配）
+  ['oSuppliersList','asSuppliersList','isSuppliersList'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = sorted.map(s => `<option value="${escapeHtml(s)}">`).join('');
+  });
+  
+  // 网站下拉同步
+  refreshSiteDropdowns();
+}
+
+function refreshSiteDropdowns() {
+  // 当前用户负责的网站
+  const me = CONFIG.agents.find(a => a.name === CURRENT_AGENT);
+  const mySites = (me && me.sites) || [];
+  const allSites = CONFIG.sites || [];
+  // 主管能看到所有网站；普通跟单只看自己负责的
+  const visibleSites = IS_ADMIN ? allSites : (mySites.length > 0 ? mySites : allSites);
+  
+  // 筛选下拉：包含全部网站选项
+  ['oFilterSite','asFilterSite'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const cur = el.value;
+    el.innerHTML = '<option value="">📍 全部网站</option>' + visibleSites.map(s => `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+  });
+  
+  // Modal 里的网站选择器：只显示自己负责的
+  ['omSite','asmSite'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const cur = el.value;
+    const opts = visibleSites.map(s => `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+    el.innerHTML = '<option value="">选择网站...</option>' + opts;
+    if (cur) el.value = cur;
+  });
+}
+
+// 检查订单是否有关联的售后单（同 site + orderNo）
+function hasRelatedAftersales(order) {
+  if (!order.orderNo) return null;
+  const allAfter = IS_ADMIN ? AFTERSALES : DATA.getAftersales(CURRENT_AGENT);
+  return allAfter.filter(a => a.orderNo === order.orderNo && (a.site || '') === (order.site || '') && !['resolved','cancelled'].includes(a.status));
+}
+
+// 根据所选网站，更新订单号输入框的 placeholder 和提示
+function updateOrderNoHint(siteSelectId, orderNoInputId, hintId) {
+  const site = document.getElementById(siteSelectId)?.value || '';
+  const fmt = ORDER_NO_FORMAT[site] || '';
+  const input = document.getElementById(orderNoInputId);
+  const hint = document.getElementById(hintId);
+  if (input) {
+    input.placeholder = site ? `如：${fmt}` : '先选网站';
+  }
+  if (hint) {
+    if (site) {
+      if (site === 'VK') {
+        hint.innerHTML = `💡 VK 订单格式：<b>K + 数字编号</b> 或 <b>V + 数字编号</b>（位数不限，如 K14176 / K114176 / V1141760）`;
+      } else if (site === '线下') {
+        hint.innerHTML = `💡 线下订单：可自定义编号格式`;
+      } else {
+        hint.innerHTML = `💡 ${site} 订单格式：<b>${site} + 数字编号</b>（位数不限，如 ${site}14176 / ${site}114176）`;
+      }
+      hint.style.display = 'block';
+    } else {
+      hint.style.display = 'none';
+    }
+  }
+}
+
+// ============ 通用 - Banner 切换 ============
+function toggleFb(id, e) {
+  if (e && e.target.closest('.fb-tab')) return;
+  const c = document.getElementById(id);
+  c.classList.toggle('collapsed');
+  c.dataset.userToggled = '1';
+}

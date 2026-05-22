@@ -1653,6 +1653,15 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .rule-chip:not(.active) .cnt-mini {
   background: var(--bg-elevated); color: var(--text-tertiary);
 }
+/* 当前 sub-tab 下命中 0，但其他状态有命中时的提示样式（点击会跳转到「全部」） */
+.rule-chip.has-global:not(.active) {
+  border-style: dashed; color: var(--text-tertiary); opacity: 0.85;
+}
+.rule-chip.has-global:not(.active)::after {
+  content: '…'; margin-left: -2px; font-weight: 700; color: var(--warning, #ca8a04);
+  font-size: 13px; line-height: 1;
+}
+.rule-chip.has-global:not(.active):hover { opacity: 1; border-style: solid; }
 
 /* 排序 chip */
 .sort-chip {
@@ -3471,6 +3480,12 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       <div class="drop-zone" id="mmDropZone"><input type="file" id="mmFileInput" accept="image/*" multiple>📎 上传灯具图片或截图（拖拽/粘贴/选择）</div>
     </div>
     <div class="od-section">
+      <div class="od-section-title">📸 实拍照片<span class="count" id="mmRealPhotosCount">0 张</span></div>
+      <div class="drop-zone-thumbs" id="mmRealPhotos"></div>
+      <div class="drop-zone" id="mmRealDropZone"><input type="file" id="mmRealFileInput" accept="image/*" multiple>📸 上传实物照片（拖拽/粘贴/选择 · 所有人可上传）</div>
+      <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">💡 供应商寄样后的实物图、协作过程中拿到的样品图都放这里</div>
+    </div>
+    <div class="od-section">
       <div class="od-section-title">💬 协作评论<span class="count" id="mmCommentsCount">0 条</span></div>
       <div class="comments-list" id="mmCommentsList"></div>
     </div>
@@ -3689,1922 +3704,73 @@ HOGO
       <div class="tag-list" id="settingsSuppliers" style="max-height: 200px; overflow-y: auto;"></div>
     </div>
     
+    <!-- 主管专属：模块化重启（危险操作区）-->
+    <div id="dangerZone" style="display: none; margin-top: 16px; padding: 14px; border: 1.5px dashed var(--danger, #dc2626); border-radius: 8px; background: rgba(220,38,38,0.03);">
+      <div style="font-size: 12px; font-weight: 600; color: var(--danger, #dc2626); margin-bottom: 6px;">⚠ 危险操作区（仅主管可见）</div>
+      <div style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.6;">
+        模块化重启 · 按模块清空测试数据。数据会进回收站，30 天后云端永久清除。删除前自动备份 JSON 到本地，可作存档。
+      </div>
+      <button class="btn" onclick="openResetPanel()" style="color: var(--danger, #dc2626); border-color: var(--danger, #dc2626); font-weight: 600;">📦 打开模块重启面板</button>
+    </div>
+
     <div class="modal-actions">
-      <button class="btn danger-text" onclick="resetAll()">🗑 重置所有数据</button>
       <button class="btn primary" onclick="closeModal('settingsModal')">完成</button>
     </div>
   </div>
 </div>
 
+<!-- ========== 模块重启面板 Modal（仅主管可用）========== -->
+<div class="modal-bg" id="resetPanelModal">
+  <div class="modal" style="width: 680px; max-height: 88vh;">
+    <button class="modal-close" onclick="closeModal('resetPanelModal')">✕</button>
+    <h2 style="color: var(--danger, #dc2626);">📦 模块重启面板</h2>
+    <p class="desc" style="line-height: 1.7;">
+      勾选要清空的模块。<b style="color:var(--danger, #dc2626);">已有数据的模块默认不勾选</b>，必须主管手动确认。<br>
+      数据会进回收站（软删除）· 30 天后自动永久清除 · 删除前会自动下载 JSON 备份到本地。
+    </p>
+
+    <div class="od-section">
+      <div class="od-section-title">📋 选择要重启的模块</div>
+      <div id="resetModulesList" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;"></div>
+    </div>
+
+    <div class="od-section" style="background: rgba(13,148,136,0.06); border-left: 3px solid var(--teal, #0d9488); padding: 8px 12px; border-radius: 4px; margin-top: 12px;">
+      <div style="font-size: 11.5px; font-weight: 600; color: var(--teal, #0d9488); margin-bottom: 4px;">✓ 永远不会被影响（系统保护）</div>
+      <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.6;">
+        跟单员账号 · Shopify 店铺连接 · 供应商列表 · 网站配置 · 评分规则 · 系统设置
+      </div>
+    </div>
+
+    <div id="resetSummary" style="margin-top: 12px; padding: 10px 12px; background: var(--bg-elevated); border-radius: 6px; font-size: 13px; color: var(--text-secondary);">
+      已选 <b id="resetSelectedCount" style="color:var(--danger,#dc2626);">0</b> 个模块，共 <b id="resetTotalRows" style="color:var(--danger,#dc2626);">0</b> 条数据将进回收站
+    </div>
+
+    <div id="resetConfirmStep" style="display: none; margin-top: 14px; padding: 12px; border: 2px solid var(--danger, #dc2626); border-radius: 8px; background: rgba(220,38,38,0.04);">
+      <div style="font-size: 13px; font-weight: 600; color: var(--danger, #dc2626); margin-bottom: 8px;">⚠ 最终确认</div>
+      <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+        请在下方输入 <b style="color: var(--danger, #dc2626); font-family: 'JetBrains Mono', monospace;">重启确认</b> 四个字（用于防止误操作）：
+      </div>
+      <input type="text" id="resetConfirmInput" placeholder="输入「重启确认」"
+        style="width: 100%; padding: 8px 12px; font-size: 14px; border: 1.5px solid var(--danger, #dc2626); border-radius: 6px; background: var(--bg-card); color: var(--text-primary); font-family: 'JetBrains Mono', monospace;"
+        oninput="resetPanelOnConfirmInput(this.value)">
+    </div>
+
+    <div class="modal-actions" style="margin-top: 16px;">
+      <button class="btn" onclick="closeModal('resetPanelModal')">取消</button>
+      <button class="btn" id="resetExecuteBtn" onclick="resetPanelExecute()" disabled
+        style="background: var(--danger, #dc2626); color: white; border-color: var(--danger, #dc2626); font-weight: 700; opacity: 0.5;">
+        <span id="resetExecuteBtnText">⚠ 我已确认，开始重启</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="js/core.js"></script>
+<script src="js/reset-system.js"></script>
 <script>
-// ============================================================
-// 跟单团队工作台 · 演示版
-// 4 个独立模块 + Tab 切换 + 主管视角
+// 业务模块代码（后续将进一步拆分到 js/orders.js / js/shopify.js 等）
 // ============================================================
 
-// ============ 数据访问层 ============
-// ============================================================
-// Supabase 客户端
-// ============================================================
-const SUPABASE_URL = 'https://pyfmuknvjqfwcqvbrsvw.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_dFjk1WN_Hc0Te6IhXZysZg_SXvKQU4C';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-let CURRENT_USER_ID = null;     // auth.uid
-let CURRENT_USER_EMAIL = null;
-let _isBootstrapping = true;
-
-// ============================================================
-// 数据访问层（云端版）
-// ============================================================
-// 设计：
-// - 内部 _cache 缓存所有数据
-// - 同步接口（getXxx/saveXxx）保留，兼容演示版代码
-// - saveXxx 触发防抖异步同步到 Supabase
-// ============================================================
-const DATA = {
-  _cache: {
-    config: { id: 1, suppliers: [], sites: ['VK','DC','RD','DF','MH','MJ','ML','RS','LS','PL','线下'], score_rules: null },
-    agents: [],
-    ordersByAgent: {},
-    aftersalesByAgent: {},
-    issuesByAgent: {},
-    missingLights: [],
-    purchasesByAgent: {},
-  },
-  _syncTimers: {},
-
-  // ============ 异步加载 ============
-  async loadAll() {
-    // 配置
-    const { data: cfg } = await sb.from('config').select('*').eq('id', 1).single();
-    if (cfg) {
-      this._cache.config = cfg;
-      // 首次部署或被清空：自动填充默认供应商列表
-      if (!cfg.suppliers || cfg.suppliers.length === 0) {
-        this._cache.config.suppliers = [...DEFAULT_SUPPLIERS];
-        // 后台异步同步到云端（不阻塞）
-        sb.from('config').update({ suppliers: DEFAULT_SUPPLIERS }).eq('id', 1).then(({ error }) => {
-          if (error) console.warn('Sync default suppliers failed:', error);
-          else console.log('✓ 已自动同步 ' + DEFAULT_SUPPLIERS.length + ' 家默认供应商');
-        });
-      }
-    }
-
-    // Agents
-    const { data: agentRows } = await sb.from('agents').select('*');
-    this._cache.agents = (agentRows || []).map(a => ({
-      _userId: a.user_id,
-      name: a.name,
-      isAdmin: a.is_admin,
-      sites: a.sites || [],
-      modules: a.modules || ['orders','aftersales','issues','missing','purchases','sales','po','products','performance'],
-    }));
-
-    // Orders / Aftersales / Issues / Missing / Purchases 都按 agent 分组（RLS 自动过滤：跟单只能看自己，主管能看所有）
-    const [ordersR, aftersR, issuesR, missingR, purchasesR] = await Promise.all([
-      sb.from('orders').select('*').order('created_at', { ascending: false }),
-      sb.from('aftersales').select('*').order('created_at', { ascending: false }),
-      sb.from('issues').select('*').order('created_at', { ascending: false }),
-      sb.from('missing_lights').select('*').order('created_at', { ascending: false }),
-      sb.from('online_purchases').select('*').order('created_at', { ascending: false }).then(r => r).catch(e => ({ data: [], error: e })),
-    ]);
-
-    // 按 agent_id 分组
-    this._cache.ordersByAgent = this._groupByAgent(ordersR.data || [], 'order');
-    this._cache.aftersalesByAgent = this._groupByAgent(aftersR.data || [], 'after');
-    this._cache.issuesByAgent = this._groupByAgent(issuesR.data || [], 'issue');
-    this._cache.missingLights = (missingR.data || []).map(m => this._fromDbMissing(m));
-    this._cache.purchasesByAgent = this._groupByAgent(purchasesR.data || [], 'purchase');
-  },
-
-  _groupByAgent(rows, type) {
-    const result = {};
-    const userIdToName = {};
-    this._cache.agents.forEach(a => { userIdToName[a._userId] = a.name; });
-
-    rows.forEach(r => {
-      const agentName = userIdToName[r.agent_id] || '未知';
-      if (!result[agentName]) result[agentName] = [];
-      if (type === 'order') result[agentName].push(this._fromDbOrder(r));
-      else if (type === 'after') result[agentName].push(this._fromDbAfter(r));
-      else if (type === 'issue') result[agentName].push(this._fromDbIssue(r));
-      else if (type === 'purchase') result[agentName].push(this._fromDbPurchase(r));
-    });
-    return result;
-  },
-
-  // ============ 字段转换 DB → 内存（snake_case → camelCase）============
-  _fromDbOrder(r) {
-    return {
-      _id: r.id, _agent_id: r.agent_id,
-      orderNo: r.order_no || '', site: r.site || '',
-      product: r.product || '', supplier: r.supplier || '',
-      status: r.status || 'pending',
-      orderDate: r.order_date || '', promisedDate: r.promised_date || '',
-      shippedDate: r.shipped_date || '', arrivedDate: r.arrived_date || '',
-      nextFollow: r.next_follow || '',
-      notes: r.notes || '',
-      screenshots: r.screenshots || [], followups: r.followups || [],
-      createdAt: r.created_at, updatedAt: r.updated_at,
-      deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
-    };
-  },
-  _fromDbAfter(r) {
-    return {
-      _id: r.id, _agent_id: r.agent_id,
-      orderNo: r.order_no || '', site: r.site || '',
-      product: r.product || '', supplier: r.supplier || '',
-      reason: r.reason || '', reasonDetail: r.reason_detail || '',
-      status: r.status || 'pending',
-      createdDate: r.created_date || '', nextFollow: r.next_follow || '', resolvedDate: r.resolved_date || '',
-      screenshots: r.screenshots || [], followups: r.followups || [],
-      createdAt: r.created_at,
-      deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
-    };
-  },
-  _fromDbIssue(r) {
-    return {
-      _id: r.id, _agent_id: r.agent_id,
-      supplier: r.supplier || '', issueType: r.issue_type || '',
-      requirement: r.requirement || '', status: r.status || 'pending',
-      followups: r.followups || [], createdAt: r.created_at,
-      deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
-    };
-  },
-  _fromDbMissing(r) {
-    return {
-      _id: r.id, _creator_id: r.creator_id,
-      description: r.description || '', specs: r.specs || '',
-      customerOrderNo: r.customer_order_no || '',
-      creator: r.creator_name || '',
-      status: r.status || 'searching',
-      screenshots: r.screenshots || [], comments: r.comments || [],
-      adoptedHelper: r.adopted_helper || '', foundAt: r.found_at,
-      source: r.source || 'manual',
-      linkedPurchaseId: r.linked_purchase_id || null,
-      createdAt: r.created_at,
-      deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
-    };
-  },
-  
-  _fromDbPurchase(r) {
-    return {
-      _id: r.id, _agent_id: r.agent_id,
-      orderNo: r.order_no || '',
-      platform: r.platform || '',
-      productUrl: r.product_url || '',
-      sku: r.sku || '',
-      productName: r.product_name || '',
-      description: r.description || '',
-      quantity: r.quantity || 1,
-      unitPrice: parseFloat(r.unit_price) || 0,
-      totalAmount: parseFloat(r.total_amount) || 0,
-      status: r.status || 'draft',
-      approvedBy: r.approved_by || '',
-      approvedAt: r.approved_at,
-      rejectedReason: r.rejected_reason || '',
-      orderedAt: r.ordered_at,
-      receivedAt: r.received_at,
-      screenshots: r.screenshots || [],
-      followups: r.followups || [],
-      notes: r.notes || '',
-      linkedMissingId: r.linked_missing_id || null,
-      approvalThreshold: parseFloat(r.approval_threshold) || 2000,
-      createdAt: r.created_at,
-      deletedAt: r.deleted_at || null,
-      deletedBy: r.deleted_by || null,
-    };
-  },
-
-  // ============ 字段转换 内存 → DB ============
-  _toDbOrder(o, userId) {
-    return {
-      ...(o._id && !o._id.startsWith('O') ? { id: o._id } : {}),
-      agent_id: userId,
-      order_no: o.orderNo || '', site: o.site || '',
-      product: o.product || '', supplier: o.supplier || '',
-      status: o.status || 'pending',
-      order_date: o.orderDate || null, promised_date: o.promisedDate || null,
-      shipped_date: o.shippedDate || null, arrived_date: o.arrivedDate || null,
-      next_follow: o.nextFollow || null, notes: o.notes || '',
-      screenshots: o.screenshots || [], followups: o.followups || [],
-      deleted_at: o.deletedAt || null, deleted_by: o.deletedBy || null,
-    };
-  },
-  _toDbAfter(a, userId) {
-    return {
-      ...(a._id && !a._id.startsWith('A') ? { id: a._id } : {}),
-      agent_id: userId,
-      order_no: a.orderNo || '', site: a.site || '',
-      product: a.product || '', supplier: a.supplier || '',
-      reason: a.reason || '', reason_detail: a.reasonDetail || '',
-      status: a.status || 'pending',
-      created_date: a.createdDate || null, next_follow: a.nextFollow || null, resolved_date: a.resolvedDate || null,
-      screenshots: a.screenshots || [], followups: a.followups || [],
-      deleted_at: a.deletedAt || null, deleted_by: a.deletedBy || null,
-    };
-  },
-  _toDbIssue(i, userId) {
-    return {
-      ...(i._id && !i._id.startsWith('I') ? { id: i._id } : {}),
-      agent_id: userId,
-      supplier: i.supplier || '', issue_type: i.issueType || '',
-      requirement: i.requirement || '', status: i.status || 'pending',
-      followups: i.followups || [],
-      deleted_at: i.deletedAt || null, deleted_by: i.deletedBy || null,
-    };
-  },
-  _toDbMissing(m, userId, userName) {
-    return {
-      ...(m._id && !m._id.startsWith('M') ? { id: m._id } : {}),
-      creator_id: m._creator_id || userId,
-      creator_name: m.creator || userName,
-      description: m.description || '', specs: m.specs || '',
-      customer_order_no: m.customerOrderNo || '',
-      status: m.status || 'searching',
-      screenshots: m.screenshots || [], comments: m.comments || [],
-      adopted_helper: m.adoptedHelper || null,
-      found_at: m.foundAt || null,
-      source: m.source || 'manual',
-      linked_purchase_id: m.linkedPurchaseId || null,
-      deleted_at: m.deletedAt || null, deleted_by: m.deletedBy || null,
-    };
-  },
-  
-  _toDbPurchase(p, userId) {
-    return {
-      ...(p._id && !p._id.startsWith('P') ? { id: p._id } : {}),
-      agent_id: userId,
-      order_no: p.orderNo || '',
-      platform: p.platform || '',
-      product_url: p.productUrl || '',
-      sku: p.sku || '',
-      product_name: p.productName || '',
-      description: p.description || '',
-      quantity: p.quantity || 1,
-      unit_price: p.unitPrice || 0,
-      total_amount: p.totalAmount || 0,
-      status: p.status || 'draft',
-      approved_by: p.approvedBy || null,
-      approved_at: p.approvedAt || null,
-      rejected_reason: p.rejectedReason || null,
-      ordered_at: p.orderedAt || null,
-      received_at: p.receivedAt || null,
-      screenshots: p.screenshots || [],
-      followups: p.followups || [],
-      notes: p.notes || '',
-      linked_missing_id: p.linkedMissingId || null,
-      approval_threshold: p.approvalThreshold || 2000,
-      deleted_at: p.deletedAt || null,
-      deleted_by: p.deletedBy || null,
-    };
-  },
-
-  // ============ 同步接口（演示版兼容）============
-  getConfig() {
-    return {
-      agents: this._cache.agents,
-      suppliers: this._cache.config.suppliers || [],
-      sites: this._cache.config.sites || [],
-    };
-  },
-  saveConfig(cfg) {
-    this._cache.agents = cfg.agents || this._cache.agents;
-    this._cache.config.suppliers = cfg.suppliers || this._cache.config.suppliers;
-    this._cache.config.sites = cfg.sites || this._cache.config.sites;
-    this._debounce('config', 250, () => this._syncConfigAndAgents());
-  },
-
-  getCurrentAgent() { return CURRENT_AGENT; },
-  setCurrentAgent(name) { /* 由登录决定，no-op */ },
-
-  // 订单
-  getOrders(agent) { return this._cache.ordersByAgent[agent] || []; },
-  saveOrders(agent, arr) {
-    this._cache.ordersByAgent[agent] = arr;
-    this._debounce('orders_' + agent, 250, () => fullSyncOrders(agent));
-  },
-
-  // 售后
-  getAftersales(agent) { return this._cache.aftersalesByAgent[agent] || []; },
-  saveAftersales(agent, arr) {
-    this._cache.aftersalesByAgent[agent] = arr;
-    this._debounce('after_' + agent, 250, () => fullSyncAftersales(agent));
-  },
-
-  // 供应商问题
-  getIssues(agent) { return this._cache.issuesByAgent[agent] || []; },
-  saveIssues(agent, arr) {
-    this._cache.issuesByAgent[agent] = arr;
-    this._debounce('issues_' + agent, 250, () => fullSyncIssues(agent));
-  },
-
-  // 找灯
-  getMissingLights() { return this._cache.missingLights; },
-  saveMissingLights(arr) {
-    this._cache.missingLights = arr;
-    this._debounce('missing', 250, () => fullSyncMissing());
-  },
-  
-  // 线上采购
-  getPurchases(agent) { return this._cache.purchasesByAgent[agent] || []; },
-  getAllPurchases() {
-    const all = [];
-    Object.entries(this._cache.purchasesByAgent).forEach(([agent, arr]) => {
-      arr.forEach(p => all.push({ ...p, _agent: agent }));
-    });
-    return all;
-  },
-  savePurchases(agent, arr) {
-    this._cache.purchasesByAgent[agent] = arr;
-    this._debounce('purchases_' + agent, 250, () => fullSyncPurchases(agent));
-  },
-
-  // 评分规则
-  getScoreRules() {
-    return (this._cache.config && this._cache.config.score_rules) || this.defaultScoreRules();
-  },
-  saveScoreRules(rules) {
-    if (this._cache.config) this._cache.config.score_rules = rules;
-    this._debounce('rules', 250, () => this._syncScoreRules(rules));
-  },
-  defaultScoreRules() {
-    return {
-      missingHelp: 10, orderOnTime: 5, orderOverdue: -3, orderDelivered: 2,
-      afterResolved: 3, afterFast: 2, issueResolved: 2, issueEscalated: 3,
-    };
-  },
-
-  // 主管聚合视图
-  listAllAgents() { return this._cache.agents; },
-  getAllOrders() {
-    const all = [];
-    Object.entries(this._cache.ordersByAgent).forEach(([agent, arr]) => {
-      arr.forEach(o => all.push({ ...o, _agent: agent }));
-    });
-    return all;
-  },
-  getAllAftersales() {
-    const all = [];
-    Object.entries(this._cache.aftersalesByAgent).forEach(([agent, arr]) => {
-      arr.forEach(o => all.push({ ...o, _agent: agent }));
-    });
-    return all;
-  },
-  getAllIssues() {
-    const all = [];
-    Object.entries(this._cache.issuesByAgent).forEach(([agent, arr]) => {
-      arr.forEach(o => all.push({ ...o, _agent: agent }));
-    });
-    return all;
-  },
-
-  // ============ 内部同步（防抖）============
-  _pendingFns: {},
-  _debounce(key, ms, fn) {
-    if (_isBootstrapping) return;
-    clearTimeout(this._syncTimers[key]);
-    this._pendingFns[key] = fn;
-    setSyncStatus('pending');
-    this._syncTimers[key] = setTimeout(() => {
-      const f = this._pendingFns[key];
-      delete this._pendingFns[key];
-      delete this._syncTimers[key];
-      if (f) {
-        setSyncStatus('syncing');
-        f().then(() => setSyncStatus('synced')).catch(err => {
-          setSyncStatus('error');
-          console.error('Sync error', key, err);
-          if (typeof toast === 'function') toast('云端同步失败：' + (err.message || err), 'err');
-        });
-      }
-    }, ms);
-  },
-  
-  _cancelDebounce(key) {
-    clearTimeout(this._syncTimers[key]);
-    delete this._syncTimers[key];
-    delete this._pendingFns[key];
-  },
-  
-  // 立即推送（不 debounce）：用于"明确提交动作"如加跟进、删除、状态切换等
-  async saveAndSyncOrders(agent) {
-    this._cancelDebounce('orders_' + agent);
-    setSyncStatus('syncing');
-    try { await fullSyncOrders(agent); setSyncStatus('synced'); }
-    catch (err) { setSyncStatus('error'); throw err; }
-  },
-  async saveAndSyncAftersales(agent) {
-    this._cancelDebounce('after_' + agent);
-    setSyncStatus('syncing');
-    try { await fullSyncAftersales(agent); setSyncStatus('synced'); }
-    catch (err) { setSyncStatus('error'); throw err; }
-  },
-  async saveAndSyncIssues(agent) {
-    this._cancelDebounce('issues_' + agent);
-    setSyncStatus('syncing');
-    try { await fullSyncIssues(agent); setSyncStatus('synced'); }
-    catch (err) { setSyncStatus('error'); throw err; }
-  },
-  async saveAndSyncMissing() {
-    this._cancelDebounce('missing');
-    setSyncStatus('syncing');
-    try { await fullSyncMissing(); setSyncStatus('synced'); }
-    catch (err) { setSyncStatus('error'); throw err; }
-  },
-  async saveAndSyncPurchases(agent) {
-    this._cancelDebounce('purchases_' + agent);
-    setSyncStatus('syncing');
-    try { await fullSyncPurchases(agent); setSyncStatus('synced'); }
-    catch (err) { setSyncStatus('error'); throw err; }
-  },
-  
-  // 立即执行所有 pending 的同步（关闭 modal 时调用，保证数据落库）
-  flushPending() {
-    Object.keys(this._pendingFns).forEach(key => {
-      clearTimeout(this._syncTimers[key]);
-      const f = this._pendingFns[key];
-      delete this._pendingFns[key];
-      delete this._syncTimers[key];
-      if (f) f().catch(err => {
-        console.error('Flush sync error', key, err);
-        if (typeof toast === 'function') toast('云端同步失败：' + (err.message || err), 'err');
-      });
-    });
-  },
-
-  async _syncConfigAndAgents() {
-    if (!IS_ADMIN) return;
-    await sb.from('config').update({
-      suppliers: this._cache.config.suppliers,
-      sites: this._cache.config.sites,
-    }).eq('id', 1);
-    // 同步每个 agent 的 sites / modules / isAdmin
-    for (const a of this._cache.agents) {
-      if (a._userId) {
-        await sb.from('agents').update({
-          name: a.name,
-          is_admin: a.isAdmin,
-          sites: a.sites || [],
-          modules: a.modules || [],
-        }).eq('user_id', a._userId);
-      }
-    }
-  },
-
-  async _syncScoreRules(rules) {
-    if (!IS_ADMIN) return;
-    await sb.from('config').update({ score_rules: rules }).eq('id', 1);
-  },
-};
-
-// ============================================================
-// 全量同步函数（防抖触发）
-// ============================================================
-async function fullSyncOrders(agentName) {
-  const a = CONFIG.agents.find(x => x.name === agentName);
-  if (!a || !a._userId) return;
-  const userId = a._userId;
-  const arr = DATA._cache.ordersByAgent[agentName] || [];
-
-  const { data: existing } = await sb.from('orders').select('id').eq('agent_id', userId);
-  const existingIds = new Set((existing || []).map(o => o.id));
-  const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('O')));
-
-  const toDelete = [...existingIds].filter(id => !localIds.has(id));
-  if (toDelete.length > 0) {
-    await sb.from('orders').delete().in('id', toDelete);
-  }
-
-  const inserts = arr.filter(o => !o._id || o._id.startsWith('O')).map(o => DATA._toDbOrder(o, userId));
-  const updates = arr.filter(o => o._id && !o._id.startsWith('O')).map(o => DATA._toDbOrder(o, userId));
-
-  if (updates.length > 0) {
-    const { error } = await sb.from('orders').upsert(updates);
-    if (error) throw error;
-  }
-  if (inserts.length > 0) {
-    const { data, error } = await sb.from('orders').insert(inserts).select();
-    if (error) throw error;
-    // 回填真实 UUID
-    let i = 0;
-    for (const o of arr) {
-      if (!o._id || o._id.startsWith('O')) {
-        if (data[i]) {
-          const oldId = o._id;
-          o._id = data[i].id;
-          o._agent_id = userId;
-          // 如果当前 modal 打开的就是这个订单，同步更新 _currentItemId
-          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
-            _currentItemId = o._id;
-          }
-          i++;
-        }
-      }
-    }
-  }
-}
-
-async function fullSyncAftersales(agentName) {
-  const a = CONFIG.agents.find(x => x.name === agentName);
-  if (!a || !a._userId) return;
-  const userId = a._userId;
-  const arr = DATA._cache.aftersalesByAgent[agentName] || [];
-
-  const { data: existing } = await sb.from('aftersales').select('id').eq('agent_id', userId);
-  const existingIds = new Set((existing || []).map(o => o.id));
-  const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('A')));
-
-  const toDelete = [...existingIds].filter(id => !localIds.has(id));
-  if (toDelete.length > 0) {
-    await sb.from('aftersales').delete().in('id', toDelete);
-  }
-
-  const inserts = arr.filter(o => !o._id || o._id.startsWith('A')).map(o => DATA._toDbAfter(o, userId));
-  const updates = arr.filter(o => o._id && !o._id.startsWith('A')).map(o => DATA._toDbAfter(o, userId));
-
-  if (updates.length > 0) {
-    const { error } = await sb.from('aftersales').upsert(updates);
-    if (error) throw error;
-  }
-  if (inserts.length > 0) {
-    const { data, error } = await sb.from('aftersales').insert(inserts).select();
-    if (error) throw error;
-    let i = 0;
-    for (const o of arr) {
-      if (!o._id || o._id.startsWith('A')) {
-        if (data[i]) {
-          const oldId = o._id;
-          o._id = data[i].id;
-          o._agent_id = userId;
-          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
-            _currentItemId = o._id;
-          }
-          i++;
-        }
-      }
-    }
-  }
-}
-
-async function fullSyncIssues(agentName) {
-  const a = CONFIG.agents.find(x => x.name === agentName);
-  if (!a || !a._userId) return;
-  const userId = a._userId;
-  const arr = DATA._cache.issuesByAgent[agentName] || [];
-
-  const { data: existing } = await sb.from('issues').select('id').eq('agent_id', userId);
-  const existingIds = new Set((existing || []).map(o => o.id));
-  const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('I')));
-
-  const toDelete = [...existingIds].filter(id => !localIds.has(id));
-  if (toDelete.length > 0) {
-    await sb.from('issues').delete().in('id', toDelete);
-  }
-
-  const inserts = arr.filter(o => !o._id || o._id.startsWith('I')).map(o => DATA._toDbIssue(o, userId));
-  const updates = arr.filter(o => o._id && !o._id.startsWith('I')).map(o => DATA._toDbIssue(o, userId));
-
-  if (updates.length > 0) {
-    const { error } = await sb.from('issues').upsert(updates);
-    if (error) throw error;
-  }
-  if (inserts.length > 0) {
-    const { data, error } = await sb.from('issues').insert(inserts).select();
-    if (error) throw error;
-    let i = 0;
-    for (const o of arr) {
-      if (!o._id || o._id.startsWith('I')) {
-        if (data[i]) {
-          const oldId = o._id;
-          o._id = data[i].id;
-          o._agent_id = userId;
-          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
-            _currentItemId = o._id;
-          }
-          i++;
-        }
-      }
-    }
-  }
-}
-
-async function fullSyncMissing() {
-  const arr = DATA._cache.missingLights;
-
-  // 找灯：所有人共享，按 id 同步
-  const { data: existing } = await sb.from('missing_lights').select('id');
-  const existingIds = new Set((existing || []).map(o => o.id));
-  const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('M')));
-
-  // 只删除自己创建的（RLS 控制）
-  const toDelete = [...existingIds].filter(id => !localIds.has(id));
-  if (toDelete.length > 0) {
-    await sb.from('missing_lights').delete().in('id', toDelete);
-  }
-
-  const inserts = arr.filter(o => !o._id || o._id.startsWith('M')).map(o => DATA._toDbMissing(o, CURRENT_USER_ID, CURRENT_AGENT));
-  const updates = arr.filter(o => o._id && !o._id.startsWith('M')).map(o => DATA._toDbMissing(o, CURRENT_USER_ID, CURRENT_AGENT));
-
-  if (updates.length > 0) {
-    const { error } = await sb.from('missing_lights').upsert(updates);
-    if (error) throw error;
-  }
-  if (inserts.length > 0) {
-    const { data, error } = await sb.from('missing_lights').insert(inserts).select();
-    if (error) throw error;
-    let i = 0;
-    for (const o of arr) {
-      if (!o._id || o._id.startsWith('M')) {
-        if (data[i]) {
-          const oldId = o._id;
-          o._id = data[i].id;
-          o._creator_id = data[i].creator_id;
-          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
-            _currentItemId = o._id;
-          }
-          i++;
-        }
-      }
-    }
-  }
-}
-
-async function fullSyncPurchases(agentName) {
-  const me = DATA._cache.agents.find(a => a.name === agentName);
-  if (!me) return;
-  const userId = me._userId;
-  const arr = DATA._cache.purchasesByAgent[agentName] || [];
-
-  const { data: existing } = await sb.from('online_purchases').select('id').eq('agent_id', userId);
-  const existingIds = new Set((existing || []).map(x => x.id));
-  const localIds = new Set(arr.map(p => p._id).filter(id => id && !id.startsWith('P')));
-
-  const toDelete = [...existingIds].filter(id => !localIds.has(id));
-  if (toDelete.length > 0) {
-    await sb.from('online_purchases').delete().in('id', toDelete);
-  }
-
-  const inserts = arr.filter(p => !p._id || p._id.startsWith('P')).map(p => DATA._toDbPurchase(p, userId));
-  const updates = arr.filter(p => p._id && !p._id.startsWith('P')).map(p => DATA._toDbPurchase(p, userId));
-
-  if (updates.length > 0) {
-    const { error } = await sb.from('online_purchases').upsert(updates);
-    if (error) throw error;
-  }
-  if (inserts.length > 0) {
-    const { data, error } = await sb.from('online_purchases').insert(inserts).select();
-    if (error) throw error;
-    let i = 0;
-    for (const p of arr) {
-      if (!p._id || p._id.startsWith('P')) {
-        if (data[i]) {
-          const oldId = p._id;
-          p._id = data[i].id;
-          p._agent_id = userId;
-          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
-            _currentItemId = p._id;
-          }
-          i++;
-        }
-      }
-    }
-  }
-}
-
-// ============ 全局状态 ============
-let CONFIG = DATA.getConfig();  // 空配置，bootstrap 后填充
-let CURRENT_AGENT = null;       // 字符串：当前账号姓名
-let IS_ADMIN = false;
-let CURRENT_TAB = 'orders';     // orders | aftersales | issues | missing | purchases | performance
-let ORDERS = [];
-let AFTERSALES = [];
-let ISSUES = [];
-let MISSING_LIGHTS = [];        // 共享数据
-let PURCHASES = [];             // 线上采购
-
-let _currentItemId = null;
-let _currentItemType = null;     // 当前打开的 modal 类型
-let _newScreenshots_orig = [];   // 主截图待保存
-let _newScreenshots_fu = [];     // 跟进截图待保存
-let _currentFuType = 'chase';
-let _pasteTarget = null;          // 当前焦点的拖放区，'orig' | 'fu'
-let _ordersFbTab = 'overdue';
-let _asFbTab = 'overdue';
-
-// ============ 常量 ============
-const ORDER_STATUS_LABELS = {
-  pending: '待下采购', producing: '生产中', shipped: '已发货',
-  arrived: '已到货', cancelled: '取消',
-};
-const AFTER_STATUS_LABELS = {
-  pending: '待处理', contacting: '沟通中', repairing: '返修中',
-  resolved: '已解决', cancelled: '已取消',
-};
-const ISSUE_STATUS_LABELS = {
-  pending: '待沟通', in_progress: '沟通中',
-  resolved: '已解决', escalated: '已升级老板',
-};
-const MISSING_STATUS_LABELS = {
-  searching: '搜寻中', found: '已找到', abandoned: '已放弃',
-};
-const ORDER_TYPE_LABELS = {
-  chase: '💬 催单', response: '📨 供应商反馈',
-  ship: '🚚 发货通知', arrive: '📦 到货', other: '📌 其他',
-};
-const REASON_LIST = ['产品瑕疵','给错货物','缺配件','功能故障','物流损坏','安装问题','不符预期','其他'];
-const REASON_TREE = {
-  '产品瑕疵': {
-    icon: '⚠',
-    subs: ['喷漆不良/掉漆', '有划痕/磨损', '生锈/氧化', '玻璃破损/裂纹', '亚克力变形/发黄', '焊点开裂', '材质问题', '污渍/胶痕', '其他瑕疵']
-  },
-  '给错货物': {
-    icon: '🔄',
-    subs: ['款式错误（要 A 给 B）', '颜色错误（如白→黑）', '数量错误（要 2 给 1）', '尺寸错误', '型号错误', '替换货未通知', '其他给错']
-  },
-  '缺配件': {
-    icon: '🧩',
-    subs: ['缺光源/灯泡', '缺驱动/电源', '缺遥控器', '缺安装件（螺丝/挂板）', '缺装饰件（吊坠/水晶等）', '缺连接线/灯头线', '缺说明书', '其他缺件']
-  },
-  '功能故障': {
-    icon: '⚡',
-    subs: ['电压错误（如要 110V 给 220V）', '光源不对（如要单色给三色）', '调光不对（如要可控硅给常规）', '不亮 / 闪烁 / 不稳', '开关不灵 / 损坏', '蓝牙 / 智能控制问题', '光源亮度不达标', '色温不对', '其他功能问题']
-  },
-  '物流损坏': {
-    icon: '📦',
-    subs: ['运输压破', '包装破损', '货物丢失/少箱', '运输延误', '其他物流问题']
-  },
-  '安装问题': {
-    icon: '🔧',
-    subs: ['尺寸不符', '配件不匹配', '说明书不清/缺失', '安装结构问题', '其他安装问题']
-  },
-  '不符预期': {
-    icon: '😕',
-    subs: ['客户主观因素', '色差较大', '风格不符', '尺寸偏大/偏小', '材质感不符', '其他不符']
-  },
-  '其他': {
-    icon: '📌',
-    subs: ['请在详情说明']
-  }
-};
-
-// 订单号格式提示（按网站）
-const ORDER_NO_FORMAT = {
-  VK: 'K114176 或 V114176',
-  DC: 'DC114176',
-  RD: 'RD114176',
-  DF: 'DF114176',
-  MH: 'MH114176',
-  MJ: 'MJ114176',
-  ML: 'ML114176',
-  RS: 'RS114176',
-  LS: 'LS114176',
-  PL: 'PL114176',
-  '线下': '自定义编号',
-};
-
-// 所有模块（用于权限控制）
-const ALL_MODULES = [
-  { key: 'orders', label: '📋 催单' },
-  { key: 'aftersales', label: '🔧 售后' },
-  { key: 'issues', label: '⚠ 供应商问题' },
-  { key: 'missing', label: '🔍 找灯' },
-  { key: 'purchases', label: '🛒 线上采购' },
-  { key: 'sales', label: '📥 销售单' },
-  { key: 'po', label: '📦 采购单' },
-  { key: 'products', label: '📚 产品' },
-  { key: 'consolidation', label: '🧊 合箱' },
-  { key: 'performance', label: '📊 绩效' },
-];
-const ALL_MODULE_KEYS = ALL_MODULES.map(m => m.key);
-
-// 默认供应商列表（首次部署/清空后会自动恢复）
-const DEFAULT_SUPPLIERS = [
-  "3D打印",
-  "7号灯饰",
-  "DAWN艺术居",
-  "HOGO",
-  "casa",
-  "e家/乔茜",
-  "一号货仓/灯格",
-  "一启",
-  "一束光",
-  "一枝灯饰",
-  "一荣",
-  "七分光",
-  "万伟",
-  "万象",
-  "世澜/红林",
-  "东堡",
-  "东舜",
-  "东辰",
-  "东龙",
-  "中慧",
-  "中鸿",
-  "丰欧电子",
-  "丽林",
-  "义婷",
-  "乔通塑料",
-  "九九灯饰",
-  "九岸/图尔光电",
-  "云家",
-  "云雨",
-  "亚穆",
-  "京派",
-  "亮宇",
-  "亮家优品",
-  "亿众",
-  "亿品豪",
-  "亿鑫",
-  "什么灯饰",
-  "任何照明",
-  "伊思莱",
-  "伊晨",
-  "伊诺",
-  "众超",
-  "优大",
-  "优悦",
-  "伟煜",
-  "伟煜树脂",
-  "伯尔",
-  "伯德/柏丰",
-  "佐恩",
-  "佑丰",
-  "佛光配件",
-  "佰款",
-  "佰跃",
-  "佳佳",
-  "佳和",
-  "佳德来",
-  "佳易",
-  "依诺",
-  "保罗",
-  "信得",
-  "信达",
-  "值总/白舟",
-  "健锋",
-  "允控",
-  "元亨/佰宝/元宝",
-  "元品",
-  "元物",
-  "兆虹",
-  "光之屋",
-  "光之影",
-  "光天使",
-  "光尚",
-  "光方（扶桑树）",
-  "光无垠",
-  "光源陈列馆",
-  "光艺能",
-  "光辑",
-  "光遇",
-  "光韵",
-  "克鲁格",
-  "兰膏",
-  "兴宾",
-  "其明",
-  "典灯",
-  "凌戈/森明",
-  "凡克",
-  "凡居",
-  "凡非",
-  "凯丽扬",
-  "凯丽琪",
-  "凯创",
-  "凯泰",
-  "凯瑞思",
-  "刘强",
-  "创佳",
-  "创古奇",
-  "创居乐",
-  "创意",
-  "创意欣",
-  "创慧",
-  "创灯饰",
-  "创艺",
-  "创艺轩/鸿昇",
-  "初芯",
-  "利佳",
-  "利元灯饰",
-  "利濠木艺",
-  "力创",
-  "北斗星光艺",
-  "北欧美家",
-  "北淮",
-  "匠侬",
-  "匠心",
-  "匠舍",
-  "十八号灯铺",
-  "千宏",
-  "千灯坊",
-  "千灯汇",
-  "千誉",
-  "华丽",
-  "华佳/华之佳",
-  "华品",
-  "华德",
-  "华林/雅盛（迎隆）",
-  "华浩",
-  "华灯",
-  "华美旺家",
-  "华荣",
-  "华诗源",
-  "南宫",
-  "南航",
-  "南辰",
-  "博森",
-  "博米",
-  "博美",
-  "卡奈积/大前门",
-  "卡柏",
-  "卡梅尔",
-  "卡铂",
-  "厚蒙",
-  "原御家居",
-  "原艺工坊",
-  "叁叁",
-  "双闪",
-  "古古",
-  "古风",
-  "古高尔",
-  "吉吉",
-  "吉朗达",
-  "名丰",
-  "名灯惠",
-  "向月",
-  "君渡",
-  "启光",
-  "启明",
-  "启点",
-  "启高",
-  "周锋",
-  "和盛",
-  "品匠",
-  "品执",
-  "品月",
-  "品识",
-  "品诚",
-  "哥德利",
-  "唯尔特",
-  "唯展（魅艺）",
-  "商意",
-  "商朵",
-  "喜唐",
-  "喜灯",
-  "嘉世",
-  "嘉业",
-  "嘉仕达",
-  "嘉帝",
-  "嘉美/二星",
-  "因得",
-  "国雅",
-  "图雅钛金",
-  "圈圈灯/寻光灯饰",
-  "圣立",
-  "域上",
-  "域见",
-  "培宇",
-  "塔斯灯",
-  "壕琳",
-  "壹巢灯饰",
-  "壹米滴答",
-  "夏月（顺其）",
-  "夏洛",
-  "夕阳灯",
-  "大前门",
-  "大理石万家灯饰",
-  "大鹏五金",
-  "天宇",
-  "天畅",
-  "太沃/沃盟",
-  "奇异之光",
-  "奈特",
-  "奎光",
-  "奕博",
-  "奢灯/汝好",
-  "奥伦欧",
-  "奥康",
-  "奥梦",
-  "好利欧",
-  "好友",
-  "好美仕",
-  "威威五金",
-  "子衿",
-  "宇佳",
-  "宇宸",
-  "宇阁",
-  "守灯",
-  "安信",
-  "宏品/日月明光",
-  "宏明",
-  "宏通",
-  "定忠/喜盈门",
-  "宜安",
-  "宝佳",
-  "实丰照明",
-  "室内户外壁灯/候月",
-  "家印",
-  "寅平",
-  "封口胶",
-  "尊御",
-  "小品光电",
-  "小庭苑",
-  "小陈风知名",
-  "尚异",
-  "尚成",
-  "尚承",
-  "尚晟",
-  "尼德兰",
-  "居景",
-  "居里扬",
-  "展总蚕丝灯",
-  "巨信螺丝",
-  "希得利",
-  "希曼达",
-  "帝豪",
-  "常瑞",
-  "康佑",
-  "康瑞",
-  "康童",
-  "开辕",
-  "弗莱斯",
-  "彩绘/全汉",
-  "彼莎",
-  "徐广林",
-  "德鑫铝管",
-  "德钰",
-  "心意",
-  "忆晨",
-  "忆涵",
-  "志森",
-  "志爱",
-  "思佳/开心灯饰",
-  "恋家",
-  "惠土",
-  "意饰",
-  "慕佳",
-  "慕意",
-  "慕橙",
-  "戎光",
-  "护角/昱科包装",
-  "拾尚",
-  "振豪",
-  "接线端子",
-  "摩天轮/创唯",
-  "摩派",
-  "摩灯拾光",
-  "摩灯空间",
-  "摩翼",
-  "摩艾佳",
-  "敏行天下",
-  "数据安全系统",
-  "斌新",
-  "斓斑",
-  "斯卡兰",
-  "新悦",
-  "新望",
-  "新源",
-  "新爵",
-  "新越",
-  "新辉",
-  "新迪/米琳",
-  "新鑫小鸟",
-  "方佳圆",
-  "旧胡同",
-  "旭牛",
-  "旺盈/南兮",
-  "昂克赛斯",
-  "昂德斯",
-  "明创",
-  "明影",
-  "明晨",
-  "明玥/古钥",
-  "星之朗",
-  "星庭煌佳",
-  "星星灯",
-  "星星灯饰",
-  "星星点灯",
-  "星晨",
-  "星灯阁/雨鑫",
-  "星诚",
-  "晋南水晶",
-  "晨曦/心烁",
-  "普球",
-  "景致",
-  "智程电脑",
-  "智艺",
-  "曾总",
-  "月光领域",
-  "有盏灯",
-  "朋友圈",
-  "朗元",
-  "朗图",
-  "朝辉五金",
-  "木友",
-  "木本色",
-  "木艺线条灯/木噫",
-  "本杰明",
-  "权景电线",
-  "权浩",
-  "杭成",
-  "杰尔特",
-  "杰灯饰",
-  "极物坊",
-  "林邦",
-  "柏慕",
-  "柯胜（柯盛）",
-  "格丹",
-  "格度",
-  "格灵",
-  "桃缘茗",
-  "梓瑞",
-  "梦艺",
-  "梵可",
-  "梵影",
-  "梵梦",
-  "梵生",
-  "梵简",
-  "森木",
-  "森源",
-  "森耀",
-  "楷丰",
-  "楷铧",
-  "樊灯",
-  "欣之亮",
-  "欣悦",
-  "欣新广告",
-  "欣煜",
-  "欣辰",
-  "欧伯伲",
-  "欧佛尼",
-  "欧华帝豪",
-  "欧司/南帝",
-  "欧宇",
-  "欧文卡莱",
-  "欧晋",
-  "欧西曼/安瑞斯",
-  "正兴",
-  "正天",
-  "正特大齐",
-  "正飞/艺晨",
-  "毅浩",
-  "毅诚泡沫",
-  "江松",
-  "泉红",
-  "泓运/泓亮",
-  "法拉盛",
-  "泽曼",
-  "洛奥灯饰",
-  "海伦铜灯/8号铜灯",
-  "海辉",
-  "淘之苑",
-  "淘宝吾爱灯",
-  "淘宝品艺",
-  "淘宝曼灯饰",
-  "淘宝灯也",
-  "淘宝灯小白",
-  "淘宝美尼思",
-  "淘宝腾达",
-  "淘宝艺术居",
-  "淘淘居",
-  "清韵",
-  "源尚居",
-  "潮漫照明",
-  "澳兰",
-  "澳宸",
-  "澳怡/中雅",
-  "澳斯米兰",
-  "澳特斯/澳迪斯",
-  "灏龙",
-  "火花球",
-  "火车头/HCT灯饰",
-  "灯世界",
-  "灯光画",
-  "灯可爱",
-  "灯奇",
-  "灯巢",
-  "灯工坊",
-  "灯火之家",
-  "灯百汇",
-  "灯语堡/匠舍",
-  "灯调工作室",
-  "灯迷",
-  "灯都精灵",
-  "灯阁",
-  "灯革",
-  "灯顶",
-  "灯风尚",
-  "炎源",
-  "炎锋",
-  "炜英纸箱厂",
-  "焜昱",
-  "焱阳",
-  "煜明",
-  "煜祥",
-  "熠皓",
-  "爱家/乐居",
-  "爱家居",
-  "爱灯堡",
-  "爱碧儿/伊维克",
-  "王庭灯饰",
-  "玖正居",
-  "玥澄灯饰",
-  "玩灯/壹号货仓",
-  "琪琪",
-  "琪琳",
-  "琼瑶",
-  "瑞希",
-  "璀璨",
-  "畅腾/新中式全铜",
-  "百欧/星辰",
-  "百涞福",
-  "的光",
-  "皇玛/天乐",
-  "盈煌",
-  "盛源",
-  "盛腾",
-  "盛迈芮",
-  "知礼礼品",
-  "福布斯",
-  "禹哲",
-  "禾牛",
-  "秦泰数控",
-  "立嘉",
-  "立美",
-  "筑雅居（界雅）",
-  "简隆",
-  "米丰",
-  "米修",
-  "素说",
-  "红灵",
-  "纬特",
-  "纽思",
-  "维比娅",
-  "缔烁",
-  "网艺",
-  "罗丹凯",
-  "美尼思",
-  "美洛",
-  "群希",
-  "羿轩",
-  "翔可",
-  "翔美",
-  "联辰",
-  "聚慧",
-  "胜辰",
-  "腾屹铜",
-  "腾达",
-  "腾远亚克力",
-  "致简",
-  "致诚（铜点）",
-  "臻盛",
-  "艺仟",
-  "艺佳",
-  "艺博/谢俊铠",
-  "艺尚",
-  "艺恺",
-  "艺戈",
-  "艺构/米艺",
-  "艺源",
-  "艺灯灯饰",
-  "艺灯集",
-  "艺灯饰",
-  "艺盟",
-  "艺维",
-  "艺臣",
-  "艺航木箱",
-  "艾嘉",
-  "艾尚",
-  "艾格",
-  "芊顷",
-  "荣泰",
-  "荣缔时光",
-  "荣达",
-  "莱伽",
-  "莱斯欧",
-  "莱美之光",
-  "莱雅/觅高",
-  "营辉/洋影/初色",
-  "蓝屋优美达",
-  "蓝恩",
-  "蓝海",
-  "蓝溪阁",
-  "蓝色星空",
-  "蔡小姐",
-  "蜜匠",
-  "触摸款台灯/骏瑞照明",
-  "诺依",
-  "谱光师（家典）",
-  "豪品",
-  "豪品欣怡/豪品",
-  "豪洁",
-  "豫鑫",
-  "财凤",
-  "赫卡",
-  "赫蒙",
-  "赵璐/四玺文化/恰北北",
-  "起点照明/艾登",
-  "路易",
-  "轩业",
-  "辉企",
-  "辉钜",
-  "辰光水晶",
-  "辰辉",
-  "迈科祺",
-  "远图",
-  "远芬",
-  "迪圣奇户外灯",
-  "迪派斯",
-  "迪都",
-  "追潮",
-  "逆光",
-  "道艺",
-  "酷艺",
-  "金丝燕",
-  "金希",
-  "金水木灯",
-  "金艺/金艺轩",
-  "金辉",
-  "鑫仂仕",
-  "鑫壮",
-  "鑫琪",
-  "鑫美居",
-  "鑫耀",
-  "钰煌",
-  "铂泰",
-  "铂洁",
-  "铜城",
-  "铜密码",
-  "铜欢喜",
-  "铜盟",
-  "铜艺五金厂",
-  "铜艺美",
-  "铭丰",
-  "铭峰",
-  "铭豪",
-  "锐铭",
-  "锦之星",
-  "锦典",
-  "锦绣之光",
-  "镁镁",
-  "长江铜件",
-  "闽皇森",
-  "闽航",
-  "阁楼厂",
-  "阿朵灯饰",
-  "阿玛拉",
-  "陈总光立方",
-  "雅诗曼（众鑫）",
-  "集品会",
-  "集美",
-  "雪丰",
-  "零点壹",
-  "零维",
-  "雷克森/熔岩/偶遇",
-  "雷汉尼/北郡",
-  "顺成",
-  "顺盈",
-  "飞翔五金厂",
-  "飞腾",
-  "香奈儿",
-  "馨妍",
-  "馨恒",
-  "高信",
-  "高巧",
-  "鸿光轨道盒",
-  "鸿兴",
-  "鸿庭",
-  "鸿灯饰",
-  "鸿益",
-  "鸿跃",
-  "鸿运加工厂",
-  "鸿鑫",
-  "鸿鹏",
-  "鹏程",
-  "鹤洲",
-  "鹿森堡",
-  "鹿角灯",
-  "麦佳",
-  "麦克优选",
-  "麦德哆",
-  "麦浪",
-  "麦灯",
-  "黄凤容",
-  "黯光",
-  "鼎欧",
-  "鼎胜",
-  "鼎腾",
-  "龙昌",
-  "龙映",
-  "龙珠阁/本鼎光电",
-  "亿源",
-  "左尚",
-  "往后余生",
-  "星沃",
-  "木修远/黄太阳",
-  "淘缘",
-  "灯匠",
-  "艺岚",
-  "万冠萤火虫",
-  "中木",
-  "丽道",
-  "佑劲/佑莱",
-  "佳文骏/三洪",
-  "佳缘/佳家",
-  "倾慕一居",
-  "光朗",
-  "凝聚",
-  "几何",
-  "凡品",
-  "华晟",
-  "宏壮/宏装",
-  "家乐",
-  "富达",
-  "居皇",
-  "广瑞",
-  "弘文/弘易",
-  "恒福来",
-  "斯克诺",
-  "新匠",
-  "晟辉",
-  "极星/艺星/优亮灯饰",
-  "梵烨",
-  "汉升",
-  "泰聚",
-  "润明",
-  "灯博饰",
-  "灿若星",
-  "爱丹/艾丹",
-  "玖悦/玛瑙",
-  "琪光",
-  "登匠",
-  "祥成",
-  "祥瑞光源",
-  "秀木坊",
-  "立民",
-  "糖果（原塔塔）",
-  "罗尔斯特",
-  "羽浩（祺鑫）",
-  "耀广厂",
-  "老良木箱",
-  "自然源/自然木艺",
-  "艺涵",
-  "豪鸿",
-  "迪澳灯饰",
-  "通明",
-  "金泰源",
-  "铭锋",
-  "隆康包装",
-  "霓禾",
-  "领杭",
-  "飞利浦/博发",
-  "鸵鸟毛",
-  "鸿粤"
-];
-
-
-let SCORE_RULES = DATA.getScoreRules();
-
-// ============ 初始化 ============
-// ============================================================
-// Bootstrap：启动流程（检查登录 → 加载数据 → 显示主界面）
-// ============================================================
-async function bootstrap() {
-  try {
-    // 1. 检查 session
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session) {
-      showLoginScreen();
-      return;
-    }
-
-    // 2. 登录成功，初始化
-    await onAuthSuccess(session);
-  } catch (err) {
-    console.error('Bootstrap error:', err);
-    showLoginScreen();
-    showLoginError('启动失败：' + (err.message || err));
-  }
-}
-
-async function onAuthSuccess(session) {
-  CURRENT_USER_ID = session.user.id;
-  CURRENT_USER_EMAIL = session.user.email;
-
-  // 加载所有数据
-  document.getElementById('loadingScreen').style.display = 'flex';
-  document.getElementById('loginScreen').style.display = 'none';
-
-  try {
-    await DATA.loadAll();
-  } catch (err) {
-    console.error('Load data error:', err);
-    showLoginError('加载数据失败：' + (err.message || err) + '。请联系主管。');
-    await sb.auth.signOut();
-    showLoginScreen();
-    return;
-  }
-
-  // 更新 CONFIG
-  CONFIG = DATA.getConfig();
-  SCORE_RULES = DATA.getScoreRules();
-
-  // 找到当前用户对应的 agent
-  const agent = CONFIG.agents.find(a => a._userId === CURRENT_USER_ID);
-  if (!agent) {
-    showLoginError('账号未授权（agents 表中没有此用户）。请联系主管在 agents 表添加记录。');
-    await sb.auth.signOut();
-    showLoginScreen();
-    return;
-  }
-
-  CURRENT_AGENT = agent.name;
-  IS_ADMIN = agent.isAdmin;
-
-  // 主管可见"📈 数据" tab
-  const tabAna = document.getElementById('tabAnalytics');
-  if (tabAna) tabAna.style.display = IS_ADMIN ? '' : 'none';
-
-  // bootstrap 完成，允许同步触发
-  _isBootstrapping = false;
-
-  // 初始化 UI
-  initUI();
-  showMainApp();
-}
-
-function initUI() {
-  const today = new Date().toISOString().slice(0, 10);
-  ['omNewDate','asmNewDate','ismNewDate','asmCreatedDate'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = today;
-  });
-  const rm = document.getElementById('reportMonth');
-  if (rm) rm.textContent = today.slice(0, 7);
-
-  // 直接登录当前用户（不弹 Agent Picker）
-  loginAs(CURRENT_AGENT);
-}
-
-function showLoginScreen() {
-  document.getElementById('loadingScreen').style.display = 'none';
-  document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('mainApp').style.display = 'none';
-}
-
-function showMainApp() {
-  document.getElementById('loadingScreen').style.display = 'none';
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('mainApp').style.display = 'block';
-}
-
-function showLoginError(msg) {
-  const el = document.getElementById('loginError');
-  if (el) {
-    el.textContent = msg;
-    el.style.display = 'block';
-  }
-}
-
-async function handleLogin(event) {
-  event.preventDefault();
-  const email = document.getElementById('loginEmail').value.trim();
-  const password = document.getElementById('loginPassword').value;
-  const btn = document.getElementById('loginBtn');
-  const err = document.getElementById('loginError');
-  err.style.display = 'none';
-  btn.disabled = true;
-  btn.textContent = '登录中...';
-
-  try {
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    document.getElementById('loginPassword').value = '';
-    await onAuthSuccess(data.session);
-  } catch (e) {
-    showLoginError('登录失败：' + (e.message || e));
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '登录';
-  }
-  return false;
-}
-
-async function handleLogout() {
-  if (!confirm('确认登出？')) return;
-  await sb.auth.signOut();
-  location.reload();
-}
-
-// 兼容：保留 init 函数（被各处调用）
-function init() {
-  // 已迁移到 bootstrap，此处空实现
-}
-
-function loginAs(name) {
-  const agent = CONFIG.agents.find(a => a.name === name);
-  if (!agent) return;
-  CURRENT_AGENT = name;
-  IS_ADMIN = agent.isAdmin || false;
-  DATA.setCurrentAgent(name);
-  
-  // 主管可见"📈 数据" tab
-  const tabAna = document.getElementById('tabAnalytics');
-  if (tabAna) tabAna.style.display = IS_ADMIN ? '' : 'none';
-  
-  document.getElementById('curAvatar').textContent = name[0].toUpperCase();
-  
-  const mySites = agent.sites || [];
-  const siteStr = mySites.length > 0 ? mySites.join(' / ') : '未设置';
-  const sitesHTML = IS_ADMIN ? '' : `<span class="my-sites ${mySites.length > 0 ? 'has-sites' : ''}">📍 ${escapeHtml(siteStr)}</span>`;
-  document.getElementById('curName').innerHTML = (IS_ADMIN ? '<span class="admin-badge">主管</span>' : '') + escapeHtml(name) + sitesHTML;
-  document.getElementById('agentPill').classList.toggle('admin', IS_ADMIN);
-  document.getElementById('ordersAdminNote').style.display = IS_ADMIN ? 'inline-flex' : 'none';
-  document.getElementById('asAdminNote').style.display = IS_ADMIN ? 'inline-flex' : 'none';
-  
-  closeModal('agentModal');
-  loadAllData();
-  applyModuleVisibility();
-  restoreLastTab();
-  renderActiveTab();
-}
-
-// 获取当前用户可见的模块
-function getVisibleModules(agent) {
-  if (!agent) return ALL_MODULE_KEYS;
-  if (agent.isAdmin) return ALL_MODULE_KEYS;
-  return agent.modules || ALL_MODULE_KEYS;
-}
-
-// 应用模块可见性（隐藏没权限的 tab）
-function applyModuleVisibility() {
-  const me = CONFIG.agents.find(a => a.name === CURRENT_AGENT);
-  const visible = getVisibleModules(me);
-  document.querySelectorAll('.tab-item[data-tab]').forEach(el => {
-    const key = el.dataset.tab;
-    el.style.display = visible.includes(key) ? '' : 'none';
-  });
-  // 如果当前 tab 不可见，切到第一个可见的
-  if (!visible.includes(CURRENT_TAB)) {
-    const target = visible[0] || 'orders';
-    switchTab(target);
-  }
-}
-
-function loadAllData() {
-  if (IS_ADMIN) {
-    ORDERS = DATA.getAllOrders().filter(o => !o.deletedAt);
-    AFTERSALES = DATA.getAllAftersales().filter(a => !a.deletedAt);
-    ISSUES = DATA.getAllIssues().filter(i => !i.deletedAt);
-    PURCHASES = DATA.getAllPurchases().filter(p => !p.deletedAt);
-  } else {
-    ORDERS = DATA.getOrders(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
-    AFTERSALES = DATA.getAftersales(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
-    ISSUES = DATA.getIssues(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
-    PURCHASES = DATA.getPurchases(CURRENT_AGENT).filter(p => !p.deletedAt).map(p => ({ ...p, _agent: CURRENT_AGENT }));
-  }
-  MISSING_LIGHTS = DATA.getMissingLights().filter(m => !m.deletedAt);
-  refreshAllSupplierDropdowns();
-  updateBadges();
-}
-
-function renderActiveTab() {
-  if (CURRENT_TAB === 'orders') { renderOrders(); refreshOrdersFb(); renderUrgentBanner(); updateOrderStats(); }
-  else if (CURRENT_TAB === 'aftersales') { renderAftersales(); refreshAsFb(); updateAfterStats(); renderAfterReport(); }
-  else if (CURRENT_TAB === 'issues') { renderIssues(); updateIssueStats(); }
-  else if (CURRENT_TAB === 'missing') { renderMissing(); updateMissingStats(); }
-  else if (CURRENT_TAB === 'purchases') { renderPurchases(); updatePurchaseStats(); }
-  else if (CURRENT_TAB === 'analytics') { renderAnalytics(); }
-  else if (CURRENT_TAB === 'performance') { renderPerformance(); }
-}
-
-function updateBadges() {
-  const today = new Date().toISOString().slice(0, 10);
-  // 催单：紧急（橙/红预警）+ 今日要催
-  let oUrgent = 0;
-  ORDERS.forEach(o => {
-    const lvl = getOrderUrgencyLevel(o);
-    if (lvl === 'red' || lvl === 'orange') oUrgent++;
-    else if (o.nextFollow === today && !['cancelled','shipped','arrived'].includes(o.status)) oUrgent++;
-  });
-  // 售后：未解决
-  const asUnresolved = AFTERSALES.filter(a => !['resolved','cancelled'].includes(a.status)).length;
-  // 问题：未解决
-  const isUnresolved = ISSUES.filter(i => !['resolved'].includes(i.status)).length;
-  // 找灯：搜寻中
-  const mActive = MISSING_LIGHTS.filter(m => m.status === 'searching').length;
-  
-  setBadge('badgeOrders', oUrgent);
-  setBadge('badgeAftersales', asUnresolved);
-  setBadge('badgeIssues', isUnresolved);
-  setBadge('badgeMissing', mActive);
-}
-
-function setBadge(id, n) {
-  const el = document.getElementById(id);
-  el.textContent = n;
-  el.classList.toggle('zero', n === 0);
-}
-
-// ============ Tab 切换 ============
-function switchTab(name) {
-  CURRENT_TAB = name;
-  try { localStorage.setItem('current_tab', name); } catch(_) {}
-  document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === name));
-  renderActiveTab();
-}
-
-function restoreLastTab() {
-  try {
-    const last = localStorage.getItem('current_tab');
-    if (!last) return;
-    // 验证 tab 元素存在且当前用户有权限访问
-    const tabEl = document.querySelector(`.tab-item[data-tab="${last}"]`);
-    if (!tabEl) return;
-    const visible = tabEl.offsetParent !== null || window.getComputedStyle(tabEl).display !== 'none';
-    if (!visible) return;
-    switchTab(last);
-  } catch(_) {}
-}
-
-// ============ 公用 - 状态判断 ============
-function getOrderEffStatus(o) {
-  if (['cancelled'].includes(o.status)) return o.status;
-  if (o.status === 'producing' && o.promisedDate) {
-    const today = new Date().toISOString().slice(0, 10);
-    if (o.promisedDate < today) return 'overdue';
-  }
-  return o.status || 'pending';
-}
-
-// 计算订单紧急程度：normal / yellow / orange / red
-function getOrderUrgencyLevel(o) {
-  if (['cancelled','shipped','arrived'].includes(o.status)) return 'normal';
-  if (!o.promisedDate) return 'normal';
-  const today = new Date().toISOString().slice(0, 10);
-  const chaseCount = (o.followups || []).filter(f => f.type === 'chase').length;
-  
-  if (o.promisedDate >= today) {
-    // 还未到期
-    if (chaseCount >= 2) return 'yellow';  // 催了好几次还没回应也算
-    return 'normal';
-  }
-  
-  // 已逾期
-  const daysOverdue = Math.floor((new Date(today) - new Date(o.promisedDate)) / 86400000);
-  
-  if (daysOverdue >= 7 && chaseCount >= 3) return 'red';
-  if (daysOverdue > 3 || chaseCount >= 3) return 'orange';
-  return 'yellow';
-}
-function diffDays(dateStr) {
-  if (!dateStr) return 0;
-  const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00');
-  const t = new Date(dateStr + 'T00:00:00');
-  return Math.round((t - today) / 86400000);
-}
-function getDateClass(d) {
-  if (!d) return 'empty';
-  const today = new Date().toISOString().slice(0, 10);
-  if (d < today) return 'overdue';
-  if (d === today) return 'today';
-  return 'upcoming';
-}
-function formatShortDate(d) { return d ? d.slice(5).replace('-', '/') : '—'; }
-function escapeHtml(s) {
-  if (s == null) return '';
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-// ============ 供应商下拉同步 ============
-function refreshAllSupplierDropdowns() {
-  // 1. 收集所有供应商 + 各模块计数
-  const counts = {};
-  CONFIG.suppliers.forEach(s => {
-    if (s) counts[s] = { orders: 0, after: 0, issues: 0 };
-  });
-  ORDERS.forEach(o => {
-    if (!o.supplier) return;
-    if (!counts[o.supplier]) counts[o.supplier] = { orders: 0, after: 0, issues: 0 };
-    counts[o.supplier].orders++;
-  });
-  AFTERSALES.forEach(a => {
-    if (!a.supplier) return;
-    if (!counts[a.supplier]) counts[a.supplier] = { orders: 0, after: 0, issues: 0 };
-    counts[a.supplier].after++;
-  });
-  ISSUES.forEach(i => {
-    if (!i.supplier) return;
-    if (!counts[i.supplier]) counts[i.supplier] = { orders: 0, after: 0, issues: 0 };
-    counts[i.supplier].issues++;
-  });
-  
-  // 2. 按热度排序：订单数 + 售后数 + 问题数*2（问题加权）；相同则字母升序
-  const sorted = Object.keys(counts).sort((a, b) => {
-    const ca = counts[a], cb = counts[b];
-    const ha = ca.orders + ca.after + ca.issues * 2;
-    const hb = cb.orders + cb.after + cb.issues * 2;
-    if (ha !== hb) return hb - ha;
-    return a.localeCompare(b, 'zh-CN');
-  });
-  
-  // 3. 筛选下拉：显示活动数后缀（订/售/问），活跃供应商排前面
-  ['oFilterSupplier','asFilterSupplier'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const cur = el.value;
-    el.innerHTML = '<option value="">全部供应商</option>' + sorted.map(s => {
-      const c = counts[s];
-      const total = c.orders + c.after + c.issues;
-      const suffix = total > 0 ? ` · 订${c.orders}/售${c.after}/问${c.issues}` : '';
-      return `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)}${suffix}</option>`;
-    }).join('');
-  });
-  
-  const reasonEl = document.getElementById('asFilterReason');
-  if (reasonEl) {
-    const cur = reasonEl.value;
-    reasonEl.innerHTML = '<option value="">全部原因</option>' + REASON_LIST.map(r => `<option value="${r}" ${cur===r?'selected':''}>${r}</option>`).join('');
-  }
-  
-  // 4. datalist 联想：按热度排序（value 干净没后缀，不影响匹配）
-  ['oSuppliersList','asSuppliersList','isSuppliersList'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = sorted.map(s => `<option value="${escapeHtml(s)}">`).join('');
-  });
-  
-  // 网站下拉同步
-  refreshSiteDropdowns();
-}
-
-function refreshSiteDropdowns() {
-  // 当前用户负责的网站
-  const me = CONFIG.agents.find(a => a.name === CURRENT_AGENT);
-  const mySites = (me && me.sites) || [];
-  const allSites = CONFIG.sites || [];
-  // 主管能看到所有网站；普通跟单只看自己负责的
-  const visibleSites = IS_ADMIN ? allSites : (mySites.length > 0 ? mySites : allSites);
-  
-  // 筛选下拉：包含全部网站选项
-  ['oFilterSite','asFilterSite'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const cur = el.value;
-    el.innerHTML = '<option value="">📍 全部网站</option>' + visibleSites.map(s => `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
-  });
-  
-  // Modal 里的网站选择器：只显示自己负责的
-  ['omSite','asmSite'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const cur = el.value;
-    const opts = visibleSites.map(s => `<option value="${escapeHtml(s)}" ${cur===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
-    el.innerHTML = '<option value="">选择网站...</option>' + opts;
-    if (cur) el.value = cur;
-  });
-}
-
-// 检查订单是否有关联的售后单（同 site + orderNo）
-function hasRelatedAftersales(order) {
-  if (!order.orderNo) return null;
-  const allAfter = IS_ADMIN ? AFTERSALES : DATA.getAftersales(CURRENT_AGENT);
-  return allAfter.filter(a => a.orderNo === order.orderNo && (a.site || '') === (order.site || '') && !['resolved','cancelled'].includes(a.status));
-}
-
-// 根据所选网站，更新订单号输入框的 placeholder 和提示
-function updateOrderNoHint(siteSelectId, orderNoInputId, hintId) {
-  const site = document.getElementById(siteSelectId)?.value || '';
-  const fmt = ORDER_NO_FORMAT[site] || '';
-  const input = document.getElementById(orderNoInputId);
-  const hint = document.getElementById(hintId);
-  if (input) {
-    input.placeholder = site ? `如：${fmt}` : '先选网站';
-  }
-  if (hint) {
-    if (site) {
-      if (site === 'VK') {
-        hint.innerHTML = `💡 VK 订单格式：<b>K + 数字编号</b> 或 <b>V + 数字编号</b>（位数不限，如 K14176 / K114176 / V1141760）`;
-      } else if (site === '线下') {
-        hint.innerHTML = `💡 线下订单：可自定义编号格式`;
-      } else {
-        hint.innerHTML = `💡 ${site} 订单格式：<b>${site} + 数字编号</b>（位数不限，如 ${site}14176 / ${site}114176）`;
-      }
-      hint.style.display = 'block';
-    } else {
-      hint.style.display = 'none';
-    }
-  }
-}
-
-// ============ 通用 - Banner 切换 ============
-function toggleFb(id, e) {
-  if (e && e.target.closest('.fb-tab')) return;
-  const c = document.getElementById(id);
-  c.classList.toggle('collapsed');
-  c.dataset.userToggled = '1';
-}
 
 // ============================================================
 // MODULE 1: 催单
@@ -7648,6 +5814,7 @@ function renderMissingGroup(key, title, items, collapsed) {
 function renderMissingCard(m) {
   const cmtCount = (m.comments || []).length;
   const screenshots = m.screenshots || [];
+  const realCount = (m.realPhotos || []).length;
   const canDelete = m.creator === CURRENT_AGENT || IS_ADMIN;
   const desc = (m.description || '').trim();
   
@@ -7692,6 +5859,7 @@ function renderMissingCard(m) {
         ${m.source === 'purchase' ? '<span class="source-badge" style="position:absolute;top:8px;left:8px;background:rgba(202,138,4,0.95);color:white;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;">🛒 采购需求</span>' : ''}
         ${canDelete ? `<button class="card-delete" onclick="event.stopPropagation(); delMissingRow('${m._id}')" title="删除">🗑</button>` : ''}
         ${cmtCount > 0 ? `<span class="comments-badge" style="${canDelete ? 'top: 44px;' : ''}">💬 ${cmtCount}</span>` : ''}
+        ${realCount > 0 ? `<span class="comments-badge" style="${canDelete ? (cmtCount > 0 ? 'top: 76px;' : 'top: 44px;') : (cmtCount > 0 ? 'top: 40px;' : '')}; background: rgba(13,148,136,0.95);">📸 ${realCount}</span>` : ''}
       </div>
       <div class="body">
         <div class="desc ${desc ? '' : 'empty'}">${desc ? escapeHtml(desc) : '(无描述)'}</div>
@@ -8026,6 +6194,7 @@ async function addMissing() {
     creator: CURRENT_AGENT,
     status: 'searching',
     screenshots: [],
+    realPhotos: [],
     comments: [],
     createdAt: new Date().toISOString(),
   };
@@ -8094,7 +6263,16 @@ function renderMissingModalContent() {
   const ss = m.screenshots || [];
   document.getElementById('mmScreenshotsCount').textContent = `${ss.length} 张`;
   document.getElementById('mmScreenshots').innerHTML = ss.map((s, i) => `<div class="drop-zone-thumb"><img src="${s}" onclick="viewImage('${s}')"><button class="rm" onclick="rmMissingScreenshot(${i})">×</button></div>`).join('');
-  
+
+  // 实拍照片
+  const rp = m.realPhotos || [];
+  const rpEl = document.getElementById('mmRealPhotosCount');
+  if (rpEl) rpEl.textContent = `${rp.length} 张`;
+  const rpListEl = document.getElementById('mmRealPhotos');
+  if (rpListEl) {
+    rpListEl.innerHTML = rp.map((s, i) => `<div class="drop-zone-thumb"><img src="${s}" onclick="viewImage('${s}')"><button class="rm" onclick="rmMissingRealPhoto(${i})" title="删除">×</button></div>`).join('');
+  }
+
   // 评论
   const cmts = m.comments || [];
   document.getElementById('mmCommentsCount').textContent = `${cmts.length} 条`;
@@ -8106,17 +6284,29 @@ function renderMissingModalContent() {
       const isAdopted = c.adopted;
       const canAdopt = m.creator === CURRENT_AGENT && c.suggestedSupplier && !isAdopted && c.user !== CURRENT_AGENT;
       const canRevoke = m.creator === CURRENT_AGENT && isAdopted;
+      const canEdit = (c.user === CURRENT_AGENT || IS_ADMIN);
+      const editedTag = c.editedAt ? `<span style="color: var(--text-tertiary); font-size: 10.5px; margin-left: 4px;" title="${escapeHtml(c.editedAt)}">· 已编辑</span>` : '';
       return `
-      <div class="comment-item" style="${isAdopted ? 'border-left-color: var(--success);' : ''}">
+      <div class="comment-item" data-comment-idx="${i}" style="${isAdopted ? 'border-left-color: var(--success);' : ''}">
         <div class="comment-meta">
           <span class="comment-user">👤 ${escapeHtml(c.user || '')}</span>
-          <span>${c.date || ''} ${c.time || ''}</span>
+          <span>${c.date || ''} ${c.time || ''}${editedTag}</span>
           ${c.suggestedSupplier ? `<span class="comment-suggested">🏭 ${escapeHtml(c.suggestedSupplier)}</span>` : ''}
         </div>
-        <div class="comment-text">${escapeHtml(c.content || '')}</div>
-        ${canAdopt ? `<button class="comment-adopt-btn" onclick="adoptComment(${i})">⭐ 采纳此推荐（${SCORE_RULES.missingHelp} 分）</button>` : ''}
-        ${isAdopted ? `<span class="comment-adopted">✓ 已采纳推荐 · ${escapeHtml(c.user)} +${SCORE_RULES.missingHelp} 分${canRevoke ? ` <a onclick="revokeAdopt(${i})" style="cursor:pointer;text-decoration:underline;color:var(--text-tertiary);margin-left:6px;">撤销</a>` : ''}</span>` : ''}
-        ${(c.user === CURRENT_AGENT || IS_ADMIN) ? `<div class="comment-actions"><button class="del-btn" onclick="delMissingComment(${i})">删除评论</button></div>` : ''}
+        <div class="comment-view" data-comment-view="${i}">
+          <div class="comment-text">${escapeHtml(c.content || '')}</div>
+          ${canAdopt ? `<button class="comment-adopt-btn" onclick="adoptComment(${i})">⭐ 采纳此推荐（${SCORE_RULES.missingHelp} 分）</button>` : ''}
+          ${isAdopted ? `<span class="comment-adopted">✓ 已采纳推荐 · ${escapeHtml(c.user)} +${SCORE_RULES.missingHelp} 分${canRevoke ? ` <a onclick="revokeAdopt(${i})" style="cursor:pointer;text-decoration:underline;color:var(--text-tertiary);margin-left:6px;">撤销</a>` : ''}</span>` : ''}
+          ${canEdit ? `<div class="comment-actions" style="display:flex; gap:6px;"><button class="del-btn" onclick="startEditMissingComment(${i})" style="color: var(--accent);">✏️ 编辑</button><button class="del-btn" onclick="delMissingComment(${i})">删除评论</button></div>` : ''}
+        </div>
+        <div class="comment-edit" data-comment-edit="${i}" style="display:none;">
+          <textarea class="form-control" data-edit-content="${i}" style="min-height: 60px; margin-top: 6px;">${escapeHtml(c.content || '')}</textarea>
+          <input type="text" class="form-control" data-edit-supplier="${i}" placeholder="推荐供应商（可选）" value="${escapeHtml(c.suggestedSupplier || '')}" style="margin-top: 6px;">
+          <div style="display:flex; gap:6px; margin-top: 8px;">
+            <button class="btn primary sm" onclick="saveMissingCommentEdit(${i})">✓ 保存</button>
+            <button class="btn sm ghost" onclick="cancelMissingCommentEdit(${i})">取消</button>
+          </div>
+        </div>
       </div>
     `;
     }).join('');
@@ -8210,6 +6400,73 @@ async function delMissingComment(idx) {
   renderMissingModalContent();
   renderMissing();
   updateMissingStats();
+  try { await DATA.saveAndSyncMissing(); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
+}
+
+// 编辑评论：进入编辑态
+function startEditMissingComment(idx) {
+  const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
+  if (!m) return;
+  const c = (m.comments || [])[idx];
+  if (!c) return;
+  if (c.user !== CURRENT_AGENT && !IS_ADMIN) { toast('只能编辑自己的评论', 'err'); return; }
+  // 切换视图 → 编辑
+  const view = document.querySelector(`[data-comment-view="${idx}"]`);
+  const edit = document.querySelector(`[data-comment-edit="${idx}"]`);
+  if (view) view.style.display = 'none';
+  if (edit) {
+    edit.style.display = 'block';
+    const ta = edit.querySelector(`[data-edit-content="${idx}"]`);
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  }
+}
+
+// 取消编辑
+function cancelMissingCommentEdit(idx) {
+  const view = document.querySelector(`[data-comment-view="${idx}"]`);
+  const edit = document.querySelector(`[data-comment-edit="${idx}"]`);
+  if (edit) edit.style.display = 'none';
+  if (view) view.style.display = '';
+}
+
+// 保存编辑
+async function saveMissingCommentEdit(idx) {
+  const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
+  if (!m) return;
+  const c = (m.comments || [])[idx];
+  if (!c) return;
+  if (c.user !== CURRENT_AGENT && !IS_ADMIN) { toast('只能编辑自己的评论', 'err'); return; }
+  const ta = document.querySelector(`[data-edit-content="${idx}"]`);
+  const sup = document.querySelector(`[data-edit-supplier="${idx}"]`);
+  const newContent = (ta?.value || '').trim();
+  const newSupplier = (sup?.value || '').trim();
+  if (!newContent && !newSupplier) { toast('评论或推荐供应商至少填一项', 'warn'); return; }
+  // 若推荐供应商被改且评论已被采纳，提示一下（不阻断）
+  if (c.adopted && newSupplier !== (c.suggestedSupplier || '')) {
+    if (!confirm('该评论已被采纳，修改推荐供应商会影响采纳记录。\n\n确定继续吗？')) return;
+  }
+  c.content = newContent;
+  c.suggestedSupplier = newSupplier;
+  c.editedAt = new Date().toISOString();
+  c.editedBy = CURRENT_AGENT;
+  DATA.saveMissingLights(MISSING_LIGHTS);
+  renderMissingModalContent();
+  renderMissing();
+  toast('✓ 评论已更新');
+  try { await DATA.saveAndSyncMissing(); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
+}
+
+// 删除实拍照片（所有登录用户均可删，与"所有人可上传"对应）
+async function rmMissingRealPhoto(i) {
+  const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
+  if (!m) return;
+  if (!m.realPhotos || !m.realPhotos[i]) return;
+  if (!confirm('删除这张实拍照片？')) return;
+  m.realPhotos.splice(i, 1);
+  DATA.saveMissingLights(MISSING_LIGHTS);
+  renderMissingModalContent();
   try { await DATA.saveAndSyncMissing(); }
   catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
 }
@@ -10428,6 +8685,7 @@ function setupScreenshotHandlers() {
     { dz: 'asmFuDropZone', fi: 'asmFuFileInput', target: 'after_fu' },
     { dz: 'ismFuDropZone', fi: 'ismFuFileInput', target: 'issue_fu' },
     { dz: 'mmDropZone', fi: 'mmFileInput', target: 'missing_orig' },
+    { dz: 'mmRealDropZone', fi: 'mmRealFileInput', target: 'missing_real' },
   ];
   cfgs.forEach(cfg => {
     const dz = document.getElementById(cfg.dz);
@@ -10590,6 +8848,15 @@ function attachScreenshot(dataURL, target) {
       renderMissingModalContent();
       renderMissing();
     }
+  } else if (target === 'missing_real') {
+    const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
+    if (m) {
+      if (!m.realPhotos) m.realPhotos = [];
+      m.realPhotos.push(dataURL);
+      DATA.saveMissingLights(MISSING_LIGHTS);
+      DATA.saveAndSyncMissing().catch(err => console.error(err));
+      renderMissingModalContent();
+    }
   } else if (target === 'batch_chase') {
     _bcScreenshots.push(dataURL);
     renderBcThumbs();
@@ -10705,6 +8972,9 @@ INSERT INTO agents (user_id, name, is_admin, sites, modules) VALUES (
 
 function openSettings() {
   renderSettings();
+  // 危险操作区只主管可见
+  const dz = document.getElementById('dangerZone');
+  if (dz) dz.style.display = IS_ADMIN ? 'block' : 'none';
   document.getElementById('settingsModal').classList.add('show');
 }
 
@@ -10802,7 +9072,7 @@ function renderSettings() {
   }
 }
 
-function toggleAgentModule(agentIdx, moduleKey, checked) {
+async function toggleAgentModule(agentIdx, moduleKey, checked) {
   const agent = CONFIG.agents[agentIdx];
   if (!agent || agent.isAdmin) return;
   if (!agent.modules) agent.modules = [...ALL_MODULE_KEYS];
@@ -10811,7 +9081,14 @@ function toggleAgentModule(agentIdx, moduleKey, checked) {
   } else {
     agent.modules = agent.modules.filter(m => m !== moduleKey);
   }
-  DATA.saveConfig(CONFIG);
+  try {
+    await DATA.saveConfig(CONFIG);
+    const modLabel = (ALL_MODULES.find(m => m.key === moduleKey) || {}).label || moduleKey;
+    toast(`✓ ${agent.name} 的「${modLabel}」权限已${checked ? '开启' : '关闭'}并同步`);
+  } catch (err) {
+    console.error('权限同步失败:', err);
+    toast('权限同步失败：' + (err.message || err), 'err');
+  }
   // 如果是当前用户被改了，立即生效
   if (agent.name === CURRENT_AGENT) {
     applyModuleVisibility();
@@ -10869,6 +9146,73 @@ function addSupplierConfig() {
   input.value = '';
   renderSettings();
   refreshAllSupplierDropdowns();
+}
+
+// ============ 供应商批量导入 ============
+function openSupplierImport() {
+  const ta = document.getElementById('supplierImportText');
+  const prev = document.getElementById('supplierImportPreview');
+  if (ta) ta.value = '';
+  if (prev) prev.style.display = 'none';
+  const modal = document.getElementById('supplierImportModal');
+  if (modal) modal.classList.add('show');
+}
+
+// 解析批量导入文本 → 拆分 + 去重 + 分类（新增/已存在）
+function _parseSupplierImport() {
+  const text = (document.getElementById('supplierImportText')?.value || '').trim();
+  if (!text) return { all: [], toAdd: [], duplicates: [] };
+  // 按 换行 / 逗号 / 分号 / Tab 分隔（中英文逗号都支持）
+  const raw = text.split(/[\n\r,，;；\t]+/).map(s => s.trim()).filter(Boolean);
+  // 文本内去重
+  const seen = new Set();
+  const all = [];
+  for (const s of raw) {
+    if (!seen.has(s)) { seen.add(s); all.push(s); }
+  }
+  // 区分新增 / 已存在
+  const existing = new Set(CONFIG.suppliers || []);
+  const toAdd = all.filter(s => !existing.has(s));
+  const duplicates = all.filter(s => existing.has(s));
+  return { all, toAdd, duplicates };
+}
+
+function previewSupplierImport() {
+  const { all, toAdd, duplicates } = _parseSupplierImport();
+  const prev = document.getElementById('supplierImportPreview');
+  const txt = document.getElementById('supplierImportPreviewText');
+  if (!prev || !txt) return;
+  if (all.length === 0) {
+    prev.style.display = 'block';
+    txt.innerHTML = '<span style="color:var(--text-tertiary);">未识别到有效内容</span>';
+    return;
+  }
+  prev.style.display = 'block';
+  txt.innerHTML = `
+    📊 共识别 <b>${all.length}</b> 个 · 
+    将新增 <b style="color:var(--success,#16a34a);">${toAdd.length}</b> 个 · 
+    跳过 <b style="color:var(--text-tertiary);">${duplicates.length}</b> 个已存在
+    ${toAdd.length > 0 ? `<div style="margin-top:6px; max-height: 100px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; color: var(--text-secondary);">新增预览：${toAdd.slice(0, 50).map(escapeHtml).join('、')}${toAdd.length > 50 ? `... 等 ${toAdd.length} 个` : ''}</div>` : ''}
+  `;
+}
+
+async function confirmSupplierImport() {
+  const { all, toAdd, duplicates } = _parseSupplierImport();
+  if (all.length === 0) { toast('请先粘贴供应商名单', 'warn'); return; }
+  if (toAdd.length === 0) { toast(`所有 ${all.length} 个供应商都已存在，无需导入`, 'warn'); return; }
+  if (!confirm(`确认导入 ${toAdd.length} 个新供应商？\n（${duplicates.length} 个已存在的会跳过）`)) return;
+  if (!CONFIG.suppliers) CONFIG.suppliers = [];
+  CONFIG.suppliers.push(...toAdd);
+  try {
+    await DATA.saveConfig(CONFIG);
+    toast(`✓ 已导入 ${toAdd.length} 个新供应商`);
+    closeModal('supplierImportModal');
+    renderSettings();
+    refreshAllSupplierDropdowns();
+  } catch (err) {
+    console.error('供应商导入同步失败:', err);
+    toast('导入云端同步失败：' + (err.message || err), 'err');
+  }
 }
 
 function removeSupplier(name) {
@@ -11134,9 +9478,6 @@ async function permanentDeleteTrashItem(type, id, agent) {
   }
 }
 
-function resetAll() {
-  alert('⚠️ 云端版不支持一键重置数据。\n\n如需清空，请联系主管在 Supabase Dashboard 操作。');
-}
 
 function exportCurrentTab() {
   if (CURRENT_TAB === 'orders') exportOrders();
@@ -11241,24 +9582,29 @@ function exportMissing() {
   const choice = confirm('选择导出格式：\n\n确定 = 📄 图文报告（HTML，含图片）\n取消 = 📊 Excel 表格');
   if (choice) return exportMissingHTML();
   
-  const headers = ['#','灯具描述','规格','客户订单号','发起人','状态','创建日','评论数','所有评论','图片链接'];
+  const headers = ['#','灯具描述','规格','客户订单号','发起人','状态','创建日','评论数','所有评论','参考图','实拍图'];
   const rows = MISSING_LIGHTS.map((m, i) => [
     i + 1, m.description || '', m.specs || '', m.customerOrderNo || '', m.creator || '',
     MISSING_STATUS_LABELS[m.status] || '',
     (m.createdAt || '').slice(0, 10), (m.comments || []).length,
     (m.comments || []).map(c => `[${c.user} ${c.date}]${c.suggestedSupplier ? '推荐:' + c.suggestedSupplier : ''} ${c.content}`).join(' || '),
     (m.screenshots || []).join('\n'),
+    (m.realPhotos || []).join('\n'),
   ]);
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   for (let i = 0; i < rows.length; i++) {
     const m = MISSING_LIGHTS[i];
     if (m.screenshots && m.screenshots[0]) {
+      const cellRef = XLSX.utils.encode_cell({ r: i + 1, c: headers.length - 2 });
+      if (ws[cellRef]) ws[cellRef].l = { Target: m.screenshots[0], Tooltip: '点击查看第一张参考图' };
+    }
+    if (m.realPhotos && m.realPhotos[0]) {
       const cellRef = XLSX.utils.encode_cell({ r: i + 1, c: headers.length - 1 });
-      if (ws[cellRef]) ws[cellRef].l = { Target: m.screenshots[0], Tooltip: '点击查看第一张图片' };
+      if (ws[cellRef]) ws[cellRef].l = { Target: m.realPhotos[0], Tooltip: '点击查看第一张实拍图' };
     }
   }
-  ws['!cols'] = [{wch:5},{wch:40},{wch:20},{wch:14},{wch:10},{wch:10},{wch:11},{wch:8},{wch:60},{wch:30}];
+  ws['!cols'] = [{wch:5},{wch:40},{wch:20},{wch:14},{wch:10},{wch:10},{wch:11},{wch:8},{wch:60},{wch:30},{wch:30}];
   XLSX.utils.book_append_sheet(wb, ws, '找灯');
   XLSX.writeFile(wb, `找灯_${new Date().toISOString().slice(0, 10)}.xlsx`);
   toast(`✓ 已导出 ${MISSING_LIGHTS.length} 条`);
@@ -11274,9 +9620,10 @@ function exportMissingHTML() {
     { key: 'comments', label: '建议', val: m => {
       const cs = m.comments || [];
       if (cs.length === 0) return '<span style="color:#999;">无</span>';
-      return cs.map(c => `<b>${escapeHtml(c.user || '')}</b>${c.suggestedSupplier ? ` 👍 推荐: <b style="color:#2563eb">${escapeHtml(c.suggestedSupplier)}</b>` : ''}<br>${escapeHtml(c.content || '')}`).join('<hr style="border:0;border-top:1px dashed #ddd;margin:6px 0;">');
+      return cs.map(c => `<b>${escapeHtml(c.user || '')}</b>${c.suggestedSupplier ? ` 👍 推荐: <b style="color:#2563eb">${escapeHtml(c.suggestedSupplier)}</b>` : ''}${c.editedAt ? ' <span style="color:#aaa;font-size:10px;">·已编辑</span>' : ''}<br>${escapeHtml(c.content || '')}`).join('<hr style="border:0;border-top:1px dashed #ddd;margin:6px 0;">');
     }},
-    { key: 'images', label: '图片', isImage: true },
+    { key: 'images', label: '参考图', isImage: true, getImgs: m => m.screenshots || [] },
+    { key: 'realPhotos', label: '实拍图', isImage: true, getImgs: m => m.realPhotos || [] },
   ]);
 }
 
@@ -11659,7 +10006,7 @@ const SHOPIFY = {
     if (!force && this._ordersCacheKey === cacheKey && this._ordersLoadedAt && (Date.now() - this._ordersLoadedAt < CACHE_MS) && this._orders.length > 0) {
       return this._orders;
     }
-    let q = sb.from('shopify_orders').select('*');
+    let q = sb.from('shopify_orders').select('*').is('deleted_at', null);
     if (opts.shop) q = q.eq('shop_domain', opts.shop);
     if (opts.from) q = q.gte('shopify_created_at', opts.from + 'T00:00:00Z');
     if (opts.to)   q = q.lte('shopify_created_at', opts.to + 'T23:59:59Z');
@@ -11675,7 +10022,7 @@ const SHOPIFY = {
 
   async loadProductImageMap(skus) {
     if (!skus || skus.length === 0) return {};
-    const { data } = await sb.from('products').select('sku, image_url, name_cn, name_en').in('sku', skus);
+    const { data } = await sb.from('products').select('sku, image_url, name_cn, name_en').in('sku', skus).is('deleted_at', null);
     const map = {};
     (data || []).forEach(p => { map[p.sku] = p; });
     return map;
@@ -11884,7 +10231,7 @@ async function renderSalesStats() {
   const shop = document.getElementById('salesFetchShop')?.value || '';
   // 取近 1 年所有订单（前端切片，比多次查询快）
   const since = new Date(now.getTime() - 365 * 86400000).toISOString();
-  let q = sb.from('shopify_orders').select('total_price, currency, shopify_created_at, financial_status, local_status, shop_domain').gte('shopify_created_at', since);
+  let q = sb.from('shopify_orders').select('total_price, currency, shopify_created_at, financial_status, local_status, shop_domain').gte('shopify_created_at', since).is('deleted_at', null);
   if (shop) q = q.eq('shop_domain', shop);
   const { data, error } = await q;
   if (error) { console.warn('销售业绩加载失败:', error); container.innerHTML = ''; return; }
@@ -12143,15 +10490,31 @@ function _orderMatchesRule(o, rule) {
 }
 
 // 刷新规则 chip 计数
+// 计数遵循"所见即所得"原则：显示**当前 sub-tab 范围内**命中的数量
+// 同时缓存全局命中数（不限 sub-tab）到 SHOPIFY._ruleGlobalCounts，用于空结果引导
 function shopifyRefreshRuleCounts() {
   const all = SHOPIFY._orders || [];
-  // 计算对"待办"订单（pending + processing）的命中数
-  const active = all.filter(o => o.local_status !== 'cancelled' && o.local_status !== 'done');
+  const filter = SHOPIFY._currentFilter || 'all';
+  // 当前 sub-tab 范围
+  const currentScope = filter === 'all'
+    ? all.filter(o => o.local_status !== 'cancelled' && o.local_status !== 'done')
+    : all.filter(o => o.local_status === filter);
+  // 全局 active 范围（待审核 + 待处理，不含已完成/已取消）
+  const globalActive = all.filter(o => o.local_status !== 'cancelled' && o.local_status !== 'done');
+
   const rules = ['has_note', 'has_internal', 'refunded', 'big_amount', 'big_qty', 'overdue', 'manual', 'unknown_sku'];
+  SHOPIFY._ruleGlobalCounts = {};
   rules.forEach(r => {
-    const cnt = active.filter(o => _orderMatchesRule(o, r)).length;
+    const cnt = currentScope.filter(o => _orderMatchesRule(o, r)).length;
+    const globalCnt = globalActive.filter(o => _orderMatchesRule(o, r)).length;
+    SHOPIFY._ruleGlobalCounts[r] = globalCnt;
     const el = document.getElementById(`ruleCnt_${r}`);
-    if (el) el.textContent = cnt;
+    if (el) {
+      el.textContent = cnt;
+      // 当前为 0 但全局有时，给 chip 加一个标记色（视觉提示用户切到全部能看到）
+      const chipEl = el.closest('.rule-chip');
+      if (chipEl) chipEl.classList.toggle('has-global', cnt === 0 && globalCnt > 0);
+    }
   });
 }
 
@@ -12500,6 +10863,7 @@ function shopifyShowFilter(f) {
   SHOPIFY._currentFilter = f;
   SHOPIFY_PAGE = 1;  // 切换 sub-tab 时重置页码
   document.querySelectorAll('.sub-tab-btn[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === f));
+  shopifyRefreshRuleCounts();  // 切 sub-tab 后，chip 计数也要刷新（所见即所得）
   renderShopifyOrders();
 }
 
@@ -12549,6 +10913,24 @@ function renderShopifyOrders() {
   if (orders.length === 0) {
     const labelMap = { pending: '待审核', processing: '待处理', done: '已完成', cancelled: '已取消' };
     const hasSearch = SHOPIFY_SEARCH.text || SHOPIFY_SEARCH.countries.size > 0 || SHOPIFY_SEARCH.amtMin != null || SHOPIFY_SEARCH.amtMax != null;
+    const activeRule = SHOPIFY_SEARCH.rule;
+    const ruleLabels = {
+      has_note: '有备注', has_internal: '有内部备注', refunded: '退款单', big_amount: '大额 ≥¥3000',
+      big_qty: '高数量 ≥5件', overdue: '超时未发 ≥7天', manual: '自定义订单', unknown_sku: '未配对 SKU',
+    };
+
+    // 优先级最高：当前 sub-tab 下点了某规则空，但全局有 → 引导切到「全部」
+    if (activeRule && activeRule !== 'all' && filter !== 'all' && !hasSearch) {
+      const globalCnt = (SHOPIFY._ruleGlobalCounts || {})[activeRule] || 0;
+      if (globalCnt > 0) {
+        body.innerHTML = `<div style="padding: 32px; text-align: center; color: var(--text-tertiary); font-size: 13px;">
+          当前「${labelMap[filter] || filter}」状态下没有「${ruleLabels[activeRule] || activeRule}」的订单<br>
+          💡 切到 <a href="javascript:void(0)" onclick="shopifyShowFilter('all')" style="color:var(--accent); text-decoration:underline; font-weight:600;">「全部」状态</a> 可看到 ${globalCnt} 个（其中部分已开 PO，状态变为「待处理」）
+        </div>`;
+        return;
+      }
+    }
+
     const hint = hasSearch
       ? `🔍 搜索没有匹配结果。<a href="javascript:void(0)" onclick="shopifyResetSearch()" style="color:var(--accent); text-decoration:underline;">清除搜索</a>`
       : filter === 'all'
@@ -13875,7 +12257,7 @@ const PRODUCTS_CACHE = {
     if (!force && this._lastLoaded && (Date.now() - this._lastLoaded < this.CACHE_MS) && this._all.length > 0) {
       return this._all;
     }
-    const { data, error } = await sb.from('products').select('*').order('created_at', { ascending: false });
+    const { data, error } = await sb.from('products').select('*').is('deleted_at', null).order('created_at', { ascending: false });
     if (error) throw error;
     this._all = data || [];
     this._bySku = {};
@@ -15475,7 +13857,8 @@ function renderPoList() {
             ${next ? `<button class="so-action-btn primary" onclick="poAdvance('${p.id}', '${next.value}', '${next.label}')" title="推进到下一步">▶ ${next.label}</button>` : ''}
             ${prev ? `<button class="so-action-btn" onclick="poRevert('${p.id}', '${prev.value}', '${prev.label}')" title="退回上一步">↩ 退回</button>` : ''}
             ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditPrices('${p.id}')" title="修改 PO 内每个产品的数量和单价">✏️ 改价</button>` : ''}
-            <button class="so-action-btn" onclick="poOpenPrint('${p.id}')">🖨 打印</button>
+            <button class="so-action-btn primary" onclick="poQuickCopyImage('${p.id}')" title="一键生成订单图，直接复制到剪贴板，粘贴到供应商群">📋 复制订单图</button>
+            <button class="so-action-btn" onclick="poOpenPrint('${p.id}')" title="预览 + 打印（少数订单需要纸质单据）">🖨 打印</button>
             ${!isCancelled ? `<button class="so-action-btn danger" onclick="poCancel('${p.id}')">⊘ 取消</button>` : ''}
           </div>
         </div>
@@ -16023,60 +14406,154 @@ function poOpenPrint(poId) {
 function closePoPrint() { document.getElementById('poPrintModal').style.display = 'none'; }
 function poPrintNow() { window.print(); }
 
-// 截图复制到剪贴板（动态加载 html2canvas，首次用时下载 ~150KB）
+// 加载 html2canvas（动态加载、单次）
+async function _loadHtml2Canvas() {
+  if (typeof window.html2canvas !== 'undefined') return true;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('CDN 加载失败'));
+    document.head.appendChild(s);
+    setTimeout(() => reject(new Error('加载超时')), 12000);
+  });
+  return true;
+}
+
+// 把 DOM 元素截图 → 复制到剪贴板（剪贴板失败则下载）
+async function _captureAndCopy(el, filename) {
+  const canvas = await window.html2canvas(el, {
+    backgroundColor: '#ffffff',
+    scale: 2, useCORS: true, logging: false,
+  });
+  return new Promise((resolve) => {
+    canvas.toBlob(async (blob) => {
+      if (!blob) { resolve({ ok: false, err: '生成图片失败' }); return; }
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        resolve({ ok: true, mode: 'clipboard' });
+      } catch (e) {
+        // 降级：下载
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename || `图片_${Date.now()}.png`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        resolve({ ok: true, mode: 'download' });
+      }
+    }, 'image/png');
+  });
+}
+
+// 🚀 一键复制订单图（PO 卡片上调用）
+async function poQuickCopyImage(poId) {
+  const po = PO_LIST.find(x => x.id === poId);
+  if (!po) { toast('找不到 PO', 'err'); return; }
+  toast('正在生成订单图…', 'info');
+
+  // 加载 html2canvas
+  try {
+    await _loadHtml2Canvas();
+  } catch (e) {
+    toast('截图工具加载失败，请检查网络或用打印按钮', 'err');
+    return;
+  }
+
+  // 临时创建一个屏幕外的预览容器（不打开 modal）
+  const items = po.line_items || [];
+  const totalQty = items.reduce((s,x) => s + (x.qty||0), 0);
+  const totalAmount = items.reduce((s,x) => s + (x.subtotal||0), 0);
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed; left:-99999px; top:0; width:920px; z-index:-1;';
+  wrap.innerHTML = `
+    <div class="po-print">
+      <div class="po-header">
+        <div class="po-title">📋 采购单 <span class="po-no">${escapeHtml(po.po_number)}</span></div>
+        <div class="po-meta-right">开单 ${new Date(po.created_at).toLocaleDateString()} · 跟单 ${escapeHtml(po.creator_name || '')}</div>
+      </div>
+      <div class="meta-bar">
+        <span><b>供应商：</b>${escapeHtml(po.supplier)}</span>
+        <span><b>关联销售：</b>${escapeHtml(po.order_no || '—')}</span>
+        ${po.promised_date ? `<span><b>交期：</b>${escapeHtml(po.promised_date)}</span>` : ''}
+        <span><b>合计：</b><span style="color:#dc2626; font-weight:700;">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span></span>
+      </div>
+      <table>
+        <thead><tr>
+          <th width="32" style="text-align:center;">#</th>
+          <th width="66">图片</th>
+          <th>产品规格</th>
+          <th width="56" style="text-align:center;">数量</th>
+          <th width="80" style="text-align:right;">单价</th>
+          <th width="92" style="text-align:right;">小计</th>
+        </tr></thead>
+        <tbody>
+          ${items.map((li, i) => {
+            const specs = extractVariantInfo(li.variant || '');
+            return `
+            <tr>
+              <td style="text-align:center;">${i+1}</td>
+              <td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}" crossorigin="anonymous">` : '<span style="color:#aaa;">—</span>'}</td>
+              <td>${li.title_cn ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(li.title_cn)}</div>` : ''}${specs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(specs)}</div>` : ''}</td>
+              <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px;">${li.qty}</span>` : li.qty}</td>
+              <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
+              <td style="text-align:right; font-family:monospace; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
+            </tr>`;
+          }).join('')}
+          <tr class="total-row">
+            <td colspan="3" style="text-align:right;">合 计</td>
+            <td style="text-align:center;">${totalQty}</td>
+            <td></td>
+            <td style="text-align:right; font-family:monospace; color:#dc2626;">¥ ${totalAmount.toFixed(2)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="notes-grid">
+        <div class="note-box danger">
+          <span class="label">⚠ 订单备注（请写在纸箱上）</span>
+          <div class="content">${escapeHtml(po.box_note || '—')}</div>
+        </div>
+        <div class="note-box">
+          <span class="label">其他备注</span>
+          <div class="content" style="font-weight:500; font-family:inherit;">${escapeHtml(po.note || '—')}</div>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(wrap);
+
+  // 等图片加载完成
+  const imgs = wrap.querySelectorAll('img');
+  await Promise.all([...imgs].map(img => {
+    if (img.complete) return Promise.resolve();
+    return new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 3000); });
+  }));
+
+  try {
+    const result = await _captureAndCopy(wrap.querySelector('.po-print'), `采购单_${po.po_number}.png`);
+    if (result.ok) {
+      if (result.mode === 'clipboard') toast(`✓ ${po.po_number} 已复制图片，去微信群 Ctrl+V 粘贴`);
+      else toast(`✓ ${po.po_number} 已下载图片`);
+    } else {
+      toast('生成失败：' + (result.err || ''), 'err');
+    }
+  } catch (e) {
+    toast('截图失败：' + (e.message || e), 'err');
+  } finally {
+    document.body.removeChild(wrap);
+  }
+}
+
+// 截图复制按钮（预览 modal 内）
 async function poScreenshot() {
   const el = document.getElementById('poPrintContent');
   if (!el) { toast('找不到预览内容', 'err'); return; }
-
-  // 动态加载 html2canvas
-  if (typeof window.html2canvas === 'undefined') {
-    toast('正在加载截图工具…', 'info');
-    try {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-        s.onload = resolve;
-        s.onerror = () => reject(new Error('CDN 加载失败'));
-        document.head.appendChild(s);
-        setTimeout(() => reject(new Error('加载超时')), 12000);
-      });
-    } catch (e) {
-      toast('截图工具加载失败，请用系统截图工具（PrtSc / 微信截图 Ctrl+Alt+A）', 'err');
-      return;
-    }
-  }
-
-  try {
-    const canvas = await window.html2canvas(el, {
-      backgroundColor: '#ffffff',
-      scale: 2,        // 2 倍清晰度
-      useCORS: true,   // 允许跨域图片
-      logging: false,
-    });
-    canvas.toBlob(async (blob) => {
-      if (!blob) { toast('生成图片失败', 'err'); return; }
-      // 尝试写剪贴板
-      try {
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        toast('✓ 图片已复制，可直接粘贴到微信/QQ');
-      } catch (e) {
-        // 降级：下载文件
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const po = PO_LIST.find(x => document.getElementById('poPrintContent').innerHTML.includes(x.po_number));
-        a.href = url;
-        a.download = `采购单_${po?.po_number || Date.now()}.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        toast('✓ 已下载图片（剪贴板权限被拒）');
-      }
-    }, 'image/png');
-  } catch (e) {
-    console.error('截图失败:', e);
-    toast('截图失败：' + (e.message || e) + '（产品图可能跨域无法捕获）', 'err');
-  }
+  toast('正在生成图片…', 'info');
+  try { await _loadHtml2Canvas(); } catch (e) { toast('截图工具加载失败', 'err'); return; }
+  const result = await _captureAndCopy(el, `采购单_${Date.now()}.png`);
+  if (result.ok) {
+    if (result.mode === 'clipboard') toast('✓ 图片已复制，可直接粘贴到微信/QQ');
+    else toast('✓ 已下载图片');
+  } else { toast('生成失败', 'err'); }
 }
 // 兼容旧引用
 
