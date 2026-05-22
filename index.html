@@ -1581,6 +1581,50 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 
 /* 销售单 sub-tabs */
 .sales-subtabs { display: flex; gap: 4px; padding: 4px; background: var(--bg-elevated); border-radius: 8px; }
+
+/* 搜索类型 chip */
+.search-type-chip {
+  padding: 4px 10px; font-size: 12px; font-weight: 500;
+  background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary);
+  border-radius: 4px; cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.search-type-chip:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.search-type-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* 规则 chip（带数字） */
+.rule-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; font-size: 12px; font-weight: 500;
+  background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary);
+  border-radius: 14px; cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.rule-chip:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.rule-chip.active { background: var(--purple); color: white; border-color: var(--purple); }
+.cnt-mini {
+  background: rgba(255,255,255,0.2); padding: 1px 6px; border-radius: 8px;
+  font-size: 10px; font-weight: 700; min-width: 16px; text-align: center;
+}
+.rule-chip:not(.active) .cnt-mini {
+  background: var(--bg-elevated); color: var(--text-tertiary);
+}
+
+/* 排序 chip */
+.sort-chip {
+  padding: 4px 10px; font-size: 12px; font-weight: 500;
+  background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+  border-radius: 14px; cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.sort-chip:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.sort-chip.active { background: var(--text-primary); color: white; border-color: var(--text-primary); }
+
+/* 国家 chip */
+.country-chip {
+  padding: 3px 8px; font-size: 11px; font-weight: 500;
+  background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary);
+  border-radius: 12px; cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.country-chip:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.country-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
 .sub-tab-btn {
   flex: 1; padding: 8px 12px; font-size: 13px; border-radius: 6px;
   background: transparent; border: none; cursor: pointer; color: var(--text-secondary);
@@ -1629,6 +1673,15 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   transition: all 0.15s;
 }
 .so-card:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.so-card.selected { background: var(--bg-row-active); border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+.so-card-checkbox { cursor: pointer; }
+
+/* 数据分析表格 */
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table thead { background: var(--bg-elevated); position: sticky; top: 0; z-index: 1; }
+.data-table th { padding: 10px 12px; font-weight: 600; color: var(--text-secondary); border-bottom: 2px solid var(--border); text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+.data-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+.data-table tbody tr:hover { background: var(--bg-row-hover); }
 .so-card.imported { opacity: 0.6; }
 .so-card.imported:hover { border-color: var(--border); box-shadow: none; }
 
@@ -2125,6 +2178,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="tab-item" data-tab="po" onclick="switchTab('po')">📦 采购单 <span class="badge zero" id="badgePo">0</span></div>
     <div class="tab-item" data-tab="products" onclick="switchTab('products')">📚 产品 <span class="badge zero" id="badgeProducts">0</span></div>
     <div class="tab-item" data-tab="consolidation" onclick="switchTab('consolidation')">🧊 合箱</div>
+    <div class="tab-item" data-tab="analytics" onclick="switchTab('analytics')" id="tabAnalytics" style="display:none;">📈 数据</div>
     <div class="tab-item" data-tab="performance" onclick="switchTab('performance')">📊 绩效 <span class="badge zero" id="badgePerformance">0</span></div>
   </div>
 </div>
@@ -2573,6 +2627,116 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <button class="sub-tab-btn" data-filter="cancelled" onclick="shopifyShowFilter('cancelled')">⊘ 已取消 <span class="cnt" id="cntCancelled">0</span></button>
       </div>
 
+      <!-- ============ 搜索 + 排序 + 国家筛选 ============ -->
+      <div id="salesSearchBar" style="margin-top: 12px; padding: 12px 14px; background: var(--bg-elevated); border-radius: 10px; border: 1px solid var(--border-subtle);">
+        <!-- 订单规则快筛 chips（店小秘风格） -->
+        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
+          <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">订单规则:</span>
+          <button class="rule-chip active" data-rule="all" onclick="shopifySetRule('all')">📋 全部</button>
+          <button class="rule-chip" data-rule="has_note" onclick="shopifySetRule('has_note')">💬 有备注 <span class="cnt-mini" id="ruleCnt_has_note">0</span></button>
+          <button class="rule-chip" data-rule="has_internal" onclick="shopifySetRule('has_internal')">📝 有内部备注 <span class="cnt-mini" id="ruleCnt_has_internal">0</span></button>
+          <button class="rule-chip" data-rule="refunded" onclick="shopifySetRule('refunded')">💸 退款单 <span class="cnt-mini" id="ruleCnt_refunded">0</span></button>
+          <button class="rule-chip" data-rule="big_amount" onclick="shopifySetRule('big_amount')">💰 大额 ≥¥3000 <span class="cnt-mini" id="ruleCnt_big_amount">0</span></button>
+          <button class="rule-chip" data-rule="big_qty" onclick="shopifySetRule('big_qty')">📦 高数量 ≥5件 <span class="cnt-mini" id="ruleCnt_big_qty">0</span></button>
+          <button class="rule-chip" data-rule="overdue" onclick="shopifySetRule('overdue')">⏰ 超时未发 ≥7天 <span class="cnt-mini" id="ruleCnt_overdue">0</span></button>
+          <button class="rule-chip" data-rule="manual" onclick="shopifySetRule('manual')">✍ 自定义订单 <span class="cnt-mini" id="ruleCnt_manual">0</span></button>
+          <button class="rule-chip" data-rule="unknown_sku" onclick="shopifySetRule('unknown_sku')">❓ 未配对 SKU <span class="cnt-mini" id="ruleCnt_unknown_sku">0</span></button>
+        </div>
+        <!-- 搜索类型 chips -->
+        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
+          <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">搜索类型:</span>
+          <button class="search-type-chip active" data-search-type="order_no" onclick="shopifySetSearchType('order_no')">订单号</button>
+          <button class="search-type-chip" data-search-type="sku" onclick="shopifySetSearchType('sku')">商品 SKU</button>
+          <button class="search-type-chip" data-search-type="product_name" onclick="shopifySetSearchType('product_name')">商品名</button>
+          <button class="search-type-chip" data-search-type="customer_name" onclick="shopifySetSearchType('customer_name')">收件人</button>
+          <button class="search-type-chip" data-search-type="email" onclick="shopifySetSearchType('email')">邮箱</button>
+          <button class="search-type-chip" data-search-type="address" onclick="shopifySetSearchType('address')">收货地址</button>
+          <button class="search-type-chip" data-search-type="note" onclick="shopifySetSearchType('note')">备注</button>
+          <button class="search-type-chip" data-search-type="any" onclick="shopifySetSearchType('any')" title="任一字段命中">🔍 任一</button>
+        </div>
+        <!-- 搜索框 + 匹配模式 + 按钮 -->
+        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+          <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">搜索内容:</span>
+          <input type="text" id="salesSearchText" placeholder="支持多个关键字，逗号或空格分隔（如 K1234, K5678）" 
+            style="flex: 1; min-width: 280px; padding: 7px 12px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-primary);"
+            onkeydown="if(event.key==='Enter'){shopifyDoSearch();}">
+          <select id="salesSearchMode" class="filter-select" style="min-width: 110px;" onchange="shopifyDoSearch()">
+            <option value="fuzzy">🔎 模糊匹配</option>
+            <option value="exact">🎯 精确匹配</option>
+          </select>
+          <button class="btn primary" onclick="shopifyDoSearch()">🔍 搜索</button>
+          <button class="btn" onclick="shopifyResetSearch()" title="清除搜索">✕ 清除</button>
+          <button class="btn" id="advSearchToggle" onclick="shopifyToggleAdvSearch()" title="国家、金额、付款状态等更多条件">⚙ 高级</button>
+        </div>
+
+        <!-- 高级搜索（默认折叠） -->
+        <div id="salesAdvSearch" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-subtle);">
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
+            <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">店铺筛选:</span>
+            <div id="salesShopFilter" style="display: flex; gap: 4px; flex-wrap: wrap;"></div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
+            <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">国家:</span>
+            <div id="salesCountryFilter" style="display: flex; gap: 4px; flex-wrap: wrap;"></div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
+            <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">金额范围:</span>
+            <input type="number" id="salesAmtMin" placeholder="≥ 多少" style="width: 100px; padding: 5px 8px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px;" oninput="shopifyDoSearch()">
+            <span style="font-size: 12px; color: var(--text-tertiary);">~</span>
+            <input type="number" id="salesAmtMax" placeholder="≤ 多少" style="width: 100px; padding: 5px 8px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px;" oninput="shopifyDoSearch()">
+            <span style="font-size: 11px; color: var(--text-tertiary);">USD</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">付款状态:</span>
+            <select id="salesFinancialStatus" class="filter-select" style="min-width: 130px;" onchange="shopifyDoSearch()">
+              <option value="">— 全部 —</option>
+              <option value="paid">已付款</option>
+              <option value="pending">待付款</option>
+              <option value="partially_paid">部分付款</option>
+              <option value="refunded">已退款</option>
+              <option value="partially_refunded">部分退款</option>
+              <option value="voided">已作废</option>
+            </select>
+            <span style="margin-left: 16px; font-size: 12px; color: var(--text-secondary); font-weight: 600;">退款状态:</span>
+            <select id="salesRefundFilter" class="filter-select" style="min-width: 130px;" onchange="shopifyDoSearch()">
+              <option value="">— 全部 —</option>
+              <option value="none">无退款</option>
+              <option value="partial">部分退款</option>
+              <option value="full">全额退款</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 排序方式 -->
+        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-subtle);">
+          <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">排序方式:</span>
+          <button class="sort-chip active" data-sort-by="order_date_desc" onclick="shopifySetSort('order_date_desc')">⏱ 按下单时间 ↓</button>
+          <button class="sort-chip" data-sort-by="order_date_asc" onclick="shopifySetSort('order_date_asc')">⏱ 按下单时间 ↑</button>
+          <button class="sort-chip" data-sort-by="amount_desc" onclick="shopifySetSort('amount_desc')">💰 按订单金额 ↓</button>
+          <button class="sort-chip" data-sort-by="amount_asc" onclick="shopifySetSort('amount_asc')">💰 按订单金额 ↑</button>
+          <button class="sort-chip" data-sort-by="sku" onclick="shopifySetSort('sku')">🏷 按产品 SKU</button>
+        </div>
+
+        <!-- 搜索结果汇总 -->
+        <div id="salesSearchSummary" style="display: none; margin-top: 8px; padding: 6px 10px; background: var(--accent-soft, #eff6ff); border-radius: 6px; font-size: 12px; color: var(--accent);"></div>
+
+        <!-- 批量操作 + 导出 -->
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-subtle); flex-wrap: wrap;">
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer;">
+            <input type="checkbox" id="salesSelectAll" onchange="shopifyToggleSelectAll(this.checked)">
+            <span>当前页全选</span>
+          </label>
+          <span style="font-size: 12px; color: var(--text-tertiary);">|</span>
+          <span style="font-size: 12px; color: var(--text-secondary);">已选 <b id="salesSelectedCount" style="color:var(--accent); font-size: 13px;">0</b> 个</span>
+          <span style="flex: 1;"></span>
+          <button class="btn small" id="batchApproveBtn" onclick="shopifyBatchApprove()" disabled title="把所选的「待审核」推到「待处理」">✓ 批量审核</button>
+          <button class="btn small" id="batchDoneBtn" onclick="shopifyBatchMarkDone()" disabled title="批量标记为已完成">✅ 批量完成</button>
+          <button class="btn small danger" id="batchCancelBtn" onclick="shopifyBatchCancel()" disabled title="批量取消订单">⊘ 批量取消</button>
+          <span style="font-size: 12px; color: var(--text-tertiary);">|</span>
+          <button class="btn small" onclick="shopifyExportOrders()" title="导出当前筛选结果">📤 导出当前结果</button>
+        </div>
+      </div>
+
       <div id="salesOrdersBody" style="margin-top: 8px;"></div>
     </div>
 
@@ -2834,6 +2998,45 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     }
   });
 </script>
+
+<!-- ============ TAB: 📈 数据（仅主管） ============ -->
+<div class="tab-content" data-tab="analytics">
+  <div class="section-block">
+    <div class="info-bar">
+      📈 <b style="color: var(--text-primary);">数据分析</b> · 综合分析 / 店铺业绩 / SKU 销量 / 订单趋势 / 客户分布。
+      <span id="analyticsMode" style="font-weight:600; color: var(--purple); margin-left: 8px;"></span>
+    </div>
+
+    <!-- 顶部时间筛选 -->
+    <div class="filter-bar" style="margin-top: 12px;">
+      <span style="font-size: 13px; color: var(--text-secondary); font-weight: 600;">时间范围:</span>
+      <select id="analyticsPeriod" class="filter-select" onchange="analyticsChangePeriod()">
+        <option value="7">最近 7 天</option>
+        <option value="30" selected>最近 30 天</option>
+        <option value="90">最近 90 天</option>
+        <option value="180">最近 180 天</option>
+        <option value="365">最近 1 年</option>
+        <option value="all">全部</option>
+      </select>
+      <span style="color: var(--text-tertiary); font-size: 12px;">|</span>
+      <span style="font-size: 12px; color: var(--text-tertiary);" id="analyticsRangeHint"></span>
+      <span style="flex: 1;"></span>
+      <button class="btn" onclick="analyticsExportCurrent()">📤 导出当前页</button>
+    </div>
+
+    <!-- Sub-tabs -->
+    <div class="sales-subtabs" style="margin-top: 12px;">
+      <button class="sub-tab-btn active" data-analytics="summary" onclick="analyticsShowSubtab('summary')">📋 综合汇总</button>
+      <button class="sub-tab-btn" data-analytics="shop" onclick="analyticsShowSubtab('shop')">🏪 店铺业绩</button>
+      <button class="sub-tab-btn" data-analytics="sku" onclick="analyticsShowSubtab('sku')">🏷 SKU 销量</button>
+      <button class="sub-tab-btn" data-analytics="trend" onclick="analyticsShowSubtab('trend')">📈 订单趋势</button>
+      <button class="sub-tab-btn" data-analytics="country" onclick="analyticsShowSubtab('country')">🌍 客户分布</button>
+      <button class="sub-tab-btn" data-analytics="customer" onclick="analyticsShowSubtab('customer')">👥 客户排行</button>
+    </div>
+
+    <div id="analyticsBody" style="margin-top: 14px; min-height: 400px;"></div>
+  </div>
+</div>
 
 <!-- ============ TAB 6: 绩效统计 ============ -->
 <div class="tab-content" data-tab="performance">
@@ -4943,6 +5146,10 @@ async function onAuthSuccess(session) {
   CURRENT_AGENT = agent.name;
   IS_ADMIN = agent.isAdmin;
 
+  // 主管可见"📈 数据" tab
+  const tabAna = document.getElementById('tabAnalytics');
+  if (tabAna) tabAna.style.display = IS_ADMIN ? '' : 'none';
+
   // bootstrap 完成，允许同步触发
   _isBootstrapping = false;
 
@@ -5026,6 +5233,10 @@ function loginAs(name) {
   IS_ADMIN = agent.isAdmin || false;
   DATA.setCurrentAgent(name);
   
+  // 主管可见"📈 数据" tab
+  const tabAna = document.getElementById('tabAnalytics');
+  if (tabAna) tabAna.style.display = IS_ADMIN ? '' : 'none';
+  
   document.getElementById('curAvatar').textContent = name[0].toUpperCase();
   
   const mySites = agent.sites || [];
@@ -5088,6 +5299,7 @@ function renderActiveTab() {
   else if (CURRENT_TAB === 'issues') { renderIssues(); updateIssueStats(); }
   else if (CURRENT_TAB === 'missing') { renderMissing(); updateMissingStats(); }
   else if (CURRENT_TAB === 'purchases') { renderPurchases(); updatePurchaseStats(); }
+  else if (CURRENT_TAB === 'analytics') { renderAnalytics(); }
   else if (CURRENT_TAB === 'performance') { renderPerformance(); }
 }
 
@@ -9551,6 +9763,413 @@ function setupPurchaseScreenshot() {
   });
 }
 
+// ============ 📈 数据分析模块（仅主管） ============
+const ANALYTICS_STATE = {
+  period: 30,           // 时间范围（天）
+  subtab: 'summary',    // 当前子 tab
+  startDate: null,
+  endDate: null,
+};
+
+function analyticsShowSubtab(sub) {
+  ANALYTICS_STATE.subtab = sub;
+  document.querySelectorAll('.sub-tab-btn[data-analytics]').forEach(b => b.classList.toggle('active', b.dataset.analytics === sub));
+  renderAnalytics();
+}
+
+function analyticsChangePeriod() {
+  const val = document.getElementById('analyticsPeriod')?.value || '30';
+  ANALYTICS_STATE.period = val === 'all' ? 99999 : parseInt(val);
+  renderAnalytics();
+}
+
+// 应用时间筛选返回符合条件的订单
+function _analyticsGetFilteredOrders() {
+  const days = ANALYTICS_STATE.period;
+  const now = Date.now();
+  const cutoff = now - days * 86400000;
+  const orders = (SHOPIFY._orders || []).filter(o => {
+    if (o.local_status === 'cancelled') return false;  // 排除已取消
+    const ts = new Date(o.shopify_created_at || o.created_at || 0).getTime();
+    return ts >= cutoff;
+  });
+  ANALYTICS_STATE.startDate = days >= 99999 ? '全部' : new Date(cutoff).toISOString().slice(0, 10);
+  ANALYTICS_STATE.endDate = new Date(now).toISOString().slice(0, 10);
+  return orders;
+}
+
+function renderAnalytics() {
+  if (!IS_ADMIN) {
+    document.getElementById('analyticsBody').innerHTML = '<div style="padding:40px; text-align:center; color:var(--text-tertiary);">⛔ 仅主管可见</div>';
+    return;
+  }
+  // 数据未加载提示
+  if (!SHOPIFY._orders || SHOPIFY._orders.length === 0) {
+    document.getElementById('analyticsBody').innerHTML = `
+      <div style="padding:60px 20px; text-align:center; color:var(--text-tertiary);">
+        <div style="font-size: 48px; margin-bottom: 12px;">📭</div>
+        <div style="font-size: 14px; margin-bottom: 8px;">还没有订单数据</div>
+        <div style="font-size: 12px;">请先到 <a href="javascript:void(0)" onclick="switchTab('sales')" style="color: var(--accent); text-decoration: underline;">销售单 tab</a> 选店铺 + 时间，点 🔄 同步从 Shopify 拉取订单</div>
+      </div>`;
+    const hintEl = document.getElementById('analyticsRangeHint');
+    if (hintEl) hintEl.textContent = '';
+    return;
+  }
+  const orders = _analyticsGetFilteredOrders();
+  const hintEl = document.getElementById('analyticsRangeHint');
+  if (hintEl) hintEl.textContent = `${ANALYTICS_STATE.startDate} → ${ANALYTICS_STATE.endDate} · 共 ${orders.length} 个订单`;
+
+  switch (ANALYTICS_STATE.subtab) {
+    case 'summary': _renderAnalyticsSummary(orders); break;
+    case 'shop': _renderAnalyticsShop(orders); break;
+    case 'sku': _renderAnalyticsSku(orders); break;
+    case 'trend': _renderAnalyticsTrend(orders); break;
+    case 'country': _renderAnalyticsCountry(orders); break;
+    case 'customer': _renderAnalyticsCustomer(orders); break;
+  }
+}
+
+// === 1. 综合汇总（顶部 6 个数字卡 + 趋势）===
+function _renderAnalyticsSummary(orders) {
+  const totalOrders = orders.length;
+  const customerSet = new Set();
+  let totalRevenue = 0, refundedAmt = 0;
+  let refundedCount = 0, partialRefundedCount = 0;
+  let totalQty = 0;
+  orders.forEach(o => {
+    if (o.customer_email) customerSet.add(o.customer_email);
+    else if (o.customer_name) customerSet.add(o.customer_name);
+    const amt = Number(o.total_price || 0);
+    totalRevenue += amt;
+    const fs = (o.financial_status || '').toLowerCase();
+    if (fs === 'refunded') { refundedCount++; refundedAmt += amt; }
+    else if (fs === 'partially_refunded') { partialRefundedCount++; refundedAmt += amt * 0.3; }  // 估算
+    (o.line_items || []).forEach(li => { totalQty += Number(li.quantity) || 0; });
+  });
+  const avgOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+  const refundRate = totalOrders > 0 ? ((refundedCount + partialRefundedCount) / totalOrders) * 100 : 0;
+
+  const body = document.getElementById('analyticsBody');
+  body.innerHTML = `
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+      ${_metric('客户数', totalOrders > 0 ? customerSet.size.toLocaleString() : '0', '👥', 'var(--accent)')}
+      ${_metric('订单量', totalOrders.toLocaleString(), '📦', 'var(--accent)')}
+      ${_metric('总销售额', '$' + totalRevenue.toLocaleString('en-US', { maximumFractionDigits: 2 }), '💰', 'var(--success)')}
+      ${_metric('客单价', '$' + avgOrder.toLocaleString('en-US', { maximumFractionDigits: 2 }), '📊', 'var(--purple)')}
+      ${_metric('总件数', totalQty.toLocaleString(), '🏷', 'var(--teal)')}
+      ${_metric('退款金额', '$' + refundedAmt.toLocaleString('en-US', { maximumFractionDigits: 2 }), '💸', 'var(--danger)')}
+      ${_metric('退款单数', refundedCount + partialRefundedCount + '', '⊘', 'var(--danger)')}
+      ${_metric('退款率', refundRate.toFixed(1) + '%', '📉', refundRate > 5 ? 'var(--danger)' : 'var(--warning)')}
+    </div>
+    <div style="margin-top: 20px; padding: 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;">
+      <h4 style="margin: 0 0 12px; font-size: 14px; color: var(--text-primary);">📊 按日订单数（最近 ${Math.min(ANALYTICS_STATE.period, 30)} 天）</h4>
+      ${_renderDailyBarChart(orders, Math.min(ANALYTICS_STATE.period, 30))}
+    </div>
+  `;
+}
+
+function _metric(label, val, icon, color) {
+  return `
+    <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+        <span style="font-size: 11px; color: var(--text-tertiary); font-weight: 600; text-transform: uppercase;">${label}</span>
+        <span style="font-size: 18px; opacity: 0.5;">${icon}</span>
+      </div>
+      <div style="font-size: 24px; font-weight: 700; color: ${color}; font-family: monospace;">${val}</div>
+    </div>`;
+}
+
+// 简易柱状图（用 div 高度）
+function _renderDailyBarChart(orders, days) {
+  const byDate = {};
+  orders.forEach(o => {
+    const d = (o.shopify_created_at || '').slice(0, 10);
+    if (!d) return;
+    byDate[d] = (byDate[d] || 0) + 1;
+  });
+  // 生成最近 N 天
+  const dates = [];
+  for (let i = days - 1; i >= 0; i--) {
+    dates.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10));
+  }
+  const counts = dates.map(d => byDate[d] || 0);
+  const max = Math.max(1, ...counts);
+  return `
+    <div style="display: flex; align-items: flex-end; gap: 2px; height: 140px; padding: 0 4px;">
+      ${dates.map((d, i) => `
+        <div style="flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 0;" title="${d}: ${counts[i]} 单">
+          <div style="font-size: 9px; color: var(--text-secondary); margin-bottom: 2px;">${counts[i] || ''}</div>
+          <div style="width: 100%; height: ${(counts[i] / max) * 100}%; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 1px;"></div>
+        </div>
+      `).join('')}
+    </div>
+    <div style="display: flex; gap: 2px; padding: 4px; font-size: 9px; color: var(--text-tertiary);">
+      ${dates.map((d, i) => `<div style="flex:1; text-align:center; overflow:hidden; transform: rotate(-45deg); white-space:nowrap; transform-origin: center;">${d.slice(5)}</div>`).join('')}
+    </div>`;
+}
+
+// === 2. 店铺业绩 ===
+function _renderAnalyticsShop(orders) {
+  const byShop = {};
+  orders.forEach(o => {
+    const d = o.shop_domain || 'unknown';
+    if (!byShop[d]) byShop[d] = { domain: d, code: SHOPIFY.siteCodeOf(d) || d, orderCount: 0, customerSet: new Set(), revenue: 0, refunded: 0, qty: 0 };
+    byShop[d].orderCount++;
+    if (o.customer_email) byShop[d].customerSet.add(o.customer_email);
+    const amt = Number(o.total_price || 0);
+    byShop[d].revenue += amt;
+    const fs = (o.financial_status || '').toLowerCase();
+    if (fs === 'refunded') byShop[d].refunded += amt;
+    (o.line_items || []).forEach(li => { byShop[d].qty += Number(li.quantity) || 0; });
+  });
+  const rows = Object.values(byShop).sort((a, b) => b.revenue - a.revenue);
+
+  const body = document.getElementById('analyticsBody');
+  body.innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>店铺</th><th style="text-align:right;">订单数</th><th style="text-align:right;">客户数</th>
+        <th style="text-align:right;">总销售</th><th style="text-align:right;">客单价</th>
+        <th style="text-align:right;">总件数</th><th style="text-align:right;">退款金额</th>
+        <th style="text-align:right;">占比</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td><span style="background: var(--accent); color: white; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 11px; font-family: monospace; margin-right: 6px;">${escapeHtml(r.code)}</span><span style="color: var(--text-tertiary); font-size: 11px;">${escapeHtml(r.domain)}</span></td>
+          <td style="text-align:right; font-family:monospace;">${r.orderCount}</td>
+          <td style="text-align:right; font-family:monospace;">${r.customerSet.size}</td>
+          <td style="text-align:right; font-family:monospace; font-weight:700; color: var(--success);">$${r.revenue.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+          <td style="text-align:right; font-family:monospace;">$${(r.orderCount > 0 ? r.revenue / r.orderCount : 0).toFixed(2)}</td>
+          <td style="text-align:right; font-family:monospace;">${r.qty}</td>
+          <td style="text-align:right; font-family:monospace; color: ${r.refunded > 0 ? 'var(--danger)' : 'var(--text-tertiary)'};">$${r.refunded.toFixed(2)}</td>
+          <td style="text-align:right; font-family:monospace;">${(orders.length > 0 ? (r.orderCount / orders.length * 100) : 0).toFixed(1)}%</td>
+        </tr>`).join('')}
+        ${rows.length === 0 ? '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-tertiary);">无数据</td></tr>' : ''}
+      </tbody>
+    </table>
+  `;
+}
+
+// === 3. SKU 销量 ===
+function _renderAnalyticsSku(orders) {
+  const bySku = {};
+  orders.forEach(o => {
+    (o.line_items || []).forEach(li => {
+      const sku = (li.sku || '').trim() || '(无 SKU)';
+      if (!bySku[sku]) bySku[sku] = { sku, title: li.title || '', image_url: li.image_url || '', orderCount: 0, qty: 0, revenue: 0 };
+      bySku[sku].orderCount++;
+      bySku[sku].qty += Number(li.quantity) || 0;
+      bySku[sku].revenue += (Number(li.price) || 0) * (Number(li.quantity) || 0);
+    });
+  });
+  const rows = Object.values(bySku).sort((a, b) => b.qty - a.qty);
+
+  const body = document.getElementById('analyticsBody');
+  body.innerHTML = `
+    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">共 ${rows.length} 个 SKU · 按销量降序</div>
+    <table class="data-table">
+      <thead><tr>
+        <th style="width:60px;">图</th><th>SKU / 产品名</th>
+        <th style="text-align:right;">订单数</th><th style="text-align:right;">销售件数</th>
+        <th style="text-align:right;">销售额(USD)</th><th style="text-align:right;">平均单价</th>
+      </tr></thead>
+      <tbody>
+        ${rows.slice(0, 200).map((r, i) => `<tr>
+          <td>${r.image_url ? `<img loading="lazy" src="${escapeHtml(r.image_url)}" style="width:48px; height:48px; object-fit:cover; border-radius:4px; cursor:zoom-in;" onclick="openImgLightbox('${escapeHtml(r.image_url)}')">` : '<div style="width:48px; height:48px; background:var(--bg-elevated); border-radius:4px; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary);">📷</div>'}</td>
+          <td><div style="font-weight:600;">${escapeHtml(r.title)}</div><div style="font-size:10px; color:var(--text-tertiary); font-family:monospace;">${escapeHtml(r.sku)}</div></td>
+          <td style="text-align:right; font-family:monospace;">${r.orderCount}</td>
+          <td style="text-align:right; font-family:monospace; font-weight:700; color: var(--accent);">${r.qty}</td>
+          <td style="text-align:right; font-family:monospace; color: var(--success);">$${r.revenue.toFixed(2)}</td>
+          <td style="text-align:right; font-family:monospace;">$${(r.qty > 0 ? r.revenue / r.qty : 0).toFixed(2)}</td>
+        </tr>`).join('')}
+        ${rows.length > 200 ? `<tr><td colspan="6" style="text-align:center; padding:8px; color:var(--text-tertiary); font-size:11px;">仅显示前 200 个，导出可看全部</td></tr>` : ''}
+        ${rows.length === 0 ? '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-tertiary);">无数据</td></tr>' : ''}
+      </tbody>
+    </table>
+  `;
+}
+
+// === 4. 订单趋势（按日） ===
+function _renderAnalyticsTrend(orders) {
+  const byDate = {};
+  orders.forEach(o => {
+    const d = (o.shopify_created_at || '').slice(0, 10);
+    if (!d) return;
+    if (!byDate[d]) byDate[d] = { date: d, count: 0, revenue: 0, refunded: 0, qty: 0 };
+    byDate[d].count++;
+    byDate[d].revenue += Number(o.total_price || 0);
+    if ((o.financial_status || '').toLowerCase().includes('refunded')) byDate[d].refunded++;
+    (o.line_items || []).forEach(li => byDate[d].qty += Number(li.quantity) || 0);
+  });
+  const rows = Object.values(byDate).sort((a, b) => b.date.localeCompare(a.date));
+  const maxRev = Math.max(1, ...rows.map(r => r.revenue));
+
+  const body = document.getElementById('analyticsBody');
+  body.innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>日期</th>
+        <th style="text-align:right;">订单数</th>
+        <th style="text-align:right;">总件数</th>
+        <th style="text-align:right;">销售额</th>
+        <th>销售额可视化</th>
+        <th style="text-align:right;">退款单数</th>
+        <th style="text-align:right;">客单价</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td style="font-family:monospace; font-weight:600;">${r.date}</td>
+          <td style="text-align:right; font-family:monospace;">${r.count}</td>
+          <td style="text-align:right; font-family:monospace;">${r.qty}</td>
+          <td style="text-align:right; font-family:monospace; color: var(--success); font-weight:700;">$${r.revenue.toFixed(2)}</td>
+          <td><div style="background: var(--bg-elevated); border-radius: 3px; height: 16px; position: relative; min-width: 100px;">
+            <div style="background: var(--accent); height: 100%; width: ${(r.revenue / maxRev * 100).toFixed(1)}%; border-radius: 3px;"></div>
+          </div></td>
+          <td style="text-align:right; font-family:monospace; color: ${r.refunded > 0 ? 'var(--danger)' : 'var(--text-tertiary)'};">${r.refunded}</td>
+          <td style="text-align:right; font-family:monospace;">$${(r.count > 0 ? r.revenue / r.count : 0).toFixed(2)}</td>
+        </tr>`).join('')}
+        ${rows.length === 0 ? '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-tertiary);">无数据</td></tr>' : ''}
+      </tbody>
+    </table>
+  `;
+}
+
+// === 5. 客户分布（按国家） ===
+function _renderAnalyticsCountry(orders) {
+  const byCountry = {};
+  orders.forEach(o => {
+    const cc = (o.shipping_address?.country_code || '').toUpperCase() || '未知';
+    const cn = o.shipping_address?.country || cc;
+    if (!byCountry[cc]) byCountry[cc] = { code: cc, name: cn, orderCount: 0, customerSet: new Set(), revenue: 0 };
+    byCountry[cc].orderCount++;
+    if (o.customer_email) byCountry[cc].customerSet.add(o.customer_email);
+    byCountry[cc].revenue += Number(o.total_price || 0);
+  });
+  const rows = Object.values(byCountry).sort((a, b) => b.revenue - a.revenue);
+  const totalRev = rows.reduce((s, r) => s + r.revenue, 0);
+
+  const body = document.getElementById('analyticsBody');
+  body.innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>国家</th>
+        <th style="text-align:right;">订单数</th>
+        <th style="text-align:right;">客户数</th>
+        <th style="text-align:right;">销售额</th>
+        <th>占比</th>
+        <th style="text-align:right;">客单价</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => {
+          const pct = totalRev > 0 ? r.revenue / totalRev * 100 : 0;
+          return `<tr>
+            <td><span style="font-family:monospace; font-weight:700; font-size:13px;">${escapeHtml(r.code)}</span> <span style="color:var(--text-tertiary); font-size:11px;">${escapeHtml(r.name)}</span></td>
+            <td style="text-align:right; font-family:monospace;">${r.orderCount}</td>
+            <td style="text-align:right; font-family:monospace;">${r.customerSet.size}</td>
+            <td style="text-align:right; font-family:monospace; color: var(--success); font-weight:700;">$${r.revenue.toFixed(2)}</td>
+            <td><div style="background: var(--bg-elevated); border-radius: 3px; height: 16px; position: relative; min-width: 100px;">
+              <div style="background: var(--accent); height: 100%; width: ${pct.toFixed(1)}%; border-radius: 3px;"></div>
+            </div><span style="font-size: 10px; color: var(--text-tertiary);">${pct.toFixed(1)}%</span></td>
+            <td style="text-align:right; font-family:monospace;">$${(r.orderCount > 0 ? r.revenue / r.orderCount : 0).toFixed(2)}</td>
+          </tr>`;
+        }).join('')}
+        ${rows.length === 0 ? '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-tertiary);">无数据</td></tr>' : ''}
+      </tbody>
+    </table>
+  `;
+}
+
+// === 6. 客户排行 ===
+function _renderAnalyticsCustomer(orders) {
+  const byCustomer = {};
+  orders.forEach(o => {
+    const key = o.customer_email || o.customer_name || '匿名';
+    if (!byCustomer[key]) byCustomer[key] = { 
+      key, name: o.customer_name || '', email: o.customer_email || '', 
+      country: o.shipping_address?.country_code || '',
+      orderCount: 0, revenue: 0, qty: 0 
+    };
+    byCustomer[key].orderCount++;
+    byCustomer[key].revenue += Number(o.total_price || 0);
+    (o.line_items || []).forEach(li => byCustomer[key].qty += Number(li.quantity) || 0);
+  });
+  const rows = Object.values(byCustomer).sort((a, b) => b.revenue - a.revenue);
+
+  const body = document.getElementById('analyticsBody');
+  body.innerHTML = `
+    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">共 ${rows.length} 个客户 · 按消费金额降序</div>
+    <table class="data-table">
+      <thead><tr>
+        <th style="width:40px;">#</th>
+        <th>客户</th><th>邮箱</th><th>国家</th>
+        <th style="text-align:right;">订单数</th><th style="text-align:right;">总件数</th>
+        <th style="text-align:right;">总消费</th><th style="text-align:right;">客单价</th>
+      </tr></thead>
+      <tbody>
+        ${rows.slice(0, 200).map((r, i) => `<tr>
+          <td style="font-family:monospace; color:var(--text-tertiary);">${i + 1}</td>
+          <td style="font-weight:600;">${escapeHtml(r.name)}</td>
+          <td style="font-size:11px; color: var(--text-tertiary); font-family:monospace;">${escapeHtml(r.email)}</td>
+          <td style="font-family:monospace;">${escapeHtml(r.country)}</td>
+          <td style="text-align:right; font-family:monospace;">${r.orderCount}</td>
+          <td style="text-align:right; font-family:monospace;">${r.qty}</td>
+          <td style="text-align:right; font-family:monospace; color: var(--success); font-weight:700;">$${r.revenue.toFixed(2)}</td>
+          <td style="text-align:right; font-family:monospace;">$${(r.orderCount > 0 ? r.revenue / r.orderCount : 0).toFixed(2)}</td>
+        </tr>`).join('')}
+        ${rows.length > 200 ? `<tr><td colspan="8" style="text-align:center; padding:8px; color:var(--text-tertiary); font-size:11px;">仅显示前 200 个，导出可看全部</td></tr>` : ''}
+        ${rows.length === 0 ? '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-tertiary);">无数据</td></tr>' : ''}
+      </tbody>
+    </table>
+  `;
+}
+
+// === 导出当前子 tab ===
+function analyticsExportCurrent() {
+  const orders = _analyticsGetFilteredOrders();
+  const sub = ANALYTICS_STATE.subtab;
+  const today = new Date().toISOString().slice(0, 10);
+  const labelMap = { summary: '综合汇总', shop: '店铺业绩', sku: 'SKU 销量', trend: '订单趋势', country: '客户分布', customer: '客户排行' };
+  const title = `数据分析 - ${labelMap[sub]} - ${ANALYTICS_STATE.startDate}~${ANALYTICS_STATE.endDate}`;
+  
+  // 把当前 body 的表格 + meta 信息组合成导出 HTML
+  // 移除 onclick 等事件处理器（在新窗口里不存在这些函数）
+  const bodyHtml = document.getElementById('analyticsBody').innerHTML
+    .replace(/\s*onclick="[^"]*"/g, '')
+    .replace(/\s*onmouseenter="[^"]*"/g, '')
+    .replace(/\s*onmouseleave="[^"]*"/g, '')
+    .replace(/cursor:\s*zoom-in/g, 'cursor:default');
+  const html = `<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>${title}</title>
+<style>
+  body { font-family: -apple-system, "Microsoft YaHei", sans-serif; padding: 20px; color: #1c1917; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .meta { color: #78716c; font-size: 12px; margin-bottom: 16px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  thead { background: #f5f5f4; }
+  th, td { border: 1px solid #d6d3d1; padding: 6px 8px; vertical-align: middle; text-align: left; }
+  th { font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  img { display:block; width: 48px; height: 48px; object-fit: cover; border-radius: 4px; }
+  .actions { margin: 14px 0; }
+  .actions button { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-right: 8px; }
+  @media print { .actions { display: none; } body { padding: 8px; } table { font-size: 10px; } img { width: 36px; height: 36px; } }
+</style></head><body>
+<h1>📈 ${labelMap[sub]}</h1>
+<div class="meta">导出日期：${today} · 时间范围：${ANALYTICS_STATE.startDate} → ${ANALYTICS_STATE.endDate} · 订单数：${orders.length}</div>
+<div class="actions">
+  <button onclick="window.print()">🖨 打印 / 保存为 PDF</button>
+  <button onclick="(()=>{const t=document.querySelector('table'); if(t) navigator.clipboard.writeText(t.outerHTML).then(()=>alert('已复制 HTML，可粘贴到 Excel/Word'));})()">📋 复制表格</button>
+</div>
+${bodyHtml}
+<div style="margin-top: 16px; font-size: 11px; color: #78716c; text-align: right;">跟单团队工作台 · ${labelMap[sub]}</div>
+</body></html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) { toast('浏览器阻止了新窗口，请允许弹窗', 'err'); return; }
+  win.document.write(html);
+  win.document.close();
+  toast(`✓ ${labelMap[sub]} 已导出`);
+}
+
 function renderPerformance() {
   const period = document.getElementById('perfPeriod').value;
   const range = getPeriodRange(period);
@@ -11271,10 +11890,501 @@ function shopifyRefreshCounts() {
   const cancelledEl = document.getElementById('cntCancelled');
   if (cancelledEl) cancelledEl.textContent = counts.cancelled;
   if (typeof setBadge === 'function') setBadge('badgeSales', counts.pending);
+  // 同步规则计数
+  if (typeof shopifyRefreshRuleCounts === 'function') shopifyRefreshRuleCounts();
 }
 
 let SHOPIFY_PAGE = 1;
 const SHOPIFY_PAGE_SIZE = 50;
+
+// 销售单搜索/排序状态
+const SHOPIFY_SEARCH = {
+  type: 'order_no',           // 搜索字段类型
+  text: '',                   // 搜索内容
+  mode: 'fuzzy',              // fuzzy / exact
+  countries: new Set(),       // 国家筛选（多选）
+  shops: new Set(),           // 店铺筛选（多选）
+  amtMin: null, amtMax: null, // 金额范围
+  financialStatus: '',        // 付款状态
+  refundFilter: '',           // 退款状态
+  rule: 'all',                // 订单规则快筛
+  sortBy: 'order_date_desc',  // 排序方式
+};
+
+// 选中订单 ID 集合
+const SHOPIFY_SELECTED = new Set();
+
+function shopifySetSearchType(t) {
+  SHOPIFY_SEARCH.type = t;
+  document.querySelectorAll('.search-type-chip').forEach(el => el.classList.toggle('active', el.dataset.searchType === t));
+  shopifyDoSearch();
+}
+
+function shopifySetSort(s) {
+  SHOPIFY_SEARCH.sortBy = s;
+  document.querySelectorAll('.sort-chip').forEach(el => el.classList.toggle('active', el.dataset.sortBy === s));
+  shopifyDoSearch();
+}
+
+function shopifyDoSearch() {
+  SHOPIFY_SEARCH.text = (document.getElementById('salesSearchText')?.value || '').trim();
+  SHOPIFY_SEARCH.mode = document.getElementById('salesSearchMode')?.value || 'fuzzy';
+  SHOPIFY_SEARCH.amtMin = parseFloat(document.getElementById('salesAmtMin')?.value) || null;
+  SHOPIFY_SEARCH.amtMax = parseFloat(document.getElementById('salesAmtMax')?.value) || null;
+  SHOPIFY_SEARCH.financialStatus = document.getElementById('salesFinancialStatus')?.value || '';
+  SHOPIFY_SEARCH.refundFilter = document.getElementById('salesRefundFilter')?.value || '';
+  SHOPIFY_PAGE = 1;
+  renderShopifyOrders();
+}
+
+function shopifyResetSearch() {
+  SHOPIFY_SEARCH.text = '';
+  SHOPIFY_SEARCH.countries.clear();
+  SHOPIFY_SEARCH.amtMin = null;
+  SHOPIFY_SEARCH.amtMax = null;
+  SHOPIFY_SEARCH.financialStatus = '';
+  SHOPIFY_SEARCH.refundFilter = '';
+  const inp = document.getElementById('salesSearchText'); if (inp) inp.value = '';
+  const amin = document.getElementById('salesAmtMin'); if (amin) amin.value = '';
+  const amax = document.getElementById('salesAmtMax'); if (amax) amax.value = '';
+  const fs = document.getElementById('salesFinancialStatus'); if (fs) fs.value = '';
+  const rf = document.getElementById('salesRefundFilter'); if (rf) rf.value = '';
+  document.querySelectorAll('.country-chip').forEach(el => el.classList.remove('active'));
+  SHOPIFY_PAGE = 1;
+  renderShopifyOrders();
+}
+
+function shopifyToggleAdvSearch() {
+  const adv = document.getElementById('salesAdvSearch');
+  if (!adv) return;
+  adv.style.display = adv.style.display === 'none' ? 'block' : 'none';
+  if (adv.style.display === 'block') {
+    shopifyRenderCountryFilter();
+    shopifyRenderShopFilter();
+  }
+}
+
+function shopifyRenderShopFilter() {
+  const wrap = document.getElementById('salesShopFilter');
+  if (!wrap) return;
+  const shopMap = {};
+  (SHOPIFY._orders || []).forEach(o => {
+    const d = o.shop_domain || '';
+    if (!d) return;
+    const code = SHOPIFY.siteCodeOf(d) || d;
+    if (!shopMap[d]) shopMap[d] = { domain: d, code, count: 0 };
+    shopMap[d].count++;
+  });
+  const sorted = Object.values(shopMap).sort((a, b) => b.count - a.count);
+  wrap.innerHTML = sorted.map(s => `
+    <button class="country-chip ${SHOPIFY_SEARCH.shops.has(s.domain) ? 'active' : ''}" 
+      onclick="shopifyToggleShop('${escapeHtml(s.domain)}')">${escapeHtml(s.code)} (${s.count})</button>
+  `).join('') || '<span style="font-size:11px; color:var(--text-tertiary);">先同步订单</span>';
+}
+
+function shopifyToggleShop(domain) {
+  if (SHOPIFY_SEARCH.shops.has(domain)) SHOPIFY_SEARCH.shops.delete(domain);
+  else SHOPIFY_SEARCH.shops.add(domain);
+  shopifyRenderShopFilter();
+  shopifyDoSearch();
+}
+
+// 规则快筛
+function shopifySetRule(rule) {
+  SHOPIFY_SEARCH.rule = rule;
+  document.querySelectorAll('.rule-chip').forEach(el => el.classList.toggle('active', el.dataset.rule === rule));
+  SHOPIFY_PAGE = 1;
+  renderShopifyOrders();
+}
+
+// 计算订单是否命中某规则
+function _orderMatchesRule(o, rule) {
+  switch (rule) {
+    case 'all': return true;
+    case 'has_note': return !!(o.customer_note || '').trim();
+    case 'has_internal': return !!(o.internal_note || '').trim();
+    case 'refunded': {
+      const fs = (o.financial_status || '').toLowerCase();
+      return fs === 'refunded' || fs === 'partially_refunded';
+    }
+    case 'big_amount': {
+      // 大额：> ¥3000（按 USD ≥ 460 简化判断）
+      const amt = Number(o.total_price || 0);
+      const cur = (o.currency || 'USD').toUpperCase();
+      // 简化：USD/EUR/GBP/AUD 按 6.5 折算；CNY 直接比较
+      if (cur === 'CNY' || cur === 'RMB') return amt >= 3000;
+      return amt >= 460;  // ~ ¥3000
+    }
+    case 'big_qty': {
+      return (o.line_items || []).some(li => (Number(li.quantity) || 0) >= 5);
+    }
+    case 'overdue': {
+      // 待处理且超过 7 天
+      if (o.local_status !== 'pending' && o.local_status !== 'processing') return false;
+      const ts = new Date(o.shopify_created_at || o.created_at || 0).getTime();
+      const daysSince = (Date.now() - ts) / 86400000;
+      return daysSince >= 7;
+    }
+    case 'manual': return o.shop_domain === 'manual';
+    case 'unknown_sku': {
+      // line_item 的 SKU 在 products 表中不存在
+      return (o.line_items || []).some(li => {
+        if (!li.sku) return true;
+        const eff = PRODUCTS_CACHE.effectiveBySku ? PRODUCTS_CACHE.effectiveBySku(li.sku) : null;
+        return !eff;
+      });
+    }
+    default: return true;
+  }
+}
+
+// 刷新规则 chip 计数
+function shopifyRefreshRuleCounts() {
+  const all = SHOPIFY._orders || [];
+  // 计算对"待办"订单（pending + processing）的命中数
+  const active = all.filter(o => o.local_status !== 'cancelled' && o.local_status !== 'done');
+  const rules = ['has_note', 'has_internal', 'refunded', 'big_amount', 'big_qty', 'overdue', 'manual', 'unknown_sku'];
+  rules.forEach(r => {
+    const cnt = active.filter(o => _orderMatchesRule(o, r)).length;
+    const el = document.getElementById(`ruleCnt_${r}`);
+    if (el) el.textContent = cnt;
+  });
+}
+
+// 批量操作
+function shopifyToggleSelectOrder(orderId, checked) {
+  if (checked) SHOPIFY_SELECTED.add(orderId);
+  else SHOPIFY_SELECTED.delete(orderId);
+  shopifyUpdateBatchUI();
+}
+
+function shopifyToggleSelectAll(checked) {
+  // 选中"当前页"的所有
+  document.querySelectorAll('.so-card-checkbox').forEach(cb => {
+    cb.checked = checked;
+    const id = cb.dataset.orderId;
+    if (id) {
+      if (checked) SHOPIFY_SELECTED.add(id);
+      else SHOPIFY_SELECTED.delete(id);
+    }
+  });
+  shopifyUpdateBatchUI();
+}
+
+function shopifyUpdateBatchUI() {
+  const n = SHOPIFY_SELECTED.size;
+  const cntEl = document.getElementById('salesSelectedCount');
+  if (cntEl) cntEl.textContent = n;
+  const disabled = n === 0;
+  ['batchApproveBtn', 'batchDoneBtn', 'batchCancelBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disabled;
+  });
+}
+
+async function shopifyBatchApprove() {
+  const ids = [...SHOPIFY_SELECTED];
+  if (ids.length === 0) return;
+  if (!confirm(`确认把 ${ids.length} 个订单从"待审核"推进到"待处理"？`)) return;
+  try {
+    // 只对 pending 状态的生效
+    const toUpdate = (SHOPIFY._orders || []).filter(o => ids.includes(o.id) && o.local_status === 'pending');
+    if (toUpdate.length === 0) { toast('所选订单中没有"待审核"状态的', 'warn'); return; }
+    const { error } = await sb.from('shopify_orders').update({ local_status: 'processing', updated_at: new Date().toISOString() }).in('id', toUpdate.map(x => x.id));
+    if (error) throw error;
+    // 更新本地
+    toUpdate.forEach(o => { o.local_status = 'processing'; });
+    toast(`✓ 已审核 ${toUpdate.length} 个订单（${ids.length - toUpdate.length} 个跳过）`);
+    SHOPIFY_SELECTED.clear();
+    shopifyRefreshCounts();
+    shopifyRefreshRuleCounts();
+    renderShopifyOrders();
+  } catch (e) { toast('批量审核失败：' + (e.message || e), 'err'); }
+}
+
+async function shopifyBatchMarkDone() {
+  const ids = [...SHOPIFY_SELECTED];
+  if (ids.length === 0) return;
+  if (!confirm(`确认把 ${ids.length} 个订单标记为"已完成"？`)) return;
+  try {
+    const { error } = await sb.from('shopify_orders').update({ local_status: 'done', updated_at: new Date().toISOString() }).in('id', ids);
+    if (error) throw error;
+    (SHOPIFY._orders || []).forEach(o => { if (ids.includes(o.id)) o.local_status = 'done'; });
+    toast(`✓ 已标记 ${ids.length} 个订单为完成`);
+    SHOPIFY_SELECTED.clear();
+    shopifyRefreshCounts();
+    shopifyRefreshRuleCounts();
+    renderShopifyOrders();
+  } catch (e) { toast('批量完成失败：' + (e.message || e), 'err'); }
+}
+
+async function shopifyBatchCancel() {
+  const ids = [...SHOPIFY_SELECTED];
+  if (ids.length === 0) return;
+  if (!confirm(`⚠ 确认批量取消 ${ids.length} 个订单？\n如果这些订单已开 PO，请先去采购单 tab 处理那些 PO。`)) return;
+  try {
+    const { error } = await sb.from('shopify_orders').update({ local_status: 'cancelled', updated_at: new Date().toISOString() }).in('id', ids);
+    if (error) throw error;
+    (SHOPIFY._orders || []).forEach(o => { if (ids.includes(o.id)) o.local_status = 'cancelled'; });
+    toast(`✓ 已取消 ${ids.length} 个订单`);
+    SHOPIFY_SELECTED.clear();
+    shopifyRefreshCounts();
+    shopifyRefreshRuleCounts();
+    renderShopifyOrders();
+  } catch (e) { toast('批量取消失败：' + (e.message || e), 'err'); }
+}
+
+// 导出当前筛选结果（新窗口打开 HTML 表格，可打印 PDF / 复制到 Excel）
+function shopifyExportOrders() {
+  // 走和 render 一样的过滤逻辑（含搜索、规则、排序）
+  const filter = SHOPIFY._currentFilter;
+  let orders = filter === 'all'
+    ? (SHOPIFY._orders || []).filter(o => o.local_status !== 'cancelled' && o.local_status !== 'done')
+    : (SHOPIFY._orders || []).filter(o => o.local_status === filter);
+  if (SHOPIFY_SEARCH.rule && SHOPIFY_SEARCH.rule !== 'all') {
+    orders = orders.filter(o => _orderMatchesRule(o, SHOPIFY_SEARCH.rule));
+  }
+  orders = shopifyApplySearchFilter(orders);
+  orders = shopifyApplySorting(orders);
+
+  if (orders.length === 0) { toast('当前筛选无数据', 'warn'); return; }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const totalUSD = orders.reduce((s, o) => s + Number(o.total_price || 0), 0);
+  const totalQty = orders.reduce((s, o) => s + (o.line_items || []).reduce((q, li) => q + Number(li.quantity || 0), 0), 0);
+
+  // 收集所有 line_items 平铺
+  const rows = [];
+  orders.forEach(o => {
+    const a = o.shipping_address || {};
+    const addr = [a.address1, a.city, a.province, a.country_code, a.zip].filter(Boolean).join(', ');
+    (o.line_items || []).forEach((li, idx) => {
+      rows.push({
+        order_no: o.shopify_order_number,
+        shop: SHOPIFY.siteCodeOf(o.shop_domain) || o.shop_domain,
+        date: (o.shopify_created_at || '').slice(0, 10),
+        customer: o.customer_name || '',
+        email: o.customer_email || '',
+        country: a.country_code || '',
+        addr,
+        total: o.total_price || 0,
+        currency: o.currency || 'USD',
+        sku: li.sku || '',
+        product: li.title || '',
+        variant: li.variant_title || '',
+        qty: li.quantity || 0,
+        price: li.price || 0,
+        image_url: li.image_url || '',
+        financial_status: o.financial_status || '',
+        local_status: o.local_status || '',
+        note: ((o.customer_note || '') + (o.internal_note ? ` | 内部:${o.internal_note}` : '')).slice(0, 100),
+        first_line: idx === 0,  // 是不是该订单的第一行（用于显示订单号/客户）
+      });
+    });
+  });
+
+  const html = `<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>销售订单导出 - ${today}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Microsoft YaHei", sans-serif; padding: 20px; color: #1c1917; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .meta { color: #78716c; font-size: 12px; margin-bottom: 16px; }
+  .summary { background: #f5f5f4; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; display: flex; gap: 24px; font-size: 13px; flex-wrap: wrap; }
+  .summary b { font-size: 16px; color: #2563eb; }
+  table { border-collapse: collapse; width: 100%; font-size: 11px; }
+  thead { background: #f5f5f4; }
+  th, td { border: 1px solid #d6d3d1; padding: 5px 7px; vertical-align: middle; }
+  th { font-weight: 600; text-align: left; font-size: 10px; text-transform: uppercase; }
+  .qty-big { background: #dc2626; color: white; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 13px; }
+  img { display: block; width: 50px; height: 50px; object-fit: cover; border-radius: 4px; border: 1px solid #d6d3d1; }
+  .actions { margin: 14px 0; }
+  .actions button { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-right: 8px; }
+  .actions button:hover { background: #1d4ed8; }
+  @media print {
+    .actions { display: none; }
+    body { padding: 8px; }
+    table { font-size: 9px; }
+    img { width: 40px; height: 40px; }
+  }
+</style></head><body>
+<h1>📥 销售订单导出</h1>
+<div class="meta">导出日期：${today} · 当前筛选状态：${filter} · 共 ${orders.length} 个订单, ${rows.length} 行产品</div>
+<div class="summary">
+  <div>订单数：<b>${orders.length}</b></div>
+  <div>产品行数：<b>${rows.length}</b></div>
+  <div>总件数：<b>${totalQty}</b></div>
+  <div>总金额（USD）：<b>$ ${totalUSD.toLocaleString('en-US', { maximumFractionDigits: 2 })}</b></div>
+</div>
+<div class="actions">
+  <button onclick="window.print()">🖨 打印 / 保存为 PDF</button>
+  <button onclick="navigator.clipboard.writeText(document.querySelector('table').outerHTML).then(() => alert('已复制 HTML，可粘贴到 Excel/Word'))">📋 复制表格</button>
+  <span style="font-size:12px; color:#78716c;">提示：在浏览器打印窗口可选"另存为 PDF"</span>
+</div>
+<table>
+  <thead><tr>
+    <th>店</th><th>订单号</th><th>下单日</th><th>客户</th><th>邮箱</th><th>国家</th>
+    <th>图</th><th>SKU/产品</th><th>规格</th><th style="text-align:center;">数量</th><th style="text-align:right;">单价</th>
+    <th style="text-align:right;">总额</th><th>付款</th><th>备注</th>
+  </tr></thead>
+  <tbody>${rows.map(r => `<tr>
+    <td>${r.first_line ? r.shop : ''}</td>
+    <td style="font-family:monospace; font-size:10px;">${r.first_line ? r.order_no : ''}</td>
+    <td>${r.first_line ? r.date : ''}</td>
+    <td>${r.first_line ? escapeHtml(r.customer) : ''}</td>
+    <td style="font-size:10px;">${r.first_line ? escapeHtml(r.email) : ''}</td>
+    <td>${r.country}</td>
+    <td>${r.image_url ? `<img src="${escapeHtml(r.image_url)}">` : ''}</td>
+    <td><b>${escapeHtml(r.product)}</b><br><span style="color:#78716c; font-family:monospace; font-size:9px;">${escapeHtml(r.sku)}</span></td>
+    <td style="font-size:10px; color:#44403c;">${escapeHtml(r.variant)}</td>
+    <td style="text-align:center;">${Number(r.qty) >= 2 ? `<span class="qty-big">${r.qty}</span>` : r.qty}</td>
+    <td style="text-align:right; font-family:monospace;">${r.currency} ${Number(r.price).toFixed(2)}</td>
+    <td style="text-align:right; font-family:monospace;">${r.first_line ? `<b>${r.currency} ${Number(r.total).toFixed(2)}</b>` : ''}</td>
+    <td style="font-size:10px;">${escapeHtml(r.financial_status)}</td>
+    <td style="font-size:10px; max-width:200px; overflow:hidden;">${r.first_line ? escapeHtml(r.note) : ''}</td>
+  </tr>`).join('')}</tbody>
+</table>
+<div style="margin-top: 16px; font-size: 11px; color: #78716c; text-align: right;">跟单团队工作台 · 共 ${rows.length} 行 · ${orders.length} 个订单</div>
+</body></html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) { toast('浏览器阻止了新窗口，请允许弹窗', 'err'); return; }
+  win.document.write(html);
+  win.document.close();
+  toast(`✓ 已导出 ${orders.length} 个订单`);
+}
+
+function shopifyRenderCountryFilter() {
+  const wrap = document.getElementById('salesCountryFilter');
+  if (!wrap) return;
+  // 统计所有国家
+  const countryMap = {};
+  (SHOPIFY._orders || []).forEach(o => {
+    const cc = (o.shipping_address?.country_code || '').toUpperCase();
+    const cn = o.shipping_address?.country || cc || '未知';
+    if (cc) countryMap[cc] = { code: cc, name: cn, count: (countryMap[cc]?.count || 0) + 1 };
+  });
+  const sorted = Object.values(countryMap).sort((a, b) => b.count - a.count);
+  wrap.innerHTML = sorted.map(c => `
+    <button class="country-chip ${SHOPIFY_SEARCH.countries.has(c.code) ? 'active' : ''}" 
+      onclick="shopifyToggleCountry('${c.code}')">${c.code} (${c.count})</button>
+  `).join('') || '<span style="font-size:11px; color:var(--text-tertiary);">先同步订单</span>';
+}
+
+function shopifyToggleCountry(code) {
+  if (SHOPIFY_SEARCH.countries.has(code)) SHOPIFY_SEARCH.countries.delete(code);
+  else SHOPIFY_SEARCH.countries.add(code);
+  shopifyRenderCountryFilter();
+  shopifyDoSearch();
+}
+
+// 应用搜索过滤
+function shopifyApplySearchFilter(orders) {
+  if (!orders || orders.length === 0) return orders;
+  let list = orders;
+
+  // 文本搜索
+  if (SHOPIFY_SEARCH.text) {
+    // 多关键字（逗号/空格/中文逗号分隔）
+    const keywords = SHOPIFY_SEARCH.text.split(/[,，\s]+/).filter(Boolean).map(k => k.toLowerCase());
+    if (keywords.length > 0) {
+      list = list.filter(o => {
+        const type = SHOPIFY_SEARCH.type;
+        const mode = SHOPIFY_SEARCH.mode;  // fuzzy / exact
+        // 取被搜索的字段值
+        const getFieldValue = (t) => {
+          switch (t) {
+            case 'order_no': return (o.shopify_order_number || '').toLowerCase();
+            case 'sku': return (o.line_items || []).map(li => (li.sku || '').toLowerCase()).join(' ');
+            case 'product_name': return (o.line_items || []).map(li => (li.title || '').toLowerCase()).join(' ');
+            case 'customer_name': return (o.customer_name || '').toLowerCase();
+            case 'email': return (o.customer_email || '').toLowerCase();
+            case 'address': {
+              const a = o.shipping_address || {};
+              return [a.address1, a.address2, a.city, a.province, a.country, a.country_code, a.zip].filter(Boolean).join(' ').toLowerCase();
+            }
+            case 'note': return ((o.customer_note || '') + ' ' + (o.internal_note || '')).toLowerCase();
+            case 'any': {
+              const a = o.shipping_address || {};
+              return [
+                o.shopify_order_number, o.customer_name, o.customer_email,
+                (o.line_items || []).map(li => (li.sku || '') + ' ' + (li.title || '')).join(' '),
+                a.address1, a.city, a.province, a.country, a.country_code, a.zip,
+                o.customer_note, o.internal_note,
+              ].filter(Boolean).join(' ').toLowerCase();
+            }
+            default: return '';
+          }
+        };
+        const fieldVal = getFieldValue(type);
+        // 任一关键字命中即可（OR）
+        return keywords.some(kw => {
+          if (mode === 'exact') {
+            // 精确：字段值的单词中有完全相等的
+            const words = fieldVal.split(/[\s,;]+/);
+            return words.includes(kw);
+          } else {
+            return fieldVal.includes(kw);
+          }
+        });
+      });
+    }
+  }
+
+  // 国家筛选
+  if (SHOPIFY_SEARCH.countries.size > 0) {
+    list = list.filter(o => {
+      const cc = (o.shipping_address?.country_code || '').toUpperCase();
+      return SHOPIFY_SEARCH.countries.has(cc);
+    });
+  }
+
+  // 金额范围
+  if (SHOPIFY_SEARCH.amtMin != null) list = list.filter(o => Number(o.total_price || 0) >= SHOPIFY_SEARCH.amtMin);
+  if (SHOPIFY_SEARCH.amtMax != null) list = list.filter(o => Number(o.total_price || 0) <= SHOPIFY_SEARCH.amtMax);
+
+  // 付款状态
+  if (SHOPIFY_SEARCH.financialStatus) list = list.filter(o => (o.financial_status || '') === SHOPIFY_SEARCH.financialStatus);
+
+  // 退款状态
+  if (SHOPIFY_SEARCH.refundFilter) {
+    list = list.filter(o => {
+      const r = getRefundStatus(o);
+      return r.level === SHOPIFY_SEARCH.refundFilter;
+    });
+  }
+
+  return list;
+}
+
+// 应用排序
+function shopifyApplySorting(orders) {
+  const sortBy = SHOPIFY_SEARCH.sortBy;
+  const sorted = [...orders];
+  switch (sortBy) {
+    case 'order_date_asc':
+      sorted.sort((a, b) => new Date(a.shopify_created_at || a.created_at || 0) - new Date(b.shopify_created_at || b.created_at || 0));
+      break;
+    case 'amount_desc':
+      sorted.sort((a, b) => Number(b.total_price || 0) - Number(a.total_price || 0));
+      break;
+    case 'amount_asc':
+      sorted.sort((a, b) => Number(a.total_price || 0) - Number(b.total_price || 0));
+      break;
+    case 'sku':
+      sorted.sort((a, b) => {
+        const aSku = (a.line_items?.[0]?.sku || '').toLowerCase();
+        const bSku = (b.line_items?.[0]?.sku || '').toLowerCase();
+        return aSku.localeCompare(bSku);
+      });
+      break;
+    case 'order_date_desc':
+    default:
+      sorted.sort((a, b) => new Date(b.shopify_created_at || b.created_at || 0) - new Date(a.shopify_created_at || a.created_at || 0));
+  }
+  return sorted;
+}
+
 function shopifyGoPage(p) {
   SHOPIFY_PAGE = Math.max(1, p);
   renderShopifyOrders();
@@ -11294,15 +12404,52 @@ function renderShopifyOrders() {
   if (!body) return;
   const filter = SHOPIFY._currentFilter;
   const all = SHOPIFY._orders;
-  const orders = filter === 'all'
-    ? all.filter(o => o.local_status !== 'cancelled' && o.local_status !== 'done')  // 全部 = 待办（不含已完成/已取消）
+  let orders = filter === 'all'
+    ? all.filter(o => o.local_status !== 'cancelled' && o.local_status !== 'done')
     : all.filter(o => o.local_status === filter);
+
+  // 应用规则筛选
+  if (SHOPIFY_SEARCH.rule && SHOPIFY_SEARCH.rule !== 'all') {
+    orders = orders.filter(o => _orderMatchesRule(o, SHOPIFY_SEARCH.rule));
+  }
+
+  // 应用店铺筛选
+  if (SHOPIFY_SEARCH.shops.size > 0) {
+    orders = orders.filter(o => SHOPIFY_SEARCH.shops.has(o.shop_domain || ''));
+  }
+
+  // 应用搜索过滤
+  const beforeSearch = orders.length;
+  orders = shopifyApplySearchFilter(orders);
+  // 应用排序
+  orders = shopifyApplySorting(orders);
+
+  // 搜索摘要
+  const summaryEl = document.getElementById('salesSearchSummary');
+  if (summaryEl) {
+    const hasSearch = SHOPIFY_SEARCH.text || SHOPIFY_SEARCH.countries.size > 0 || SHOPIFY_SEARCH.amtMin != null || SHOPIFY_SEARCH.amtMax != null || SHOPIFY_SEARCH.financialStatus || SHOPIFY_SEARCH.refundFilter;
+    if (hasSearch) {
+      summaryEl.style.display = 'block';
+      const parts = [];
+      if (SHOPIFY_SEARCH.text) parts.push(`<b>${escapeHtml(SHOPIFY_SEARCH.text)}</b> (${SHOPIFY_SEARCH.mode === 'exact' ? '精确' : '模糊'})`);
+      if (SHOPIFY_SEARCH.countries.size > 0) parts.push(`国家: ${[...SHOPIFY_SEARCH.countries].join('/')}`);
+      if (SHOPIFY_SEARCH.amtMin != null || SHOPIFY_SEARCH.amtMax != null) parts.push(`金额: ${SHOPIFY_SEARCH.amtMin || 0}~${SHOPIFY_SEARCH.amtMax || '∞'}`);
+      if (SHOPIFY_SEARCH.financialStatus) parts.push(`付款: ${SHOPIFY_SEARCH.financialStatus}`);
+      if (SHOPIFY_SEARCH.refundFilter) parts.push(`退款: ${SHOPIFY_SEARCH.refundFilter}`);
+      summaryEl.innerHTML = `🔍 找到 <b>${orders.length}</b> 条 / 共 ${beforeSearch} 条 · 条件: ${parts.join(' + ')}`;
+    } else {
+      summaryEl.style.display = 'none';
+    }
+  }
 
   if (orders.length === 0) {
     const labelMap = { pending: '待审核', processing: '待处理', done: '已完成', cancelled: '已取消' };
-    const hint = filter === 'all'
-      ? '还没有订单。选店铺 + 时间范围，点 🔄 同步从 Shopify 拉取'
-      : `没有 "${labelMap[filter] || filter}" 状态的订单`;
+    const hasSearch = SHOPIFY_SEARCH.text || SHOPIFY_SEARCH.countries.size > 0 || SHOPIFY_SEARCH.amtMin != null || SHOPIFY_SEARCH.amtMax != null;
+    const hint = hasSearch
+      ? `🔍 搜索没有匹配结果。<a href="javascript:void(0)" onclick="shopifyResetSearch()" style="color:var(--accent); text-decoration:underline;">清除搜索</a>`
+      : filter === 'all'
+        ? '还没有订单。选店铺 + 时间范围，点 🔄 同步从 Shopify 拉取'
+        : `没有 "${labelMap[filter] || filter}" 状态的订单`;
     body.innerHTML = `<div style="padding: 32px; text-align: center; color: var(--text-tertiary); font-size: 13px;">${hint}</div>`;
     return;
   }
@@ -11384,9 +12531,13 @@ function renderShopifyOrders() {
     })[o.local_status] || '';
 
     return `
-      <div class="so-card ${o.local_status === 'done' || o.local_status === 'cancelled' ? 'imported' : ''}" data-id="${o.id}" style="${isFullyRefunded ? 'border-color: var(--danger); border-width: 2px;' : isPartiallyRefunded ? 'border-color: var(--warning); border-width: 2px;' : ''}">
+      <div class="so-card ${o.local_status === 'done' || o.local_status === 'cancelled' ? 'imported' : ''} ${SHOPIFY_SELECTED.has(o.id) ? 'selected' : ''}" data-id="${o.id}" style="${isFullyRefunded ? 'border-color: var(--danger); border-width: 2px;' : isPartiallyRefunded ? 'border-color: var(--warning); border-width: 2px;' : ''}">
         <div class="so-card-top">
-          <div class="so-top-checkbox">
+          <div class="so-top-checkbox" style="gap:8px;">
+            <input type="checkbox" class="so-card-checkbox" data-order-id="${o.id}" ${SHOPIFY_SELECTED.has(o.id) ? 'checked' : ''}
+              onchange="shopifyToggleSelectOrder('${o.id}', this.checked)"
+              onclick="event.stopPropagation()"
+              title="批量选择">
             ${siteCode ? `<span class="site-pill" style="background:${shop === 'manual' ? 'var(--warning)' : 'var(--accent)'}; color:white; font-size:11px; padding:2px 7px; border-radius:4px; font-weight:700;" title="${shop === 'manual' ? '手动创建的订单' : ''}">${siteCode}</span>` : ''}
           </div>
           <div class="so-top-meta">
@@ -11460,6 +12611,22 @@ function renderShopifyOrders() {
     pagerHtml = `<div style="text-align:center; padding:10px; font-size:11px; color:var(--text-tertiary);">共 ${orders.length} 条</div>`;
   }
   body.innerHTML = cardsHtml + pagerHtml;
+  // 渲染完更新批量 UI
+  shopifyUpdateBatchUI();
+  // 全选 checkbox 同步状态
+  const selAllEl = document.getElementById('salesSelectAll');
+  if (selAllEl) {
+    const cbs = document.querySelectorAll('.so-card-checkbox');
+    if (cbs.length > 0) {
+      const allChecked = [...cbs].every(cb => cb.checked);
+      const noneChecked = [...cbs].every(cb => !cb.checked);
+      selAllEl.checked = allChecked;
+      selAllEl.indeterminate = !allChecked && !noneChecked;
+    } else {
+      selAllEl.checked = false;
+      selAllEl.indeterminate = false;
+    }
+  }
 }
 
 // 检测订单退款状态
@@ -12838,6 +14005,7 @@ async function openPoForm(salesOrderId) {
     customLines: [],         // 跟单追加的自定义产品（差价/配件/换货等）
     otherNote: '',
     otherNoteManuallyEdited: false,
+    invalidPoIds: new Set(), // 已取消/已驳回 PO 的 ID 集合（用于渲染时过滤显示）
   };
 
   // 默认勾选未分配且未取消的 line items
@@ -12845,6 +14013,7 @@ async function openPoForm(salesOrderId) {
   // PO_LIST 可能还没加载，需要主动加载
   const { data: poStatusData } = await sb.from('orders').select('id, status').not('po_number', 'is', null);
   const invalidPoIds = new Set((poStatusData || []).filter(p => p.status === 'cancelled' || p.status === 'rejected').map(p => p.id));
+  PO_FORM_STATE.invalidPoIds = invalidPoIds;
 
   (so.line_items || []).forEach(li => {
     // 只统计有效 PO 的 assignment
@@ -12896,8 +14065,10 @@ function renderPoForm() {
     const displayTitle = sel.customTitleCn || eff.name_cn || ownProd.name_cn || li.title || '(无名)';
     const wasEdited = !!(sel.customSku || sel.customTitleCn || sel.customImageUrl);
     const fullyAssigned = sel.remaining === 0;
-    // 已分配的 PO 列表（用于显示哪几张 PO 占用了名额）
-    const validAssignments = (li.po_assignments || []).filter(a => !sel._invalidPoIds || !sel._invalidPoIds.has(a.po_id));
+    // 已分配的 PO 列表（过滤掉已取消/驳回的，避免显示失效 PO）
+    const validAssignments = (li.po_assignments || []).filter(a =>
+      !PO_FORM_STATE.invalidPoIds || !PO_FORM_STATE.invalidPoIds.has(a.po_id)
+    );
     return `
       <div class="po-li-row ${sel.checked ? 'checked' : ''} ${fullyAssigned ? 'assigned' : ''}">
         <input type="checkbox" ${sel.checked ? 'checked' : ''} ${fullyAssigned ? 'disabled' : ''}
@@ -14593,7 +15764,46 @@ async function poEditPrices(poId) {
       approved_by: approvedBy,
       updated_at: new Date().toISOString(),
     }).eq('id', poId);
+
+    // 🔑 关键：同步更新销售单的 po_assignments.qty（按 SKU 匹配）
+    if (po.sales_order_id) {
+      try {
+        const { data: so } = await sb.from('shopify_orders').select('line_items, local_status').eq('id', po.sales_order_id).single();
+        if (so) {
+          const updatedItems = (so.line_items || []).map(li => {
+            const newAssignments = (li.po_assignments || []).map(a => {
+              if (a.po_id !== poId) return a;  // 不是这个 PO 的不动
+              // 在 newLineItems 里找对应 SKU 的行（或 shopify_line_item_id 关联）
+              const matched = newLineItems.find(nl =>
+                (nl.shopify_line_item_id && li.shopify_line_item_id && nl.shopify_line_item_id === li.shopify_line_item_id) ||
+                ((nl.sku || '') === (li.sku || ''))
+              );
+              if (matched) return { ...a, qty: Number(matched.qty) || a.qty };
+              return a;
+            });
+            return { ...li, po_assignments: newAssignments };
+          });
+
+          // 检测 done 状态切换
+          const stillFully = updatedItems.every(li => {
+            const tot = (li.po_assignments || []).reduce((s, a) => s + (Number(a.qty) || 0), 0);
+            return tot >= (Number(li.quantity) || 0);
+          });
+          const updateData = { line_items: updatedItems, updated_at: new Date().toISOString() };
+          if (so.local_status === 'done' && !stillFully) {
+            updateData.local_status = 'processing';  // 改后不够了 → 拉回待处理
+          } else if (so.local_status !== 'done' && so.local_status !== 'cancelled' && stillFully) {
+            updateData.local_status = 'done';  // 改后刚好满了 → 自动归档
+          }
+          await sb.from('shopify_orders').update(updateData).eq('id', po.sales_order_id);
+        }
+      } catch (sErr) {
+        console.warn('同步销售单 po_assignments 失败：', sErr);
+      }
+    }
+
     toast(`✓ 已更新 ${po.po_number}`);
+    SHOPIFY.invalidateOrders();  // 销售单 line_items 变了，强刷
     await renderPo();
   } catch (e) { toast('更新失败：' + (e.message || e), 'err'); }
 }
