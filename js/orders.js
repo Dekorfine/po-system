@@ -253,7 +253,19 @@ function renderOrderRow(o, i) {
   const fuCount = (o.followups || []).length;
   const chaseList = (o.followups || []).filter(f => f.type === 'chase');
   const chaseCount = chaseList.length;
-  const allScreenshots = [...(o.screenshots || []), ...((o.followups || []).flatMap(f => f.screenshots || []))];
+  
+  // V4：图片拼装策略 — 跟单上传的图优先，产品图兜底
+  // ① 跟单催单时上传的沟通截图（最新/最重要 — 看到就知道催过了）
+  const manualScreenshots = [...(o.screenshots || []), ...((o.followups || []).flatMap(f => f.screenshots || []))];
+  // ② PO 派生订单：自动同步 line_items 里的产品图
+  const productImages = (o._isPO && o.lineItems && o.lineItems.length > 0)
+    ? o.lineItems.map(li => li.image_url || li.image || '').filter(Boolean)
+    : [];
+  // 合并：手动上传的在前（说明已沟通过），产品图在后
+  // 如果完全没有手动图，产品图就成为主图（PO 派生自动可见）
+  const allScreenshots = [...manualScreenshots, ...productImages];
+  const hasChaseSnapshots = manualScreenshots.length > 0;  // 用于区分"已催过"vs"新派生"
+  
   const promisedCls = getDateClass(o.promisedDate);
   const related = hasRelatedAftersales(o);
   const siteBadge = o.site ? `<span class="site-badge s-${o.site}">${escapeHtml(o.site)}</span>` : '';
@@ -274,12 +286,50 @@ function renderOrderRow(o, i) {
   else if (days >= minTh) daysCls = 'warn';
   const daysHtml = days > 0 ? `<div class="days-ago ${daysCls}">${days}天</div>` : '';
   
-  // 缩略图（最多 3 张）
-  const thumbsHtml = allScreenshots.length > 0 
-    ? allScreenshots.slice(0, 3).map(s => 
-        `<img src="${s}" class="after-thumb" onclick="event.stopPropagation(); viewImage('${s}')">`
-      ).join('') + (allScreenshots.length > 3 ? `<span class="more-thumb">+${allScreenshots.length - 3}</span>` : '')
-    : '<span class="no-img">无图</span>';
+  // V4：图片预览改造
+  // - 有图时：第一张是大图（90x90），后面是小缩略图，可点击逐张预览
+  // - 第一张图来源徽章：跟单上传 = 🔵蓝标 "已催"；纯产品图 = 灰色"产品图"（提示跟单还没催过）
+  let thumbsHtml;
+  if (allScreenshots.length === 0) {
+    thumbsHtml = '<span class="no-img">无图</span>';
+  } else {
+    const main = allScreenshots[0];
+    const rest = allScreenshots.slice(1, 4);  // 后面最多 3 张小缩略
+    const totalRemain = allScreenshots.length - 1 - rest.length;
+    // 主图来源徽章
+    const sourceBadge = hasChaseSnapshots 
+      ? `<span style="position:absolute; top:2px; left:2px; background:rgba(37,99,235,0.92); color:white; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; line-height:1.4; pointer-events:none;">✓ 已催</span>`
+      : `<span style="position:absolute; top:2px; left:2px; background:rgba(0,0,0,0.55); color:white; font-size:9px; font-weight:600; padding:1px 5px; border-radius:3px; line-height:1.4; pointer-events:none;">产品图</span>`;
+    // 主图序号徽章（如果有多张）
+    const countBadge = allScreenshots.length > 1
+      ? `<span style="position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; line-height:1.4; pointer-events:none;">📷 ${allScreenshots.length}</span>`
+      : '';
+    
+    // 缩略图组：所有图片以 JSON 数组传给 viewImageGallery，支持左右切换
+    const galleryData = JSON.stringify(allScreenshots).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+    
+    thumbsHtml = `
+      <div style="display:flex; gap:4px; align-items:flex-start;">
+        <div style="position:relative; width:90px; height:90px; flex-shrink:0; cursor:pointer; border-radius:6px; overflow:hidden; border:1px solid var(--border); background: var(--bg-elevated);" 
+             onclick="event.stopPropagation(); viewImageGallery(&quot;${galleryData}&quot;, 0)">
+          <img src="${main}" style="width:100%; height:100%; object-fit:cover; display:block;" loading="lazy" 
+               onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--text-tertiary);font-size:11px;&quot;>图片加载失败</div>'">
+          ${sourceBadge}
+          ${countBadge}
+        </div>
+        ${rest.length > 0 ? `
+          <div style="display:flex; flex-direction:column; gap:3px;">
+            ${rest.map((s, idx) => `
+              <img src="${s}" style="width:28px; height:28px; object-fit:cover; border-radius:4px; cursor:pointer; border:1px solid var(--border); flex-shrink:0;" 
+                   loading="lazy"
+                   onclick="event.stopPropagation(); viewImageGallery(&quot;${galleryData}&quot;, ${idx + 1})"
+                   onerror="this.style.display='none'">
+            `).join('')}
+            ${totalRemain > 0 ? `<span style="font-size:10px; color:var(--text-tertiary); width:28px; text-align:center; line-height:1.2;">+${totalRemain}</span>` : ''}
+          </div>` : ''}
+      </div>
+    `;
+  }
   
   // 催单历史框：展示每次催单的日期 + 最近一次的备注
   let chaseBoxHtml = '';

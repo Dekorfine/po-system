@@ -247,6 +247,74 @@ function closeImageViewer() {
   document.getElementById('imageViewer').classList.remove('show');
 }
 
+// V4：多图轮播预览（催单列表点击大图时使用，支持左右切换）
+let _galleryImages = [];
+let _galleryIndex = 0;
+
+function viewImageGallery(jsonData, startIdx) {
+  try {
+    // HTML attribute 里的图片数组用 &quot; 转义过，要还原回来再 parse
+    const decoded = String(jsonData).replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+    _galleryImages = JSON.parse(decoded);
+    _galleryIndex = startIdx || 0;
+    if (!Array.isArray(_galleryImages) || _galleryImages.length === 0) return;
+    _renderGalleryFrame();
+  } catch (e) {
+    console.error('viewImageGallery 解析失败：', e);
+    // 兜底：当成单图打开
+    if (typeof jsonData === 'string' && jsonData.startsWith('http')) viewImage(jsonData);
+  }
+}
+
+function _renderGalleryFrame() {
+  if (!_galleryImages.length) return;
+  const cur = _galleryImages[_galleryIndex];
+  document.getElementById('imageViewerImg').src = cur;
+  document.getElementById('imageViewer').classList.add('show');
+  
+  // 在 imageViewer 里加左右切换控件（如果不存在）
+  const viewer = document.getElementById('imageViewer');
+  let nav = viewer.querySelector('.gallery-nav');
+  if (!nav && _galleryImages.length > 1) {
+    nav = document.createElement('div');
+    nav.className = 'gallery-nav';
+    nav.style.cssText = 'position:absolute; bottom:30px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:14px; background:rgba(0,0,0,0.7); padding:10px 20px; border-radius:30px; z-index:10000;';
+    nav.innerHTML = `
+      <button onclick="event.stopPropagation(); galleryPrev()" style="background:rgba(255,255,255,0.15); border:none; color:white; width:36px; height:36px; border-radius:50%; cursor:pointer; font-size:18px;">‹</button>
+      <span id="galleryCounter" style="color:white; font-size:13px; font-family:monospace; min-width:50px; text-align:center;">1 / ${_galleryImages.length}</span>
+      <button onclick="event.stopPropagation(); galleryNext()" style="background:rgba(255,255,255,0.15); border:none; color:white; width:36px; height:36px; border-radius:50%; cursor:pointer; font-size:18px;">›</button>
+    `;
+    viewer.appendChild(nav);
+  }
+  if (nav) {
+    nav.style.display = _galleryImages.length > 1 ? 'flex' : 'none';
+    const counter = document.getElementById('galleryCounter');
+    if (counter) counter.textContent = `${_galleryIndex + 1} / ${_galleryImages.length}`;
+  }
+}
+
+function galleryPrev() {
+  if (_galleryImages.length === 0) return;
+  _galleryIndex = (_galleryIndex - 1 + _galleryImages.length) % _galleryImages.length;
+  _renderGalleryFrame();
+}
+
+function galleryNext() {
+  if (_galleryImages.length === 0) return;
+  _galleryIndex = (_galleryIndex + 1) % _galleryImages.length;
+  _renderGalleryFrame();
+}
+
+// 左右方向键切换（图片预览打开时生效）
+document.addEventListener('keydown', (e) => {
+  const viewer = document.getElementById('imageViewer');
+  if (!viewer || !viewer.classList.contains('show')) return;
+  if (_galleryImages.length < 2) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); galleryPrev(); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); galleryNext(); }
+  else if (e.key === 'Escape') { closeImageViewer(); }
+});
+
 // ============================================================
 // 通用：导出图文 HTML 报告（内嵌图片，可直接发供应商）
 // ============================================================

@@ -1772,6 +1772,16 @@ function loadAllData() {
   if (typeof loadChaseOrders === 'function') {
     loadChaseOrders().catch(e => console.warn('PO 派生催单加载失败:', e));
   }
+  // V4 修复：登录后立即预加载销售单数据（默认 sales tab 进首屏直接看到订单，不用点同步）
+  if (typeof SHOPIFY !== 'undefined' && SHOPIFY.loadStores && SHOPIFY.loadOrdersFromDB) {
+    SHOPIFY.loadStores()
+      .then(() => SHOPIFY.loadOrdersFromDB(false))
+      .then(() => {
+        if (typeof renderShopifyOrders === 'function') renderShopifyOrders();
+        if (typeof renderShopifyStores === 'function') renderShopifyStores();
+      })
+      .catch(e => console.warn('销售单预加载失败:', e));
+  }
 }
 
 function renderActiveTab() {
@@ -1788,7 +1798,21 @@ function renderActiveTab() {
   else if (CURRENT_TAB === 'issues') { renderIssues(); updateIssueStats(); }
   else if (CURRENT_TAB === 'missing') { renderMissing(); updateMissingStats(); }
   else if (CURRENT_TAB === 'purchases') { renderPurchases(); updatePurchaseStats(); }
-  else if (CURRENT_TAB === 'sales') { if (typeof renderShopify === 'function') renderShopify(); }
+  else if (CURRENT_TAB === 'sales') { 
+    // V4 修复：之前 renderShopify 函数不存在导致 sales tab 切换时不会自动渲染
+    // 现在切到 sales tab 自动从本地 DB 加载缓存数据（60 秒缓存内不重复拉）
+    if (typeof SHOPIFY !== 'undefined' && SHOPIFY.loadOrdersFromDB) {
+      // 先用现有缓存立刻渲染（防止白屏）
+      if (typeof renderShopifyOrders === 'function' && SHOPIFY._orders && SHOPIFY._orders.length > 0) {
+        renderShopifyOrders();
+      }
+      // 然后异步刷新（如果有新数据）
+      SHOPIFY.loadOrdersFromDB(false).then(() => {
+        if (typeof renderShopifyOrders === 'function') renderShopifyOrders();
+        if (typeof renderShopifyStores === 'function') renderShopifyStores();
+      }).catch(e => console.warn('销售单加载失败:', e));
+    }
+  }
   else if (CURRENT_TAB === 'po') { if (typeof renderPo === 'function') renderPo(); }
   else if (CURRENT_TAB === 'finance') { if (typeof renderFinance === 'function') renderFinance(); }
   else if (CURRENT_TAB === 'products') { if (typeof renderProducts === 'function') renderProducts(); }

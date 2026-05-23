@@ -588,6 +588,41 @@ function shopifyToggleSelectOrder(orderId, checked) {
   shopifyUpdateBatchUI();
 }
 
+// V4：点击销售单的 SKU/产品名 → 在新标签打开 Shopify 后台的产品页
+// 用 line_item.product_id + shop_domain 构造 URL
+function openShopifyProductInBrowser(orderId, lineItemId) {
+  const order = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) 
+    ? SHOPIFY._orders.find(o => o.id === orderId) 
+    : null;
+  if (!order) { toast('订单不存在', 'err'); return; }
+  
+  // 找对应的 line_item
+  const item = (order.line_items || []).find(li => 
+    String(li.shopify_line_item_id) === String(lineItemId)
+  );
+  if (!item) { toast('产品行不存在', 'err'); return; }
+  
+  // 优先：Shopify 后台产品页（最实用，跟单已登录后台可改库存/价格/图片）
+  if (item.product_id && order.shop_domain && order.shop_domain !== 'manual') {
+    const url = `https://${order.shop_domain}/admin/products/${item.product_id}`;
+    console.log('%c[打开 Shopify 后台产品]', 'color:#2563eb;font-weight:bold', { 
+      sku: item.sku, 
+      product_id: item.product_id, 
+      url 
+    });
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  
+  // 兜底：跳到工作台 products tab 查本地档案
+  if (item.sku && typeof gotoProductBySku === 'function') {
+    toast('该订单无 Shopify 产品 ID，跳到本地产品档案', 'info', 3000);
+    gotoProductBySku(item.sku);
+  } else {
+    toast('无法定位产品页', 'err');
+  }
+}
+
 // ============================================================
 // V4：销售单拆单功能
 // 跟单可以勾选部分 line_items 拆出来开独立 PO（同一销售单可能多个供应商）
@@ -1077,10 +1112,25 @@ function renderShopifyOrders() {
       const variant = li.variant_title || '';
       const hasPo = (li.po_assignments || []).length > 0;
       // V4：标题和 SKU 可点击跳转到产品 tab
-      const skuClickable = li.sku ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${escapeHtml(li.sku).replace(/'/g, "\\'")}'); return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击查看产品详情">${escapeHtml(li.sku)}</a>` : '';
+      // V4：SKU/产品名点击跳 Shopify 后台产品页（最有用：跟单可改库存/价格/图片）
+      // 右侧加小图标 📋 可选跳工作台产品 tab（查本地档案）
+      const liId = li.shopify_line_item_id || '';
+      const skuEsc = escapeHtml(li.sku || '').replace(/'/g, "\\'");
+      const hasShopifyProduct = li.product_id && o.shop_domain && o.shop_domain !== 'manual';
+      const skuClickable = li.sku 
+        ? hasShopifyProduct
+          ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();openShopifyProductInBrowser('${o.id}','${liId}'); return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击在 Shopify 后台打开此产品（新标签）">${escapeHtml(li.sku)} ↗</a>`
+          : `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${skuEsc}'); return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击查看本地产品档案">${escapeHtml(li.sku)}</a>`
+        : '';
       const titleClickable = li.sku 
-        ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${escapeHtml(li.sku).replace(/'/g, "\\'")}'); return false;" style="color:inherit; text-decoration:none; cursor:pointer; border-bottom:1px dashed var(--border);" title="点击查看产品详情">${escapeHtml(title)}</a>`
+        ? hasShopifyProduct
+          ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();openShopifyProductInBrowser('${o.id}','${liId}'); return false;" style="color:inherit; text-decoration:none; cursor:pointer; border-bottom:1px dashed var(--border);" title="点击在 Shopify 后台打开此产品（新标签）">${escapeHtml(title)}</a>`
+          : `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${skuEsc}'); return false;" style="color:inherit; text-decoration:none; cursor:pointer; border-bottom:1px dashed var(--border);" title="点击查看本地产品档案">${escapeHtml(title)}</a>`
         : escapeHtml(title);
+      // 跳工作台产品 tab 的小图标（次要操作）
+      const localProductIcon = li.sku 
+        ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${skuEsc}'); return false;" style="margin-left:6px; color:var(--text-tertiary); text-decoration:none; font-size:11px; opacity:0.65;" title="查看工作台产品档案（本地）">📋</a>`
+        : '';
       // V4：拆单 checkbox（仅 processing 状态且未开 PO 的行显示）
       const canSplit = o.local_status === 'processing' && !hasPo && !isFullyRefunded;
       const splitCheckbox = canSplit 
@@ -1091,7 +1141,7 @@ function renderShopifyOrders() {
           ${splitCheckbox}
           ${imgUrl ? `<img loading="lazy" class="so-prod-img" src="${escapeHtml(imgUrl)}" data-fullsrc="${escapeHtml(imgUrl)}" onclick="openImgLightbox(this.dataset.fullsrc)" alt="">` : `<div class="so-prod-noimg">📷</div>`}
           <div class="so-prod-info">
-            ${li.sku ? `<div class="so-prod-sku">SKU: ${skuClickable}${hasPo ? ' · <span style="color:var(--success)">✓ 已开 PO</span>' : ''}</div>` : ''}
+            ${li.sku ? `<div class="so-prod-sku">SKU: ${skuClickable}${localProductIcon}${hasPo ? ' · <span style="color:var(--success)">✓ 已开 PO</span>' : ''}</div>` : ''}
             <div class="so-prod-name">${titleClickable}${nameCn ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(li.title || '')}</span>` : ''}</div>
             ${variant ? `<div class="so-prod-variant">${escapeHtml(variant)}</div>` : ''}
           </div>
