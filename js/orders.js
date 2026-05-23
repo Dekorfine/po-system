@@ -254,20 +254,29 @@ function renderOrderRow(o, i) {
   const chaseList = (o.followups || []).filter(f => f.type === 'chase');
   const chaseCount = chaseList.length;
   
-  // V4：图片拼装策略 — 跟单上传的图优先，产品图兜底
-  // ① 跟单催单时上传的沟通截图（最新/最重要 — 看到就知道催过了）
+  // V4：图片拼装策略 — 跟单上传的图 vs 产品图，分开显示
+  // ① 跟单催单时上传的沟通截图（→ 右侧"截图"列：显示催单进度）
   const manualScreenshots = [...(o.screenshots || []), ...((o.followups || []).flatMap(f => f.screenshots || []))];
-  // ② 产品图来源：
-  //    - PO 派生订单 → 用 lineItems[].image_url（PO 创建时存的产品图）
-  //    - 手动催单 → 用 orderNo 反查 SHOPIFY._orders 的销售单产品图
+  // ② 产品图：从 PO line_items 或销售单反查（→ 左侧"状态"列下方：显示产品长啥样）
   let productImages = [];
   if (o._isPO && o.lineItems && o.lineItems.length > 0) {
     productImages = o.lineItems.map(li => li.image_url || li.image || '').filter(Boolean);
+    // 如果 line_items 没存图，按 SKU 反查
+    if (productImages.length === 0 && typeof _getRelatedOrderImages === 'function') {
+      const skus = o.lineItems.map(li => li.sku).filter(Boolean);
+      const map = (typeof SHOPIFY !== 'undefined' && SHOPIFY._productMap) ? SHOPIFY._productMap : {};
+      productImages = skus.map(sku => {
+        if (map[sku]?.image_url) return map[sku].image_url;
+        if (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) {
+          const p = PRODUCTS_CACHE.effectiveBySku(sku);
+          if (p && p.image_url) return p.image_url;
+        }
+        return '';
+      }).filter(Boolean);
+    }
   } else if (!o._isPO && o.orderNo && typeof _getRelatedOrderImages === 'function') {
     productImages = _getRelatedOrderImages(o.orderNo);
   }
-  // 合并：手动上传的在前（说明已沟通过），产品图在后
-  const allScreenshots = [...manualScreenshots, ...productImages];
   const hasChaseSnapshots = manualScreenshots.length > 0;  // 用于区分"已催过"vs"新派生"
   
   const promisedCls = getDateClass(o.promisedDate);
@@ -290,34 +299,25 @@ function renderOrderRow(o, i) {
   else if (days >= minTh) daysCls = 'warn';
   const daysHtml = days > 0 ? `<div class="days-ago ${daysCls}">${days}天</div>` : '';
   
-  // V4：图片预览改造
-  // - 有图时：第一张是大图（90x90），后面是小缩略图，可点击逐张预览
-  // - 第一张图来源徽章：跟单上传 = 🔵蓝标 "已催"；纯产品图 = 灰色"产品图"（提示跟单还没催过）
+  // V4：右侧"截图"列 → 只展示跟单上传的沟通截图（催单进度可视化）
   let thumbsHtml;
-  if (allScreenshots.length === 0) {
-    thumbsHtml = '<span class="no-img">无图</span>';
+  if (manualScreenshots.length === 0) {
+    thumbsHtml = '<span class="no-img">无沟通图</span>';
   } else {
-    const main = allScreenshots[0];
-    const rest = allScreenshots.slice(1, 4);  // 后面最多 3 张小缩略
-    const totalRemain = allScreenshots.length - 1 - rest.length;
-    // 主图来源徽章
-    const sourceBadge = hasChaseSnapshots 
-      ? `<span style="position:absolute; top:2px; left:2px; background:rgba(37,99,235,0.92); color:white; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; line-height:1.4; pointer-events:none;">✓ 已催</span>`
-      : `<span style="position:absolute; top:2px; left:2px; background:rgba(0,0,0,0.55); color:white; font-size:9px; font-weight:600; padding:1px 5px; border-radius:3px; line-height:1.4; pointer-events:none;">产品图</span>`;
-    // 主图序号徽章（如果有多张）
-    const countBadge = allScreenshots.length > 1
-      ? `<span style="position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; line-height:1.4; pointer-events:none;">📷 ${allScreenshots.length}</span>`
+    const main = manualScreenshots[0];
+    const rest = manualScreenshots.slice(1, 4);
+    const totalRemain = manualScreenshots.length - 1 - rest.length;
+    const countBadge = manualScreenshots.length > 1
+      ? `<span style="position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; line-height:1.4; pointer-events:none;">📷 ${manualScreenshots.length}</span>`
       : '';
-    
-    // 缩略图组：所有图片以 JSON 数组传给 viewImageGallery，支持左右切换
-    const galleryData = JSON.stringify(allScreenshots).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
-    
+    const sourceBadge = `<span style="position:absolute; top:2px; left:2px; background:rgba(37,99,235,0.92); color:white; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; line-height:1.4; pointer-events:none;">✓ 已催</span>`;
+    const galleryData = JSON.stringify(manualScreenshots).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
     thumbsHtml = `
       <div style="display:flex; gap:4px; align-items:flex-start;">
         <div style="position:relative; width:90px; height:90px; flex-shrink:0; cursor:pointer; border-radius:6px; overflow:hidden; border:1px solid var(--border); background: var(--bg-elevated);" 
              onclick="event.stopPropagation(); viewImageGallery(&quot;${galleryData}&quot;, 0)">
           <img src="${main}" style="width:100%; height:100%; object-fit:cover; display:block;" loading="lazy" 
-               onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--text-tertiary);font-size:11px;&quot;>图片加载失败</div>'">
+               onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--text-tertiary);font-size:11px;&quot;>加载失败</div>'">
           ${sourceBadge}
           ${countBadge}
         </div>
@@ -331,6 +331,24 @@ function renderOrderRow(o, i) {
             `).join('')}
             ${totalRemain > 0 ? `<span style="font-size:10px; color:var(--text-tertiary); width:28px; text-align:center; line-height:1.2;">+${totalRemain}</span>` : ''}
           </div>` : ''}
+      </div>
+    `;
+  }
+  
+  // V4：左侧"状态"列下方 → 展示产品大图（一眼识别这是什么产品）
+  let productImageHtml = '';
+  if (productImages.length > 0) {
+    const main = productImages[0];
+    const restCount = productImages.length - 1;
+    const galleryData = JSON.stringify(productImages).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+    productImageHtml = `
+      <div style="position:relative; width:96px; height:96px; margin-top:8px; cursor:pointer; border-radius:6px; overflow:hidden; border:1px solid var(--border); background: var(--bg-elevated);" 
+           onclick="event.stopPropagation(); viewImageGallery(&quot;${galleryData}&quot;, 0)"
+           title="点击查看产品大图${restCount > 0 ? `（共 ${productImages.length} 张）` : ''}">
+        <img src="${main}" style="width:100%; height:100%; object-fit:cover; display:block;" loading="lazy"
+             onerror="this.style.display='none'; this.parentElement.style.display='none'">
+        <span style="position:absolute; top:2px; left:2px; background:rgba(124,58,237,0.92); color:white; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; pointer-events:none;">产品</span>
+        ${restCount > 0 ? `<span style="position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; pointer-events:none;">+${restCount}</span>` : ''}
       </div>
     `;
   }
@@ -368,7 +386,7 @@ function renderOrderRow(o, i) {
         ${IS_ADMIN && o._agent ? `<div style="font-size:9px;color:var(--text-tertiary);">${escapeHtml(o._agent.slice(0,2))}</div>` : ''}
         ${daysHtml}
       </div>
-      <div><span class="status-pill s-${eff}">${ORDER_STATUS_LABELS[o.status] || '未知'}${eff === 'overdue' ? ' ⚠' : ''}</span></div>
+      <div><span class="status-pill s-${eff}">${ORDER_STATUS_LABELS[o.status] || '未知'}${eff === 'overdue' ? ' ⚠' : ''}</span>${productImageHtml}</div>
       <div class="cell-main">
         <div class="order-line">
           <span class="order-no-big">${escapeHtml(o.orderNo || '⚠ 待填订单号')}</span>
