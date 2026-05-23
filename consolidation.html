@@ -349,8 +349,6 @@
         <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
             <div class="flex items-center gap-4">
                 <a href="index.html" target="_top" class="nav-link" style="color:var(--accent); font-weight:600;">← 返回工作台</a>
-                <span class="text-xs" style="color: var(--ink-4);">/</span>
-                <span class="text-xs font-bold uppercase tracking-wider" style="color: var(--ink-3);">运营工具 · Ops Tool</span>
             </div>
             <div class="flex items-center gap-3">
                 <span class="save-badge" id="autosave-indicator">已自动保存</span>
@@ -2430,6 +2428,24 @@
                                     />
                                 )}
 
+                                {/* 卖价推演卡片（V4：挪到推荐方案之后，方便跟单看到推荐运费后立刻算卖价同步给美工）*/}
+                                {salesPrice && (
+                                    <SalesPriceCard
+                                        sp={salesPrice}
+                                        recLabel={recommendation.best.key === 'consol' ? '优化方案' : recommendation.best.key === 'split' ? '原箱发货' : '云鼎卡车派送'}
+                                        recChannelName={recommendation.best.channelName || recommendation.best.label || ''}
+                                        totalQty={totalQty}
+                                        purchasePrice={purchasePrice}
+                                        setPurchasePrice={setPurchasePrice}
+                                        exchangeRate={exchangeRate}
+                                        setExchangeRate={setExchangeRate}
+                                        damageMultiplier={damageMultiplier}
+                                        setDamageMultiplier={setDamageMultiplier}
+                                        discountMultiplier={discountMultiplier}
+                                        setDiscountMultiplier={setDiscountMultiplier}
+                                    />
+                                )}
+
                                 {/* 操作建议：走云鼎时建议改木箱 */}
                                 {recommendation && recommendation.best.key === 'yunding' && packageAnalyses.some(p => !p.isCrate) && (
                                     <ActionHintCard
@@ -2473,23 +2489,6 @@
                                             />
                                         )}
                                     </div>
-                                )}
-
-                                {/* 卖价推演卡片 */}
-                                {salesPrice && (
-                                    <SalesPriceCard
-                                        sp={salesPrice}
-                                        recLabel={recommendation.best.key === 'consol' ? '优化方案' : recommendation.best.key === 'split' ? '原箱发货' : '云鼎卡车派送'}
-                                        totalQty={totalQty}
-                                        purchasePrice={purchasePrice}
-                                        setPurchasePrice={setPurchasePrice}
-                                        exchangeRate={exchangeRate}
-                                        setExchangeRate={setExchangeRate}
-                                        damageMultiplier={damageMultiplier}
-                                        setDamageMultiplier={setDamageMultiplier}
-                                        discountMultiplier={discountMultiplier}
-                                        setDiscountMultiplier={setDiscountMultiplier}
-                                    />
                                 )}
 
                                 {/* WARNINGS */}
@@ -4027,128 +4026,285 @@
     };
 
     // === 卖价推演卡片（财务核算用）===
-    const SalesPriceCard = ({ sp, recLabel, totalQty, purchasePrice, setPurchasePrice, exchangeRate, setExchangeRate, damageMultiplier, setDamageMultiplier, discountMultiplier, setDiscountMultiplier }) => {
+    const SalesPriceCard = ({ sp, recLabel, recChannelName, totalQty, purchasePrice, setPurchasePrice, exchangeRate, setExchangeRate, damageMultiplier, setDamageMultiplier, discountMultiplier, setDiscountMultiplier }) => {
         const hasPurchase = parseFloat(purchasePrice) > 0;
+        const [copyState, setCopyState] = useState('idle');  // idle / copied / err
+        
+        // V4：一键复制建议售价（按用户期望的格式）
+        const copySuggestedPrice = async () => {
+            if (!hasPurchase || !sp) return;
+            const channelHint = recChannelName ? `${recLabel}（${recChannelName}）` : recLabel;
+            // 推演运费明细：尝试从 sp.recFormula 或类似字段取（如果存在）
+            const freightDetail = sp.recFormula || `按${recLabel}推演`;
+            const text = `【建议售价】\n` +
+                `✓ 建议单件售价：$${sp.unitSellingUSD.toFixed(2)}\n` +
+                `  （共 ${totalQty} 件，总价 $${sp.totalSellingUSD.toFixed(2)}）\n` +
+                `推演运费 (${channelHint})：¥${Math.round(sp.recShippingCost).toLocaleString()}\n` +
+                `  ${freightDetail}\n` +
+                `公式：综合成本 ¥${Math.round(sp.totalCostCNY).toLocaleString()}\n` +
+                `     × ${sp.dam.toFixed(1)} (防损补发)\n` +
+                `     × ${sp.disc.toFixed(1)} (折扣预留)\n` +
+                `     ÷ ${sp.rate} (推演汇率)\n` +
+                `     = $${sp.totalSellingUSD.toFixed(2)}`;
+            try {
+                await navigator.clipboard.writeText(text);
+                setCopyState('copied');
+                setTimeout(() => setCopyState('idle'), 2500);
+            } catch (e) {
+                // 备用：用 textarea 选中复制
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                try {
+                    document.execCommand('copy');
+                    setCopyState('copied');
+                    setTimeout(() => setCopyState('idle'), 2500);
+                } catch (err2) {
+                    setCopyState('err');
+                    setTimeout(() => setCopyState('idle'), 2500);
+                }
+                ta.remove();
+            }
+        };
+        
         return (
-            <div className="paper rounded-2xl p-6 anim-fadeup" style={{border: '1.5px solid var(--line-soft)'}}>
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                        <span className="w-1.5 h-6 rounded-full" style={{background: 'var(--accent)'}}></span>
-                        <h3 className="font-display text-xl font-bold tracking-tight" style={{color: 'var(--ink)'}}>
-                            卖价推演 · 财务核算
-                        </h3>
+            <div className="paper rounded-2xl p-6 anim-fadeup" style={{
+                border: '1.5px solid var(--accent)', 
+                boxShadow: '0 4px 24px rgba(37,99,235,0.10), 0 2px 8px rgba(37,99,235,0.06)',
+                background: 'linear-gradient(180deg, var(--paper) 0%, var(--paper) 60%, rgba(37,99,235,0.02) 100%)',
+            }}>
+                {/* 顶部标题栏 */}
+                <div className="flex items-center justify-between mb-5 pb-4" style={{borderBottom: '1px solid var(--line-soft)'}}>
+                    <div className="flex items-center gap-3">
+                        <div style={{
+                            width: '4px',
+                            height: '28px',
+                            borderRadius: '2px',
+                            background: 'linear-gradient(180deg, var(--accent), #0d9488)',
+                        }}></div>
+                        <div>
+                            <h3 className="font-display text-xl font-bold tracking-tight" style={{color: 'var(--ink)', lineHeight: '1.2'}}>
+                                卖价推演 · 财务核算
+                            </h3>
+                            <div className="text-[10px] mt-0.5" style={{color: 'var(--ink-3)'}}>
+                                基于推荐方案 <b style={{color: 'var(--accent)'}}>{recLabel}</b> 的最终售价测算
+                            </div>
+                        </div>
                     </div>
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-widest" style={{color: 'var(--ink-4)'}}>
-                        05 · PRICE
-                    </span>
+                    <div className="flex items-center gap-2">
+                        {hasPurchase && (
+                            <button
+                                onClick={copySuggestedPrice}
+                                className="text-xs font-bold px-3.5 py-2 rounded-lg transition-all"
+                                style={{
+                                    background: copyState === 'copied' ? 'var(--good)' : copyState === 'err' ? '#dc2626' : 'var(--accent)',
+                                    color: 'white',
+                                    cursor: 'pointer',
+                                    border: 'none',
+                                    fontFamily: 'inherit',
+                                    boxShadow: '0 2px 6px rgba(37,99,235,0.25)',
+                                }}
+                                title="复制建议售价文本，粘贴给美工"
+                            >
+                                {copyState === 'copied' ? '✓ 已复制' : copyState === 'err' ? '✗ 失败' : '📋 一键复制建议售价'}
+                            </button>
+                        )}
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-widest px-2 py-1 rounded" style={{
+                            color: 'var(--accent)',
+                            background: 'rgba(37,99,235,0.08)',
+                        }}>
+                            03 · PRICE
+                        </span>
+                    </div>
                 </div>
 
-                {/* 输入参数: 4 字段 */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                    <div>
-                        <label className="field-label">
-                            采购单价 (元)
-                            <span className="ml-1" style={{color: 'var(--accent)'}}>*</span>
-                        </label>
-                        <input type="number" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)}
-                            className="field-input field-input-sm" placeholder="¥/件" />
+                {/* 输入参数区：4 字段，更紧凑、加单位提示 */}
+                <div className="mb-5">
+                    <div className="text-[10px] font-bold uppercase tracking-widest mb-2.5" style={{color: 'var(--ink-3)'}}>
+                        ⚙ 输入参数
                     </div>
-                    <div>
-                        <label className="field-label">
-                            防损倍数
-                            <span className="ml-1 text-[9px] font-normal" style={{color: 'var(--ink-4)'}}>(损坏补发)</span>
-                        </label>
-                        <input type="number" step="0.1" value={damageMultiplier} onChange={(e) => setDamageMultiplier(e.target.value)}
-                            className="field-input field-input-sm" placeholder="2.0" />
-                    </div>
-                    <div>
-                        <label className="field-label">
-                            折扣倍数
-                            <span className="ml-1 text-[9px] font-normal" style={{color: 'var(--ink-4)'}}>(20% 折扣=1.2)</span>
-                        </label>
-                        <input type="number" step="0.1" value={discountMultiplier} onChange={(e) => setDiscountMultiplier(e.target.value)}
-                            className="field-input field-input-sm" placeholder="1.2" />
-                    </div>
-                    <div>
-                        <label className="field-label">
-                            推演汇率
-                            <span className="ml-1 text-[9px] font-normal" style={{color: 'var(--ink-4)'}}>(预留空间)</span>
-                        </label>
-                        <input type="number" step="0.01" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
-                            className="field-input field-input-sm" placeholder="6.2" />
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div style={{background: 'var(--bg)', borderRadius: '8px', padding: '10px 12px', border: '1px solid var(--line-soft)'}}>
+                            <label className="text-[10px] font-semibold flex items-center gap-1" style={{color: 'var(--ink-3)'}}>
+                                <span>采购单价</span>
+                                <span style={{color: '#dc2626'}}>*</span>
+                                <span className="text-[9px] font-normal ml-auto" style={{color: 'var(--ink-4)'}}>¥/件</span>
+                            </label>
+                            <input type="number" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)}
+                                className="mt-1 w-full bg-transparent border-none outline-none text-lg font-bold font-mono"
+                                style={{color: 'var(--ink)', padding: 0}}
+                                placeholder="0" />
+                        </div>
+                        <div style={{background: 'var(--bg)', borderRadius: '8px', padding: '10px 12px', border: '1px solid var(--line-soft)'}}>
+                            <label className="text-[10px] font-semibold flex items-center gap-1" style={{color: 'var(--ink-3)'}}>
+                                <span>防损倍数</span>
+                                <span className="text-[9px] font-normal ml-auto" style={{color: 'var(--ink-4)'}}>损坏补发</span>
+                            </label>
+                            <input type="number" step="0.1" value={damageMultiplier} onChange={(e) => setDamageMultiplier(e.target.value)}
+                                className="mt-1 w-full bg-transparent border-none outline-none text-lg font-bold font-mono"
+                                style={{color: 'var(--ink)', padding: 0}}
+                                placeholder="2.0" />
+                        </div>
+                        <div style={{background: 'var(--bg)', borderRadius: '8px', padding: '10px 12px', border: '1px solid var(--line-soft)'}}>
+                            <label className="text-[10px] font-semibold flex items-center gap-1" style={{color: 'var(--ink-3)'}}>
+                                <span>折扣倍数</span>
+                                <span className="text-[9px] font-normal ml-auto" style={{color: 'var(--ink-4)'}}>20%=1.2</span>
+                            </label>
+                            <input type="number" step="0.1" value={discountMultiplier} onChange={(e) => setDiscountMultiplier(e.target.value)}
+                                className="mt-1 w-full bg-transparent border-none outline-none text-lg font-bold font-mono"
+                                style={{color: 'var(--ink)', padding: 0}}
+                                placeholder="1.2" />
+                        </div>
+                        <div style={{background: 'var(--bg)', borderRadius: '8px', padding: '10px 12px', border: '1px solid var(--line-soft)'}}>
+                            <label className="text-[10px] font-semibold flex items-center gap-1" style={{color: 'var(--ink-3)'}}>
+                                <span>推演汇率</span>
+                                <span className="text-[9px] font-normal ml-auto" style={{color: 'var(--ink-4)'}}>预留空间</span>
+                            </label>
+                            <input type="number" step="0.01" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
+                                className="mt-1 w-full bg-transparent border-none outline-none text-lg font-bold font-mono"
+                                style={{color: 'var(--ink)', padding: 0}}
+                                placeholder="6.2" />
+                        </div>
                     </div>
                 </div>
 
                 {!hasPurchase ? (
-                    <div className="rounded-lg p-4 text-center" style={{background: 'var(--bg)', border: '1.5px dashed var(--line)'}}>
-                        <div className="text-xs font-medium" style={{color: 'var(--ink-3)'}}>
+                    <div className="rounded-xl p-6 text-center" style={{background: 'var(--bg)', border: '1.5px dashed var(--line)'}}>
+                        <div style={{fontSize: '32px', marginBottom: '6px', opacity: 0.4}}>💰</div>
+                        <div className="text-sm font-bold mb-1" style={{color: 'var(--ink-2)'}}>
                             填写「采购单价」后自动推演卖价
+                        </div>
+                        <div className="text-[11px]" style={{color: 'var(--ink-4)'}}>
+                            系统会基于推荐方案的运费 + 木箱成本，按公式计算建议售价
                         </div>
                     </div>
                 ) : (
-                    <>
-                        {/* 成本明细 */}
-                        <div className="rounded-lg p-3 mb-3 text-[11px]" style={{background: 'var(--bg)', border: '1px solid var(--line-soft)'}}>
-                            <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{color: 'var(--ink-3)'}}>
-                                成本构成（按推荐方案 · {recLabel}）
+                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                        {/* 左侧：成本构成（带可视化进度条）2/5 */}
+                        <div className="lg:col-span-2 rounded-xl p-4" style={{background: 'var(--bg)', border: '1px solid var(--line-soft)'}}>
+                            <div className="text-[10px] font-bold uppercase tracking-widest mb-3 flex items-center gap-1" style={{color: 'var(--ink-3)'}}>
+                                💰 成本构成
                             </div>
-                            <div className="space-y-1 font-mono">
-                                <div className="flex justify-between">
-                                    <span style={{color: 'var(--ink-2)'}}>· 总产品成本（¥{sp.unitCost.toFixed(2)} × {totalQty}件）</span>
-                                    <span className="font-bold" style={{color: 'var(--ink)'}}>¥{Math.round(sp.totalProductCost).toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span style={{color: 'var(--ink-2)'}}>· 推荐方案运费</span>
-                                    <span className="font-bold" style={{color: 'var(--ink)'}}>¥{Math.round(sp.recShippingCost).toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span style={{color: 'var(--ink-2)'}}>· 木箱材料 + 人工{sp.crateBreakdown.length > 0 ? ` (${sp.crateBreakdown.reduce((s, c) => s + c.count, 0)}个木箱)` : ''}</span>
-                                    <span className="font-bold" style={{color: 'var(--ink)'}}>¥{Math.round(sp.totalCrateCost).toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between pt-1 mt-1 border-t" style={{borderColor: 'var(--line-soft)'}}>
-                                    <span className="font-bold" style={{color: 'var(--ink)'}}>合计成本</span>
-                                    <span className="font-bold" style={{color: 'var(--ink)'}}>¥{Math.round(sp.totalCostCNY).toLocaleString()}</span>
-                                </div>
-                            </div>
+                            {(() => {
+                                const items = [
+                                    { label: '产品成本', sub: `${sp.unitCost.toFixed(0)} × ${totalQty}件`, val: sp.totalProductCost, color: '#2563eb' },
+                                    { label: '推荐运费', sub: recLabel, val: sp.recShippingCost, color: '#0891b2' },
+                                    { label: '木箱材料', sub: sp.crateBreakdown.length > 0 ? `${sp.crateBreakdown.reduce((s, c) => s + c.count, 0)} 个` : '无', val: sp.totalCrateCost, color: '#7c3aed' },
+                                ];
+                                const max = Math.max(...items.map(i => i.val), 1);
+                                return (
+                                    <div className="space-y-2.5">
+                                        {items.map((item, i) => {
+                                            const pct = (item.val / sp.totalCostCNY) * 100;
+                                            const barPct = (item.val / max) * 100;
+                                            return (
+                                                <div key={i}>
+                                                    <div className="flex items-baseline justify-between mb-1">
+                                                        <div className="flex items-baseline gap-1.5">
+                                                            <span className="text-[12px] font-semibold" style={{color: 'var(--ink)'}}>{item.label}</span>
+                                                            <span className="text-[10px]" style={{color: 'var(--ink-4)'}}>{item.sub}</span>
+                                                        </div>
+                                                        <span className="font-mono font-bold text-[13px]" style={{color: 'var(--ink)'}}>
+                                                            ¥{Math.round(item.val).toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{background: 'var(--line-soft)', height: '4px', borderRadius: '2px', overflow: 'hidden'}}>
+                                                        <div style={{background: item.color, height: '100%', width: `${barPct}%`, transition: 'width 0.4s'}}></div>
+                                                    </div>
+                                                    <div className="text-[9px] mt-0.5 font-mono" style={{color: 'var(--ink-4)'}}>占总成本 {pct.toFixed(1)}%</div>
+                                                </div>
+                                            );
+                                        })}
+                                        <div className="pt-2.5 mt-1 flex items-baseline justify-between" style={{borderTop: '1.5px solid var(--ink-4)'}}>
+                                            <span className="font-bold text-[14px]" style={{color: 'var(--ink)'}}>合计成本</span>
+                                            <span className="font-mono font-bold text-[18px]" style={{color: 'var(--ink)'}}>
+                                                ¥{Math.round(sp.totalCostCNY).toLocaleString()}
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
 
-                        {/* 卖价显示 */}
-                        <div className="rounded-xl p-5 relative overflow-hidden" style={{background: 'linear-gradient(135deg, #047857 0%, #0d9488 100%)', color: 'white'}}>
-                            <div className="flex items-center justify-between mb-3">
+                        {/* 右侧：建议售价（大数字，醒目）3/5 */}
+                        <div className="lg:col-span-3 rounded-xl p-5 relative overflow-hidden" style={{
+                            background: 'linear-gradient(135deg, #047857 0%, #0d9488 50%, #0891b2 100%)', 
+                            color: 'white',
+                            boxShadow: '0 4px 16px rgba(13,148,136,0.25)',
+                        }}>
+                            {/* 装饰背景 */}
+                            <div style={{
+                                position: 'absolute', top: '-40px', right: '-40px',
+                                width: '160px', height: '160px',
+                                borderRadius: '50%',
+                                background: 'rgba(255,255,255,0.08)',
+                                pointerEvents: 'none',
+                            }}></div>
+                            <div style={{
+                                position: 'absolute', bottom: '-60px', left: '-30px',
+                                width: '180px', height: '180px',
+                                borderRadius: '50%',
+                                background: 'rgba(255,255,255,0.05)',
+                                pointerEvents: 'none',
+                            }}></div>
+                            
+                            {/* 公式标签（角标） */}
+                            <div className="flex items-center justify-between mb-2 relative">
                                 <div className="text-[10px] font-bold uppercase tracking-widest opacity-80">
-                                    建议总售价 (USD)
+                                    💎 建议总售价 (USD)
                                 </div>
-                                <span className="font-mono text-[10px] font-bold uppercase tracking-widest opacity-70">
+                                <div className="text-[10px] font-mono font-bold tracking-wide opacity-80 px-2 py-0.5 rounded" style={{background: 'rgba(255,255,255,0.15)'}}>
                                     × {sp.dam.toFixed(1)} × {sp.disc.toFixed(1)} ÷ {sp.rate}
-                                </span>
+                                </div>
                             </div>
-                            <div className="display-num text-5xl tracking-tighter">
+                            
+                            {/* 大数字 */}
+                            <div className="display-num text-6xl tracking-tighter relative" style={{lineHeight: '1', fontWeight: '900'}}>
                                 ${sp.totalSellingUSD.toFixed(2)}
                             </div>
-                            <div className="mt-3 flex items-end justify-between border-t pt-3" style={{borderColor: 'rgba(255,255,255,0.2)'}}>
-                                <div>
-                                    <div className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-1">
-                                        单件均价
+                            <div className="text-[11px] mt-1 opacity-75 relative">
+                                共 {totalQty} 件，售给客户的总价
+                            </div>
+                            
+                            {/* 单件均价 */}
+                            <div className="mt-4 pt-3 relative" style={{borderTop: '1px solid rgba(255,255,255,0.2)'}}>
+                                <div className="flex items-baseline justify-between">
+                                    <div>
+                                        <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">
+                                            单件均价
+                                        </div>
+                                        <div className="font-mono font-bold tracking-tight" style={{fontSize: '28px', lineHeight: '1.1'}}>
+                                            ${sp.unitSellingUSD.toFixed(2)}
+                                            <span className="text-[11px] opacity-70 ml-1.5">/件</span>
+                                        </div>
                                     </div>
-                                    <div className="font-mono font-bold text-2xl">
-                                        ${sp.unitSellingUSD.toFixed(2)}
-                                        <span className="text-[10px] opacity-70 ml-2">/件</span>
+                                    <div className="text-right">
+                                        <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">
+                                            综合毛利
+                                        </div>
+                                        <div className="font-mono font-bold tracking-tight" style={{fontSize: '14px', lineHeight: '1.4'}}>
+                                            {(((sp.totalSellingUSD * sp.rate - sp.totalCostCNY) / (sp.totalSellingUSD * sp.rate)) * 100).toFixed(1)}%
+                                        </div>
+                                        <div className="text-[9px] opacity-60 mt-0.5">已含防损 + 折扣</div>
                                     </div>
-                                </div>
-                                <div className="text-right text-[10px] font-mono opacity-70 leading-relaxed">
-                                    公式: (产品+运费+木箱)<br/>
-                                    × {sp.dam.toFixed(1)} (防损) × {sp.disc.toFixed(1)} (折扣)<br/>
-                                    ÷ {sp.rate} (推演汇率) = USD
                                 </div>
                             </div>
                         </div>
+                    </div>
+                )}
 
-                        {/* 财务核算用提示 */}
-                        <div className="mt-3 text-[10px] font-medium flex items-start gap-1.5" style={{color: 'var(--ink-3)'}}>
-                            <Icon name="info" className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                            <span>公式: (产品成本+运费+木箱) × <b>2.0</b>(防损补发) × <b>1.2</b>(20%日常折扣) ÷ <b>6.2</b>(汇率·预留空间)。木箱材料按表面积 m² × ¥44/m² 计算。</span>
+                {/* 底部公式说明 */}
+                {hasPurchase && (
+                    <div className="mt-4 p-3 rounded-lg text-[11px] flex items-start gap-2" style={{background: 'rgba(37,99,235,0.04)', border: '1px solid rgba(37,99,235,0.12)'}}>
+                        <div style={{fontSize: '14px', lineHeight: '1.2'}}>📐</div>
+                        <div className="flex-1" style={{color: 'var(--ink-2)', lineHeight: '1.6'}}>
+                            <b style={{color: 'var(--ink)'}}>公式：</b>(产品成本 + 推荐运费 + 木箱) × <b style={{color: 'var(--accent)'}}>{sp.dam.toFixed(1)}</b>(防损补发) × <b style={{color: 'var(--accent)'}}>{sp.disc.toFixed(1)}</b>(20%日常折扣) ÷ <b style={{color: 'var(--accent)'}}>{sp.rate}</b>(汇率·预留空间) = USD
+                            <span className="ml-1 opacity-70">· 木箱材料按表面积 m² × ¥44/m² 计算</span>
                         </div>
-                    </>
+                    </div>
                 )}
             </div>
         );
