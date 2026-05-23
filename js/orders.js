@@ -257,12 +257,16 @@ function renderOrderRow(o, i) {
   // V4：图片拼装策略 — 跟单上传的图优先，产品图兜底
   // ① 跟单催单时上传的沟通截图（最新/最重要 — 看到就知道催过了）
   const manualScreenshots = [...(o.screenshots || []), ...((o.followups || []).flatMap(f => f.screenshots || []))];
-  // ② PO 派生订单：自动同步 line_items 里的产品图
-  const productImages = (o._isPO && o.lineItems && o.lineItems.length > 0)
-    ? o.lineItems.map(li => li.image_url || li.image || '').filter(Boolean)
-    : [];
+  // ② 产品图来源：
+  //    - PO 派生订单 → 用 lineItems[].image_url（PO 创建时存的产品图）
+  //    - 手动催单 → 用 orderNo 反查 SHOPIFY._orders 的销售单产品图
+  let productImages = [];
+  if (o._isPO && o.lineItems && o.lineItems.length > 0) {
+    productImages = o.lineItems.map(li => li.image_url || li.image || '').filter(Boolean);
+  } else if (!o._isPO && o.orderNo && typeof _getRelatedOrderImages === 'function') {
+    productImages = _getRelatedOrderImages(o.orderNo);
+  }
   // 合并：手动上传的在前（说明已沟通过），产品图在后
-  // 如果完全没有手动图，产品图就成为主图（PO 派生自动可见）
   const allScreenshots = [...manualScreenshots, ...productImages];
   const hasChaseSnapshots = manualScreenshots.length > 0;  // 用于区分"已催过"vs"新派生"
   

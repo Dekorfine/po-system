@@ -65,7 +65,16 @@ function renderAftersales() {
   
   body.innerHTML = list.map((a, i) => {
     const fuCount = (a.followups || []).length;
-    const allScreenshots = [...(a.screenshots || []), ...((a.followups || []).flatMap(f => f.screenshots || []))];
+    
+    // V4：图片拼装策略（与催单一致）
+    // ① 跟单手动上传的图（含跟进截图）— 优先放前面，看到就知道处理过
+    const manualScreenshots = [...(a.screenshots || []), ...((a.followups || []).flatMap(f => f.screenshots || []))];
+    // ② 如果填了 orderNo，自动从关联订单同步产品图（让跟单一眼看到客户哪个产品出问题）
+    const orderImages = _getRelatedOrderImages(a.orderNo);
+    // 合并：手动上传在前，订单图在后（兜底）
+    const allScreenshots = [...manualScreenshots, ...orderImages];
+    const hasManual = manualScreenshots.length > 0;
+    
     const lastFu = fuCount > 0 ? a.followups[fuCount - 1] : null;
     const siteBadge = a.site ? `<span class="site-badge s-${a.site}">${escapeHtml(a.site)}</span>` : '';
     
@@ -73,12 +82,46 @@ function renderAftersales() {
     const days = a.createdDate ? Math.floor((new Date() - new Date(a.createdDate)) / 86400000) : 0;
     const daysHtml = days > 0 ? `<div class="days-ago ${days >= 7 ? 'warn' : ''}">${days} 天</div>` : '';
     
-    // 缩略图（最多 3 张）
-    const thumbsHtml = allScreenshots.length > 0 
-      ? allScreenshots.slice(0, 3).map(s => 
-          `<img src="${s}" class="after-thumb" onclick="event.stopPropagation(); viewImage('${s}')">`
-        ).join('') + (allScreenshots.length > 3 ? `<span class="more-thumb">+${allScreenshots.length - 3}</span>` : '')
-      : '<span class="no-img">无图</span>';
+    // V4：大图 + 缩略图组合（与催单一致）
+    let thumbsHtml;
+    if (allScreenshots.length === 0) {
+      thumbsHtml = '<span class="no-img">无图</span>';
+    } else {
+      const main = allScreenshots[0];
+      const rest = allScreenshots.slice(1, 4);  // 最多 3 张小缩略
+      const totalRemain = allScreenshots.length - 1 - rest.length;
+      // 主图来源徽章
+      const sourceBadge = hasManual 
+        ? `<span style="position:absolute; top:2px; left:2px; background:rgba(124,58,237,0.92); color:white; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; line-height:1.4; pointer-events:none;">✓ 处理中</span>`
+        : `<span style="position:absolute; top:2px; left:2px; background:rgba(0,0,0,0.55); color:white; font-size:9px; font-weight:600; padding:1px 5px; border-radius:3px; line-height:1.4; pointer-events:none;">订单图</span>`;
+      const countBadge = allScreenshots.length > 1
+        ? `<span style="position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; line-height:1.4; pointer-events:none;">📷 ${allScreenshots.length}</span>`
+        : '';
+      
+      const galleryData = JSON.stringify(allScreenshots).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+      
+      thumbsHtml = `
+        <div style="display:flex; gap:4px; align-items:flex-start;">
+          <div style="position:relative; width:90px; height:90px; flex-shrink:0; cursor:pointer; border-radius:6px; overflow:hidden; border:1px solid var(--border); background: var(--bg-elevated);" 
+               onclick="event.stopPropagation(); viewImageGallery(&quot;${galleryData}&quot;, 0)">
+            <img src="${main}" style="width:100%; height:100%; object-fit:cover; display:block;" loading="lazy" 
+                 onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--text-tertiary);font-size:11px;&quot;>加载失败</div>'">
+            ${sourceBadge}
+            ${countBadge}
+          </div>
+          ${rest.length > 0 ? `
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              ${rest.map((s, idx) => `
+                <img src="${s}" style="width:28px; height:28px; object-fit:cover; border-radius:4px; cursor:pointer; border:1px solid var(--border); flex-shrink:0;" 
+                     loading="lazy"
+                     onclick="event.stopPropagation(); viewImageGallery(&quot;${galleryData}&quot;, ${idx + 1})"
+                     onerror="this.style.display='none'">
+              `).join('')}
+              ${totalRemain > 0 ? `<span style="font-size:10px; color:var(--text-tertiary); width:28px; text-align:center; line-height:1.2;">+${totalRemain}</span>` : ''}
+            </div>` : ''}
+        </div>
+      `;
+    }
     
     // 最近跟进
     const lastFuHtml = lastFu ? `

@@ -243,6 +243,42 @@ function viewImage(src) {
   document.getElementById('imageViewer').classList.add('show');
 }
 
+// V4：通过订单号查关联销售单/PO 的产品图（售后、催单等模块用）
+// 输入：orderNo (string) 如 "K115302"
+// 输出：[image_url, ...] 数组（按 line_items 顺序）
+function _getRelatedOrderImages(orderNo) {
+  if (!orderNo) return [];
+  const cleanNo = String(orderNo).trim().replace(/^#/, '');
+  if (!cleanNo) return [];
+  
+  // 1. 优先从 SHOPIFY._orders 找（销售单）
+  if (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
+    const so = SHOPIFY._orders.find(o => {
+      const num = String(o.shopify_order_number || '').replace('#', '');
+      const name = String(o.name || '').replace('#', '');
+      return num === cleanNo || name === cleanNo;
+    });
+    if (so && so.line_items && so.line_items.length > 0) {
+      const imgs = so.line_items.map(li => li.image_url || li.image || '').filter(Boolean);
+      if (imgs.length > 0) return imgs;
+    }
+  }
+  
+  // 2. 兜底从 PO_LIST 找（按 po_number 或 order_no 匹配）
+  if (typeof PO_LIST !== 'undefined' && PO_LIST.length > 0) {
+    const po = PO_LIST.find(p => 
+      String(p.po_number || '').trim() === cleanNo || 
+      String(p.order_no || '').trim() === cleanNo
+    );
+    if (po && po.line_items && po.line_items.length > 0) {
+      const imgs = po.line_items.map(li => li.image_url || li.image || '').filter(Boolean);
+      if (imgs.length > 0) return imgs;
+    }
+  }
+  
+  return [];
+}
+
 function closeImageViewer() {
   document.getElementById('imageViewer').classList.remove('show');
 }
