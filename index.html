@@ -5,13 +5,14 @@
 <title>跟单团队工作台 · V3-BATCH3-2026-05-18</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
-<!-- Favicon · Dekorfine 黑金 D -->
-<link rel="icon" type="image/svg+xml" href="favicon/favicon.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
-<link rel="shortcut icon" href="favicon/favicon.ico">
-<link rel="apple-touch-icon" sizes="180x180" href="favicon/favicon-180x180.png">
-<link rel="manifest" href="favicon/site.webmanifest">
+<!-- ========== Dekorfine 公司统一 favicon (jsDelivr CDN) ========== -->
+<!-- 来源：https://github.com/Dekorfine/brand -->
+<link rel="icon" type="image/svg+xml" href="https://cdn.jsdelivr.net/gh/Dekorfine/brand@main/favicon/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="https://cdn.jsdelivr.net/gh/Dekorfine/brand@main/favicon/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="https://cdn.jsdelivr.net/gh/Dekorfine/brand@main/favicon/favicon-16x16.png">
+<link rel="shortcut icon" href="https://cdn.jsdelivr.net/gh/Dekorfine/brand@main/favicon/favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="https://cdn.jsdelivr.net/gh/Dekorfine/brand@main/favicon/favicon-180x180.png">
+<link rel="manifest" href="https://cdn.jsdelivr.net/gh/Dekorfine/brand@main/favicon/site.webmanifest">
 <meta name="theme-color" content="#1f2937">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -141,6 +142,17 @@ body {
 }
 .tab-item.active .badge { background: var(--accent); }
 .tab-item .badge.zero { background: var(--bg-elevated); color: var(--text-tertiary); border: 1px solid var(--border); }
+/* V4：tab ↗ 多窗口打开按钮（hover 显示） */
+.tab-new-window-btn {
+  opacity: 0; pointer-events: none;
+  margin-left: 2px; padding: 1px 5px; font-size: 11px;
+  color: var(--text-tertiary); text-decoration: none;
+  border-radius: 3px; transition: all 0.15s;
+  font-weight: normal;
+}
+.tab-item:hover .tab-new-window-btn { opacity: 1; pointer-events: auto; }
+.tab-new-window-btn:hover { background: var(--accent); color: white !important; }
+.tab-item.active .tab-new-window-btn { color: var(--accent); }
 
 /* Tab Content */
 .tab-content { display: none; }
@@ -2284,17 +2296,20 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   </div>
   <!-- Tab 导航 -->
   <div class="tab-nav">
-    <div class="tab-item active" data-tab="orders" onclick="switchTab('orders')">📋 催单 <span class="badge zero" id="badgeOrders">0</span></div>
-    <div class="tab-item" data-tab="aftersales" onclick="switchTab('aftersales')">🔧 售后 <span class="badge zero" id="badgeAftersales">0</span></div>
-    <div class="tab-item" data-tab="issues" onclick="switchTab('issues')">⚠ 供应商问题 <span class="badge zero" id="badgeIssues">0</span></div>
-    <div class="tab-item" data-tab="missing" onclick="switchTab('missing')">🔍 找灯 <span class="badge zero" id="badgeMissing">0</span></div>
-    <div class="tab-item" data-tab="purchases" onclick="switchTab('purchases')">🛒 线上采购 <span class="badge zero" id="badgePurchases">0</span></div>
-    <div class="tab-item" data-tab="sales" onclick="switchTab('sales')">📥 销售单 <span class="badge zero" id="badgeSales">0</span></div>
-    <div class="tab-item" data-tab="po" onclick="switchTab('po')">📦 采购单 <span class="badge zero" id="badgePo">0</span></div>
-    <div class="tab-item" data-tab="products" onclick="switchTab('products')">📚 产品 <span class="badge zero" id="badgeProducts">0</span></div>
-    <div class="tab-item" data-tab="consolidation" onclick="switchTab('consolidation')">🧊 合箱</div>
-    <div class="tab-item" data-tab="analytics" onclick="switchTab('analytics')" id="tabAnalytics" style="display:none;">📈 数据</div>
-    <div class="tab-item" data-tab="performance" onclick="switchTab('performance')">📊 绩效 <span class="badge zero" id="badgePerformance">0</span></div>
+    <!-- V4：tab 顺序按业务流程：抓单 → 开 PO → 催单 → 异常处理 → 财务收货 → 档案 → 报表 -->
+    <!-- 每个 tab 右边的 ↗ 是"在新浏览器标签打开此 tab" - 跟单可以多开同时工作 -->
+    <div class="tab-item active" data-tab="sales" onclick="switchTab('sales')">📥 销售单 <span class="badge zero" id="badgeSales">0</span><a href="?tab=sales" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块（多窗口同时工作）">↗</a></div>
+    <div class="tab-item" data-tab="po" onclick="switchTab('po')">📦 采购单 <span class="badge zero" id="badgePo">0</span><a href="?tab=po" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="orders" onclick="switchTab('orders')">📋 催单 <span class="badge zero" id="badgeOrders">0</span><a href="?tab=orders" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="missing" onclick="switchTab('missing')">🔍 找灯 <span class="badge zero" id="badgeMissing">0</span><a href="?tab=missing" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="purchases" onclick="switchTab('purchases')">🛒 线上采购 <span class="badge zero" id="badgePurchases">0</span><a href="?tab=purchases" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="aftersales" onclick="switchTab('aftersales')">🔧 售后 <span class="badge zero" id="badgeAftersales">0</span><a href="?tab=aftersales" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="issues" onclick="switchTab('issues')">⚠ 供应商问题 <span class="badge zero" id="badgeIssues">0</span><a href="?tab=issues" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="finance" onclick="switchTab('finance')">✓ 财务收货 <span class="badge zero" id="badgeFinance">0</span><a href="?tab=finance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="products" onclick="switchTab('products')">📚 产品 <span class="badge zero" id="badgeProducts">0</span><a href="?tab=products" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="consolidation" onclick="switchTab('consolidation')">🧊 合箱<a href="?tab=consolidation" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="analytics" onclick="switchTab('analytics')" id="tabAnalytics" style="display:none;">📈 数据<a href="?tab=analytics" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="performance" onclick="switchTab('performance')">📊 绩效 <span class="badge zero" id="badgePerformance">0</span><a href="?tab=performance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
   </div>
 </div>
 
@@ -2515,6 +2530,9 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       <span id="purchasesAdminHint" style="display: none;">主管视角：可审批 / 驳回所有人的采购申请。</span>
     </div>
     
+    <!-- V4：支付宝额度预警 + 年/季/月 汇总 -->
+    <div id="purchasesSummary" style="margin-top: 14px;"></div>
+    
     <div class="stats-bar" style="margin-top: 18px;">
       <div class="stat-card warning clickable" onclick="quickFilterPurchases('pending_approval')"><div class="label">待审批</div><div class="value mono"><span id="pPendingApproval">0</span><span class="unit">单</span></div><div class="sub">等主管</div></div>
       <div class="stat-card clickable" onclick="quickFilterPurchases('approved')"><div class="label">待下单</div><div class="value mono"><span id="pApproved">0</span><span class="unit">单</span></div><div class="sub">已批准</div></div>
@@ -2672,6 +2690,43 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="od-section">
       <div class="od-section-title">备注</div>
       <textarea class="form-control" id="pmNotes" placeholder="特殊要求、备注等" oninput="onPurchaseField('notes', this.value)" style="min-height: 50px;"></textarea>
+    </div>
+    
+    <!-- V4：快递单号自动追踪 -->
+    <div class="od-section">
+      <div class="od-section-title">🚚 快递追踪 <span style="font-size: 11px; color: var(--text-tertiary); font-weight: normal;">填快递公司+单号 → 自动查物流</span></div>
+      <div class="form-row" style="display: grid; grid-template-columns: 1fr 2fr auto; gap: 10px;">
+        <div class="form-group">
+          <label style="font-size: 11px; color: var(--text-secondary);">快递公司</label>
+          <select class="form-control" id="pmShipper" onchange="onPurchaseField('shipper', this.value)">
+            <option value="">— 选择 —</option>
+            <option value="SF">顺丰速运</option>
+            <option value="YTO">圆通速递</option>
+            <option value="ZTO">中通快递</option>
+            <option value="STO">申通快递</option>
+            <option value="YD">韵达快递</option>
+            <option value="JD">京东物流</option>
+            <option value="HHTT">百世快递</option>
+            <option value="DBKD">德邦快递</option>
+            <option value="JTSD">极兔速递</option>
+            <option value="EMS">中国邮政 EMS</option>
+            <option value="UC">优速快递</option>
+            <option value="YZPY">邮政平邮</option>
+            <option value="HTKY">百世汇通</option>
+            <option value="CNE">CNE 全球</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="font-size: 11px; color: var(--text-secondary);">快递单号</label>
+          <input type="text" class="form-control mono" id="pmTrackingNo" placeholder="如 SF1234567890" oninput="onPurchaseField('trackingNo', this.value.trim())">
+        </div>
+        <div style="display: flex; align-items: end;">
+          <button class="btn primary" id="pmQueryTrackingBtn" onclick="queryTrackingForPurchase()" style="white-space: nowrap;">
+            🔍 查物流
+          </button>
+        </div>
+      </div>
+      <div id="pmTrackingResult" style="margin-top: 12px;"></div>
     </div>
     
     <div class="modal-actions">
@@ -3049,6 +3104,26 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <button class="sub-tab-btn" data-pofilter="cancelled" onclick="poShowFilter('cancelled')">⊘ 已取消 <span class="cnt" id="poCntCancelled">0</span></button>
       </div>
       <div id="poListBody" style="margin-top: 12px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ V4 新 TAB: 财务收货 ============ -->
+<div class="tab-content" data-tab="finance">
+  <div class="section-block">
+    <div class="fb-card" style="margin-top: 14px;">
+      <div class="fb-head" style="cursor: default;">
+        <div class="fb-title">✓ 财务收货 · 入库对账</div>
+        <div class="fb-tabs" style="cursor: default; gap: 8px;">
+          <span style="font-size: 11px; color: var(--text-tertiary);">财务对账完成后点"已收货" → 系统自动追加备注到 Shopify 订单</span>
+        </div>
+      </div>
+      <div id="financeStatsContainer" style="margin-top: 12px;"></div>
+      <div style="margin-top: 14px; padding: 10px 14px; background: rgba(37,99,235,0.06); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 12px; line-height: 1.7;">
+        <b style="color: var(--accent);">📌 业务流程：</b>
+        跟单推进 PO 到 <code style="background:rgba(0,0,0,0.05);padding:1px 4px;border-radius:3px;">已到货</code> 状态后 → 进入本 tab → 财务核对产品和金额 → 点 <code style="background:rgba(0,0,0,0.05);padding:1px 4px;border-radius:3px;">✓ 完成入库</code> → 自动追加备注到 Shopify 订单后台（保留客户原备注）
+      </div>
+      <div id="financeListBody" style="margin-top: 14px;"></div>
     </div>
   </div>
 </div>
@@ -3503,24 +3578,30 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       </div>
     </div>
     <div class="od-section">
-      <div class="od-section-title">📎 灯具图片<span class="count" id="mmScreenshotsCount">0 张</span></div>
+      <div class="od-section-title">📎 灯具图片<span class="count" id="mmScreenshotsCount">0 张</span>
+        <button id="mmStitchBtn" class="btn small" style="display:none; margin-left:auto; padding:4px 12px; font-size:11px;" title="把多张图拼接成一张大图发给供应商">🖼 拼接导出</button>
+      </div>
       <div class="drop-zone-thumbs" id="mmScreenshots"></div>
       <div class="drop-zone" id="mmDropZone"><input type="file" id="mmFileInput" accept="image/*" multiple>📎 上传灯具图片或截图（拖拽/粘贴/选择）</div>
     </div>
     <div class="od-section">
-      <div class="od-section-title">📸 实拍照片<span class="count" id="mmRealPhotosCount">0 张</span></div>
-      <div class="drop-zone-thumbs" id="mmRealPhotos"></div>
-      <div class="drop-zone" id="mmRealDropZone"><input type="file" id="mmRealFileInput" accept="image/*" multiple>📸 上传实物照片（拖拽/粘贴/选择 · 所有人可上传）</div>
-      <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">💡 供应商寄样后的实物图、协作过程中拿到的样品图都放这里</div>
-    </div>
-    <div class="od-section">
-      <div class="od-section-title">💬 协作评论<span class="count" id="mmCommentsCount">0 条</span></div>
+      <div class="od-section-title">💬 协作评论<span class="count" id="mmCommentsCount">0 条</span>
+        <span style="margin-left:auto; font-size:11px; color:var(--text-tertiary); font-weight:normal;">📸 实拍照片 <span id="mmRealPhotosCount">0 张</span></span>
+      </div>
+      <!-- V4：实拍照片缩略图（合并到评论区上方，让任何看到实物的跟单都能上传）-->
+      <div class="drop-zone-thumbs" id="mmRealPhotos" style="margin-bottom: 10px;"></div>
       <div class="comments-list" id="mmCommentsList"></div>
     </div>
     <div class="od-section">
-      <div class="od-section-title">+ 添加评论</div>
+      <div class="od-section-title">+ 添加评论 / 实拍</div>
       <div class="fu-add-area">
         <textarea class="form-control" id="mmNewComment" placeholder="知道供应商？直接写出来。其他线索、问询情况也可以写..."></textarea>
+        <!-- V4：实拍上传区合并到评论区（替代原独立 section）-->
+        <div class="drop-zone" id="mmRealDropZone" style="margin-top: 8px; padding: 8px 12px; font-size: 12px;">
+          <input type="file" id="mmRealFileInput" accept="image/*" multiple>
+          📸 看到了实物？上传 / 拖拽 / 粘贴实拍照片（所有人可上传）
+        </div>
+        <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">💡 供应商寄样后的实物图、协作过程中拿到的样品图都放这里</div>
         <div class="form-row col-2" style="margin-top: 10px;">
           <div class="form-group" style="margin-bottom: 0;">
             <label>推荐供应商（可选）</label>
@@ -3538,6 +3619,88 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     </div>
   </div>
 </div>
+
+<!-- ========== V4 批量导出 PO 对话框 (Batch Export PO) ========== -->
+<div class="modal-bg" id="batchExportModal">
+  <div class="modal" style="width: 520px; max-width: 95vw;">
+    <button class="modal-close" onclick="closeBatchExport()">✕</button>
+    <div style="padding: 18px 20px 12px; border-bottom: 1px solid var(--border-subtle);">
+      <h3 style="margin: 0 0 4px; font-size: 17px; font-weight: 700;">📑 批量导出采购单</h3>
+      <div style="font-size: 12px; color: var(--text-tertiary);">把多张 PO 打包成一个文档，每页一张，方便发给供应商核对</div>
+    </div>
+    <div style="padding: 18px 20px;">
+      <div id="batchExportInfo" style="background: var(--bg-elevated); padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 14px;"></div>
+      <div style="margin-bottom: 14px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;">
+          <input type="checkbox" id="batchExportIncludeImg" checked style="width: 16px; height: 16px;">
+          <span style="font-size: 13px;">
+            <b>包含产品图片</b>
+            <span style="color: var(--text-tertiary); font-size: 11px; display: block; margin-top: 2px;">取消勾选可减小文件体积，加快生成速度（供应商需要看图确认时建议勾选）</span>
+          </span>
+        </label>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <button class="btn primary" onclick="poDoBatchExport('pdf')" style="padding: 12px;">
+          <div style="font-weight: 700;">📄 导出 PDF</div>
+          <div style="font-size: 11px; opacity: 0.85;">每页一张 PO · 适合打印</div>
+        </button>
+        <button class="btn primary" onclick="poDoBatchExport('docx')" style="padding: 12px; background: var(--success);">
+          <div style="font-weight: 700;">📝 导出 Word</div>
+          <div style="font-size: 11px; opacity: 0.85;">供应商可改备注 · 用 Word 打开</div>
+        </button>
+      </div>
+      <div style="margin-top: 10px; font-size: 11px; color: var(--text-tertiary); text-align: center;">
+        生成需要 5-30 秒（取决于 PO 数量），生成完成会自动下载
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== V4 拼图对话框 (Stitch Images) ========== -->
+<div class="modal-bg" id="stitchModal">
+  <div class="modal" style="width: 720px; max-width: 95vw;">
+    <button class="modal-close" onclick="closeStitchDialog()">✕</button>
+    <div style="padding: 18px 20px 12px; border-bottom: 1px solid var(--border-subtle);">
+      <h3 style="margin: 0 0 4px; font-size: 17px; font-weight: 700;">🖼 拼接图片导出</h3>
+      <div style="font-size: 12px; color: var(--text-tertiary);">点击图片选/取消（最多 16 张），系统会自动选最优网格布局拼成一张大图</div>
+    </div>
+    <div style="padding: 14px 20px;">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;">
+        <span style="font-size: 13px; font-weight: 600;" id="stitchCountInfo">已选 0 张</span>
+        <span style="font-size: 11px; color: var(--text-tertiary);">·</span>
+        <span style="font-size: 12px; color: var(--accent); font-weight: 600;" id="stitchPreviewLayout">— 至少 2 张 —</span>
+        <span style="margin-left: auto; display: flex; gap: 6px;">
+          <button class="btn small" onclick="selectAllStitch()">全选</button>
+          <button class="btn small" onclick="clearStitchSelection()">清空</button>
+        </span>
+      </div>
+      <div id="stitchImgGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; max-height: 50vh; overflow-y: auto; padding: 4px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn ghost" onclick="closeStitchDialog()">取消</button>
+      <button class="btn primary" onclick="doStitch()">🖼 生成拼接图（复制 + 下载）</button>
+    </div>
+  </div>
+</div>
+<style>
+  #stitchImgGrid .stitch-thumb {
+    position: relative; aspect-ratio: 1/1; border-radius: 6px; overflow: hidden;
+    border: 2px solid var(--border-subtle); cursor: pointer; transition: all 0.15s;
+  }
+  #stitchImgGrid .stitch-thumb:hover { border-color: var(--accent); }
+  #stitchImgGrid .stitch-thumb.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  #stitchImgGrid .stitch-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #stitchImgGrid .stitch-num {
+    position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
+    background: var(--accent); color: white; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+  }
+  #stitchImgGrid .stitch-hint {
+    position: absolute; bottom: 4px; left: 4px; padding: 2px 6px; background: rgba(0,0,0,0.6); 
+    color: white; font-size: 10px; border-radius: 3px; opacity: 0; transition: opacity 0.15s;
+  }
+  #stitchImgGrid .stitch-thumb:hover .stitch-hint { opacity: 1; }
+</style>
 
 <!-- ========== Batch Chase Modal (批量催单) ========== -->
 <div class="modal-bg" id="batchChaseModal">
