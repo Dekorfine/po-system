@@ -245,38 +245,59 @@ function viewImage(src) {
 
 // V4：通过订单号查关联销售单/PO 的产品图（售后、催单等模块用）
 // 输入：orderNo (string) 如 "K115302"
-// 输出：[image_url, ...] 数组（按 line_items 顺序）
+// 输出：[image_url, ...] 数组
+// 实现：先通过 orderNo 找到订单 → 拿出 line_items 的 SKU 列表 → 
+//      按 SKU 反查 SHOPIFY._productMap 或 PRODUCTS_CACHE 拿到产品图
 function _getRelatedOrderImages(orderNo) {
   if (!orderNo) return [];
   const cleanNo = String(orderNo).trim().replace(/^#/, '');
   if (!cleanNo) return [];
   
   // 1. 优先从 SHOPIFY._orders 找（销售单）
+  let lineItems = [];
   if (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
     const so = SHOPIFY._orders.find(o => {
       const num = String(o.shopify_order_number || '').replace('#', '');
       const name = String(o.name || '').replace('#', '');
       return num === cleanNo || name === cleanNo;
     });
-    if (so && so.line_items && so.line_items.length > 0) {
-      const imgs = so.line_items.map(li => li.image_url || li.image || '').filter(Boolean);
-      if (imgs.length > 0) return imgs;
-    }
+    if (so && so.line_items) lineItems = so.line_items;
   }
   
-  // 2. 兜底从 PO_LIST 找（按 po_number 或 order_no 匹配）
-  if (typeof PO_LIST !== 'undefined' && PO_LIST.length > 0) {
+  // 2. 兜底从 PO_LIST 找（按 po_number 或 order_no）
+  if (lineItems.length === 0 && typeof PO_LIST !== 'undefined' && PO_LIST.length > 0) {
     const po = PO_LIST.find(p => 
       String(p.po_number || '').trim() === cleanNo || 
       String(p.order_no || '').trim() === cleanNo
     );
-    if (po && po.line_items && po.line_items.length > 0) {
-      const imgs = po.line_items.map(li => li.image_url || li.image || '').filter(Boolean);
-      if (imgs.length > 0) return imgs;
-    }
+    if (po && po.line_items) lineItems = po.line_items;
   }
   
-  return [];
+  if (lineItems.length === 0) return [];
+  
+  // 通过 SKU 反查产品图（line_items 本身没有 image_url 字段）
+  const productMap = (typeof SHOPIFY !== 'undefined' && SHOPIFY._productMap) ? SHOPIFY._productMap : {};
+  const imgs = [];
+  for (const li of lineItems) {
+    let img = '';
+    // 先看 line_item 本身有没有（PO 创建时可能直接存了 image_url，比如自定义 PO）
+    if (li.image_url) img = li.image_url;
+    else if (li.image) img = li.image;
+    // 否则按 SKU 从产品库反查
+    else if (li.sku) {
+      // 优先 SHOPIFY._productMap
+      if (productMap[li.sku] && productMap[li.sku].image_url) {
+        img = productMap[li.sku].image_url;
+      }
+      // 兜底 PRODUCTS_CACHE
+      else if (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) {
+        const p = PRODUCTS_CACHE.effectiveBySku(li.sku);
+        if (p && p.image_url) img = p.image_url;
+      }
+    }
+    if (img) imgs.push(img);
+  }
+  return imgs;
 }
 
 function closeImageViewer() {

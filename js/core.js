@@ -1773,14 +1773,38 @@ function loadAllData() {
     loadChaseOrders().catch(e => console.warn('PO 派生催单加载失败:', e));
   }
   // V4 修复：登录后立即预加载销售单数据（默认 sales tab 进首屏直接看到订单，不用点同步）
+  // 同时预加载 PRODUCTS_CACHE + SHOPIFY._productMap，让催单/售后能通过 SKU 反查产品图
   if (typeof SHOPIFY !== 'undefined' && SHOPIFY.loadStores && SHOPIFY.loadOrdersFromDB) {
     SHOPIFY.loadStores()
       .then(() => SHOPIFY.loadOrdersFromDB(false))
-      .then(() => {
+      .then(async () => {
+        // 收集所有订单的 SKU，预加载产品图 map（催单/售后通过 SKU 反查时要用）
+        const allSkus = new Set();
+        (SHOPIFY._orders || []).forEach(o => {
+          (o.line_items || []).forEach(li => { if (li.sku) allSkus.add(li.sku); });
+        });
+        if (allSkus.size > 0) {
+          try {
+            SHOPIFY._productMap = await SHOPIFY.loadProductImageMap([...allSkus]);
+            console.log(`[预加载] ${allSkus.size} 个 SKU 的产品图已就位`);
+          } catch (e) { console.warn('产品图预加载失败:', e); }
+        }
         if (typeof renderShopifyOrders === 'function') renderShopifyOrders();
         if (typeof renderShopifyStores === 'function') renderShopifyStores();
+        // 产品图加载完后，如果当前在催单/售后 tab，刷新一次让图显示出来
+        if (CURRENT_TAB === 'orders' && typeof renderOrders === 'function') renderOrders();
+        if (CURRENT_TAB === 'aftersales' && typeof renderAftersales === 'function') renderAftersales();
       })
       .catch(e => console.warn('销售单预加载失败:', e));
+  }
+  // V4：PRODUCTS_CACHE 也预加载（PO 模块用，且催单/售后兜底反查产品图）
+  if (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.loadAll) {
+    PRODUCTS_CACHE.loadAll().then(() => {
+      console.log('[预加载] 产品库已就位');
+      // 加载完后如果在催单/售后 tab，刷新让图显示
+      if (CURRENT_TAB === 'orders' && typeof renderOrders === 'function') renderOrders();
+      if (CURRENT_TAB === 'aftersales' && typeof renderAftersales === 'function') renderAftersales();
+    }).catch(e => console.warn('产品库预加载失败:', e));
   }
 }
 
