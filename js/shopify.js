@@ -425,6 +425,8 @@ const SHOPIFY_SEARCH = {
 
 // 选中订单 ID 集合
 const SHOPIFY_SELECTED = new Set();
+// V4：销售单拆单选择（orderId -> Set<shopify_line_item_id>），用于"仅为选中开 PO"
+const SHOPIFY_SPLIT_SEL = new Map();
 
 function shopifySetSearchType(t) {
   SHOPIFY_SEARCH.type = t;
@@ -585,6 +587,47 @@ function shopifyToggleSelectOrder(orderId, checked) {
   else SHOPIFY_SELECTED.delete(orderId);
   shopifyUpdateBatchUI();
 }
+
+// ============================================================
+// V4：销售单拆单功能
+// 跟单可以勾选部分 line_items 拆出来开独立 PO（同一销售单可能多个供应商）
+// ============================================================
+function soToggleSplitItem(orderId, lineItemId, checked) {
+  if (!SHOPIFY_SPLIT_SEL.has(orderId)) SHOPIFY_SPLIT_SEL.set(orderId, new Set());
+  const sel = SHOPIFY_SPLIT_SEL.get(orderId);
+  if (checked) sel.add(lineItemId);
+  else sel.delete(lineItemId);
+  if (sel.size === 0) SHOPIFY_SPLIT_SEL.delete(orderId);
+  
+  // 局部刷新这个订单卡片的"拆单状态行"，避免重渲染整列表（防抖+保留滚动位置）
+  if (typeof SHOPIFY !== 'undefined' && typeof SHOPIFY.render === 'function') {
+    SHOPIFY.render();
+  }
+}
+
+function soClearSplitSel(orderId) {
+  SHOPIFY_SPLIT_SEL.delete(orderId);
+  // 清空 UI 上的勾选
+  document.querySelectorAll(`.so-split-checkbox[data-order-id="${orderId}"]`).forEach(cb => { cb.checked = false; });
+  if (typeof SHOPIFY !== 'undefined' && typeof SHOPIFY.render === 'function') SHOPIFY.render();
+}
+
+function soOpenPoFormForSplit(orderId) {
+  const sel = SHOPIFY_SPLIT_SEL.get(orderId);
+  if (!sel || sel.size === 0) {
+    toast('请先在产品行左侧勾选要拆单的产品', 'warn');
+    return;
+  }
+  console.log('%c[拆单] 开始为选中的 line_items 开 PO', 'color:#7c3aed;font-weight:bold', {
+    orderId,
+    selectedLineItemIds: Array.from(sel),
+  });
+  // 调用增强版 openPoForm（第二参数 = 仅默认勾选这些 IDs）
+  openPoForm(orderId, sel);
+  // 清空拆单选择（避免下次开 PO 时还带着这些勾选）
+  SHOPIFY_SPLIT_SEL.delete(orderId);
+}
+
 
 function shopifyToggleSelectAll(checked) {
   // 选中"当前页"的所有
@@ -1033,12 +1076,23 @@ function renderShopifyOrders() {
       const title = nameCn || li.title || '(无名)';
       const variant = li.variant_title || '';
       const hasPo = (li.po_assignments || []).length > 0;
+      // V4：标题和 SKU 可点击跳转到产品 tab
+      const skuClickable = li.sku ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${escapeHtml(li.sku).replace(/'/g, "\\'")}'); return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击查看产品详情">${escapeHtml(li.sku)}</a>` : '';
+      const titleClickable = li.sku 
+        ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${escapeHtml(li.sku).replace(/'/g, "\\'")}'); return false;" style="color:inherit; text-decoration:none; cursor:pointer; border-bottom:1px dashed var(--border);" title="点击查看产品详情">${escapeHtml(title)}</a>`
+        : escapeHtml(title);
+      // V4：拆单 checkbox（仅 processing 状态且未开 PO 的行显示）
+      const canSplit = o.local_status === 'processing' && !hasPo && !isFullyRefunded;
+      const splitCheckbox = canSplit 
+        ? `<input type="checkbox" class="so-split-checkbox" data-order-id="${o.id}" data-line-id="${li.shopify_line_item_id}" onclick="event.stopPropagation();soToggleSplitItem('${o.id}','${li.shopify_line_item_id}',this.checked)" title="勾选后可拆单（仅为选中行开 PO）" style="margin-right: 8px; cursor: pointer; flex-shrink: 0;">`
+        : '';
       return `
         <div class="so-product-line">
+          ${splitCheckbox}
           ${imgUrl ? `<img loading="lazy" class="so-prod-img" src="${escapeHtml(imgUrl)}" data-fullsrc="${escapeHtml(imgUrl)}" onclick="openImgLightbox(this.dataset.fullsrc)" alt="">` : `<div class="so-prod-noimg">📷</div>`}
           <div class="so-prod-info">
-            ${li.sku ? `<div class="so-prod-sku">SKU: ${escapeHtml(li.sku)}${hasPo ? ' · <span style="color:var(--success)">✓ 已开 PO</span>' : ''}</div>` : ''}
-            <div class="so-prod-name">${escapeHtml(title)}${nameCn ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(li.title || '')}</span>` : ''}</div>
+            ${li.sku ? `<div class="so-prod-sku">SKU: ${skuClickable}${hasPo ? ' · <span style="color:var(--success)">✓ 已开 PO</span>' : ''}</div>` : ''}
+            <div class="so-prod-name">${titleClickable}${nameCn ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(li.title || '')}</span>` : ''}</div>
             ${variant ? `<div class="so-prod-variant">${escapeHtml(variant)}</div>` : ''}
           </div>
           <div class="so-prod-qty">
@@ -1055,6 +1109,17 @@ function renderShopifyOrders() {
     const isFullyRefunded = refund.level === 'full';
     const isPartiallyRefunded = refund.level === 'partial';
 
+    // V4：拆单状态显示（已勾选 line_items 数量）
+    const splitCount = (SHOPIFY_SPLIT_SEL.get(o.id) || new Set()).size;
+    const splitInfoHtml = splitCount > 0 ? `
+      <div style="background: rgba(168, 85, 247, 0.08); border: 1px dashed rgba(168, 85, 247, 0.4); padding: 6px 12px; margin-top: 8px; border-radius: 6px; font-size: 12px; display: flex; align-items: center; justify-content: space-between;">
+        <span style="color: #7c3aed; font-weight: 600;">📤 已选 ${splitCount} 项拆单</span>
+        <span>
+          <button class="btn small" onclick="event.stopPropagation();soClearSplitSel('${o.id}')" style="padding: 2px 8px; font-size: 11px;">清空</button>
+          <button class="btn small primary" onclick="event.stopPropagation();soOpenPoFormForSplit('${o.id}')" style="padding: 2px 10px; font-size: 11px;">📦 仅为选中开 PO</button>
+        </span>
+      </div>` : '';
+
     let actionsHtml = '';
     if (o.local_status === 'pending') {
       actionsHtml = `
@@ -1062,7 +1127,8 @@ function renderShopifyOrders() {
         <button class="so-action-btn" onclick="shopifyCancelOrder('${o.id}')">取消</button>`;
     } else if (o.local_status === 'processing') {
       actionsHtml = `
-        <button class="so-action-btn primary" onclick="${isFullyRefunded ? `toast('该订单已全额退款，禁止开采购单，请先取消订单','err')` : `shopifyOpenPoForm('${o.id}')`}" ${isFullyRefunded ? 'disabled style="opacity:0.4; cursor:not-allowed;" title="此订单已全额退款，禁止开采购单"' : ''}>📦 开采购单</button>
+        <button class="so-action-btn primary" onclick="${isFullyRefunded ? `toast('该订单已全额退款，禁止开采购单，请先取消订单','err')` : `shopifyOpenPoForm('${o.id}')`}" ${isFullyRefunded ? 'disabled style="opacity:0.4; cursor:not-allowed;" title="此订单已全额退款，禁止开采购单"' : ''}>📦 开采购单${items.length > 1 ? '（全部）' : ''}</button>
+        ${items.length > 1 && !isFullyRefunded ? `<button class="so-action-btn" onclick="toast('💡 在产品行左侧勾选要拆出来的产品 → 点蓝色「仅为选中开 PO」按钮','info',5000)" title="多个产品不同供应商时，勾选要拆的几个产品开独立 PO">✂ 拆单</button>` : ''}
         <button class="so-action-btn" onclick="shopifyMarkDone('${o.id}')" title="所有产品都开采购单后点此完成">✓ 标记完成</button>`;
     } else if (o.local_status === 'done') {
       actionsHtml = `<button class="so-action-btn" onclick="shopifyReopenOrder('${o.id}')">↺ 重新打开</button>`;
@@ -1124,6 +1190,7 @@ function renderShopifyOrders() {
             <div class="so-amount-sub">${totalQty} 件 · ${items.length} 行</div>
           </div>
         </div>
+        ${splitInfoHtml}
         <div class="so-card-actions">
           <div class="so-progress">${items.length > 0 ? `PO 进度：${lineWithPo} / ${items.length} 行已分配` : ''}</div>
           <div class="so-actions-right">

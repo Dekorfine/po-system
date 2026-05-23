@@ -800,15 +800,16 @@ const ORDER_NO_FORMAT = {
   '线下': '自定义编号',
 };
 
-// 所有模块（用于权限控制）
+// 所有模块（用于权限控制）· V4：按业务流程顺序排列（销售单 → 采购单 → 催单 → 异常处理 → 财务收货 → 档案 → 报表）
 const ALL_MODULES = [
-  { key: 'orders', label: '📋 催单' },
-  { key: 'aftersales', label: '🔧 售后' },
-  { key: 'issues', label: '⚠ 供应商问题' },
-  { key: 'missing', label: '🔍 找灯' },
-  { key: 'purchases', label: '🛒 线上采购' },
   { key: 'sales', label: '📥 销售单' },
   { key: 'po', label: '📦 采购单' },
+  { key: 'orders', label: '📋 催单' },
+  { key: 'missing', label: '🔍 找灯' },
+  { key: 'purchases', label: '🛒 线上采购' },
+  { key: 'aftersales', label: '🔧 售后' },
+  { key: 'issues', label: '⚠ 供应商问题' },
+  { key: 'finance', label: '✓ 财务收货' },
   { key: 'products', label: '📚 产品' },
   { key: 'consolidation', label: '🧊 合箱' },
   { key: 'performance', label: '📊 绩效' },
@@ -1586,6 +1587,11 @@ function subscribeAgentsRealtime() {
   _agentsChannel = sb.channel('agents-realtime')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'agents' }, async (payload) => {
       try {
+        // 🐛 修复：先读旧值（在覆盖 CONFIG.agents 之前！），否则 oldModules 永远等于 newModules
+        const meBefore = (CONFIG.agents || []).find(a => a.name === CURRENT_AGENT);
+        const oldModules = JSON.stringify((meBefore || {}).modules || []);
+        const oldIsAdmin = (meBefore || {}).isAdmin;
+
         // 拉最新 agents 数据
         const { data: agentRows } = await sb.from('agents').select('*');
         if (!agentRows) return;
@@ -1604,14 +1610,14 @@ function subscribeAgentsRealtime() {
         if (!me) return;
 
         // 自己被改成主管 / 取消主管 → 重新登录最稳妥
-        if (me.isAdmin !== IS_ADMIN) {
+        if (me.isAdmin !== oldIsAdmin) {
+          IS_ADMIN = me.isAdmin;
           toast('您的主管身份已变更，3 秒后自动刷新...', 'warn', 3000);
           setTimeout(() => location.reload(), 3000);
           return;
         }
 
-        // 普通跟单的模块/网站变更，直接应用
-        const oldModules = JSON.stringify((CONFIG.agents.find(a => a.name === CURRENT_AGENT) || {}).modules || []);
+        // 普通跟单的模块/网站变更，直接应用（与覆盖前的旧值对比）
         const newModules = JSON.stringify(me.modules || []);
         if (oldModules !== newModules) {
           applyModuleVisibility();
@@ -1782,6 +1788,10 @@ function renderActiveTab() {
   else if (CURRENT_TAB === 'issues') { renderIssues(); updateIssueStats(); }
   else if (CURRENT_TAB === 'missing') { renderMissing(); updateMissingStats(); }
   else if (CURRENT_TAB === 'purchases') { renderPurchases(); updatePurchaseStats(); }
+  else if (CURRENT_TAB === 'sales') { if (typeof renderShopify === 'function') renderShopify(); }
+  else if (CURRENT_TAB === 'po') { if (typeof renderPo === 'function') renderPo(); }
+  else if (CURRENT_TAB === 'finance') { if (typeof renderFinance === 'function') renderFinance(); }
+  else if (CURRENT_TAB === 'products') { if (typeof renderProducts === 'function') renderProducts(); }
   else if (CURRENT_TAB === 'analytics') { renderAnalytics(); }
   else if (CURRENT_TAB === 'performance') { renderPerformance(); }
 }
@@ -1802,11 +1812,16 @@ function updateBadges() {
   const isUnresolved = ISSUES.filter(i => !['resolved'].includes(i.status)).length;
   // 找灯：搜寻中
   const mActive = MISSING_LIGHTS.filter(m => m.status === 'searching').length;
+  // V4：财务收货：所有 status=arrived 的 PO（等待财务对账推进到 received）
+  const financeWaiting = (typeof PO_LIST !== 'undefined') 
+    ? PO_LIST.filter(p => p.status === 'arrived').length 
+    : 0;
   
   setBadge('badgeOrders', oUrgent);
   setBadge('badgeAftersales', asUnresolved);
   setBadge('badgeIssues', isUnresolved);
   setBadge('badgeMissing', mActive);
+  setBadge('badgeFinance', financeWaiting);
 }
 
 function setBadge(id, n) {
@@ -1819,6 +1834,12 @@ function setBadge(id, n) {
 function switchTab(name) {
   CURRENT_TAB = name;
   try { localStorage.setItem('current_tab', name); } catch(_) {}
+  // V4：同步到 URL 参数（不污染浏览器历史，方便多窗口打开）
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', name);
+    window.history.replaceState(null, '', url.toString());
+  } catch(_) {}
   document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === name));
   renderActiveTab();
@@ -1826,14 +1847,23 @@ function switchTab(name) {
 
 function restoreLastTab() {
   try {
-    const last = localStorage.getItem('current_tab');
-    if (!last) return;
+    // V4：优先从 URL 参数读（支持新标签打开指定 tab，例如 ?tab=po）
+    let target = null;
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const fromUrl = urlParams.get('tab');
+      if (fromUrl) target = fromUrl;
+    } catch(_) {}
+    // 否则用上次访问的 tab
+    if (!target) target = localStorage.getItem('current_tab');
+    if (!target) return;
+    
     // 验证 tab 元素存在且当前用户有权限访问
-    const tabEl = document.querySelector(`.tab-item[data-tab="${last}"]`);
+    const tabEl = document.querySelector(`.tab-item[data-tab="${target}"]`);
     if (!tabEl) return;
     const visible = tabEl.offsetParent !== null || window.getComputedStyle(tabEl).display !== 'none';
     if (!visible) return;
-    switchTab(last);
+    switchTab(target);
   } catch(_) {}
 }
 

@@ -115,6 +115,12 @@ function renderPurchaseRow(p, i) {
         ${p.orderNo ? `<div class="product-line"><b>关联订单</b>: ${escapeHtml(p.orderNo)}</div>` : ''}
         ${p.sku ? `<div class="supplier-line">📋 SKU: <span style="font-family: 'JetBrains Mono', monospace;">${escapeHtml(p.sku)}</span></div>` : ''}
         ${p.productUrl ? `<div class="detail-line"><a href="${p.productUrl}" target="_blank" onclick="event.stopPropagation();" style="color: var(--accent); text-decoration: underline; font-size: 11px;">🔗 打开商品链接</a></div>` : ''}
+        ${p.trackingNo ? (() => {
+          const stateMap = {'4':{label:'🎉 已签收',color:'#15803d'}, '3':{label:'📦 派送中',color:'#ea580c'}, '2':{label:'🚛 运输中',color:'#0891b2'}, '1':{label:'✅ 已揽收',color:'#7c3aed'}, '0':{label:'🚚 在途',color:'#2563eb'}, '5':{label:'⚠️ 派送失败',color:'#dc2626'}, '6':{label:'↩️ 退签',color:'#ea580c'}, '7':{label:'⚠️ 异常',color:'#dc2626'}};
+          const st = stateMap[String(p.trackingState ?? '0')] || stateMap['0'];
+          const latestCtx = (p.trackingData && p.trackingData[0]) ? p.trackingData[0].context : '';
+          return `<div class="detail-line" style="margin-top:3px;"><span style="display:inline-block; padding:1px 7px; background:${st.color}15; color:${st.color}; border-radius:3px; font-size:10px; font-weight:600;">${st.label}</span><span style="margin-left:6px; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-tertiary);">${escapeHtml(p.trackingNo)}</span>${latestCtx ? `<span style="margin-left:6px; font-size:10px; color:var(--text-secondary);">· ${escapeHtml(latestCtx.slice(0, 28))}${latestCtx.length > 28 ? '...' : ''}</span>` : ''}</div>`;
+        })() : ''}
       </div>
       <div>
         <div class="purchase-amount ${totalCls}">¥${(p.totalAmount || 0).toFixed(2)}</div>
@@ -142,24 +148,50 @@ function renderPurchaseRow(p, i) {
 function updatePurchaseStats() {
   const today = new Date().toISOString().slice(0, 10);
   const thisMonth = today.slice(0, 7);
-  let pending = 0, approved = 0, ordered = 0, received = 0, totalSpent = 0;
+  const thisYear = today.slice(0, 4);
+  const todayDate = new Date();
+  const quarter = Math.floor(todayDate.getMonth() / 3) + 1;
+  const quarterStart = new Date(todayDate.getFullYear(), (quarter - 1) * 3, 1);
+  const quarterStartStr = quarterStart.toISOString().slice(0, 10);
+  
+  let pending = 0, approved = 0, ordered = 0, received = 0;
+  let monthSpent = 0, quarterSpent = 0, yearSpent = 0;
+  // V4：所有"已下单/已发货/已收货"都算实际花费（不只是 received）
+  let activeSpent = 0;  // 已下单但还没到货的（占用中）
   
   PURCHASES.forEach(p => {
     if (p.status === 'pending_approval') pending++;
     if (p.status === 'approved') approved++;
-    if (['ordered', 'shipped'].includes(p.status)) ordered++;
+    if (['ordered', 'shipped'].includes(p.status)) {
+      ordered++;
+      activeSpent += (p.totalAmount || 0);
+    }
+    // V4：实际花费按"已下单及以后"全部计入支付宝累计扣款
+    if (['ordered', 'shipped', 'received'].includes(p.status)) {
+      const created = (p.orderedAt || p.createdAt || '').slice(0, 10);
+      if (created >= thisYear + '-01-01') yearSpent += (p.totalAmount || 0);
+      if (created >= quarterStartStr) quarterSpent += (p.totalAmount || 0);
+      if (created.startsWith(thisMonth)) monthSpent += (p.totalAmount || 0);
+    }
     if (p.status === 'received' && (p.receivedAt || p.createdAt || '').startsWith(thisMonth)) {
       received++;
-      totalSpent += (p.totalAmount || 0);
     }
   });
+  
+  // V4：支付宝额度预警（5 万元充值，按月统计花费）
+  const ALIPAY_LIMIT = (CONFIG && CONFIG.alipayLimit) || 50000;
+  const remaining = ALIPAY_LIMIT - monthSpent;
+  const usagePct = (monthSpent / ALIPAY_LIMIT) * 100;
+  let warnLevel = 'safe';  // safe / warn / danger
+  if (usagePct >= 90) warnLevel = 'danger';
+  else if (usagePct >= 70) warnLevel = 'warn';
   
   const el = id => document.getElementById(id);
   if (el('pPendingApproval')) el('pPendingApproval').textContent = pending;
   if (el('pApproved')) el('pApproved').textContent = approved;
   if (el('pOrdered')) el('pOrdered').textContent = ordered;
   if (el('pReceived')) el('pReceived').textContent = received;
-  if (el('pTotalSpent')) el('pTotalSpent').textContent = totalSpent.toFixed(0);
+  if (el('pTotalSpent')) el('pTotalSpent').textContent = monthSpent.toFixed(0);
   if (el('badgePurchases')) {
     const total = pending + approved;
     el('badgePurchases').textContent = total;
@@ -169,6 +201,67 @@ function updatePurchaseStats() {
     el('purchasesAdminHint').style.display = IS_ADMIN ? '' : 'none';
   }
   if (el('approvalThresholdHint')) el('approvalThresholdHint').textContent = getApprovalThreshold();
+  
+  // V4：渲染支付宝额度预警卡片 + 年/月/季度汇总
+  const summaryEl = el('purchasesSummary');
+  if (summaryEl) {
+    const warnColor = warnLevel === 'danger' ? '#dc2626' : warnLevel === 'warn' ? '#ea580c' : '#15803d';
+    const warnBg = warnLevel === 'danger' ? 'rgba(220,38,38,0.08)' : warnLevel === 'warn' ? 'rgba(234,88,12,0.08)' : 'rgba(21,128,61,0.06)';
+    const warnIcon = warnLevel === 'danger' ? '🚨' : warnLevel === 'warn' ? '⚠️' : '✓';
+    const warnText = warnLevel === 'danger' ? '已超 90% · 速去充值！' : warnLevel === 'warn' ? '已超 70% · 注意余额' : '余额充足';
+    
+    summaryEl.innerHTML = `
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px;">
+        <!-- 本月支付宝消耗 + 预警 -->
+        <div style="background: ${warnBg}; border: 1.5px solid ${warnColor}33; padding: 12px 14px; border-radius: 10px; position: relative;">
+          <div style="font-size: 11px; color: var(--text-tertiary); font-weight: 600; margin-bottom: 4px;">${warnIcon} 本月支付宝消耗</div>
+          <div style="font-size: 22px; font-weight: 700; color: ${warnColor}; line-height: 1.2;">¥ ${monthSpent.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</div>
+          <div style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+              <span>额度 ¥${ALIPAY_LIMIT.toLocaleString()} · ${warnText}</span>
+              <b style="color: ${warnColor};">${usagePct.toFixed(0)}%</b>
+            </div>
+            <div style="background: rgba(0,0,0,0.06); height: 6px; border-radius: 3px; overflow: hidden;">
+              <div style="background: ${warnColor}; height: 100%; width: ${Math.min(100, usagePct).toFixed(0)}%; transition: width 0.3s;"></div>
+            </div>
+            <div style="margin-top: 4px;">余额：<b>¥${Math.max(0, remaining).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</b></div>
+          </div>
+        </div>
+        
+        <!-- 本季度 -->
+        <div style="background: var(--bg-elevated); padding: 12px 14px; border-radius: 10px;">
+          <div style="font-size: 11px; color: var(--text-tertiary); font-weight: 600; margin-bottom: 4px;">📅 Q${quarter} 本季度</div>
+          <div style="font-size: 22px; font-weight: 700; color: var(--text-primary); line-height: 1.2;">¥ ${quarterSpent.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</div>
+          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;">${thisYear} 第 ${quarter} 季度累计</div>
+        </div>
+        
+        <!-- 本年度 -->
+        <div style="background: var(--bg-elevated); padding: 12px 14px; border-radius: 10px;">
+          <div style="font-size: 11px; color: var(--text-tertiary); font-weight: 600; margin-bottom: 4px;">📊 ${thisYear} 年度</div>
+          <div style="font-size: 22px; font-weight: 700; color: var(--accent); line-height: 1.2;">¥ ${yearSpent.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</div>
+          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;">已下单 + 已发货 + 已收货</div>
+        </div>
+        
+        <!-- 占用中（已下单未到货）-->
+        <div style="background: var(--bg-elevated); padding: 12px 14px; border-radius: 10px;">
+          <div style="font-size: 11px; color: var(--text-tertiary); font-weight: 600; margin-bottom: 4px;">🚚 在途金额</div>
+          <div style="font-size: 22px; font-weight: 700; color: #ea580c; line-height: 1.2;">¥ ${activeSpent.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</div>
+          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;">已下单未到货</div>
+        </div>
+      </div>
+      ${warnLevel === 'danger' ? `
+        <div style="background: rgba(220,38,38,0.1); border: 1.5px solid #dc2626; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 20px;">🚨</span>
+          <div style="flex: 1; font-size: 13px;">
+            <b style="color: #dc2626;">支付宝额度即将耗尽！</b>
+            <span style="color: var(--text-secondary);"> 本月已消耗 ¥${monthSpent.toLocaleString()}，余额仅 ¥${Math.max(0, remaining).toLocaleString()}。请尽快给支付宝充值 ¥50,000。</span>
+          </div>
+        </div>` : warnLevel === 'warn' ? `
+        <div style="background: rgba(234,88,12,0.08); border: 1px solid rgba(234,88,12,0.3); padding: 8px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 12px; color: #ea580c;">
+          ⚠️ 本月已消耗超 70%，余额 ¥${Math.max(0, remaining).toLocaleString()}，建议关注消耗进度
+        </div>` : ''}
+    `;
+  }
 }
 
 function quickFilterPurchases(status) {
@@ -202,11 +295,164 @@ function openPurchaseModal(id, agent) {
   $('pmTotalAmount').value = p.totalAmount || 0;
   $('pmNotes').value = p.notes || '';
   $('pmThresholdHint').textContent = p.approvalThreshold || getApprovalThreshold();
+  // V4：快递追踪字段
+  if ($('pmShipper')) $('pmShipper').value = p.shipper || '';
+  if ($('pmTrackingNo')) $('pmTrackingNo').value = p.trackingNo || '';
+  // 渲染之前查过的物流（如果有缓存）
+  renderTrackingResult(p);
   
   renderPurchaseModalContent();
   setupPurchaseScreenshot();
   document.getElementById('purchaseModal').classList.add('show');
   _pasteTarget = 'purchase_orig';
+}
+
+// V4：渲染物流轨迹（在 pmTrackingResult 容器里）
+function renderTrackingResult(p) {
+  const container = document.getElementById('pmTrackingResult');
+  if (!container) return;
+  
+  if (!p.trackingData || !Array.isArray(p.trackingData) || p.trackingData.length === 0) {
+    if (p.trackingNo && p.shipper) {
+      container.innerHTML = `<div style="color: var(--text-tertiary); font-size: 12px; padding: 12px; background: var(--bg-elevated); border-radius: 6px;">点击 🔍 查物流 获取最新轨迹</div>`;
+    } else {
+      container.innerHTML = '';
+    }
+    return;
+  }
+  
+  // 物流状态映射
+  const STATE_LABEL = {
+    '0': '🚚 在途中', '1': '✅ 已揽收', '2': '🚛 运输中', '3': '📦 派送中',
+    '4': '🎉 已签收', '5': '⚠️ 派送失败', '6': '↩️ 退签', '7': '⚠️ 异常',
+    '8': '✈️ 清关中', '9': '🔍 待查询',
+  };
+  const STATE_COLOR = {
+    '4': '#15803d', '5': '#dc2626', '6': '#ea580c', '7': '#dc2626',
+    '0': '#2563eb', '1': '#7c3aed', '2': '#0891b2', '3': '#ea580c',
+  };
+  const latestState = String(p.trackingState ?? '0');
+  const stateLabel = STATE_LABEL[latestState] || '查询中';
+  const stateColor = STATE_COLOR[latestState] || '#2563eb';
+  
+  const updatedAtStr = p.trackingUpdatedAt 
+    ? new Date(p.trackingUpdatedAt).toLocaleString('zh-CN') 
+    : '—';
+  
+  container.innerHTML = `
+    <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+      <div style="padding: 10px 14px; background: ${stateColor}11; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <span style="font-weight: 700; color: ${stateColor}; font-size: 14px;">${stateLabel}</span>
+          <span style="margin-left: 10px; font-size: 11px; color: var(--text-tertiary);">最后更新：${updatedAtStr}</span>
+        </div>
+        <button class="btn small" onclick="queryTrackingForPurchase(true)" style="padding: 3px 10px; font-size: 11px;">🔄 刷新</button>
+      </div>
+      <div style="padding: 10px 14px; max-height: 280px; overflow-y: auto;">
+        ${p.trackingData.slice(0, 20).map((t, i) => `
+          <div style="display: flex; gap: 12px; padding: 6px 0; ${i < p.trackingData.length - 1 ? 'border-bottom: 1px dashed var(--border-subtle);' : ''}">
+            <div style="flex-shrink: 0; width: 12px; padding-top: 5px;">
+              <div style="width: 8px; height: 8px; border-radius: 50%; background: ${i === 0 ? stateColor : '#d3d1c7'};"></div>
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 12px; color: var(--text-primary); ${i === 0 ? 'font-weight: 600;' : ''}">${escapeHtml(t.context || '')}</div>
+              <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">${escapeHtml(t.time || '')}${t.location ? ' · ' + escapeHtml(t.location) : ''}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// V4：查询快递物流（调用 Edge Function 代理 → 快递鸟 API）
+async function queryTrackingForPurchase(forceRefresh = false) {
+  const ownerAgent = window._currentItemAgent || CURRENT_AGENT;
+  const arr = DATA.getPurchases(ownerAgent);
+  const p = arr.find(x => x._id === _currentItemId);
+  if (!p) { toast('找不到采购记录', 'err'); return; }
+  
+  const shipper = (document.getElementById('pmShipper')?.value || '').trim();
+  const trackingNo = (document.getElementById('pmTrackingNo')?.value || '').trim();
+  
+  if (!shipper) { toast('请先选择快递公司', 'warn'); return; }
+  if (!trackingNo) { toast('请填写快递单号', 'warn'); return; }
+  
+  // 如果有缓存且 < 30 分钟前查过的，且不是强制刷新 → 用缓存
+  if (!forceRefresh && p.trackingUpdatedAt && p.trackingData) {
+    const ageMs = Date.now() - new Date(p.trackingUpdatedAt).getTime();
+    if (ageMs < 30 * 60 * 1000) {
+      const minsAgo = Math.round(ageMs / 60000);
+      toast(`💡 已有 ${minsAgo} 分钟前的查询结果，跳过`, 'info', 3000);
+      renderTrackingResult(p);
+      return;
+    }
+  }
+  
+  const btn = document.getElementById('pmQueryTrackingBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '查询中...'; }
+  
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error('未登录');
+    
+    console.log('%c[物流查询] 开始', 'color:#2563eb;font-weight:bold', { shipper, trackingNo });
+    
+    const res = await fetch('https://pyfmuknvjqfwcqvbrsvw.supabase.co/functions/v1/query-tracking', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shipper, tracking_no: trackingNo }),
+    });
+    
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      // Edge Function 未部署
+      if (res.status === 404 || res.status === 503) {
+        toast('⚠ 物流查询功能未启用，请联系运维部署 query-tracking Edge Function', 'warn', 6000);
+        console.warn('[物流查询] Edge Function 404/503:', errText);
+        return;
+      }
+      throw new Error(`HTTP ${res.status}: ${errText.slice(0, 200)}`);
+    }
+    
+    const json = await res.json();
+    console.log('%c[物流查询] ✓ 成功', 'color:#16a34a;font-weight:bold', json);
+    
+    if (!json.ok) {
+      toast('查询失败：' + (json.error || '未知错误'), 'err', 5000);
+      return;
+    }
+    
+    // 写入采购记录
+    p.shipper = shipper;
+    p.trackingNo = trackingNo;
+    p.trackingData = json.traces || [];
+    p.trackingState = json.state || '0';
+    p.trackingUpdatedAt = new Date().toISOString();
+    
+    // 如果已签收且采购状态是 shipped → 自动推到 received
+    if (String(p.trackingState) === '4' && p.status === 'shipped') {
+      p.status = 'received';
+      p.receivedAt = new Date().toISOString();
+      toast('🎉 快递已签收，自动标记为「已收货」', 'ok', 5000);
+    } else if (json.traces && json.traces.length > 0) {
+      const latest = json.traces[0];
+      toast(`✓ 物流已更新：${latest.context.slice(0, 50)}`, 'ok', 5000);
+    }
+    
+    DATA.savePurchases(ownerAgent, arr);
+    try { await DATA.saveAndSyncPurchases(ownerAgent); }
+    catch (e) { console.warn('云端同步失败：', e); }
+    
+    renderTrackingResult(p);
+    renderPurchases();
+    updatePurchaseStats();
+  } catch (e) {
+    console.error('[物流查询] 失败：', e);
+    toast('查询失败：' + (e.message || e), 'err', 5000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 查物流'; }
+  }
 }
 
 function renderPurchaseModalContent() {

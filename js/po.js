@@ -678,7 +678,13 @@ function getElectricalStandard(countryCode, fallbackCountry) {
 // ============ 采购单弹窗 ============
 let PO_FORM_STATE = null;
 
-async function openPoForm(salesOrderId) {
+async function openPoForm(salesOrderId, selectedLineItemIds = null) {
+  // V4：可选第二参数 — 仅默认勾选指定的 line items（拆单功能用）
+  // selectedLineItemIds: Set<string> 或 Array<string>，里面是 shopify_line_item_id
+  const selectedSet = selectedLineItemIds 
+    ? new Set(Array.from(selectedLineItemIds)) 
+    : null;
+  
   // 加载销售订单、供应商列表、产品库
   const so = SHOPIFY._orders.find(o => o.id === salesOrderId);
   if (!so) { toast('订单不存在', 'err'); return; }
@@ -699,6 +705,7 @@ async function openPoForm(salesOrderId) {
     otherNote: '',
     otherNoteManuallyEdited: false,
     invalidPoIds: new Set(), // 已取消/已驳回 PO 的 ID 集合（用于渲染时过滤显示）
+    splitMode: !!selectedSet, // V4：是否是拆单模式（影响表单顶部提示）
   };
 
   // 默认勾选未分配且未取消的 line items
@@ -713,8 +720,10 @@ async function openPoForm(salesOrderId) {
     const validAssignments = (li.po_assignments || []).filter(a => !invalidPoIds.has(a.po_id));
     const remaining = (li.quantity || 0) - validAssignments.reduce((s, a) => s + (a.qty || 0), 0);
     const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
+    // V4：拆单模式下，仅勾选指定的 line items
+    const isInSelection = selectedSet ? selectedSet.has(li.shopify_line_item_id) : true;
     PO_FORM_STATE.lineItemSelections[li.shopify_line_item_id] = {
-      checked: remaining > 0,
+      checked: remaining > 0 && isInSelection,
       qty: remaining,
       price: eff.last_purchase_price || '',
       supplierName: eff.default_supplier || '',
@@ -903,6 +912,11 @@ function renderPoForm() {
     })()}
 
     <h4 style="margin: 0 0 8px; font-size: 13px;">📦 选择产品（勾选要开采购单的）</h4>
+    ${PO_FORM_STATE.splitMode ? `
+      <div style="background: rgba(168, 85, 247, 0.1); border: 1px dashed rgba(168, 85, 247, 0.5); padding: 10px 12px; border-radius: 8px; margin-bottom: 10px; font-size: 12px;">
+        <b style="color: #7c3aed;">✂ 拆单模式</b> · 系统已根据你在销售单上的勾选预选了产品。
+        提交后这部分单独开 PO，剩余产品稍后可再次拆单开新 PO 给其他供应商。
+      </div>` : ''}
     <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
       <div style="display: grid; grid-template-columns: 32px 80px 1fr 100px 130px 90px; gap: 12px; padding: 8px 10px; background: var(--bg-elevated); font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase;">
         <div></div><div>图</div><div>产品 (SKU/中文名)</div><div>数量</div><div>单价 ¥</div><div style="text-align:right;">小计</div>
@@ -1449,45 +1463,134 @@ function renderSuppliersList() {
   else if (sort === 'name') list.sort((a,b) => (a.name||'').localeCompare(b.name||''));
   else if (sort === 'recent') list.sort((a,b) => new Date(b.last_order_at||0) - new Date(a.last_order_at||0));
 
+  // V4：统计待审批数量，主管端显眼提示
+  const pendingCount = SUPPLIERS._list.filter(s => s.approval_status === 'pending_approval').length;
+
   const body = document.getElementById('suppliersListBody');
   if (list.length === 0) {
     body.innerHTML = '<div style="padding:32px; text-align:center; color:var(--text-tertiary);">无匹配</div>';
     return;
   }
   body.innerHTML = `
+    ${pendingCount > 0 && IS_ADMIN ? `
+      <div style="background: rgba(202,138,4,0.08); border: 1px solid rgba(202,138,4,0.3); padding: 10px 14px; margin-bottom: 10px; border-radius: 6px; font-size: 13px;">
+        <b style="color: #854f0b;">⏳ ${pendingCount} 家供应商待你审批</b>
+        · 跟单新建后必须主管批准才能用于下 PO
+        <button class="btn small" onclick="document.getElementById('supSearch').value=''; supplierFilterPending=!supplierFilterPending; renderSuppliersList();" style="margin-left: 10px; padding: 2px 10px; font-size: 11px;">
+          ${supplierFilterPending ? '显示全部' : '仅看待审批'}
+        </button>
+      </div>` : ''}
     <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; overflow:hidden;">
       <div class="supplier-header">
         <div>名称</div><div>联系人</div><div>电话</div><div style="text-align:right;">下单数</div><div></div>
       </div>
-      ${list.map(s => `
-        <div class="supplier-row" onclick="openSupplierEdit('${s.id}')">
-          <div class="name">${escapeHtml(s.name)}</div>
+      ${(supplierFilterPending ? list.filter(s => s.approval_status === 'pending_approval') : list).map(s => {
+        const apprStatus = s.approval_status || 'approved';
+        const statusBadge = apprStatus === 'pending_approval' 
+          ? '<span style="display:inline-block; padding:1px 6px; background:rgba(202,138,4,0.15); color:#854f0b; border-radius:3px; font-size:10px; font-weight:600; margin-left:6px;">⏳ 待审批</span>'
+          : apprStatus === 'rejected'
+          ? '<span style="display:inline-block; padding:1px 6px; background:rgba(220,38,38,0.15); color:#dc2626; border-radius:3px; font-size:10px; font-weight:600; margin-left:6px;">❌ 已驳回</span>'
+          : '';
+        const syncBadge = s.finance_synced_at 
+          ? '<span style="display:inline-block; padding:1px 6px; background:rgba(21,128,61,0.1); color:#15803d; border-radius:3px; font-size:10px; font-weight:600; margin-left:4px;" title="已同步到财务系统">💰 已同步</span>'
+          : '';
+        return `
+        <div class="supplier-row" onclick="openSupplierEdit('${s.id}')" ${apprStatus === 'pending_approval' ? 'style="background: rgba(202,138,4,0.04);"' : ''}>
+          <div class="name">${escapeHtml(s.name)}${statusBadge}${syncBadge}</div>
           <div class="contact">${escapeHtml(s.contact_name || '—')}</div>
           <div class="phone">${escapeHtml(s.contact_phone || '—')}</div>
           <div class="orders">${s.total_orders || 0}</div>
           <div class="actions"><button class="btn small" onclick="event.stopPropagation(); openSupplierEdit('${s.id}')">编辑</button></div>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
     </div>
-    <div style="padding:10px; text-align:center; color:var(--text-tertiary); font-size:11px;">共 ${list.length} 家</div>
+    <div style="padding:10px; text-align:center; color:var(--text-tertiary); font-size:11px;">共 ${list.length} 家${pendingCount > 0 ? ` · ⏳ ${pendingCount} 待审批` : ''}</div>
   `;
 }
+
+// V4：过滤"仅看待审批"开关
+let supplierFilterPending = false;
 
 let SUPPLIER_EDIT_ID = null;
 function openSupplierEdit(id) {
   SUPPLIER_EDIT_ID = id;
-  const s = id ? SUPPLIERS.byId(id) : { name:'', contact_name:'', contact_phone:'', contact_wechat:'', address:'', payment_terms:'', notes:'' };
+  const s = id ? SUPPLIERS.byId(id) : { name:'', contact_name:'', contact_phone:'', contact_wechat:'', address:'', payment_terms:'', notes:'',
+    alipay_account:'', alipay_name:'', alipay_qr_url:'', wechat_qr_url:'',
+    bank_name:'', bank_account:'', bank_account_name:'', approval_status:'pending_approval' };
   document.getElementById('supplierEditTitle').textContent = id ? `编辑供应商：${s.name}` : '新增供应商';
   document.getElementById('supplierDeleteBtn').style.display = id ? '' : 'none';
+  
+  // V4：审批状态徽章
+  const apprStatus = s.approval_status || 'approved';
+  const apprBadge = apprStatus === 'pending_approval' 
+    ? `<span style="display:inline-block; padding:3px 10px; background:rgba(202,138,4,0.15); color:#854f0b; border-radius:4px; font-size:11px; font-weight:600; margin-left:8px;">⏳ 待主管审批</span>`
+    : apprStatus === 'rejected'
+    ? `<span style="display:inline-block; padding:3px 10px; background:rgba(220,38,38,0.15); color:#dc2626; border-radius:4px; font-size:11px; font-weight:600; margin-left:8px;">❌ 已驳回</span>`
+    : id ? `<span style="display:inline-block; padding:3px 10px; background:rgba(21,128,61,0.15); color:#15803d; border-radius:4px; font-size:11px; font-weight:600; margin-left:8px;">✓ 已生效</span>` : '';
+  
+  document.getElementById('supplierEditTitle').innerHTML = (id ? `编辑供应商：${escapeHtml(s.name)}` : '新增供应商') + apprBadge;
+  
   document.getElementById('supplierEditBody').innerHTML = `
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <!-- 基础信息 -->
       <div style="grid-column:1/-1;"><label style="font-size:12px; font-weight:600;">供应商名 *</label><input id="seName" class="form-control" value="${escapeHtml(s.name||'')}" placeholder="如：优亮灯饰"></div>
       <div><label style="font-size:12px; font-weight:600;">联系人</label><input id="seContact" class="form-control" value="${escapeHtml(s.contact_name||'')}"></div>
       <div><label style="font-size:12px; font-weight:600;">电话</label><input id="sePhone" class="form-control" value="${escapeHtml(s.contact_phone||'')}"></div>
       <div><label style="font-size:12px; font-weight:600;">微信</label><input id="seWechat" class="form-control" value="${escapeHtml(s.contact_wechat||'')}"></div>
       <div><label style="font-size:12px; font-weight:600;">付款条件</label><input id="seTerms" class="form-control" value="${escapeHtml(s.payment_terms||'')}" placeholder="如：月结30天 / 见单付款"></div>
       <div style="grid-column:1/-1;"><label style="font-size:12px; font-weight:600;">地址</label><input id="seAddress" class="form-control" value="${escapeHtml(s.address||'')}"></div>
-      <div style="grid-column:1/-1;"><label style="font-size:12px; font-weight:600;">备注</label><textarea id="seNotes" class="form-control" rows="2">${escapeHtml(s.notes||'')}</textarea></div>
+      
+      <!-- V4：支付宝收款（同步到财务系统）-->
+      <div style="grid-column:1/-1; margin-top:8px; padding-top:12px; border-top:1px solid var(--border-subtle);">
+        <div style="font-size:13px; font-weight:700; color:var(--accent); margin-bottom:6px;">💰 支付宝收款（同步到财务系统）</div>
+      </div>
+      <div><label style="font-size:12px; font-weight:600;">支付宝账号</label><input id="seAlipayAccount" class="form-control" value="${escapeHtml(s.alipay_account||'')}" placeholder="手机号 / 邮箱"></div>
+      <div><label style="font-size:12px; font-weight:600;">支付宝收款人姓名</label><input id="seAlipayName" class="form-control" value="${escapeHtml(s.alipay_name||'')}" placeholder="姓名（必须和账号实名一致）"></div>
+      <div>
+        <label style="font-size:12px; font-weight:600;">支付宝收款二维码</label>
+        <div class="image-field-wrapper" data-target="seAlipayQrUrl">
+          <input type="hidden" id="seAlipayQrUrl" data-key="alipay_qr_url" value="${escapeHtml(s.alipay_qr_url||'')}">
+          <div class="image-preview-box" style="position:relative; min-height:80px; border:1px dashed var(--border); border-radius:6px; padding:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; background:var(--bg-card);">
+            ${s.alipay_qr_url ? `<img src="${escapeHtml(s.alipay_qr_url)}" style="max-height:120px; max-width:100%;">` : `<div style="color:var(--text-tertiary); font-size:12px; padding:20px;">📷 点击上传 / 粘贴二维码图片</div>`}
+            <input type="file" accept="image/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" onchange="supplierUploadImage(this, 'seAlipayQrUrl')">
+          </div>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px; font-weight:600;">微信收款二维码</label>
+        <div class="image-field-wrapper" data-target="seWechatQrUrl">
+          <input type="hidden" id="seWechatQrUrl" data-key="wechat_qr_url" value="${escapeHtml(s.wechat_qr_url||'')}">
+          <div class="image-preview-box" style="position:relative; min-height:80px; border:1px dashed var(--border); border-radius:6px; padding:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; background:var(--bg-card);">
+            ${s.wechat_qr_url ? `<img src="${escapeHtml(s.wechat_qr_url)}" style="max-height:120px; max-width:100%;">` : `<div style="color:var(--text-tertiary); font-size:12px; padding:20px;">📷 点击上传 / 粘贴二维码图片</div>`}
+            <input type="file" accept="image/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" onchange="supplierUploadImage(this, 'seWechatQrUrl')">
+          </div>
+        </div>
+      </div>
+      
+      <!-- V4：银行账号（对公付款用，同步到财务系统）-->
+      <div style="grid-column:1/-1; margin-top:8px; padding-top:12px; border-top:1px solid var(--border-subtle);">
+        <div style="font-size:13px; font-weight:700; color:var(--accent); margin-bottom:6px;">🏦 对公银行账号（同步到财务系统）</div>
+      </div>
+      <div style="grid-column:1/-1;"><label style="font-size:12px; font-weight:600;">开户人 / 公司名</label><input id="seBankAccountName" class="form-control" value="${escapeHtml(s.bank_account_name||'')}" placeholder="开户人姓名（个人）或公司名"></div>
+      <div><label style="font-size:12px; font-weight:600;">银行名</label><input id="seBankName" class="form-control" value="${escapeHtml(s.bank_name||'')}" placeholder="如：中国工商银行"></div>
+      <div><label style="font-size:12px; font-weight:600;">银行账号</label><input id="seBankAccount" class="form-control" value="${escapeHtml(s.bank_account||'')}" placeholder="完整账号"></div>
+      
+      <!-- 备注 -->
+      <div style="grid-column:1/-1; margin-top:8px;"><label style="font-size:12px; font-weight:600;">备注</label><textarea id="seNotes" class="form-control" rows="2">${escapeHtml(s.notes||'')}</textarea></div>
+      
       ${id ? `<div style="grid-column:1/-1; padding:8px 10px; background:var(--bg-elevated); border-radius:6px; font-size:11px; color:var(--text-tertiary);">累计下单：${s.total_orders||0} 次 · 累计金额：¥${Number(s.total_amount||0).toFixed(2)}</div>` : ''}
+      
+      <!-- V4：审批操作（仅主管 + 待审批状态时显示）-->
+      ${id && apprStatus === 'pending_approval' && IS_ADMIN ? `
+        <div style="grid-column:1/-1; padding:10px 12px; background:rgba(202,138,4,0.08); border:1px solid rgba(202,138,4,0.3); border-radius:6px;">
+          <div style="font-size:12px; color:#854f0b; margin-bottom:8px;">
+            <b>⏳ 待审批：</b>此供应商由跟单 <b>${escapeHtml(s.created_by_name || '?')}</b> 新建，需主管确认后才能下 PO，确认后自动同步财务系统。
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn primary" onclick="supplierApprove('${id}', true)" style="background:var(--success); padding:6px 14px;">✓ 批准（同步到财务系统）</button>
+            <button class="btn" onclick="supplierApprove('${id}', false)" style="color:var(--danger); padding:6px 14px;">✗ 驳回</button>
+          </div>
+        </div>` : ''}
     </div>
   `;
   document.getElementById('supplierEditModal').style.display = 'flex';
@@ -1499,6 +1602,7 @@ function closeSupplierEdit() {
 }
 
 async function supplierSave() {
+  // V4：收集所有字段，包括新增的支付宝/微信/银行/二维码
   const payload = {
     name: document.getElementById('seName').value.trim(),
     contact_name: document.getElementById('seContact').value.trim(),
@@ -1507,22 +1611,189 @@ async function supplierSave() {
     payment_terms: document.getElementById('seTerms').value.trim(),
     address: document.getElementById('seAddress').value.trim(),
     notes: document.getElementById('seNotes').value.trim(),
+    // V4 新增字段
+    alipay_account: document.getElementById('seAlipayAccount').value.trim(),
+    alipay_name: document.getElementById('seAlipayName').value.trim(),
+    alipay_qr_url: document.getElementById('seAlipayQrUrl').value.trim(),
+    wechat_qr_url: document.getElementById('seWechatQrUrl').value.trim(),
+    bank_name: document.getElementById('seBankName').value.trim(),
+    bank_account: document.getElementById('seBankAccount').value.trim(),
+    bank_account_name: document.getElementById('seBankAccountName').value.trim(),
     updated_at: new Date().toISOString(),
   };
   if (!payload.name) { toast('名称必填', 'warn'); return; }
+  
   try {
     if (SUPPLIER_EDIT_ID) {
+      // 编辑现有供应商（不改 approval_status，除非用主管审批按钮）
       const { error } = await sb.from('suppliers').update(payload).eq('id', SUPPLIER_EDIT_ID);
       if (error) throw error;
+      toast('✓ 已保存供应商信息');
     } else {
+      // V4：新建供应商
+      // - 主管创建：直接 approval_status='approved' 立刻生效
+      // - 跟单创建：approval_status='pending_approval' 等主管审批
+      payload.created_at = new Date().toISOString();
+      payload.created_by = CURRENT_USER_ID || null;
+      payload.created_by_name = CURRENT_AGENT || null;
+      payload.approval_status = IS_ADMIN ? 'approved' : 'pending_approval';
+      if (IS_ADMIN) {
+        payload.approved_by = CURRENT_USER_ID || null;
+        payload.approved_at = new Date().toISOString();
+      }
       const { error } = await sb.from('suppliers').insert(payload);
       if (error) throw error;
+      
+      if (IS_ADMIN) {
+        toast('✓ 已新增供应商');
+      } else {
+        toast(`✓ 已提交供应商「${payload.name}」，等待主管审批后才能下 PO`, 'ok', 6000);
+      }
     }
     await SUPPLIERS.loadAll();
     renderSuppliersList();
     closeSupplierEdit();
-    toast('已保存');
-  } catch (e) { toast('保存失败：' + (e.message || e), 'err'); }
+  } catch (e) {
+    // 字段不存在的友好错误（提示用户跑 SQL）
+    if (String(e.message || e).includes('column') && String(e.message || e).includes('does not exist')) {
+      toast('❌ 数据库字段未更新，请联系管理员跑 V4 SQL 升级', 'err', 8000);
+      console.error('SQL 升级未执行：请在 Supabase SQL Editor 跑 V4 供应商扩展字段', e);
+    } else {
+      toast('保存失败：' + (e.message || e), 'err');
+    }
+  }
+}
+
+// V4：供应商二维码 / 图片上传
+async function supplierUploadImage(inputEl, hiddenId) {
+  const file = inputEl.files && inputEl.files[0];
+  if (!file) return;
+  try {
+    toast('上传中...', 'info');
+    const url = await uploadImageToStorage(file);
+    const hiddenInput = document.getElementById(hiddenId);
+    if (hiddenInput) {
+      hiddenInput.value = url;
+      // 更新预览
+      const wrapper = inputEl.closest('.image-field-wrapper');
+      if (wrapper) {
+        const box = wrapper.querySelector('.image-preview-box');
+        if (box) {
+          // 保留 file input
+          const fileInput = box.querySelector('input[type=file]');
+          box.innerHTML = `<img src="${escapeHtml(url)}" style="max-height:120px; max-width:100%;">`;
+          if (fileInput) box.appendChild(fileInput);
+        }
+      }
+      toast('✓ 已上传');
+    }
+  } catch (e) {
+    toast('上传失败：' + (e.message || e), 'err');
+  }
+}
+
+// V4：主管审批/驳回供应商
+async function supplierApprove(supplierId, approve) {
+  if (!IS_ADMIN) { toast('仅主管可审批', 'err'); return; }
+  const s = SUPPLIERS.byId(supplierId);
+  if (!s) return;
+  
+  if (approve) {
+    if (!confirm(`确认批准供应商「${s.name}」？\n\n批准后该供应商：\n• 可被跟单选择下 PO\n• 系统会尝试同步到财务系统（如已部署 Edge Function）`)) return;
+  } else {
+    if (!confirm(`确认驳回供应商「${s.name}」？\n\n驳回后该供应商不可用，但记录保留。`)) return;
+  }
+  
+  try {
+    await sb.from('suppliers').update({
+      approval_status: approve ? 'approved' : 'rejected',
+      approved_by: CURRENT_USER_ID || null,
+      approved_at: new Date().toISOString(),
+    }).eq('id', supplierId);
+    
+    toast(approve ? `✓ 已批准「${s.name}」` : `已驳回「${s.name}」`);
+    
+    // V4：如果批准了，尝试同步到财务系统
+    if (approve) {
+      try {
+        const syncResult = await syncSupplierToFinance(supplierId);
+        if (syncResult.ok) {
+          toast(`✓ 已同步到财务系统（UUID: ${syncResult.uuid?.slice(0, 8)}...）`, 'ok', 5000);
+        } else if (syncResult.skipped) {
+          console.log('[财务同步] 跳过：', syncResult.reason);
+        }
+      } catch (syncErr) {
+        console.warn('[财务同步] 失败（不影响审批）：', syncErr);
+        toast('⚠ 已批准但财务同步失败，请检查 Edge Function 部署', 'warn', 5000);
+      }
+    }
+    
+    await SUPPLIERS.loadAll();
+    renderSuppliersList();
+    closeSupplierEdit();
+  } catch (e) {
+    toast('操作失败：' + (e.message || e), 'err');
+  }
+}
+
+// V4：调用 Edge Function 把供应商同步到财务系统
+// Edge Function 在跟单运维端部署（持有 gendan_api 账号凭证）
+async function syncSupplierToFinance(supplierId) {
+  const s = SUPPLIERS.byId(supplierId);
+  if (!s) return { skipped: true, reason: '供应商不存在' };
+  
+  // 没填支付宝且没填银行账号 → 跳过同步（财务必填这些）
+  if (!s.alipay_account && !s.bank_account) {
+    return { skipped: true, reason: '未填写支付宝或银行账号，不同步' };
+  }
+  
+  try {
+    // 调 Supabase Edge Function 代理（避免跨域 + 保护密钥）
+    // Edge Function 名：sync-to-caiwu，需要单独部署
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return { skipped: true, reason: '未登录' };
+    
+    const res = await fetch('https://pyfmuknvjqfwcqvbrsvw.supabase.co/functions/v1/sync-to-caiwu', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'upsert_supplier',
+        supplier: {
+          local_id: s.id,
+          name: s.name,
+          payee: s.alipay_name || s.bank_account_name,
+          alipay: s.alipay_account,
+          bank_name: s.bank_name,
+          bank_account: s.bank_account,
+          notes: s.notes,
+        },
+      }),
+    });
+    
+    if (!res.ok) {
+      // Edge Function 未部署或财务方 API 没开通 → 优雅降级（本地照常存）
+      if (res.status === 404 || res.status === 503) {
+        return { skipped: true, reason: 'sync-to-caiwu Edge Function 未部署' };
+      }
+      const errText = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status}: ${errText.slice(0, 200)}`);
+    }
+    
+    const json = await res.json();
+    if (json.ok && json.finance_uuid) {
+      // 回写财务系统给的 UUID
+      await sb.from('suppliers').update({
+        finance_supplier_uuid: json.finance_uuid,
+        finance_synced_at: new Date().toISOString(),
+      }).eq('id', supplierId);
+      return { ok: true, uuid: json.finance_uuid };
+    }
+    
+    return { skipped: true, reason: 'Edge Function 返回非 ok 状态' };
+  } catch (e) {
+    console.error('[同步财务] 异常：', e);
+    throw e;
+  }
 }
 
 async function supplierDelete() {
@@ -1539,6 +1810,44 @@ async function supplierDelete() {
 }
 
 // ============ 产品维护 ============
+
+// V4：从任何地方（销售单/PO/找灯）跳转到产品页查看具体产品
+// 用法：onclick="gotoProductBySku('VK05-251011-10')"
+function gotoProductBySku(sku) {
+  if (!sku) return;
+  // 切到产品 tab
+  if (typeof switchTab === 'function') switchTab('products');
+  // 等 tab 切换 + 加载完成，再设搜索词
+  setTimeout(() => {
+    const searchInput = document.getElementById('productSearch');
+    if (searchInput) {
+      searchInput.value = sku;
+      // 同时清除其他筛选避免冲突
+      const fl = document.getElementById('productFilter');
+      const sf = document.getElementById('productSiteFilter');
+      if (fl) fl.value = 'all';
+      if (sf) sf.value = 'all';
+      renderProductsList();
+      // 高亮：找到对应行加上闪烁效果
+      setTimeout(() => {
+        const body = document.getElementById('productsListBody');
+        if (!body) return;
+        const targetRow = body.querySelector(`[data-sku="${CSS.escape(sku)}"]`);
+        if (targetRow) {
+          targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          targetRow.style.transition = 'background 0.3s';
+          targetRow.style.background = 'var(--accent-soft, #fff7ed)';
+          setTimeout(() => { targetRow.style.background = ''; }, 1800);
+        } else {
+          // 没找到精确匹配，至少滚到列表顶
+          body.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 250);
+    }
+    if (typeof toast === 'function') toast(`✓ 已跳转到产品：${sku}`);
+  }, 150);
+}
+
 async function renderProducts() {
   try {
     await PRODUCTS_CACHE.loadAll();
@@ -1580,7 +1889,7 @@ function renderProductsList() {
         const isAlias = !!p.master_product_id;
         const master = isAlias ? PRODUCTS_CACHE._byId[p.master_product_id] : null;
         return `
-        <div class="product-row ${isAlias ? 'is-alias' : ''}">
+        <div class="product-row ${isAlias ? 'is-alias' : ''}" data-sku="${escapeHtml(p.sku)}">
           ${p.image_url ? `<img class="prod-img" src="${escapeHtml(p.image_url)}" onclick="openImgLightbox('${escapeHtml(p.image_url)}')">` : `<div class="prod-noimg">📷</div>`}
           <div>
             <div class="sku">${escapeHtml(p.sku)}${hasAlias ? '<span class="master-tag">主</span>' : ''}${isAlias ? `<span class="alias-tag">同款: ${escapeHtml(master?.sku || '')}</span>` : ''}</div>
@@ -1726,6 +2035,7 @@ let PO_FILTER = 'all';
 let PO_SALES_ORDERS_MAP = {};
 let PO_SUPPLIER_FILTER = '';
 let PO_DATE_FILTER = null;  // {days, creator?} 时间范围筛选
+let PO_SEARCH = '';         // 关键词搜索：PO 编号 / 供应商 / SKU / 产品名 / 备注
 let PO_PAGE = 1;
 const PO_PAGE_SIZE = 50;
 
@@ -1931,6 +2241,29 @@ function poClearDateFilter() {
   renderPoList();
 }
 
+// V4：搜索（带 200ms 防抖，避免每输入一字符就重渲染）
+let _poSearchTimer = null;
+function poSetSearch(val) {
+  if (_poSearchTimer) clearTimeout(_poSearchTimer);
+  _poSearchTimer = setTimeout(() => {
+    PO_SEARCH = (val || '').trim();
+    PO_PAGE = 1;
+    renderPoList();
+    // 保持搜索框焦点（重渲染后输入框是新元素，要重新聚焦 + 光标移到末尾）
+    const inp = document.getElementById('poSearchInput');
+    if (inp) {
+      inp.focus();
+      inp.setSelectionRange(inp.value.length, inp.value.length);
+    }
+  }, 200);
+}
+
+function poClearSearch() {
+  PO_SEARCH = '';
+  PO_PAGE = 1;
+  renderPoList();
+}
+
 function poGoPage(p) {
   PO_PAGE = Math.max(1, p);
   renderPoList();
@@ -1960,6 +2293,28 @@ function renderPoList() {
     if (PO_DATE_FILTER.creator) list = list.filter(p => p.creator_name === PO_DATE_FILTER.creator);
   }
 
+  // V4：多维关键词搜索（PO 编号 / 供应商 / SKU / 产品名 / 备注 / 销售单号 / 创建人）
+  if (PO_SEARCH) {
+    const q = PO_SEARCH.toLowerCase().trim();
+    list = list.filter(p => {
+      // PO 自身字段
+      if ((p.po_number || '').toLowerCase().includes(q)) return true;
+      if ((p.supplier || '').toLowerCase().includes(q)) return true;
+      if ((p.order_no || '').toLowerCase().includes(q)) return true;
+      if ((p.note || '').toLowerCase().includes(q)) return true;
+      if ((p.box_note || '').toLowerCase().includes(q)) return true;
+      if ((p.creator_name || '').toLowerCase().includes(q)) return true;
+      // line_items 里的 SKU / 产品名 / variant
+      for (const li of (p.line_items || [])) {
+        if ((li.sku || '').toLowerCase().includes(q)) return true;
+        if ((li.title_cn || '').toLowerCase().includes(q)) return true;
+        if ((li.title_en || '').toLowerCase().includes(q)) return true;
+        if ((li.variant || '').toLowerCase().includes(q)) return true;
+      }
+      return false;
+    });
+  }
+
   const body = document.getElementById('poListBody');
   if (list.length === 0) {
     body.innerHTML = '<div style="padding:32px; text-align:center; color:var(--text-tertiary);">无采购单</div>';
@@ -1976,6 +2331,14 @@ function renderPoList() {
   const allSuppliers = [...new Set(PO_LIST.filter(p => p.status !== 'cancelled').map(p => p.supplier).filter(Boolean))].sort();
   const supplierFilterHtml = `
     <div style="display:flex; gap:10px; align-items:center; padding:10px 0; flex-wrap:wrap;">
+      <!-- V4：多维搜索框 -->
+      <div style="position:relative; flex:1; min-width:240px; max-width:380px;">
+        <input type="text" id="poSearchInput" placeholder="🔍 PO 编号 / 供应商 / SKU / 产品名 / 备注..." 
+               value="${escapeHtml(PO_SEARCH)}" 
+               oninput="poSetSearch(this.value)"
+               style="width:100%; padding:7px 32px 7px 12px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary);">
+        ${PO_SEARCH ? `<span onclick="poClearSearch()" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); cursor:pointer; color:var(--text-tertiary); font-size:14px; padding:2px 6px;" title="清除搜索">✕</span>` : ''}
+      </div>
       ${PO_DATE_FILTER ? `
         <span style="display:inline-flex; align-items:center; gap:4px; padding: 4px 10px; background: var(--accent-soft, #eff6ff); border: 1px solid var(--accent); border-radius: 14px; font-size: 12px; color: var(--accent); font-weight: 600;">
           📅 ${PO_DATE_FILTER.days === 1 ? '今天' : '近' + PO_DATE_FILTER.days + '天'}${PO_DATE_FILTER.creator ? ' · ' + escapeHtml(PO_DATE_FILTER.creator) : ''}
@@ -1986,9 +2349,14 @@ function renderPoList() {
         <option value="">— 全部供应商 (${allSuppliers.length}) —</option>
         ${allSuppliers.map(s => `<option value="${escapeHtml(s)}" ${PO_SUPPLIER_FILTER === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
       </select>
-      ${PO_SUPPLIER_FILTER ? `
-        <span style="font-size:12px; color:var(--text-secondary);">筛选 <b>${escapeHtml(PO_SUPPLIER_FILTER)}</b>：<b style="color:var(--accent);">${list.length}</b> 张</span>
-        <button class="btn small" onclick="poExportSupplier()" title="导出该供应商的对单表（用于催单/对账）">📤 导出 ${escapeHtml(PO_SUPPLIER_FILTER)} 对单表</button>
+      ${(PO_SEARCH || PO_SUPPLIER_FILTER) ? `
+        <span style="font-size:12px; color:var(--text-secondary);">
+          ${PO_SUPPLIER_FILTER ? `筛选 <b>${escapeHtml(PO_SUPPLIER_FILTER)}</b>` : ''}${PO_SUPPLIER_FILTER && PO_SEARCH ? ' · ' : ''}${PO_SEARCH ? `搜 "<b>${escapeHtml(PO_SEARCH)}</b>"` : ''}：<b style="color:var(--accent);">${list.length}</b> 张
+        </span>
+        ${PO_SUPPLIER_FILTER ? `
+          <button class="btn small" onclick="poExportSupplier()" title="导出该供应商的对单表（用于催单/对账）">📤 对单表</button>
+          <button class="btn small primary" onclick="poBatchExportOpenDialog()" title="把所有 PO 打包成一个 PDF/Word 发给供应商">📑 批量导出 PO</button>
+        ` : ''}
       ` : ''}
     </div>
   `;
@@ -2030,16 +2398,26 @@ function renderPoList() {
         ${isRejected && p.approval_note ? `<div style="background:rgba(185,28,28,0.08); padding:8px 14px; border-bottom:1px solid var(--border-subtle); font-size:12px;"><b style="color:var(--danger);">❌ 驳回原因：</b><span style="color:var(--text-primary);">${escapeHtml(p.approval_note)}</span>${p.approved_by ? ` <span style="color:var(--text-tertiary);">· 由 ${escapeHtml(p.approved_by)} 驳回</span>` : ''}</div>` : ''}
         <div class="po-card-body" style="display: grid; grid-template-columns: 1fr 200px; gap: 12px; font-size: 12px;">
           <div>
-            ${items.slice(0,3).map(li => `
+            ${items.slice(0,3).map(li => {
+              const skuStr = li.sku || '';
+              const titleStr = li.title_cn || li.title_en || '';
+              const skuClickable = skuStr 
+                ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${escapeHtml(skuStr).replace(/'/g, "\\'")}');return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击查看产品详情">${escapeHtml(skuStr)}</a>` 
+                : '';
+              const titleClickable = skuStr
+                ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${escapeHtml(skuStr).replace(/'/g, "\\'")}');return false;" style="color:inherit; text-decoration:none; cursor:pointer; border-bottom:1px dashed var(--border-subtle);" title="点击查看产品详情">${escapeHtml(titleStr)}</a>`
+                : escapeHtml(titleStr);
+              return `
               <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
                 ${li.image_url
                   ? `<img src="${escapeHtml(li.image_url)}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid var(--border-subtle); cursor:zoom-in; flex-shrink:0;" onclick="openImgLightbox('${escapeHtml(li.image_url)}')">`
                   : `<div style="width:50px; height:50px; border-radius:6px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:18px; flex-shrink:0;">📷</div>`}
                 <div style="flex:1; min-width:0; font-size:12px;">
-                  <div style="color:var(--text-tertiary); font-family:monospace; font-size:10px;">${escapeHtml(li.sku || '')}</div>
-                  <div style="color:var(--text-primary);">${escapeHtml(li.title_cn || li.title_en)} ${(li.qty||0) >= 2 ? `<span style="background:var(--danger); color:white; padding:2px 8px; border-radius:5px; font-weight:700; font-size:14px; margin:0 4px;">× ${li.qty}</span>` : `<span style="color:var(--text-tertiary)">× ${li.qty}</span>`} @ ¥${Number(li.price).toFixed(2)}</div>
+                  <div style="color:var(--text-tertiary); font-family:monospace; font-size:10px;">${skuClickable}</div>
+                  <div style="color:var(--text-primary);">${titleClickable} ${(li.qty||0) >= 2 ? `<span style="background:var(--danger); color:white; padding:2px 8px; border-radius:5px; font-weight:700; font-size:14px; margin:0 4px;">× ${li.qty}</span>` : `<span style="color:var(--text-tertiary)">× ${li.qty}</span>`} @ ¥${Number(li.price).toFixed(2)}</div>
                 </div>
-              </div>`).join('')}
+              </div>`;
+            }).join('')}
             ${items.length > 3 ? `<div style="color:var(--text-tertiary); font-size:11px;">还有 ${items.length-3} 行…</div>` : ''}
             <div style="color:var(--text-secondary); margin-top:6px;">📦 ${escapeHtml(p.box_note || '')}</div>
           </div>
@@ -2305,8 +2683,9 @@ async function poAdvance(poId, nextStatus, nextLabel) {
   const po = PO_LIST.find(x => x.id === poId);
   if (!po) return;
 
-  // 推进到"已到货"时，提示同步到 Shopify 后台
-  if (nextStatus === 'arrived') {
+  // V4 修复：推进到 "received"（财务收货完成）时同步到 Shopify 后台
+  // 业务流程：producing → sent → confirmed → arrived → received（财务收货 = 此时触发同步）
+  if (nextStatus === 'received') {
     const items = po.line_items || [];
     const today = new Date().toISOString().slice(0, 10);
     // 默认拼接：每行一个产品
@@ -2314,11 +2693,11 @@ async function poAdvance(poId, nextStatus, nextLabel) {
       const name = li.title_cn || li.title_en || li.sku || '产品';
       return `  • ${name} × ${li.qty}（${po.supplier || '供应商'}）已回`;
     }).join('\n');
-    const defaultAppend = `[财务录入 ${today}] 采购单 ${po.po_number} 已到货：\n${defaultLines}`;
+    const defaultAppend = `[财务录入 ${today}] 采购单 ${po.po_number} 已完成入库：\n${defaultLines}`;
 
     const extraNote = await showPrompt({
-      title: `✓ 确认 ${po.po_number} 已到货？`,
-      message: `会自动追加以下内容到 Shopify 订单备注（保留原有客户备注）：\n${'─'.repeat(38)}\n${defaultAppend}\n${'─'.repeat(38)}`,
+      title: `✓ 确认 ${po.po_number} 财务收货完成？`,
+      message: `财务对账完成后，会自动追加以下内容到 Shopify 订单备注（保留原有客户备注）：\n${'─'.repeat(38)}\n${defaultAppend}\n${'─'.repeat(38)}`,
       field: { label: '额外备注（可选）', value: '', type: 'textarea', rows: 3, placeholder: '如：完好，无破损 / 缺 1 个待补 / 包装稍有变形' },
     });
     if (extraNote === null) return;  // 取消
@@ -2327,23 +2706,48 @@ async function poAdvance(poId, nextStatus, nextLabel) {
       ? `${defaultAppend}\n  备注：${extraNote.trim()}`
       : defaultAppend;
 
-    // 调 Edge Function 同步 Shopify
+    // 调 Edge Function 同步 Shopify（增强日志，方便排查同步失败原因）
+    console.log('%c[Shopify 同步] 开始', 'color:#2563eb;font-weight:bold', {
+      poNumber: po.po_number,
+      salesOrderId: po.sales_order_id,
+      appendText: appendText.slice(0, 200),
+    });
+    
     try {
-      const so = SHOPIFY._orders.find(o => o.id === po.sales_order_id);
-      if (so && so.shopify_order_id) {
-        await SHOPIFY.call('update_order_note', {
+      // 查找关联的销售单（在 SHOPIFY._orders 缓存里）
+      const so = SHOPIFY._orders ? SHOPIFY._orders.find(o => o.id === po.sales_order_id) : null;
+      
+      if (!po.sales_order_id) {
+        // PO 没关联销售单（自定义 PO）
+        console.warn('[Shopify 同步] 跳过：此 PO 无关联销售单（自定义 PO）');
+        toast(`ℹ 此 PO 是自定义采购单（无关联销售单），跳过 Shopify 备注同步`, 'warn', 5000);
+      } else if (!so) {
+        // 销售单不在内存缓存里（可能销售单 tab 没加载过，或销售单已删除）
+        console.warn('[Shopify 同步] 跳过：在 SHOPIFY._orders 缓存里找不到 sales_order_id =', po.sales_order_id);
+        console.warn('  → 请先切换到「销售单」tab 加载数据，再操作"财务收货"');
+        toast(`⚠ 销售单数据未加载，请先打开"销售单" tab 一次，再来收货同步`, 'warn', 6000);
+      } else if (!so.shopify_order_id) {
+        // 销售单是手动创建的（不来自 Shopify）
+        console.warn('[Shopify 同步] 跳过：该销售单是手动创建的，没有 Shopify 订单 ID');
+        toast(`ℹ 此销售单是手动创建（非 Shopify 同步），跳过备注同步`, 'warn', 5000);
+      } else {
+        // 真正执行同步
+        console.log('[Shopify 同步] 准备调用 Edge Function update_order_note', {
+          order_id: so.shopify_order_id,
+          shop: so.shop_domain,
+        });
+        const result = await SHOPIFY.call('update_order_note', {
           order_id: so.shopify_order_id,
           shop: so.shop_domain,
           append_text: appendText,
         }, so.shop_domain);
-        toast('✓ 已同步到 Shopify 后台备注');
-      } else {
-        console.warn('未找到对应销售单，跳过 Shopify 同步');
+        console.log('%c[Shopify 同步] ✓ 成功', 'color:#16a34a;font-weight:bold', result);
+        toast(`✓ 已同步到 Shopify 后台备注（订单 ${so.shopify_order_number || so.shopify_order_id}）`, 'ok', 5000);
       }
     } catch (e) {
       // 同步失败但不阻塞推进
-      console.error('Shopify 同步失败：', e);
-      if (!confirm('⚠️ 同步到 Shopify 失败：\n' + (e.message || e) + '\n\n是否继续推进 PO 到"已到货"状态？\n（建议先检查 Edge Function 是否更新了 update_order_note action）')) return;
+      console.error('%c[Shopify 同步] ✗ 失败', 'color:#dc2626;font-weight:bold', e);
+      if (!confirm('⚠️ 同步到 Shopify 失败：\n' + (e.message || e) + '\n\n排查清单：\n1. Edge Function 是否已部署最新版？\n   命令：supabase functions deploy shopify-api --project-ref pyfmuknvjqfwcqvbrsvw\n2. shopify_stores 表的 access_token 是否过期？\n3. F12 Console 看详细错误日志\n\n是否继续推进 PO 到"已完成入库"？')) return;
     }
   } else {
     if (!confirm(`确认推进到「${nextLabel}」？`)) return;
@@ -2363,6 +2767,143 @@ async function poRevert(poId, prevStatus, prevLabel) {
     toast(`已退回到「${prevLabel}」`);
     await renderPo();
   } catch (e) { toast('操作失败：' + (e.message || e), 'err'); }
+}
+
+// ============================================================
+// V4：财务收货模块（独立 tab）
+// 显示所有 status='arrived' 的 PO，财务对账后推进到 'received'
+// 推进时自动追加备注到 Shopify 订单后台（不覆盖客户原备注）
+// ============================================================
+async function renderFinance() {
+  // 复用 PO 数据，无需独立 fetch
+  try {
+    if (!PO_LIST || PO_LIST.length === 0) {
+      // 首次进入：拉 PO 数据
+      const { data } = await sb.from('orders').select('*').not('po_number', 'is', null).order('created_at', { ascending: false }).limit(500);
+      PO_LIST = data || [];
+    }
+    // 同步销售单数据（同步 Shopify 备注时要用）
+    if (typeof SHOPIFY !== 'undefined' && SHOPIFY.loadOrdersFromDB) {
+      await SHOPIFY.loadOrdersFromDB(false).catch(() => {});
+    }
+    renderFinanceList();
+  } catch (e) {
+    toast('加载财务数据失败：' + (e.message || e), 'err');
+  }
+}
+
+function renderFinanceList() {
+  // 待财务收货的 PO（status = 'arrived'）
+  const waiting = PO_LIST.filter(p => p.status === 'arrived');
+  // 本月已收货（status = 'received'）
+  const today = new Date();
+  const thisMonth = today.toISOString().slice(0, 7);  // YYYY-MM
+  const doneThisMonth = PO_LIST.filter(p => p.status === 'received' && (p.updated_at || p.created_at || '').startsWith(thisMonth));
+  // 全部已收货
+  const totalDone = PO_LIST.filter(p => p.status === 'received').length;
+  // 本月总金额
+  const monthAmount = doneThisMonth.reduce((s, p) => s + Number(p.total_amount || 0), 0);
+  
+  // 统计卡片
+  const statsHtml = `
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 8px;">
+      <div class="sales-stat-card" style="border-left: 4px solid var(--warning);">
+        <div class="sales-stat-label">⏳ 待财务对账</div>
+        <div class="sales-stat-num">${waiting.length}</div>
+        <div class="sales-stat-sub">单 · 跟单已确认到货</div>
+      </div>
+      <div class="sales-stat-card" style="border-left: 4px solid var(--success);">
+        <div class="sales-stat-label">✓ 本月已入库</div>
+        <div class="sales-stat-num">${doneThisMonth.length}</div>
+        <div class="sales-stat-sub">单 · ¥${monthAmount.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</div>
+      </div>
+      <div class="sales-stat-card">
+        <div class="sales-stat-label">📊 累计已入库</div>
+        <div class="sales-stat-num">${totalDone}</div>
+        <div class="sales-stat-sub">单 · 全部历史</div>
+      </div>
+    </div>
+  `;
+  document.getElementById('financeStatsContainer').innerHTML = statsHtml;
+  
+  const body = document.getElementById('financeListBody');
+  if (waiting.length === 0) {
+    body.innerHTML = `
+      <div style="padding: 60px 20px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border); border-radius: 10px;">
+        <div style="font-size: 48px; margin-bottom: 10px;">🎉</div>
+        <div style="font-size: 15px; color: var(--text-primary); font-weight: 600; margin-bottom: 6px;">没有待财务收货的 PO</div>
+        <div style="font-size: 12px; color: var(--text-tertiary);">所有"已到货"的采购单都已完成对账入库</div>
+      </div>`;
+    return;
+  }
+  
+  // 按到货时间排序（updated_at 最新的优先）
+  waiting.sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''));
+  
+  body.innerHTML = `
+    <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">
+      共 <b style="color: var(--accent);">${waiting.length}</b> 张 PO 等待财务对账确认入库：
+    </div>
+    ${waiting.map(p => {
+      const items = p.line_items || [];
+      const totalQty = items.reduce((s, x) => s + (x.qty || 0), 0);
+      const arrived = p.updated_at ? new Date(p.updated_at).toLocaleDateString() : '—';
+      const so = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) 
+        ? SHOPIFY._orders.find(o => o.id === p.sales_order_id) 
+        : null;
+      const shopifyHint = p.sales_order_id 
+        ? (so?.shopify_order_id 
+            ? `<span style="color:var(--success); font-size:11px;">✓ 收货后同步 Shopify ${so.shopify_order_number || ''}</span>`
+            : `<span style="color:var(--text-tertiary); font-size:11px;">⚠ 销售单未加载，请先打开销售单 tab</span>`)
+        : `<span style="color:var(--text-tertiary); font-size:11px;">ℹ 自定义 PO（无 Shopify 同步）</span>`;
+      
+      return `
+        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 10px; transition: box-shadow 0.15s;" 
+             onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,0.08)'" 
+             onmouseout="this.style.boxShadow='none'">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;">
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                <span style="font-family: monospace; font-weight: 700; color: var(--accent); font-size: 14px;">${escapeHtml(p.po_number)}</span>
+                <span style="padding: 2px 8px; background: rgba(234,88,12,0.1); color: #ea580c; font-size: 11px; border-radius: 4px; font-weight: 600;">📦 已到货</span>
+                ${p.order_no ? `<span style="font-size: 11px; color: var(--text-tertiary);">→ 销售单 <a href="#" onclick="event.preventDefault();poJumpToSalesOrder('${p.sales_order_id}');return false;" style="color: var(--accent); text-decoration: none;">${escapeHtml(p.order_no)}</a></span>` : ''}
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+                <span><b>供应商：</b>${escapeHtml(p.supplier || '—')}</span>
+                <span><b>数量：</b>${totalQty} 件 / ${items.length} 行</span>
+                <span><b>金额：</b><b style="color: var(--accent);">¥ ${Number(p.total_amount || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}</b></span>
+                <span><b>到货：</b>${arrived}</span>
+                <span><b>跟单：</b>${escapeHtml(p.creator_name || '—')}</span>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+                ${items.slice(0, 4).map(li => `
+                  <span style="background: var(--bg-elevated); padding: 3px 8px; border-radius: 4px; font-size: 11px; color: var(--text-secondary);">
+                    ${escapeHtml((li.title_cn || li.title_en || li.sku || '').slice(0, 30))} × ${li.qty}
+                  </span>
+                `).join('')}
+                ${items.length > 4 ? `<span style="font-size: 11px; color: var(--text-tertiary);">还有 ${items.length - 4} 行...</span>` : ''}
+              </div>
+              <div style="margin-top: 8px;">${shopifyHint}</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;">
+              <button class="btn primary" onclick="poAdvance('${p.id}', 'received', '已完成入库')" 
+                      style="background: var(--success); padding: 8px 16px; white-space: nowrap;" 
+                      title="财务对账完成 → 推进到已入库 → 自动追加备注到 Shopify">
+                ✓ 完成入库
+              </button>
+              <button class="btn small" onclick="poOpenPrint('${p.id}')" style="padding: 4px 12px; font-size: 11px;">
+                👁 查看详情
+              </button>
+              <button class="btn small" onclick="poRevert('${p.id}', 'confirmed', '供应商已确认')" 
+                      style="padding: 4px 12px; font-size: 11px; color: var(--text-tertiary);" 
+                      title="退回到上一步（万一是误推进）">
+                ↺ 退回
+              </button>
+            </div>
+          </div>
+        </div>`;
+    }).join('')}
+  `;
 }
 
 // 点采购单里的销售单号跳转到销售单 tab
@@ -2595,15 +3136,11 @@ function poOpenPrint(poId) {
           </tr>
         </tbody>
       </table>
-      <!-- 备注：订单备注 + 其他备注 并排 -->
-      <div class="notes-grid">
-        <div class="note-box danger">
-          <span class="label">⚠ 订单备注（请写在纸箱上）</span>
-          <div class="content">${escapeHtml(po.box_note || '—')}</div>
-        </div>
-        <div class="note-box">
-          <span class="label">其他备注</span>
-          <div class="content" style="font-weight:500; font-family:inherit;">${escapeHtml(po.note || '—')}</div>
+      <!-- 订单备注：紧贴合计行下方，独占整行（其他备注已去除，规格直接在表格内）-->
+      <div style="background:#fff5f5; border:1px solid #fecaca; padding:12px 14px; margin-top:8px; border-radius:6px;">
+        <div style="display:flex; align-items:flex-start; gap:10px;">
+          <span style="font-weight:700; color:#dc2626; font-size:13px; white-space:nowrap; flex-shrink:0;">⚠ 订单备注（请写在纸箱上）：</span>
+          <div style="flex:1; color:#7f1d1d; font-weight:600; white-space:pre-wrap; word-break:break-all;">${escapeHtml(po.box_note || '—')}</div>
         </div>
       </div>
     </div>
@@ -2715,14 +3252,11 @@ async function poQuickCopyImage(poId) {
           </tr>
         </tbody>
       </table>
-      <div class="notes-grid">
-        <div class="note-box danger">
-          <span class="label">⚠ 订单备注（请写在纸箱上）</span>
-          <div class="content">${escapeHtml(po.box_note || '—')}</div>
-        </div>
-        <div class="note-box">
-          <span class="label">其他备注</span>
-          <div class="content" style="font-weight:500; font-family:inherit;">${escapeHtml(po.note || '—')}</div>
+      <!-- 订单备注：紧贴合计行下方，独占整行 -->
+      <div style="background:#fff5f5; border:1px solid #fecaca; padding:12px 14px; margin-top:8px; border-radius:6px;">
+        <div style="display:flex; align-items:flex-start; gap:10px;">
+          <span style="font-weight:700; color:#dc2626; font-size:13px; white-space:nowrap; flex-shrink:0;">⚠ 订单备注（请写在纸箱上）：</span>
+          <div style="flex:1; color:#7f1d1d; font-weight:600; white-space:pre-wrap; word-break:break-all;">${escapeHtml(po.box_note || '—')}</div>
         </div>
       </div>
     </div>`;
@@ -2761,6 +3295,278 @@ async function poScreenshot() {
     if (result.mode === 'clipboard') toast('✓ 图片已复制，可直接粘贴到微信/QQ');
     else toast('✓ 已下载图片');
   } else { toast('生成失败', 'err'); }
+}
+
+// ============================================================
+// V4：批量导出多 PO 为单个 PDF（每页一个采购单）
+// 用户场景：亿源供应商今天有 5 个 PO → 一键打包发给亿源
+// ============================================================
+
+async function _loadJsPdf() {
+  if (window.jspdf?.jsPDF) return true;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('jsPDF CDN 加载失败'));
+    document.head.appendChild(s);
+    setTimeout(() => reject(new Error('jsPDF 加载超时')), 15000);
+  });
+  return true;
+}
+
+// 构建单个 PO 的导出 HTML（屏幕外渲染，html2canvas 截图用）
+function _buildSinglePoExportNode(po, includeImages) {
+  const items = po.line_items || [];
+  const totalQty = items.reduce((s, x) => s + (x.qty || 0), 0);
+  const totalAmount = items.reduce((s, x) => s + (x.subtotal || 0), 0);
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed; left:-99999px; top:0; width:920px; z-index:-1; background:#fff;';
+  wrap.innerHTML = `
+    <div class="po-print">
+      <div class="po-header">
+        <div class="po-title">📋 采购单 <span class="po-no">${escapeHtml(po.po_number)}</span></div>
+        <div class="po-meta-right">开单 ${new Date(po.created_at).toLocaleDateString()} · 跟单 ${escapeHtml(po.creator_name || '')}</div>
+      </div>
+      <div class="meta-bar">
+        <span><b>供应商：</b>${escapeHtml(po.supplier)}</span>
+        <span><b>关联销售：</b>${escapeHtml(po.order_no || '—')}</span>
+        ${po.promised_date ? `<span><b>交期：</b>${escapeHtml(po.promised_date)}</span>` : ''}
+        <span><b>合计：</b><span style="color:#dc2626; font-weight:700;">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span></span>
+      </div>
+      <table>
+        <thead><tr>
+          <th width="32" style="text-align:center;">#</th>
+          ${includeImages ? '<th width="66">图片</th>' : ''}
+          <th>产品规格</th>
+          <th width="56" style="text-align:center;">数量</th>
+          <th width="80" style="text-align:right;">单价</th>
+          <th width="92" style="text-align:right;">小计</th>
+        </tr></thead>
+        <tbody>
+          ${items.map((li, i) => {
+            const specs = extractVariantInfo(li.variant || '');
+            return `
+            <tr>
+              <td style="text-align:center;">${i+1}</td>
+              ${includeImages ? `<td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}" crossorigin="anonymous">` : '<span style="color:#aaa;">—</span>'}</td>` : ''}
+              <td>${li.title_cn ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(li.title_cn)}</div>` : ''}<div style="color:var(--text-tertiary); font-family:monospace; font-size:10px;">${escapeHtml(li.sku || '')}</div>${specs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(specs)}</div>` : ''}</td>
+              <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px;">${li.qty}</span>` : li.qty}</td>
+              <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
+              <td style="text-align:right; font-family:monospace; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
+            </tr>`;
+          }).join('')}
+          <tr class="total-row">
+            <td colspan="${includeImages ? 3 : 2}" style="text-align:right;">合 计</td>
+            <td style="text-align:center;">${totalQty}</td>
+            <td></td>
+            <td style="text-align:right; font-family:monospace; color:#dc2626;">¥ ${totalAmount.toFixed(2)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="background:#fff5f5; border:1px solid #fecaca; padding:12px 14px; margin-top:8px; border-radius:6px;">
+        <div style="display:flex; align-items:flex-start; gap:10px;">
+          <span style="font-weight:700; color:#dc2626; font-size:13px; white-space:nowrap; flex-shrink:0;">⚠ 订单备注（请写在纸箱上）：</span>
+          <div style="flex:1; color:#7f1d1d; font-weight:600; white-space:pre-wrap; word-break:break-all;">${escapeHtml(po.box_note || '—')}</div>
+        </div>
+      </div>
+    </div>`;
+  return wrap;
+}
+
+// 弹窗：选格式 + 含图选项
+function poBatchExportOpenDialog() {
+  if (!PO_SUPPLIER_FILTER) { toast('请先在上方下拉里筛选一个供应商', 'warn'); return; }
+  
+  let list = PO_LIST.filter(p => (p.supplier || '') === PO_SUPPLIER_FILTER);
+  if (PO_FILTER === 'pending') list = list.filter(p => p.status === 'pending_approval');
+  else if (PO_FILTER === 'producing') list = list.filter(p => p.status === 'producing');
+  else if (PO_FILTER === 'ordered') list = list.filter(p => ['sent', 'confirmed', 'arrived'].includes(p.status));
+  else if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
+  else if (PO_FILTER === 'done') list = list.filter(p => p.status === 'received');
+  else list = list.filter(p => p.status !== 'cancelled');
+  
+  if (list.length === 0) { toast(`供应商「${PO_SUPPLIER_FILTER}」下没有 PO 可导出`, 'warn'); return; }
+  
+  // 显示对话框
+  document.getElementById('batchExportInfo').innerHTML = `
+    <b>供应商：</b>${escapeHtml(PO_SUPPLIER_FILTER)} · <b>${list.length} 张 PO</b> 将打包导出
+  `;
+  document.getElementById('batchExportModal').classList.add('show');
+}
+
+function closeBatchExport() {
+  document.getElementById('batchExportModal').classList.remove('show');
+}
+
+async function poDoBatchExport(format) {
+  closeBatchExport();
+  const includeImages = document.getElementById('batchExportIncludeImg').checked;
+  
+  if (!PO_SUPPLIER_FILTER) { toast('请先筛选供应商', 'warn'); return; }
+  
+  let list = PO_LIST.filter(p => (p.supplier || '') === PO_SUPPLIER_FILTER);
+  if (PO_FILTER === 'pending') list = list.filter(p => p.status === 'pending_approval');
+  else if (PO_FILTER === 'producing') list = list.filter(p => p.status === 'producing');
+  else if (PO_FILTER === 'ordered') list = list.filter(p => ['sent', 'confirmed', 'arrived'].includes(p.status));
+  else if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
+  else if (PO_FILTER === 'done') list = list.filter(p => p.status === 'received');
+  else list = list.filter(p => p.status !== 'cancelled');
+  
+  if (list.length === 0) { toast('无 PO 可导出', 'warn'); return; }
+  
+  if (format === 'pdf') {
+    await _poBatchExportPDF(list, includeImages);
+  } else if (format === 'docx') {
+    _poBatchExportDocx(list, includeImages);
+  }
+}
+
+async function _poBatchExportPDF(list, includeImages) {
+  toast(`正在生成 ${list.length} 张 PO 的 PDF...（请稍候）`, 'info', 8000);
+  
+  try {
+    await Promise.all([_loadHtml2Canvas(), _loadJsPdf()]);
+  } catch (e) {
+    toast('PDF 工具加载失败：' + e.message + '\n请检查网络连接', 'err', 6000);
+    return;
+  }
+  
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const A4_WIDTH_MM = 210;
+  const MARGIN = 8;
+  const USABLE_WIDTH = A4_WIDTH_MM - MARGIN * 2;
+  
+  for (let i = 0; i < list.length; i++) {
+    const po = list[i];
+    const wrap = _buildSinglePoExportNode(po, includeImages);
+    document.body.appendChild(wrap);
+    
+    try {
+      // 等图片加载
+      if (includeImages) {
+        const imgs = wrap.querySelectorAll('img');
+        await Promise.all([...imgs].map(img => {
+          if (img.complete) return Promise.resolve();
+          return new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 3000); });
+        }));
+      }
+      
+      const canvas = await window.html2canvas(wrap.querySelector('.po-print'), {
+        backgroundColor: '#ffffff',
+        scale: 1.6, useCORS: true, logging: false,
+      });
+      
+      const imgHeight = canvas.height * USABLE_WIDTH / canvas.width;
+      const imgData = canvas.toDataURL('image/jpeg', 0.85);
+      
+      if (i > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', MARGIN, MARGIN, USABLE_WIDTH, imgHeight);
+      
+      // 页脚：页码
+      pdf.setFontSize(8);
+      pdf.setTextColor(120, 113, 108);
+      pdf.text(`${i + 1} / ${list.length} · ${po.po_number}`, A4_WIDTH_MM / 2, 290, { align: 'center' });
+    } finally {
+      wrap.remove();
+    }
+  }
+  
+  const filename = `${PO_SUPPLIER_FILTER}_采购单_${list.length}张_${new Date().toISOString().slice(0,10)}.pdf`;
+  pdf.save(filename);
+  toast(`✓ 已导出 ${list.length} 张 PO 到 PDF：${filename}`, 'ok', 6000);
+}
+
+// Word 导出：用 HTML 包装成 .doc 文件（Word 能识别 HTML，简化方案）
+function _poBatchExportDocx(list, includeImages) {
+  toast(`正在生成 ${list.length} 张 PO 的 Word...`, 'info');
+  
+  const today = new Date().toISOString().slice(0, 10);
+  const supplier = PO_SUPPLIER_FILTER;
+  
+  // 构建 Word-friendly HTML（每个 PO 占一页，用 page-break-after 强制分页）
+  const poHtmls = list.map(po => {
+    const items = po.line_items || [];
+    const totalQty = items.reduce((s, x) => s + (x.qty || 0), 0);
+    const totalAmount = items.reduce((s, x) => s + (x.subtotal || 0), 0);
+    return `
+    <div style="page-break-after: always; padding: 20px;">
+      <h2 style="margin:0 0 6px; font-size:18pt; color:#1c1917;">📋 采购单 ${escapeHtml(po.po_number)}</h2>
+      <div style="color:#78716c; font-size:10pt; margin-bottom:10px;">开单 ${new Date(po.created_at).toLocaleDateString()} · 跟单 ${escapeHtml(po.creator_name || '')}</div>
+      <div style="background:#f5f5f4; padding:8px 12px; border-radius:4px; margin-bottom:10px; font-size:10pt;">
+        <b>供应商：</b>${escapeHtml(po.supplier)} &nbsp;|&nbsp; 
+        <b>关联销售：</b>${escapeHtml(po.order_no || '—')} &nbsp;|&nbsp; 
+        ${po.promised_date ? `<b>交期：</b>${escapeHtml(po.promised_date)} &nbsp;|&nbsp; ` : ''}
+        <b>合计：</b><span style="color:#dc2626; font-weight:700;">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span>
+      </div>
+      <table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse; width:100%; font-size:10pt;">
+        <thead style="background:#f5f5f4;">
+          <tr>
+            <th style="width:40px;">#</th>
+            ${includeImages ? '<th style="width:80px;">图片</th>' : ''}
+            <th>产品规格</th>
+            <th style="width:60px;">数量</th>
+            <th style="width:80px;">单价</th>
+            <th style="width:90px;">小计</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map((li, i) => {
+            const specs = extractVariantInfo(li.variant || '');
+            return `
+            <tr>
+              <td style="text-align:center;">${i+1}</td>
+              ${includeImages ? `<td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}" style="width:60px; height:60px; object-fit:cover;">` : '—'}</td>` : ''}
+              <td>${li.title_cn ? `<b>${escapeHtml(li.title_cn)}</b><br>` : ''}<span style="color:#78716c; font-size:8pt;">${escapeHtml(li.sku || '')}</span>${specs ? `<br><span style="color:#555; font-size:9pt;">${escapeHtml(specs)}</span>` : ''}</td>
+              <td style="text-align:center; ${li.qty >= 2 ? 'background:#dc2626; color:white; font-weight:700;' : ''}">${li.qty}</td>
+              <td style="text-align:right;">¥ ${Number(li.price).toFixed(2)}</td>
+              <td style="text-align:right; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
+            </tr>`;
+          }).join('')}
+          <tr style="background:#fef3c7; font-weight:700;">
+            <td colspan="${includeImages ? 3 : 2}" style="text-align:right;">合 计</td>
+            <td style="text-align:center;">${totalQty}</td>
+            <td></td>
+            <td style="text-align:right; color:#dc2626;">¥ ${totalAmount.toFixed(2)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="background:#fff5f5; border:1px solid #fecaca; padding:10px; margin-top:10px;">
+        <b style="color:#dc2626;">⚠ 订单备注（请写在纸箱上）：</b>
+        <span style="color:#7f1d1d; font-weight:600;">${escapeHtml(po.box_note || '—')}</span>
+      </div>
+    </div>`;
+  }).join('');
+  
+  const html = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
+<head>
+<meta charset="UTF-8">
+<title>${supplier} 采购单</title>
+<xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>
+<style>
+  body { font-family: "Microsoft YaHei", -apple-system, sans-serif; }
+  table { border-collapse: collapse; }
+  @page { size: A4; margin: 1.5cm; }
+</style>
+</head>
+<body>
+<h1 style="font-size:22pt; margin-bottom:4pt;">📋 ${supplier} 采购单合集</h1>
+<div style="color:#78716c; font-size:10pt; margin-bottom:20pt;">共 ${list.length} 张 PO · 导出日期 ${today}${includeImages ? ' · 含图' : ' · 不含图'}</div>
+${poHtmls}
+</body>
+</html>`;
+  
+  // Word 能识别 HTML 但需要 .doc 后缀和 Word HTML MIME
+  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${supplier}_采购单_${list.length}张_${today}.doc`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  
+  toast(`✓ 已导出 ${list.length} 张 PO 到 Word 文档`, 'ok', 5000);
 }
 // 兼容旧引用
 
