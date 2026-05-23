@@ -14,8 +14,22 @@ renderActiveTab = function() {
   return _origRenderActiveTab();
 };
 
-// 启动
-// 启动：bootstrap（异步登录检查）
-bootstrap();
-setupScreenshotHandlers();
-setupBatchChaseScreenshot();
+// V4 修复：脚本在 <head>，但 bootstrap() 立即执行时 DOM 还没解析完，
+// 会导致 getElementById('loadingScreen') 返回 null。所以等 DOM 就绪再启动。
+function startApp() {
+  try {
+    bootstrap();
+    setupScreenshotHandlers();
+    setupBatchChaseScreenshot();
+  } catch (err) {
+    console.error('启动失败:', err);
+  }
+}
+
+if (document.readyState === 'loading') {
+  // DOM 还在解析，等 DOMContentLoaded
+  document.addEventListener('DOMContentLoaded', startApp);
+} else {
+  // DOM 已经就绪（页面加载完，或脚本动态注入）
+  startApp();
+}
