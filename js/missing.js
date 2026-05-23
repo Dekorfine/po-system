@@ -148,9 +148,99 @@ function toggleMissingGroup(key) {
   el.querySelector('.missing-group-head').classList.toggle('expanded');
 }
 
+// ============ V4：自定义数量对话框（截图打包前先选要导多少个）============
+function _promptExportLimit(target) {
+  return new Promise((resolve) => {
+    const total = target.length;
+    const withImg = target.filter(m => m.screenshots && m.screenshots.length > 0).length;
+    const noImg = total - withImg;
+    
+    // 推荐选项：根据总数动态生成
+    const presets = [4, 6, 9, 12, 16, 20].filter(n => n <= total);
+    const defaultVal = Math.min(9, total);
+    
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10000; display:flex; align-items:center; justify-content:center; padding:20px;';
+    overlay.innerHTML = `
+      <div style="background:#fff; border-radius:14px; max-width:480px; width:100%; padding:24px; box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+          <span style="font-size:24px;">📸</span>
+          <h3 style="margin:0; font-size:17px; font-weight:700; color:#1c1917;">截图打包 · 选择导出数量</h3>
+        </div>
+        <div style="font-size:12px; color:#57534e; margin-bottom:16px;">
+          当前共 <b style="color:#2563eb;">${total}</b> 个任务${noImg > 0 ? `（${withImg} 个有图、${noImg} 个仅描述）` : '（全部有图）'}
+        </div>
+        <div style="background:#f5f5f4; border-radius:8px; padding:12px; margin-bottom:14px;">
+          <div style="font-size:11px; font-weight:600; color:#78716c; margin-bottom:8px;">🚀 快速选择：</div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px;">
+            ${presets.map(n => `
+              <button class="_preset-btn" data-val="${n}" style="padding:6px 14px; border:1.5px solid #e7e5e4; background:#fff; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; color:#1c1917; min-width:50px;">${n}</button>
+            `).join('')}
+            ${total > 20 ? `<button class="_preset-btn" data-val="${total}" style="padding:6px 14px; border:1.5px solid #2563eb; background:rgba(37,99,235,0.08); color:#2563eb; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer;">全部 ${total}</button>` : ''}
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px; font-weight:600; color:#57534e; display:block; margin-bottom:6px;">或自定义数量（1 - ${total}）：</label>
+          <input type="number" id="_exportLimitInput" min="1" max="${total}" value="${defaultVal}" style="width:100%; padding:10px 12px; border:1.5px solid #e7e5e4; border-radius:8px; font-size:16px; font-weight:700; font-family:'JetBrains Mono', monospace; text-align:center; color:#1c1917; background:#fff;">
+        </div>
+        <div style="background:rgba(37,99,235,0.05); border-left:3px solid #2563eb; padding:8px 12px; border-radius:4px; margin-bottom:18px; font-size:11px; line-height:1.6; color:#57534e;">
+          <b style="color:#2563eb;">💡 导出规则：</b><br>
+          • <b>有图任务优先</b>（自动排前）<br>
+          • 数量越少图越大（1 列 / 2 列 / 3 列自动调整）<br>
+          • 生成后可直接发供应商统一咨询
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button id="_exportCancel" style="padding:9px 18px; border:1px solid #e7e5e4; background:#fff; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; color:#57534e;">取消</button>
+          <button id="_exportConfirm" style="padding:9px 18px; border:none; background:#2563eb; color:white; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; box-shadow:0 2px 6px rgba(37,99,235,0.25);">✓ 开始导出</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    const input = overlay.querySelector('#_exportLimitInput');
+    const confirmBtn = overlay.querySelector('#_exportConfirm');
+    const cancelBtn = overlay.querySelector('#_exportCancel');
+    
+    overlay.querySelectorAll('._preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        input.value = btn.dataset.val;
+        overlay.querySelectorAll('._preset-btn').forEach(b => {
+          b.style.background = '#fff';
+          b.style.color = '#1c1917';
+          b.style.borderColor = '#e7e5e4';
+        });
+        btn.style.background = 'rgba(37,99,235,0.1)';
+        btn.style.color = '#2563eb';
+        btn.style.borderColor = '#2563eb';
+        input.focus();
+      });
+    });
+    
+    const defaultBtn = overlay.querySelector(`._preset-btn[data-val="${defaultVal}"]`);
+    if (defaultBtn) defaultBtn.click();
+    
+    const cleanup = (val) => { overlay.remove(); resolve(val); };
+    
+    confirmBtn.addEventListener('click', () => {
+      const n = parseInt(input.value || '0', 10);
+      if (!n || n < 1) { toast('数量至少 1 个', 'warn'); return; }
+      if (n > total) { toast(`最多 ${total} 个`, 'warn'); return; }
+      cleanup(n);
+    });
+    cancelBtn.addEventListener('click', () => cleanup(null));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(null); });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') confirmBtn.click();
+      else if (e.key === 'Escape') cancelBtn.click();
+    });
+    setTimeout(() => input.focus(), 50);
+  });
+}
+
 // ============ 一键截图打包（拼图导出）============
+// V4：先弹出自定义数量对话框，让用户选要导几个，不再固定导全部
 async function exportMissingCollage() {
-  // 过滤：根据当前筛选条件，但只取有图片或有描述的
+  // 过滤：根据当前筛选条件
   const fs = document.getElementById('mFilterStatus').value;
   let target = MISSING_LIGHTS;
   if (fs === 'active' || fs === 'searching') {
@@ -164,15 +254,18 @@ async function exportMissingCollage() {
     return;
   }
   
-  // 确认要导出多少
-  const withImg = target.filter(m => m.screenshots && m.screenshots.length > 0).length;
-  const noImg = target.length - withImg;
-  let confirmMsg = `准备拼图导出 ${target.length} 个找灯任务`;
-  if (noImg > 0) confirmMsg += `（${withImg} 个有图，${noImg} 个仅描述）`;
-  confirmMsg += '\n\n生成的大图可直接发给供应商统一咨询。继续？';
-  if (!confirm(confirmMsg)) return;
+  // V4：弹出数量选择对话框（不再固定导出全部）
+  const limit = await _promptExportLimit(target);
+  if (limit === null) return;  // 用户取消
   
-  toast('正在生成截图，请稍候...', 'warn');
+  // 排序：有图的优先（让前 N 个尽量包含有图的任务）
+  target = [...target].sort((a, b) => {
+    const aHas = (a.screenshots && a.screenshots.length > 0) ? 1 : 0;
+    const bHas = (b.screenshots && b.screenshots.length > 0) ? 1 : 0;
+    return bHas - aHas;
+  }).slice(0, limit);
+  
+  toast(`正在生成 ${limit} 个任务的拼图，请稍候...`, 'warn');
   
   try {
     // 加载所有图片（多图任务展开成多个卡片，让每张图都大）
@@ -532,6 +625,12 @@ function renderMissingModalContent() {
   const ss = m.screenshots || [];
   document.getElementById('mmScreenshotsCount').textContent = `${ss.length} 张`;
   document.getElementById('mmScreenshots').innerHTML = ss.map((s, i) => `<div class="drop-zone-thumb"><img src="${s}" onclick="viewImage('${s}')"><button class="rm" onclick="rmMissingScreenshot(${i})">×</button></div>`).join('');
+  // V4：拼图导出按钮（仅当有 2+ 张图时显示）
+  const stitchBtnEl = document.getElementById('mmStitchBtn');
+  if (stitchBtnEl) {
+    stitchBtnEl.style.display = ss.length >= 2 ? 'inline-flex' : 'none';
+    stitchBtnEl.onclick = () => openStitchDialog(m._id, 'screenshots');
+  }
 
   // 实拍照片
   const rp = m.realPhotos || [];
@@ -837,5 +936,188 @@ function updateMissingStats() {
   document.getElementById('mMine').textContent = mine;
   document.getElementById('mComments').textContent = totalCmts;
   updateBadges();
+}
+
+// ============================================================
+// V4：找灯图片拼接功能（多张图合成一张大图）
+// ============================================================
+let _stitchSelected = new Set();
+let _stitchAllImgs = [];
+let _stitchTargetId = null;
+let _stitchSourceField = 'screenshots';
+
+function openStitchDialog(missingId, sourceField) {
+  const m = MISSING_LIGHTS.find(x => x._id === missingId);
+  if (!m) return;
+  const imgs = m[sourceField] || [];
+  if (imgs.length < 2) { toast('至少需要 2 张图才能拼接', 'warn'); return; }
+  
+  _stitchTargetId = missingId;
+  _stitchSourceField = sourceField;
+  _stitchAllImgs = imgs.slice();
+  // 默认全选（最多 16 张）
+  _stitchSelected = new Set(imgs.slice(0, Math.min(16, imgs.length)).map((_, i) => i));
+  
+  renderStitchDialog();
+  document.getElementById('stitchModal').classList.add('show');
+}
+
+function closeStitchDialog() {
+  document.getElementById('stitchModal').classList.remove('show');
+  _stitchSelected.clear();
+  _stitchAllImgs = [];
+  _stitchTargetId = null;
+}
+
+function renderStitchDialog() {
+  const grid = document.getElementById('stitchImgGrid');
+  if (!grid) return;
+  grid.innerHTML = _stitchAllImgs.map((s, i) => {
+    const sel = _stitchSelected.has(i);
+    return `
+      <div class="stitch-thumb ${sel ? 'sel' : ''}" onclick="toggleStitchImg(${i})">
+        <img src="${s}">
+        ${sel ? `<span class="stitch-num">${[..._stitchSelected].sort((a,b)=>a-b).indexOf(i) + 1}</span>` : '<span class="stitch-hint">点击选中</span>'}
+      </div>`;
+  }).join('');
+  // 已选数 + 推荐网格
+  document.getElementById('stitchCountInfo').textContent = `已选 ${_stitchSelected.size} 张 / 共 ${_stitchAllImgs.length} 张`;
+  document.getElementById('stitchPreviewLayout').textContent = getStitchLayoutLabel(_stitchSelected.size);
+}
+
+function toggleStitchImg(i) {
+  if (_stitchSelected.has(i)) _stitchSelected.delete(i);
+  else {
+    if (_stitchSelected.size >= 16) { toast('最多 16 张', 'warn'); return; }
+    _stitchSelected.add(i);
+  }
+  renderStitchDialog();
+}
+
+function selectAllStitch() {
+  _stitchSelected = new Set(_stitchAllImgs.slice(0, Math.min(16, _stitchAllImgs.length)).map((_, i) => i));
+  renderStitchDialog();
+}
+function clearStitchSelection() {
+  _stitchSelected.clear();
+  renderStitchDialog();
+}
+
+function getStitchLayoutLabel(n) {
+  if (n <= 1) return '— 至少 2 张 —';
+  if (n === 2) return '1 × 2 横向';
+  if (n === 3) return '1 × 3 横向';
+  if (n === 4) return '2 × 2 网格';
+  if (n <= 6) return '2 × 3 网格';
+  if (n <= 9) return '3 × 3 网格';
+  if (n <= 12) return '3 × 4 网格';
+  return '4 × 4 网格';
+}
+
+function _getStitchGrid(n) {
+  if (n === 2) return [1, 2];
+  if (n === 3) return [1, 3];
+  if (n === 4) return [2, 2];
+  if (n <= 6) return [2, 3];
+  if (n <= 9) return [3, 3];
+  if (n <= 12) return [3, 4];
+  return [4, 4];
+}
+
+async function doStitch() {
+  if (_stitchSelected.size < 2) { toast('至少选 2 张图', 'warn'); return; }
+  const ordered = [..._stitchSelected].sort((a, b) => a - b).map(i => _stitchAllImgs[i]);
+  const n = ordered.length;
+  const [rows, cols] = _getStitchGrid(n);
+  
+  toast(`正在拼接 ${n} 张图（${rows}×${cols}）...`, 'info');
+  
+  try {
+    // 加载所有图片
+    const loaded = await Promise.all(ordered.map(url => new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(`图片加载失败：${url.slice(0, 80)}`));
+      img.src = url;
+    })));
+    
+    // 单格尺寸 600x600（统一），间隙 8px，最终大图最大 4800x3600 左右
+    const CELL = 600;
+    const GAP = 8;
+    const PAD = 16;
+    const W = PAD * 2 + CELL * cols + GAP * (cols - 1);
+    const H = PAD * 2 + CELL * rows + GAP * (rows - 1);
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    
+    // 白色背景
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+    
+    // 逐格绘制（cover 拟合）
+    loaded.forEach((img, idx) => {
+      const r = Math.floor(idx / cols);
+      const c = idx % cols;
+      const dx = PAD + c * (CELL + GAP);
+      const dy = PAD + r * (CELL + GAP);
+      // cover 算法：以图片短边铺满格子，长边裁切
+      const scale = Math.max(CELL / img.width, CELL / img.height);
+      const drawW = img.width * scale;
+      const drawH = img.height * scale;
+      const offX = (CELL - drawW) / 2;
+      const offY = (CELL - drawH) / 2;
+      // 用 clip 限制绘制区域
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(dx, dy, CELL, CELL);
+      ctx.clip();
+      ctx.drawImage(img, dx + offX, dy + offY, drawW, drawH);
+      ctx.restore();
+      // 边框
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(dx + 0.5, dy + 0.5, CELL - 1, CELL - 1);
+      // 角标编号
+      const badgeR = 14;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.arc(dx + badgeR + 8, dy + badgeR + 8, badgeR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(idx + 1), dx + badgeR + 8, dy + badgeR + 8);
+    });
+    
+    // 导出 blob + 复制到剪贴板（同时给下载链接）
+    canvas.toBlob(async (blob) => {
+      if (!blob) { toast('拼接失败', 'err'); return; }
+      // 尝试复制到剪贴板
+      let copied = false;
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        copied = true;
+      } catch (e) { /* 不支持就跳过 */ }
+      // 始终生成下载链接
+      const dlUrl = URL.createObjectURL(blob);
+      const dlA = document.createElement('a');
+      dlA.href = dlUrl;
+      dlA.download = `找灯拼图_${n}张_${new Date().toISOString().slice(0,10)}.png`;
+      dlA.click();
+      setTimeout(() => URL.revokeObjectURL(dlUrl), 5000);
+      
+      closeStitchDialog();
+      if (copied) toast(`✓ 已拼接 ${n} 张图，复制到剪贴板 + 下载`, 'ok', 5000);
+      else toast(`✓ 已拼接 ${n} 张图，已下载到本地`, 'ok', 5000);
+    }, 'image/png', 0.92);
+  } catch (err) {
+    console.error('拼图失败：', err);
+    toast('拼图失败：' + (err.message || err), 'err');
+  }
 }
 
