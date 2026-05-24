@@ -1104,9 +1104,15 @@ async function editSkuNotes(sku) {
   });
   if (newNotes === null) return;
   try {
-    await sb.from('products').update({ notes: newNotes.trim() }).eq('id', eff.id);
+    // V4-2026-05-24: 跟单手动改备注 → 同时标 notes_locked,防止 AI 覆盖
+    await sb.from('products').update({ 
+      notes: newNotes.trim(),
+      notes_locked: true,
+      translation_source: 'manual',
+    }).eq('id', eff.id);
     eff.notes = newNotes.trim();
-    toast('✓ 已保存');
+    eff.notes_locked = true;
+    toast('✓ 已保存 · 此后 AI 不再自动覆盖此备注');
     PO_FORM_STATE.otherNoteManuallyEdited = false;
     renderPoForm();
   } catch (e) { toast('保存失败：' + (e.message || e), 'err'); }
@@ -1382,6 +1388,31 @@ async function poFormDoSave(groups, common) {
           last_purchased_at: new Date().toISOString(),
         }).eq('sku', li.sku);
         if (pErr) console.warn('更新产品上次单价失败（不影响主流程）：', li.sku, pErr.message);
+      }
+      
+      // V4-2026-05-24: 如果跟单手动改过"其他备注"且是单 SKU PO
+      // → 把这个改动同步回 products.notes + 标记 notes_locked
+      // (多 SKU PO 不自动同步,因为无法判断哪段对应哪个 SKU)
+      if (common.note && common.note.trim() && liData.length === 1 && PO_FORM_STATE.otherNoteManuallyEdited) {
+        const targetSku = liData[0].sku;
+        try {
+          await sb.from('products').update({
+            notes: common.note.trim(),
+            notes_locked: true,
+            translation_source: 'manual',
+          }).eq('sku', targetSku);
+          console.log(`[po] ✓ 已同步备注到 SKU ${targetSku} 并锁定(不再被 AI 覆盖)`);
+          // 同步本地缓存
+          if (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE._all) {
+            const cached = PRODUCTS_CACHE._all.find(x => x.sku === targetSku);
+            if (cached) {
+              cached.notes = common.note.trim();
+              cached.notes_locked = true;
+            }
+          }
+        } catch (e) {
+          console.warn('同步备注到 SKU 库失败(不影响 PO 创建):', e);
+        }
       }
 
       // 更新 suppliers 累计
@@ -1921,8 +1952,17 @@ async function openProductEdit(productId) {
   });
   if (newCn === null) return;
   try {
-    await sb.from('products').update({ name_cn: newCn.trim() }).eq('id', productId);
-    toast('✓ 已保存');
+    // V4-2026-05-24: 跟单手动改中文名 → 同时标 name_cn_locked
+    await sb.from('products').update({ 
+      name_cn: newCn.trim(),
+      name_cn_locked: true,
+      translation_source: 'manual',
+    }).eq('id', productId);
+    if (p) {
+      p.name_cn = newCn.trim();
+      p.name_cn_locked = true;
+    }
+    toast('✓ 已保存 · 此后 AI 不再自动覆盖此中文名');
     renderProducts();
   } catch (e) { toast('保存失败：' + (e.message || e), 'err'); }
 }

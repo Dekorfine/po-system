@@ -1547,14 +1547,28 @@ async function saveCustomOrder() {
     // 同步上传到产品表（如果 SKU 不在的话）
     for (const li of validLines) {
       try {
-        const { data: existingProd } = await sb.from('products').select('id').eq('sku', li.sku.trim()).maybeSingle();
+        const { data: existingProd } = await sb.from('products').select('id, name_cn_locked, notes_locked').eq('sku', li.sku.trim()).maybeSingle();
         if (!existingProd) {
-          await sb.from('products').insert({
+          // V4-2026-05-24: 新产品 - 插入后异步触发 AI 翻译
+          const { data: insertedProd } = await sb.from('products').insert({
             sku: li.sku.trim(),
             name_en: li.title.trim(),
             spec_en: li.variant_title.trim(),
             image_url: li.image_url || null,
-          });
+          }).select('id').single();
+          
+          // 异步翻译(不阻塞抓单)
+          if (insertedProd && typeof translateProduct === 'function') {
+            translateProduct({
+              id: insertedProd.id,
+              sku: li.sku.trim(),
+              name_en: li.title.trim(),
+              variant_en: li.variant_title.trim(),
+              notes: null,
+              name_cn_locked: false,
+              notes_locked: false,
+            }, { silent: true }).catch(e => console.warn(`[shopify] SKU ${li.sku} 翻译失败:`, e));
+          }
         } else if (li.image_url) {
           await sb.from('products').update({ image_url: li.image_url }).eq('id', existingProd.id);
         }
