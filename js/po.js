@@ -2442,6 +2442,7 @@ function renderPoList() {
             ${next ? `<button class="so-action-btn primary" onclick="poAdvance('${p.id}', '${next.value}', '${next.label}')" title="推进到下一步">▶ ${next.label}</button>` : ''}
             ${prev ? `<button class="so-action-btn" onclick="poRevert('${p.id}', '${prev.value}', '${prev.label}')" title="退回上一步">↩ 退回</button>` : ''}
             ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditPrices('${p.id}')" title="修改 PO 内每个产品的数量和单价">✏️ 改价</button>` : ''}
+            <button class="so-action-btn" onclick="poPreviewImage('${p.id}')" title="预览订单图（不下载、不复制）｜确认无误后再点复制订单图">👁 预览</button>
             <button class="so-action-btn primary" onclick="poQuickCopyImage('${p.id}')" title="一键生成订单图，直接复制到剪贴板，粘贴到供应商群">📋 复制订单图</button>
             <button class="so-action-btn" onclick="poOpenPrint('${p.id}')" title="预览 + 打印（少数订单需要纸质单据）">🖨 打印</button>
             ${!isCancelled ? `<button class="so-action-btn danger" onclick="poCancel('${p.id}')">⊘ 取消</button>` : ''}
@@ -3571,3 +3572,234 @@ ${poHtmls}
 // 兼容旧引用
 
 
+
+// ============================================================
+// V4-2026-05-24：PO 预览功能（点【👁 预览】按钮触发）
+// 用户需求：复制订单图前先在网页上预览，确认无误再复制/下载
+// 设计：
+//   - 复用 _buildSinglePoExportNode + html2canvas → dataURL
+//   - 全屏遮罩 + 中间居中大图
+//   - 底部 3 个按钮：返回修改 / 复制到剪贴板 / 下载图片
+//   - Esc 关闭 / 点遮罩背景关闭
+// ============================================================
+
+// 注入 CSS（一次性，不动 styles.css）
+(function injectPoPreviewCSS() {
+  if (document.getElementById('po-preview-modal-style')) return;
+  const style = document.createElement('style');
+  style.id = 'po-preview-modal-style';
+  style.textContent = `
+    .po-preview-modal {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 10000;
+      display: flex; align-items: center; justify-content: center;
+      animation: poPreviewFadeIn 0.18s ease-out;
+    }
+    @keyframes poPreviewFadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .po-preview-backdrop {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.78);
+      backdrop-filter: blur(4px);
+      cursor: pointer;
+    }
+    .po-preview-content {
+      position: relative; z-index: 1;
+      background: white; border-radius: 12px;
+      max-width: 92vw; max-height: 92vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+    }
+    .po-preview-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid #e5e7eb;
+      background: linear-gradient(to bottom, #f9fafb, #fff);
+      flex-shrink: 0;
+    }
+    .po-preview-title {
+      font-size: 14px; font-weight: 600; color: #111827;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .po-preview-title .po-preview-tag {
+      background: #2563eb; color: white;
+      padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 700;
+    }
+    .po-preview-close {
+      width: 30px; height: 30px;
+      border: none; background: transparent;
+      cursor: pointer; font-size: 18px; color: #6b7280;
+      border-radius: 6px; line-height: 1;
+      transition: all 0.15s;
+    }
+    .po-preview-close:hover { background: #fee2e2; color: #dc2626; }
+    .po-preview-body {
+      flex: 1; min-height: 0;
+      overflow: auto;
+      padding: 20px;
+      background: #f3f4f6;
+      display: flex; justify-content: center; align-items: flex-start;
+    }
+    .po-preview-body img {
+      max-width: 100%;
+      height: auto;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      background: white;
+      border-radius: 4px;
+    }
+    .po-preview-actions {
+      display: flex; justify-content: flex-end; gap: 8px;
+      padding: 12px 18px;
+      border-top: 1px solid #e5e7eb;
+      background: #fafafa;
+      flex-shrink: 0;
+    }
+    .po-preview-actions .so-action-btn {
+      padding: 6px 14px; font-size: 13px;
+    }
+    .po-preview-hint {
+      flex: 1;
+      font-size: 12px;
+      color: #6b7280;
+      display: flex; align-items: center;
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
+// 主入口：点【👁 预览】按钮调用
+async function poPreviewImage(poId) {
+  const po = PO_LIST.find(x => x.id === poId);
+  if (!po) { toast('找不到 PO', 'err'); return; }
+  toast('正在生成预览…', 'info');
+
+  try {
+    await _loadHtml2Canvas();
+  } catch (e) {
+    toast('截图工具加载失败，请检查网络', 'err');
+    return;
+  }
+
+  // 复用现有的屏幕外渲染函数（与"复制订单图"完全一致的版式）
+  const wrap = _buildSinglePoExportNode(po, true);
+  document.body.appendChild(wrap);
+
+  // 等图片加载完成（避免半截截图）
+  const imgs = wrap.querySelectorAll('img');
+  await Promise.all([...imgs].map(img => {
+    if (img.complete) return Promise.resolve();
+    return new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 3000); });
+  }));
+
+  try {
+    const canvas = await window.html2canvas(wrap.querySelector('.po-print'), {
+      backgroundColor: '#ffffff', scale: 2, useCORS: true, logging: false,
+    });
+    const dataUrl = canvas.toDataURL('image/png');
+    _showPoPreviewModal(po, canvas, dataUrl);
+  } catch (e) {
+    toast('生成失败：' + (e.message || e), 'err');
+  } finally {
+    // 截图完成后清理屏幕外的临时 DOM（canvas 已经独立存在）
+    document.body.removeChild(wrap);
+  }
+}
+
+// 弹出全屏预览
+function _showPoPreviewModal(po, canvas, dataUrl) {
+  // 移除可能存在的旧 modal（防止重复打开）
+  document.getElementById('poPreviewModal')?.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'poPreviewModal';
+  modal.className = 'po-preview-modal';
+  modal.innerHTML = `
+    <div class="po-preview-backdrop" onclick="poClosePreview()"></div>
+    <div class="po-preview-content">
+      <div class="po-preview-header">
+        <span class="po-preview-title">
+          <span class="po-preview-tag">预览</span>
+          ${escapeHtml(po.po_number)} · ${escapeHtml(po.supplier)}
+        </span>
+        <button class="po-preview-close" onclick="poClosePreview()" title="关闭 (Esc)">✕</button>
+      </div>
+      <div class="po-preview-body">
+        <img src="${dataUrl}" alt="采购单预览">
+      </div>
+      <div class="po-preview-actions">
+        <span class="po-preview-hint">💡 确认无误后选择复制或下载（取消请点关闭/Esc）</span>
+        <button class="so-action-btn" onclick="poClosePreview()">← 返回修改</button>
+        <button class="so-action-btn" onclick="poPreviewDownload()">📥 下载图片</button>
+        <button class="so-action-btn primary" onclick="poPreviewCopyToClipboard()" title="把图复制到剪贴板，去微信群 Ctrl+V 粘贴">📋 复制到剪贴板</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  // 缓存当前 canvas（让复制/下载按钮能用）
+  window._poPreviewCache = { po, canvas, dataUrl };
+
+  // Esc 关闭
+  const handler = (e) => {
+    if (e.key === 'Escape') {
+      poClosePreview();
+    }
+  };
+  document.addEventListener('keydown', handler);
+  modal._escHandler = handler;
+}
+
+function poClosePreview() {
+  const modal = document.getElementById('poPreviewModal');
+  if (modal) {
+    if (modal._escHandler) {
+      document.removeEventListener('keydown', modal._escHandler);
+    }
+    modal.remove();
+  }
+  window._poPreviewCache = null;
+}
+
+// 在预览框里点【复制到剪贴板】
+async function poPreviewCopyToClipboard() {
+  const cache = window._poPreviewCache;
+  if (!cache) { toast('预览已失效，请重新点预览', 'err'); return; }
+  cache.canvas.toBlob(async (blob) => {
+    if (!blob) { toast('生成失败', 'err'); return; }
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      toast(`✓ ${cache.po.po_number} 已复制到剪贴板，去微信群 Ctrl+V 粘贴`);
+      poClosePreview();
+    } catch (e) {
+      // 浏览器不支持剪贴板 API（HTTP 或旧浏览器）→ 自动退回下载
+      toast('剪贴板不可用，已自动下载到本地', 'info');
+      _poPreviewBlobDownload(blob, cache.po.po_number);
+      poClosePreview();
+    }
+  }, 'image/png');
+}
+
+// 在预览框里点【下载图片】
+function poPreviewDownload() {
+  const cache = window._poPreviewCache;
+  if (!cache) { toast('预览已失效，请重新点预览', 'err'); return; }
+  cache.canvas.toBlob((blob) => {
+    if (!blob) { toast('生成失败', 'err'); return; }
+    _poPreviewBlobDownload(blob, cache.po.po_number);
+    toast(`✓ ${cache.po.po_number} 已下载`);
+    poClosePreview();
+  }, 'image/png');
+}
+
+// 内部工具：blob → 触发浏览器下载
+function _poPreviewBlobDownload(blob, poNumber) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `采购单_${poNumber}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

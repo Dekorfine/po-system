@@ -1205,3 +1205,350 @@ async function renderSales() {
 }
 
 
+
+// ============================================================
+// V4 R4 (2026-05-24)：通用列表导出工具
+// 策略：截屏当前 DOM 元素 → PDF（含图）；用纯 CSV → Excel（不含图）
+// 复用 po.js 里已有的 _loadHtml2Canvas / _loadJsPdf（无重复 CDN 请求）
+// ============================================================
+
+async function exportTabAsPDF(opts) {
+  // opts: { selector, fileName, title }
+  const el = document.querySelector(opts.selector);
+  if (!el) { toast('找不到列表区域', 'err'); return; }
+  toast('正在生成 PDF…', 'info', 4000);
+  
+  try {
+    if (typeof _loadHtml2Canvas === 'function') await _loadHtml2Canvas();
+    else throw new Error('html2canvas 加载器不可用');
+    if (typeof _loadJsPdf === 'function') await _loadJsPdf();
+    else throw new Error('jsPDF 加载器不可用');
+  } catch (e) {
+    toast('PDF 工具加载失败：' + (e.message || e), 'err');
+    return;
+  }
+  
+  try {
+    // 等待图片加载完成
+    const imgs = el.querySelectorAll('img');
+    await Promise.all([...imgs].map(img => {
+      if (img.complete) return Promise.resolve();
+      return new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 3000); });
+    }));
+    
+    const canvas = await window.html2canvas(el, {
+      backgroundColor: '#ffffff',
+      scale: 1.5,
+      useCORS: true,
+      logging: false,
+      windowWidth: Math.max(1200, el.scrollWidth),
+    });
+    
+    // A4 横向：297 × 210 mm
+    const pdf = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = 297, pageHeight = 210;
+    const margin = 8;
+    const usableW = pageWidth - margin * 2;
+    
+    // 计算缩放比例：以宽度为基准
+    const imgW = usableW;
+    const imgH = (canvas.height / canvas.width) * imgW;
+    
+    if (imgH <= pageHeight - margin * 2) {
+      // 一页就够
+      pdf.text(opts.title || '导出', margin, margin + 4);
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', margin, margin + 8, imgW, imgH);
+    } else {
+      // 多页：按页高切分
+      const pageImgH = pageHeight - margin * 2 - 8;  // 留点 title 空间
+      const ratio = canvas.width / imgW;
+      const pageCanvasH = pageImgH * ratio;  // 在原 canvas 上每页对应的像素高度
+      
+      let yOffset = 0;
+      let pageNum = 1;
+      while (yOffset < canvas.height) {
+        const sliceH = Math.min(pageCanvasH, canvas.height - yOffset);
+        // 创建临时 canvas 切片
+        const slice = document.createElement('canvas');
+        slice.width = canvas.width;
+        slice.height = sliceH;
+        const ctx = slice.getContext('2d');
+        ctx.drawImage(canvas, 0, yOffset, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+        
+        if (pageNum > 1) pdf.addPage();
+        pdf.text(`${opts.title || '导出'} - 第 ${pageNum} 页`, margin, margin + 4);
+        pdf.addImage(slice.toDataURL('image/png'), 'PNG', margin, margin + 8, imgW, (sliceH / canvas.width) * imgW);
+        
+        yOffset += sliceH;
+        pageNum++;
+      }
+    }
+    
+    pdf.save(opts.fileName || `导出_${Date.now()}.pdf`);
+    toast(`✓ 已导出 ${opts.fileName || 'PDF'}`);
+  } catch (e) {
+    console.error('PDF 导出失败:', e);
+    toast('PDF 导出失败：' + (e.message || e), 'err');
+  }
+}
+
+// 通用 CSV 导出（Excel 能直接打开）
+function exportToCSV(rows, headers, filename) {
+  if (!rows || rows.length === 0) { toast('没有可导出的数据', 'warn'); return; }
+  
+  // 构建 CSV
+  const escapeCsv = (v) => {
+    if (v == null) return '';
+    const s = String(v);
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  };
+  
+  const lines = [];
+  if (headers && headers.length > 0) {
+    lines.push(headers.map(escapeCsv).join(','));
+  }
+  rows.forEach(row => {
+    lines.push(row.map(escapeCsv).join(','));
+  });
+  
+  const csv = '\ufeff' + lines.join('\n');  // BOM 让 Excel 正确识别 UTF-8
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || `导出_${Date.now()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  
+  toast(`✓ 已导出 ${rows.length} 行（CSV，Excel 可打开）`);
+}
+
+// ============================================================
+// 4 个 tab 各自的导出入口（在 tab 顶部按钮调用）
+// ============================================================
+
+// 催单列表导出
+async function exportOrdersPDF() {
+  const el = document.getElementById('ordersBody') || document.querySelector('#orders-tab .records-card');
+  if (!el) { toast('请先切到「催单」tab', 'warn'); return; }
+  await exportTabAsPDF({
+    selector: '#orders-tab .records-card, #ordersBody',
+    fileName: `催单清单_${new Date().toISOString().slice(0,10)}.pdf`,
+    title: `催单清单 · ${new Date().toLocaleDateString()}`,
+  });
+}
+
+function exportOrdersExcel() {
+  if (typeof ORDERS === 'undefined' || !ORDERS) { toast('催单数据未加载', 'warn'); return; }
+  const rows = ORDERS.filter(o => !o.deletedAt).map(o => [
+    o.orderNo || '',
+    o.site || '',
+    o.product || '',
+    o.supplier || '',
+    o.status || '',
+    o.orderDate || '',
+    o.promisedDate || '',
+    (o.followups || []).length,
+    o.notes || '',
+  ]);
+  exportToCSV(rows, ['订单号', '网站', '产品', '供应商', '状态', '下单日期', '承诺日期', '催单次数', '备注'],
+    `催单清单_${new Date().toISOString().slice(0,10)}.csv`);
+}
+
+// 售后列表导出
+async function exportAftersalesPDF() {
+  await exportTabAsPDF({
+    selector: '#aftersales-tab .records-card, #aftersalesBody',
+    fileName: `售后清单_${new Date().toISOString().slice(0,10)}.pdf`,
+    title: `售后清单 · ${new Date().toLocaleDateString()}`,
+  });
+}
+
+function exportAftersalesExcel() {
+  if (typeof AFTERSALES === 'undefined' || !AFTERSALES) { toast('售后数据未加载', 'warn'); return; }
+  const rows = AFTERSALES.filter(a => !a.deletedAt).map(a => [
+    a.orderNo || '',
+    a.site || '',
+    a.product || '',
+    a.supplier || '',
+    a.reason || '',
+    a.status || '',
+    a.createdDate || '',
+    a.nextFollow || '',
+    (a.followups || []).length,
+    a.reasonDetail || '',
+  ]);
+  exportToCSV(rows, ['订单号', '网站', '产品', '供应商', '原因', '状态', '发起日期', '下次跟进', '跟进次数', '详情'],
+    `售后清单_${new Date().toISOString().slice(0,10)}.csv`);
+}
+
+// 供应商问题列表导出
+async function exportIssuesPDF() {
+  await exportTabAsPDF({
+    selector: '#issuesContainer',
+    fileName: `供应商问题_${new Date().toISOString().slice(0,10)}.pdf`,
+    title: `供应商问题 · ${new Date().toLocaleDateString()}`,
+  });
+}
+
+function exportIssuesExcel() {
+  if (typeof ISSUES === 'undefined' || !ISSUES) { toast('问题数据未加载', 'warn'); return; }
+  const catLabel = (it) => {
+    if (typeof _getIssueCategoryMeta !== 'function') return it.category || it.issueType || '';
+    const m = _getIssueCategoryMeta(it);
+    return m ? m.label : (it.issueType || '');
+  };
+  const rows = ISSUES.filter(it => !it.deletedAt).map(it => [
+    it.site || '',
+    it.supplier || '',
+    catLabel(it),
+    (it.subTags || []).join(' / '),
+    it.description || it.requirement || '',
+    it.status || '',
+    it.createdDate || '',
+    it.nextFollowDate || '',
+    (it.followups || []).length,
+  ]);
+  exportToCSV(rows, ['网站', '供应商', '问题大类', '具体类型', '描述', '状态', '发起日期', '下次跟进', '沟通次数'],
+    `供应商问题_${new Date().toISOString().slice(0,10)}.csv`);
+}
+
+// 财务收货导出
+async function exportFinancePDF() {
+  await exportTabAsPDF({
+    selector: '#finance-tab .records-card, #financeContainer, #financeWaitingList',
+    fileName: `财务收货_${new Date().toISOString().slice(0,10)}.pdf`,
+    title: `财务收货清单 · ${new Date().toLocaleDateString()}`,
+  });
+}
+
+function exportFinanceExcel() {
+  if (typeof PO_LIST === 'undefined' || !PO_LIST) { toast('PO 数据未加载', 'warn'); return; }
+  const rows = PO_LIST.filter(p => ['arrived', 'received'].includes(p.status)).map(p => [
+    p.po_number || '',
+    p.supplier || '',
+    p.order_no || '',
+    p.status || '',
+    p.total_amount || 0,
+    p.created_at ? p.created_at.slice(0, 10) : '',
+    p.updated_at ? p.updated_at.slice(0, 10) : '',
+    (p.line_items || []).length,
+  ]);
+  exportToCSV(rows, ['PO号', '供应商', '销售单号', '状态', '总金额', '开单日期', '更新日期', '商品行数'],
+    `财务收货_${new Date().toISOString().slice(0,10)}.csv`);
+}
+
+// 注入导出区按钮的样式 + 列表逾期行高亮 CSS
+(function _injectExportStyles() {
+  if (document.getElementById('export-btn-style')) return;
+  const s = document.createElement('style');
+  s.id = 'export-btn-style';
+  s.textContent = `
+    .export-btn-group {
+      display: inline-flex;
+      gap: 6px;
+      margin-left: 8px;
+    }
+    .export-btn-group .btn.small {
+      padding: 5px 12px;
+      font-size: 12px;
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+      color: #374151;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .export-btn-group .btn.small:hover {
+      background: #e5e7eb;
+      border-color: #9ca3af;
+    }
+    /* R2 供应商问题逾期行高亮 */
+    .record-row.issue-overdue {
+      background: linear-gradient(to right, rgba(220, 38, 38, 0.04), transparent 30%) !important;
+      border-left: 3px solid #dc2626 !important;
+    }
+  `;
+  document.head.appendChild(s);
+})();
+
+// 等 DOM ready 后,把"导出 PDF / Excel"按钮自动注入到 4 个 tab 的合适位置
+// 注入策略：找各 tab 的 "+ 新增XXX" 按钮，在其旁边追加导出按钮组
+(function _autoInjectExportButtons() {
+  const tryInject = () => {
+    const tabs = [
+      // 催单
+      { 
+        tab: 'orders-tab',
+        anchorSelector: 'button[onclick*="addOrder"]',
+        prefix: 'orders',
+        label: '催单',
+      },
+      // 售后
+      {
+        tab: 'aftersales-tab',
+        anchorSelector: 'button[onclick*="addAftersales"]',
+        prefix: 'aftersales',
+        label: '售后',
+      },
+      // 供应商问题
+      {
+        tab: 'issues-tab',
+        anchorSelector: 'button[onclick*="addIssue"]',
+        prefix: 'issues',
+        label: '问题',
+      },
+      // 财务收货
+      {
+        tab: 'finance-tab',
+        anchorSelector: '#finance-tab .records-card',  // 兜底
+        prefix: 'finance',
+        label: '财务',
+      },
+    ];
+    
+    tabs.forEach(t => {
+      // 防重复注入
+      const exists = document.querySelector(`[data-export-injected="${t.prefix}"]`);
+      if (exists) return;
+      
+      // 先找 anchorSelector 附近最顶层的容器（如 .tab-toolbar 或按钮父节点）
+      let anchor = document.querySelector(t.anchorSelector);
+      if (!anchor) return;
+      // 找按钮 anchor 的父级（一般是行内 toolbar）
+      const container = anchor.parentElement;
+      if (!container) return;
+      
+      const group = document.createElement('span');
+      group.className = 'export-btn-group';
+      group.setAttribute('data-export-injected', t.prefix);
+      group.innerHTML = `
+        <button class="btn small" onclick="export${t.prefix.charAt(0).toUpperCase() + t.prefix.slice(1)}PDF()" title="导出当前列表为 PDF（含图）">📥 PDF</button>
+        <button class="btn small" onclick="export${t.prefix.charAt(0).toUpperCase() + t.prefix.slice(1)}Excel()" title="导出 Excel/CSV（不含图）">📊 Excel</button>
+      `;
+      // 插入到 anchor 后面
+      anchor.parentNode.insertBefore(group, anchor.nextSibling);
+    });
+  };
+  
+  // 多次尝试（应对延迟渲染）
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(tryInject, 800);
+    setTimeout(tryInject, 2000);
+    setTimeout(tryInject, 4000);
+  } else {
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(tryInject, 800);
+      setTimeout(tryInject, 2000);
+      setTimeout(tryInject, 4000);
+    });
+  }
+  
+  // 暴露给手动调用（如果自动注入失败）
+  window._injectExportButtons = tryInject;
+})();

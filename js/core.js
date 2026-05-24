@@ -138,6 +138,15 @@ const DATA = {
       supplier: r.supplier || '', issueType: r.issue_type || '',
       requirement: r.requirement || '', status: r.status || 'pending',
       followups: r.followups || [], createdAt: r.created_at,
+      // V4 R1 新字段
+      site: r.site || '', 
+      category: r.category || '', 
+      subTags: r.sub_tags || [],
+      description: r.description || '',
+      createdDate: r.created_date || null,
+      screenshots: r.screenshots || [],
+      // V4 R2 跟进字段
+      nextFollowDate: r.next_follow_date || '',
       deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
     };
   },
@@ -222,6 +231,15 @@ const DATA = {
       supplier: i.supplier || '', issue_type: i.issueType || '',
       requirement: i.requirement || '', status: i.status || 'pending',
       followups: i.followups || [],
+      // V4 R1 新字段
+      site: i.site || null,
+      category: i.category || null,
+      sub_tags: i.subTags || [],
+      description: i.description || null,
+      created_date: i.createdDate || null,
+      screenshots: i.screenshots || [],
+      // V4 R2 跟进字段
+      next_follow_date: i.nextFollowDate || null,
       deleted_at: i.deletedAt || null, deleted_by: i.deletedBy || null,
     };
   },
@@ -1819,7 +1837,14 @@ function renderActiveTab() {
     }
   }
   else if (CURRENT_TAB === 'aftersales') { renderAftersales(); refreshAsFb(); updateAfterStats(); renderAfterReport(); }
-  else if (CURRENT_TAB === 'issues') { renderIssues(); updateIssueStats(); }
+  else if (CURRENT_TAB === 'issues') { 
+    renderIssues(); 
+    updateIssueStats(); 
+    // R2: 进 tab 扫一遍逾期跟进问题
+    if (typeof scanOverdueIssues === 'function') {
+      setTimeout(scanOverdueIssues, 300);
+    }
+  }
   else if (CURRENT_TAB === 'missing') { renderMissing(); updateMissingStats(); }
   else if (CURRENT_TAB === 'purchases') { renderPurchases(); updatePurchaseStats(); }
   else if (CURRENT_TAB === 'sales') { 
