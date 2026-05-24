@@ -589,6 +589,7 @@ function shopifyToggleSelectOrder(orderId, checked) {
 }
 
 // V4：点击销售单的 SKU/产品名 → 在新标签打开 Shopify 后台的产品页
+// V5-2026-05-24: 3 层兜底,即使老数据没存 product_id 也能跳
 // 用 line_item.product_id + shop_domain 构造 URL
 function openShopifyProductInBrowser(orderId, lineItemId) {
   const order = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) 
@@ -602,7 +603,7 @@ function openShopifyProductInBrowser(orderId, lineItemId) {
   );
   if (!item) { toast('产品行不存在', 'err'); return; }
   
-  // 优先：Shopify 后台产品页（最实用，跟单已登录后台可改库存/价格/图片）
+  // 【层 1】最优: Shopify 后台产品编辑页 (跟单已登录后台可改库存/价格/图片)
   if (item.product_id && order.shop_domain && order.shop_domain !== 'manual') {
     const url = `https://${order.shop_domain}/admin/products/${item.product_id}`;
     console.log('%c[打开 Shopify 后台产品]', 'color:#2563eb;font-weight:bold', { 
@@ -614,9 +615,22 @@ function openShopifyProductInBrowser(orderId, lineItemId) {
     return;
   }
   
-  // 兜底：跳到工作台 products tab 查本地档案
+  // 【层 2】兜底: 没有 product_id 但有 shop_domain + sku → 用 SKU 搜 Shopify 后台
+  // (老数据可能没存 product_id,但 Shopify 后台支持搜 SKU)
+  if (item.sku && order.shop_domain && order.shop_domain !== 'manual') {
+    const url = `https://${order.shop_domain}/admin/products?selectedView=all&query=${encodeURIComponent(item.sku)}`;
+    console.log('%c[搜 Shopify 后台 SKU]', 'color:#f59e0b;font-weight:bold', { 
+      sku: item.sku, 
+      url,
+      note: '老数据没存 product_id, 用 SKU 搜索兜底'
+    });
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  
+  // 【层 3】最后兜底: 跳到工作台 products tab 查本地档案
   if (item.sku && typeof gotoProductBySku === 'function') {
-    toast('该订单无 Shopify 产品 ID，跳到本地产品档案', 'info', 3000);
+    toast('该订单无 Shopify 店铺信息,跳到本地产品档案', 'info', 3000);
     gotoProductBySku(item.sku);
   } else {
     toast('无法定位产品页', 'err');
@@ -1120,18 +1134,22 @@ function renderShopifyOrders() {
       const hasPo = (li.po_assignments || []).length > 0;
       // V4：标题和 SKU 可点击跳转到产品 tab
       // V4：SKU/产品名点击跳 Shopify 后台产品页（最有用：跟单可改库存/价格/图片）
+      // V5-2026-05-24: 放宽条件 - 只要有 shop_domain 就支持跳 Shopify(没 product_id 用 SKU 搜)
       // 右侧加小图标 📋 可选跳工作台产品 tab（查本地档案）
       const liId = li.shopify_line_item_id || '';
       const skuEsc = escapeHtml(li.sku || '').replace(/'/g, "\\'");
-      const hasShopifyProduct = li.product_id && o.shop_domain && o.shop_domain !== 'manual';
+      const hasShopifyProduct = li.sku && o.shop_domain && o.shop_domain !== 'manual';
+      const tipText = li.product_id 
+        ? '点击在 Shopify 后台打开此产品(新标签)' 
+        : '点击在 Shopify 后台搜索此 SKU(新标签)';
       const skuClickable = li.sku 
         ? hasShopifyProduct
-          ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();openShopifyProductInBrowser('${o.id}','${liId}'); return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击在 Shopify 后台打开此产品（新标签）">${escapeHtml(li.sku)} ↗</a>`
+          ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();openShopifyProductInBrowser('${o.id}','${liId}'); return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="${tipText}">${escapeHtml(li.sku)} ↗</a>`
           : `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${skuEsc}'); return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击查看本地产品档案">${escapeHtml(li.sku)}</a>`
         : '';
       const titleClickable = li.sku 
         ? hasShopifyProduct
-          ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();openShopifyProductInBrowser('${o.id}','${liId}'); return false;" style="color:inherit; text-decoration:none; cursor:pointer; border-bottom:1px dashed var(--border);" title="点击在 Shopify 后台打开此产品（新标签）">${escapeHtml(title)}</a>`
+          ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();openShopifyProductInBrowser('${o.id}','${liId}'); return false;" style="color:inherit; text-decoration:none; cursor:pointer; border-bottom:1px dashed var(--border);" title="${tipText}">${escapeHtml(title)}</a>`
           : `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${skuEsc}'); return false;" style="color:inherit; text-decoration:none; cursor:pointer; border-bottom:1px dashed var(--border);" title="点击查看本地产品档案">${escapeHtml(title)}</a>`
         : escapeHtml(title);
       // 跳工作台产品 tab 的小图标（次要操作）
