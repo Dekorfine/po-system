@@ -20,27 +20,277 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260524l"></script>
-<script src="js/utils.js?v=20260524l"></script>
+<script src="js/core.js?v=20260524m"></script>
+<script src="js/utils.js?v=20260524m"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260524l"></script>
-<script src="js/issues.js?v=20260524l"></script>
+<script src="js/settings.js?v=20260524m"></script>
+<script src="js/issues.js?v=20260524m"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260524l"></script>
+<script src="js/aftersales.js?v=20260524m"></script>
 <script src="js/missing.js"></script>
-<script src="js/orders.js?v=20260524l"></script>
-<script src="js/shopify.js?v=20260524l"></script>
-<script src="js/po.js?v=20260524l"></script>
+<script src="js/orders.js?v=20260524m"></script>
+<script src="js/shopify.js?v=20260524m"></script>
+<script src="js/po.js?v=20260524m"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260524l"></script>
-<script src="js/meetings.js?v=20260524l"></script>
-<script src="js/greeting.js?v=20260524l"></script>
-<script src="js/search.js?v=20260524l"></script>
+<script src="js/translator.js?v=20260524m"></script>
+<script src="js/meetings.js?v=20260524m"></script>
+<script src="js/greeting.js?v=20260524m"></script>
+<script src="js/search.js?v=20260524m"></script>
 <script src="js/init.js"></script>
+
+<!-- ============================================================ -->
+<!-- V5-2026-05-24: 找灯模块阈值增强(运行时注入,不改 missing.js)  -->
+<!-- 给找灯加: 阈值 chip 栏 / 仅没人回复 chip / AND 组合 / 红色递进  -->
+<!-- ============================================================ -->
+<script>
+(function missingThresholdEnhancement() {
+  'use strict';
+  
+  let _missingThresholdFilter = 0;
+  let _missingOnlyNoReply = false;
+  
+  function missingDaysSince(m) {
+    if (!m.createdAt) return 0;
+    return Math.floor((Date.now() - new Date(m.createdAt).getTime()) / 86400000);
+  }
+  
+  function chipColor(days) {
+    if (days === 0) return '';
+    if (days <= 3)   return '#fbbf24';
+    if (days <= 7)   return '#f59e0b';
+    if (days <= 15)  return '#dc2626';
+    if (days <= 30)  return '#b91c1c';
+    if (days <= 60)  return '#991b1b';
+    return '#7f1d1d';
+  }
+  
+  window.renderMissingThresholdChips = function() {
+    const el = document.getElementById('missingThresholdChips');
+    if (!el || typeof MISSING_LIGHTS === 'undefined') return;
+    
+    const thresholds = [3, 7, 15, 30, 60, 90];
+    const activeSet = MISSING_LIGHTS.filter(function(m) { return m.status === 'searching' && !m.deletedAt; });
+    const noReplyCnt = activeSet.filter(function(m) { return !(m.comments && m.comments.length > 0); }).length;
+    
+    const baseSet = _missingOnlyNoReply 
+      ? activeSet.filter(function(m) { return !(m.comments && m.comments.length > 0); }) 
+      : activeSet;
+    
+    function renderChip(days, count) {
+      const isActive = _missingThresholdFilter === days;
+      const color = chipColor(days);
+      const baseStyle = isActive 
+        ? 'background:' + (color || '#7c3aed') + '; color:white; border-color:' + (color || '#7c3aed') + '; box-shadow:0 2px 8px ' + (color || '#7c3aed') + '66, 0 0 0 3px ' + (color || '#7c3aed') + '22; font-weight:600;'
+        : days > 0 ? 'border-left:3px solid ' + color + '; color:' + color + ';' : '';
+      return '<button class="rule-chip ' + (isActive ? 'active' : '') + '" ' +
+                      'onclick="setMissingThreshold(' + days + ')" ' +
+                      'style="' + baseStyle + '" ' +
+                      'title="' + (days === 0 ? '显示全部搜寻中' : '发布超过 ' + days + ' 天的') + '">' +
+                (days === 0 ? '📋 全部' : '⏰ ≥' + days + '天') + 
+                ' <span class="cnt-mini" style="' + (isActive ? 'background:rgba(255,255,255,0.25); color:white;' : '') + '">' + count + '</span>' +
+              '</button>';
+    }
+    
+    const isCustom = _missingThresholdFilter > 0 && !thresholds.includes(_missingThresholdFilter);
+    let customChipHtml = '';
+    if (isCustom) {
+      const cnt = baseSet.filter(function(m) { return missingDaysSince(m) >= _missingThresholdFilter; }).length;
+      customChipHtml = '<button class="rule-chip active" onclick="setMissingThreshold(0)" ' +
+                       'style="background:#7f1d1d; color:white; border-color:#7f1d1d; box-shadow:0 2px 8px #7f1d1d66, 0 0 0 3px #7f1d1d22; font-weight:600;" ' +
+                       'title="自定义阈值,点击取消">' +
+                       '🎯 自定义 ≥' + _missingThresholdFilter + '天 <span class="cnt-mini" style="background:rgba(255,255,255,0.25); color:white;">' + cnt + '</span>' +
+                       '<span style="margin-left:6px; opacity:0.7;">✕</span>' +
+                       '</button>';
+    }
+    
+    el.innerHTML = 
+      '<span style="font-size:12px; color:var(--text-secondary); font-weight:600; min-width:64px;">找灯阈值:</span>' +
+      renderChip(0, baseSet.length) +
+      thresholds.map(function(d) { return renderChip(d, baseSet.filter(function(m) { return missingDaysSince(m) >= d; }).length); }).join('') +
+      customChipHtml +
+      '<button class="rule-chip" onclick="openCustomMissingThresholdInput()" ' +
+              'title="输入自定义天数(如 45 天)" ' +
+              'style="border-style:dashed; color:var(--text-secondary);">' +
+        '🎯 自定义...' +
+      '</button>' +
+      '<span style="margin-left:6px; height:18px; width:1px; background:var(--border);"></span>' +
+      '<button class="rule-chip" onclick="toggleMissingNoReply()" ' +
+              'title="只显示从未有人评论的找灯任务" ' +
+              'style="' + (_missingOnlyNoReply ? 'background:#f59e0b; color:white; border-color:#f59e0b; box-shadow:0 2px 8px #f59e0b66, 0 0 0 3px #f59e0b22; font-weight:600;' : 'border-left:3px solid #f59e0b; color:#b45309;') + '">' +
+        '💬 仅没人回复 <span class="cnt-mini" style="' + (_missingOnlyNoReply ? 'background:rgba(255,255,255,0.25); color:white;' : '') + '">' + noReplyCnt + '</span>' +
+      '</button>' +
+      '<span style="margin-left:auto; font-size:11px; color:var(--text-tertiary);">' +
+        '搜寻中 <b style="color:#dc2626;">' + activeSet.length + '</b> · 待回复 <b style="color:#f59e0b;">' + noReplyCnt + '</b>' +
+      '</span>';
+  };
+  
+  function applyMissingFilter() {
+    if (typeof MISSING_LIGHTS === 'undefined') return;
+    const body = document.getElementById('missingBody');
+    if (!body) return;
+    
+    // 没启用任何阈值过滤 → 显示所有
+    if (_missingThresholdFilter === 0 && !_missingOnlyNoReply) {
+      body.querySelectorAll('.missing-card').forEach(function(el) { el.style.display = ''; });
+      body.querySelectorAll('.missing-group').forEach(function(g) { g.style.display = ''; });
+      return;
+    }
+    
+    // 构建 id → 是否符合的 map
+    const matchMap = {};
+    const idByDesc = {};  // description → id (fallback 匹配用)
+    MISSING_LIGHTS.forEach(function(m) {
+      let pass = true;
+      if (_missingThresholdFilter > 0 && missingDaysSince(m) < _missingThresholdFilter) pass = false;
+      if (_missingOnlyNoReply && m.comments && m.comments.length > 0) pass = false;
+      if (_missingThresholdFilter > 0 || _missingOnlyNoReply) {
+        if (m.status !== 'searching') pass = false;
+      }
+      matchMap[m._id] = pass;
+      if (m.description) idByDesc[m.description.trim()] = m._id;
+      if (m.specs) idByDesc[m.specs.trim()] = m._id;
+    });
+    
+    // 多种方式反推卡片对应的 ID
+    function getCardId(card) {
+      // 方式 1: data-missing-id
+      let id = card.getAttribute('data-missing-id') || card.getAttribute('data-id');
+      if (id) return id;
+      // 方式 2: 内部任何元素的 data-missing-id
+      const inner = card.querySelector('[data-missing-id], [data-id]');
+      if (inner) {
+        id = inner.getAttribute('data-missing-id') || inner.getAttribute('data-id');
+        if (id) return id;
+      }
+      // 方式 3: 从 onclick 属性反推 (找 UUID 或 M 开头 ID)
+      const onclick = card.getAttribute('onclick') || '';
+      const m1 = onclick.match(/['"]([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})['"]/i);
+      if (m1) return m1[1];
+      const m2 = onclick.match(/['"](M\w{6,})['"]/);
+      if (m2) return m2[1];
+      // 方式 4: 内部子元素的 onclick
+      const innerClick = card.querySelector('[onclick]');
+      if (innerClick) {
+        const oc = innerClick.getAttribute('onclick') || '';
+        const m3 = oc.match(/['"]([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})['"]/i);
+        if (m3) return m3[1];
+      }
+      // 方式 5: 卡片文本内容找 description 匹配
+      const txt = (card.textContent || '').trim();
+      for (const desc in idByDesc) {
+        if (desc && txt.indexOf(desc) !== -1) return idByDesc[desc];
+      }
+      return null;
+    }
+    
+    // 应用到 DOM
+    const cards = body.querySelectorAll('.missing-card');
+    let matchedCount = 0;
+    cards.forEach(function(card) {
+      const id = getCardId(card);
+      if (id && matchMap.hasOwnProperty(id)) {
+        card.style.display = matchMap[id] ? '' : 'none';
+        if (matchMap[id]) matchedCount++;
+      } else {
+        // 找不到 ID → 保守起见显示出来
+        card.style.display = '';
+      }
+    });
+    
+    // 隐藏空 group
+    body.querySelectorAll('.missing-group').forEach(function(group) {
+      const cs = group.querySelectorAll('.missing-card');
+      const visible = Array.from(cs).filter(function(c) { return c.style.display !== 'none'; }).length;
+      // 用了阈值/无回复筛选时,隐藏"已找到"和"已放弃" group
+      if (_missingThresholdFilter > 0 || _missingOnlyNoReply) {
+        const head = group.querySelector('.missing-group-head');
+        if (head && (head.classList.contains('found') || head.classList.contains('abandoned'))) {
+          group.style.display = 'none';
+          return;
+        }
+      }
+      group.style.display = (visible === 0 && cs.length > 0) ? 'none' : '';
+    });
+  }
+  
+  window.setMissingThreshold = function(days) {
+    _missingThresholdFilter = days;
+    if (typeof renderMissing === 'function') renderMissing();
+    setTimeout(function() { applyMissingFilter(); renderMissingThresholdChips(); }, 0);
+  };
+  
+  window.toggleMissingNoReply = function() {
+    _missingOnlyNoReply = !_missingOnlyNoReply;
+    if (typeof renderMissing === 'function') renderMissing();
+    setTimeout(function() { applyMissingFilter(); renderMissingThresholdChips(); }, 0);
+  };
+  
+  window.openCustomMissingThresholdInput = async function() {
+    const v = await (window.showPrompt ? showPrompt({
+      title: '🎯 自定义找灯阈值',
+      message: '显示"发布超过 N 天还没找到"的找灯任务。\n常用值:3 / 7 / 15 / 30 / 45 / 60 / 90',
+      field: { 
+        label: '天数(发布距今 ≥)', 
+        value: '', 
+        type: 'number',
+        placeholder: '例:45'
+      },
+    }) : Promise.resolve(prompt('天数(例:45)')));
+    if (v === null) return;
+    const days = parseInt(v, 10);
+    if (!days || days < 1 || days > 999) {
+      if (window.toast) toast('请输入 1-999 之间的天数', 'warn');
+      return;
+    }
+    setMissingThreshold(days);
+  };
+  
+  function installHook() {
+    if (typeof window.renderMissing !== 'function') {
+      setTimeout(installHook, 200);
+      return;
+    }
+    const original = window.renderMissing;
+    if (original.__v5_missing_hooked) return;
+    
+    window.renderMissing = function() {
+      const result = original.apply(this, arguments);
+      setTimeout(function() {
+        try {
+          renderMissingThresholdChips();
+          applyMissingFilter();
+        } catch (e) { console.warn('[missing-threshold]', e); }
+      }, 0);
+      return result;
+    };
+    window.renderMissing.__v5_missing_hooked = true;
+    console.log('[V5] 找灯阈值增强已挂载');
+    
+    if (document.querySelector('.tab-content[data-tab="missing"].active')) {
+      setTimeout(function() {
+        renderMissingThresholdChips();
+        applyMissingFilter();
+      }, 0);
+    }
+  }
+  
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', installHook);
+  } else {
+    installHook();
+  }
+  
+  window._missingThreshold = {
+    getFilter: function() { return { days: _missingThresholdFilter, noReply: _missingOnlyNoReply }; },
+    reset: function() { _missingThresholdFilter = 0; _missingOnlyNoReply = false; window.setMissingThreshold(0); },
+  };
+})();
+</script>
+
 <style>
 :root {
   --bg: #fafaf9;
@@ -3200,6 +3450,8 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       <button class="btn" onclick="exportMissingCollage()" title="把所有搜寻中的图片拼成一张大图，发给供应商"><span style="font-size:14px;">📸</span> 截图打包</button>
       <button class="btn primary" onclick="addMissing()" style="margin-left: auto;">+ 发布找灯任务</button>
     </div>
+    <!-- V5: 阈值 chip 栏 (运行时由 JS 渲染) -->
+    <div class="threshold-chips-bar" id="missingThresholdChips" style="display:flex; flex-wrap:wrap; gap:6px; padding:10px 14px; border-radius:10px; background:var(--bg-elevated); border:1px solid var(--border-subtle); margin-top:10px; align-items:center;"></div>
     <div id="missingBody"></div>
   </div>
 </div>
