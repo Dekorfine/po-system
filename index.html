@@ -20,26 +20,26 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260524j"></script>
-<script src="js/utils.js?v=20260524j"></script>
+<script src="js/core.js?v=20260524l"></script>
+<script src="js/utils.js?v=20260524l"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260524j"></script>
-<script src="js/issues.js?v=20260524j"></script>
+<script src="js/settings.js?v=20260524l"></script>
+<script src="js/issues.js?v=20260524l"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260524j"></script>
+<script src="js/aftersales.js?v=20260524l"></script>
 <script src="js/missing.js"></script>
-<script src="js/orders.js?v=20260524j"></script>
-<script src="js/shopify.js?v=20260524j"></script>
-<script src="js/po.js?v=20260524j"></script>
+<script src="js/orders.js?v=20260524l"></script>
+<script src="js/shopify.js?v=20260524l"></script>
+<script src="js/po.js?v=20260524l"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260524j"></script>
-<script src="js/meetings.js?v=20260524j"></script>
-<script src="js/greeting.js?v=20260524j"></script>
-<script src="js/search.js?v=20260524j"></script>
+<script src="js/translator.js?v=20260524l"></script>
+<script src="js/meetings.js?v=20260524l"></script>
+<script src="js/greeting.js?v=20260524l"></script>
+<script src="js/search.js?v=20260524l"></script>
 <script src="js/init.js"></script>
 <style>
 :root {
@@ -1515,6 +1515,681 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   
   /* 标签项 */
   .tag-item { font-size: 11px; padding: 4px 8px; }
+}
+
+/* ============================================================ */
+/* V5-2026-05-24 · 催单/售后 手机端深度适配 (iPhone 优先 ~390px) */
+/* ============================================================ */
+@media (max-width: 640px) {
+  
+  /* === 阈值 chip 栏 - 横向滚动,不换行 === */
+  .threshold-chips-bar {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 8px 10px !important;
+    gap: 5px !important;
+    /* 加渐变阴影提示可滚动 */
+    background: linear-gradient(90deg, var(--bg-elevated) 95%, rgba(0,0,0,0.05)) !important;
+  }
+  .threshold-chips-bar::-webkit-scrollbar { display: none; }
+  .threshold-chips-bar .rule-chip {
+    flex-shrink: 0 !important;
+    white-space: nowrap;
+    padding: 6px 9px !important;
+    font-size: 11px !important;
+  }
+  /* chip 内的数字徽章紧凑 */
+  .threshold-chips-bar .cnt-mini {
+    font-size: 10px !important;
+    padding: 1px 5px !important;
+    margin-left: 3px;
+  }
+  /* chip 栏左侧"催单阈值:"标题缩短 + 不挤 */
+  .threshold-chips-bar > span:first-child {
+    font-size: 10px !important;
+    min-width: auto !important;
+    color: var(--text-tertiary);
+  }
+  /* 右侧"未解决 X · 待处理 Y" 在手机上隐藏(信息冗余,顶部 stat-card 已有) */
+  .threshold-chips-bar > span:last-child {
+    display: none;
+  }
+  /* chip 栏的分隔竖线在手机上隐藏 */
+  .threshold-chips-bar > span[style*="width:1px"],
+  .threshold-chips-bar > span[style*="width: 1px"] {
+    display: none;
+  }
+  
+  /* === 催单/售后列表行 - 改成 2 列布局(图 + 主体) === */
+  #ordersBody .record-row,
+  #aftersalesBody .record-row {
+    grid-template-columns: 70px 1fr !important;
+    grid-template-rows: auto auto auto auto !important;
+    grid-template-areas: 
+      "img main"
+      "img product"
+      "img supplier"
+      "img bottom" !important;
+    gap: 4px 10px !important;
+    padding: 12px 10px !important;
+    align-items: flex-start !important;
+  }
+  
+  /* 图列(包括序号+缩略图+天数) → 第一列,所有行跨越 */
+  #ordersBody .row-num,
+  #aftersalesBody .row-num {
+    grid-row: 1 / span 4;
+    grid-column: 1;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  /* 状态列(原 grid 第 2 列)→ 移到主体上 */
+  #ordersBody .record-row > div:nth-child(2),
+  #aftersalesBody .record-row > div:nth-child(2) {
+    grid-area: main;
+    grid-row: auto;
+    align-self: flex-start;
+    display: inline-flex;
+    margin-bottom: 4px;
+  }
+  /* 状态 pill 不要把内容撑开,设小一点 */
+  #ordersBody .status-pill,
+  #aftersalesBody .status-pill {
+    font-size: 10px !important;
+    padding: 3px 8px !important;
+  }
+  
+  /* 主内容列(订单号 + 产品 + 供应商) → 跨剩余所有行 */
+  #ordersBody .cell-main,
+  #aftersalesBody .cell-main {
+    grid-area: product;
+    min-width: 0;
+    overflow: hidden;
+  }
+  #ordersBody .cell-main .order-line,
+  #aftersalesBody .cell-main .order-line {
+    flex-wrap: wrap;
+    gap: 4px 6px;
+  }
+  /* 订单号缩小 */
+  #ordersBody .order-no-big,
+  #aftersalesBody .order-no-big {
+    font-size: 14px !important;
+  }
+  /* 产品/供应商行 - 紧凑 */
+  #ordersBody .product-line,
+  #ordersBody .supplier-line,
+  #aftersalesBody .product-line,
+  #aftersalesBody .supplier-line {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+  /* 备注/进度等次要信息 - 字号小+不换行省略 */
+  #ordersBody .cell-main > div:not(.order-line):not(.product-line):not(.supplier-line),
+  #aftersalesBody .cell-main > div:not(.order-line):not(.product-line):not(.supplier-line) {
+    font-size: 11px !important;
+  }
+  
+  /* 日期列 - 折到底部一行 */
+  #ordersBody .record-row > .date-col,
+  #ordersBody .record-row > div:nth-last-child(2),
+  #aftersalesBody .record-row > div:nth-last-child(2) {
+    grid-area: bottom;
+    font-size: 10px !important;
+    color: var(--text-tertiary);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+  }
+  
+  /* 操作列 - 折到底部一行,按钮紧凑 */
+  #ordersBody .record-row > div:last-child,
+  #aftersalesBody .record-row > div:last-child {
+    grid-area: bottom;
+    text-align: left !important;
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+  }
+  /* 操作列的小按钮变紧凑 */
+  #ordersBody .record-row > div:last-child .icon-btn,
+  #ordersBody .record-row > div:last-child .btn,
+  #aftersalesBody .record-row > div:last-child .icon-btn,
+  #aftersalesBody .record-row > div:last-child .btn {
+    padding: 5px 8px !important;
+    font-size: 11px !important;
+    min-height: 30px !important;
+  }
+  
+  /* 列表表头在手机上隐藏(列布局变了,表头没意义了) */
+  .records-header.aftersales-header,
+  #ordersBody + .records-header,
+  .records-card > .records-header {
+    display: none !important;
+  }
+  
+  /* === 统计卡片 - 改成横向滚动(避免堆叠太高) === */
+  .stats-bar {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 8px !important;
+    padding-bottom: 4px;
+  }
+  .stats-bar::-webkit-scrollbar { display: none; }
+  .stat-card {
+    flex-shrink: 0 !important;
+    min-width: 110px !important;
+    padding: 10px 12px !important;
+  }
+  .stat-card .value {
+    font-size: 22px !important;
+  }
+  .stat-card .label {
+    font-size: 10px !important;
+  }
+  .stat-card .sub {
+    font-size: 9px !important;
+  }
+  
+  /* === 工具栏 - 紧凑堆叠 === */
+  .toolbar {
+    gap: 6px !important;
+    padding: 8px 0;
+  }
+  .toolbar .search-box,
+  .toolbar > * {
+    width: 100% !important;
+  }
+  .toolbar .filter-select {
+    font-size: 13px !important;
+    padding: 8px 10px !important;
+    min-height: 38px !important;
+  }
+  /* "+新增"按钮在手机上靠右排版改为占满 */
+  .toolbar > .btn.primary {
+    margin-left: 0 !important;
+    width: 100%;
+  }
+  
+  /* === 待处理售后/催单顶部 fb-card 紧凑 === */
+  .fb-card .fb-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 10px 12px;
+  }
+  .fb-card .fb-title {
+    font-size: 13px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .fb-card .fb-total {
+    font-size: 11px;
+  }
+  .fb-tabs {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    width: 100%;
+    gap: 4px;
+  }
+  .fb-tabs::-webkit-scrollbar { display: none; }
+  .fb-tab {
+    flex-shrink: 0;
+    padding: 6px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .fb-list {
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  
+  /* === 月度统计卡 - 紧凑 === */
+  .report-card h3 {
+    font-size: 13px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .report-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+  .report-block h4 {
+    font-size: 12px;
+  }
+  
+  /* === 分页栏 - 紧凑 === */
+  .pagination-bar {
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    text-align: center;
+  }
+  .pagination-bar > * {
+    width: 100%;
+    justify-content: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .pagination-bar button {
+    min-width: 32px;
+    height: 32px;
+    font-size: 12px;
+  }
+  
+  /* === 图片缩略图在手机上小一点 === */
+  #ordersBody .product-thumb-mini,
+  #aftersalesBody .product-thumb-mini,
+  #ordersBody .row-num img,
+  #aftersalesBody .row-num img,
+  .after-thumb {
+    width: 60px !important;
+    height: 60px !important;
+  }
+  .row-num-idx { font-size: 11px; }
+}
+
+/* === 超窄屏(<360px,小屏 Android)进一步压缩 === */
+@media (max-width: 360px) {
+  #ordersBody .record-row,
+  #aftersalesBody .record-row {
+    grid-template-columns: 56px 1fr !important;
+  }
+  #ordersBody .row-num img,
+  #aftersalesBody .row-num img,
+  .after-thumb {
+    width: 50px !important;
+    height: 50px !important;
+  }
+  .threshold-chips-bar .rule-chip {
+    padding: 5px 7px !important;
+    font-size: 10px !important;
+  }
+}
+
+/* ============================================================ */
+/* V5-2026-05-24 · 全工作台手机适配(通用规则,覆盖所有 tab)        */
+/* iPhone 优先 (~390px),Android 兼容 (~360-414px)              */
+/* ============================================================ */
+@media (max-width: 640px) {
+  
+  /* ============ 通用容器规则 ============ */
+  
+  /* 所有 grid 布局在手机上退化为单列 */
+  .grid-2col, .grid-3col, .grid-4col,
+  [class*="grid-cols-"]:not(.status-grid) {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  
+  /* ============ 各种 chip 栏 - 统一横向滚动 ============ */
+  
+  /* 所有包含 rule-chip / sub-tab-btn / search-type-chip 的父容器 */
+  /* 通过 has() 选择,但兼容性差 - 改用通用 div 包裹规则 */
+  
+  /* 销售单 subtab 栏 */
+  .sales-subtabs {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap !important;
+    padding-bottom: 4px;
+  }
+  .sales-subtabs::-webkit-scrollbar { display: none; }
+  .sub-tab-btn {
+    flex-shrink: 0 !important;
+    padding: 7px 12px !important;
+    font-size: 12px !important;
+    white-space: nowrap;
+  }
+  
+  /* 销售单搜索栏 - 整体紧凑 */
+  #salesSearchBar {
+    padding: 8px 10px !important;
+  }
+  #salesSearchBar > div {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 5px !important;
+    padding-bottom: 4px;
+  }
+  #salesSearchBar > div::-webkit-scrollbar { display: none; }
+  /* 但是"搜索内容"这一栏要保持可换行(输入框要全宽) */
+  #salesSearchBar > div:has(#salesSearchText),
+  #salesSearchBar > div:nth-child(3),
+  #salesSearchBar > div:nth-child(4) {
+    flex-wrap: wrap !important;
+    overflow: visible !important;
+  }
+  /* 搜索框全宽 */
+  #salesSearchText {
+    min-width: 100% !important;
+    flex: 1 0 100% !important;
+    font-size: 14px !important;
+  }
+  /* 搜索栏标题缩小 */
+  #salesSearchBar > div > span:first-child {
+    font-size: 10px !important;
+    min-width: auto !important;
+  }
+  
+  /* 所有 rule-chip 在 chip 栏内不收缩 */
+  .rule-chip, .search-type-chip {
+    flex-shrink: 0 !important;
+    white-space: nowrap;
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+  }
+  .cnt-mini {
+    font-size: 10px !important;
+    padding: 1px 5px !important;
+  }
+  
+  /* ============ 销售单店铺连接条 - 折行紧凑 ============ */
+  #salesStoresCard {
+    padding: 8px 10px !important;
+    gap: 6px !important;
+  }
+  #salesStoresGrid {
+    width: 100%;
+    order: 99;
+  }
+  
+  /* ============ PO 表单 modal - 关键改进 ============ */
+  /* 所有 form-row 字段堆叠 */
+  .modal .form-row {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  .modal .form-group {
+    margin-bottom: 10px;
+  }
+  .modal label {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  /* PO 行内的产品明细卡片 - 紧凑 */
+  .modal .line-item-row,
+  .modal .po-line-item {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  /* 多列 grid 表单退化为单列 */
+  .modal [style*="grid-template-columns"]:not(.status-grid):not(.status-grid.cols-3):not(.status-grid.cols-4):not(.status-grid.cols-5) {
+    grid-template-columns: 1fr !important;
+  }
+  /* PO 产品行 - 图片小 + 内容堆叠 */
+  .modal .product-img,
+  .modal .line-thumb {
+    width: 48px !important;
+    height: 48px !important;
+  }
+  
+  /* PO 表单数字输入框 - 数量/单价等 */
+  .modal input[type="number"] {
+    min-width: 60px !important;
+    font-size: 14px !important;
+  }
+  
+  /* ============ 通用列表 - 简化结构 ============ */
+  
+  /* 找灯 / 产品 / 供应商问题 / 线上采购 等 */
+  #missingBody .record-row,
+  #productsBody .record-row,
+  #issuesContainer .record-row,
+  #purchasesBody .record-row,
+  #financeBody .record-row,
+  #poListBody .record-row {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+    padding: 10px 12px !important;
+  }
+  /* 列表行内的图片缩小 */
+  #missingBody img,
+  #productsBody img,
+  #issuesContainer img,
+  #purchasesBody img,
+  #poListBody img,
+  .product-thumb {
+    max-width: 60px !important;
+    max-height: 60px !important;
+  }
+  /* 简化表头(很多列就不可读了,改成隐藏) */
+  .records-header {
+    font-size: 10px !important;
+    padding: 6px 10px !important;
+  }
+  
+  /* ============ PO 列表卡片 - 卡片化 ============ */
+  #poListBody .po-card,
+  .po-card {
+    margin-bottom: 8px;
+  }
+  .po-card .po-header {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  .po-card .po-body {
+    padding: 10px !important;
+  }
+  
+  /* ============ 找灯 tab ============ */
+  .missing-tabs, .missing-filter-bar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap !important;
+  }
+  .missing-tabs::-webkit-scrollbar,
+  .missing-filter-bar::-webkit-scrollbar { display: none; }
+  
+  /* ============ 产品 tab ============ */
+  #productsContainer .toolbar select,
+  #productsContainer .toolbar input {
+    width: 100% !important;
+  }
+  
+  /* ============ 财务收货 tab ============ */
+  .finance-action-bar {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  
+  /* ============ 合箱 tab ============ */
+  .consolidation-container {
+    padding: 0 !important;
+  }
+  .consolidation-box {
+    width: 100% !important;
+    margin-bottom: 10px;
+  }
+  
+  /* ============ 绩效 tab ============ */
+  .perf-stat-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+  .perf-leaderboard {
+    overflow-x: auto;
+  }
+  
+  /* ============ 顶栏 header 紧凑 ============ */
+  .top-header {
+    padding: 8px 10px !important;
+    gap: 6px !important;
+    flex-wrap: wrap !important;
+  }
+  .top-header .brand {
+    flex: 1 1 auto;
+  }
+  .header-actions {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  .header-actions button,
+  .header-actions .icon-btn {
+    padding: 6px 8px !important;
+    font-size: 11px !important;
+  }
+  /* 老板按钮 / 智能搜索按钮 / 设置按钮 在手机上图标化 */
+  .header-actions button span:not(.badge):not(.icon-btn-text) {
+    display: none;
+  }
+  /* 用户名/角色显示缩小 */
+  .agent-pill {
+    font-size: 11px !important;
+    padding: 4px 8px !important;
+  }
+  
+  /* ============ Modal 表单优化 ============ */
+  .modal h2, .modal-title {
+    font-size: 16px !important;
+  }
+  .modal-subtitle {
+    font-size: 12px !important;
+  }
+  /* Modal 内的按钮栏靠底 */
+  .modal-actions, .modal-footer {
+    flex-direction: column !important;
+    gap: 8px !important;
+    padding: 12px !important;
+  }
+  .modal-actions > button,
+  .modal-footer > button {
+    width: 100% !important;
+  }
+  /* 但小型 modal 的按钮栏保持横排 */
+  .small-modal .modal-actions {
+    flex-direction: row !important;
+  }
+  
+  /* ============ Lightbox 大图查看 ============ */
+  .img-lightbox img {
+    max-width: 95vw !important;
+    max-height: 80vh !important;
+  }
+  
+  /* ============ 智能搜索 modal ============ */
+  .search-modal-content {
+    max-height: 90vh !important;
+  }
+  
+  /* ============ 触摸友好 - 所有可点元素最小 32px ============ */
+  button:not(.btn-tiny):not(.tag-item),
+  a.btn,
+  input[type="submit"] {
+    min-height: 32px;
+  }
+  
+  /* ============ 滚动平滑 + 隐藏滚动条 ============ */
+  * {
+    -webkit-tap-highlight-color: rgba(37, 99, 235, 0.1);
+  }
+  
+  /* ============ 输入框 focus 时不要 zoom(iOS Safari) ============ */
+  input[type="text"],
+  input[type="number"],
+  input[type="date"],
+  input[type="email"],
+  input[type="password"],
+  textarea,
+  select {
+    font-size: 16px !important; /* iOS 自动 zoom 触发阈值 */
+  }
+  
+  /* ============ 表格滚动(财务/数据等表格内容) ============ */
+  table {
+    font-size: 11px !important;
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  table th, table td {
+    padding: 6px 8px !important;
+  }
+  
+  /* ============ Toast 通知位置调整 ============ */
+  .toast {
+    bottom: 20px !important;
+    left: 10px !important;
+    right: 10px !important;
+    max-width: none !important;
+    font-size: 13px !important;
+  }
+  
+  /* ============ 单元格内文字省略 + 不强制长串 ============ */
+  .cell-main, .order-line, .product-line {
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+  
+  /* ============ 隐藏次要装饰元素 ============ */
+  .tab-new-window-btn {
+    display: none !important; /* 手机上不需要"在新窗口打开"按钮 */
+  }
+  .admin-view-note {
+    font-size: 10px !important;
+  }
+}
+
+/* ============ Modal 表单字段最小高度修正 ============ */
+@media (max-width: 640px) {
+  .modal .form-control,
+  .modal input[type="text"],
+  .modal input[type="number"],
+  .modal input[type="date"],
+  .modal input[type="email"],
+  .modal select,
+  .modal textarea {
+    min-height: 42px;
+    padding: 10px 12px !important;
+  }
+  
+  /* PO 表单的产品行 - 完全堆叠 */
+  .po-line-item, .order-line-item {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    padding: 10px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    margin-bottom: 8px !important;
+    background: var(--bg-card) !important;
+  }
+  /* PO 表单行内字段对齐 */
+  .po-line-item > *, .order-line-item > * {
+    width: 100% !important;
+  }
+}
+
+/* ============ 横屏手机(landscape) ============ */
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
+  /* Modal 不全屏(横屏时屏宽够,但屏高不够) */
+  .modal {
+    max-height: 92vh !important;
+    overflow-y: auto;
+  }
+  /* 顶栏更紧凑 */
+  .top-header {
+    padding: 4px 10px !important;
+  }
 }
 
 /* 触屏设备的悬停优化（避免 sticky hover）*/
