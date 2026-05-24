@@ -336,18 +336,26 @@ const SUPPLIERS = {
   byId(id) { return this._list.find(s => s.id === id); },
   search(q) {
     if (!q || !q.trim()) return this._list.slice(0, 30);
-    // 把查询拆成多个关键词（空格分隔），每个 trim
-    const keywords = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (keywords.length === 0) return this._list.slice(0, 30);
-    return this._list.filter(s => {
-      const haystack = ((s.name || '') + ' ' + (s.contact_name || '') + ' ' + (s.contact_phone || '')).toLowerCase();
-      const haystackNoSpace = haystack.replace(/\s+/g, '');
-      // 每个关键词都必须命中（AND 模式）；既支持"含空格"也支持"忽略空格"匹配
-      return keywords.every(kw => {
-        const kwNoSpace = kw.replace(/\s+/g, '');
-        return haystack.includes(kw) || haystackNoSpace.includes(kwNoSpace);
-      });
-    }).slice(0, 30);
+    // V5-2026-05-24: 拼音匹配 - 支持中文/全拼/首字母 (NH 也能搜到霓合)
+    const results = [];
+    for (const s of this._list) {
+      // 主要按 name 匹配
+      const nameMatch = typeof pinyinMatch === 'function' 
+        ? pinyinMatch(s.name || '', q, { pinyinFull: s.pinyin_full, pinyinInitials: s.pinyin_initials })
+        : null;
+      if (nameMatch) {
+        results.push({ s, score: nameMatch.score });
+        continue;
+      }
+      // 兜底: 联系人姓名/电话也搜(老逻辑保留)
+      const haystack = ((s.contact_name || '') + ' ' + (s.contact_phone || '')).toLowerCase();
+      if (haystack.includes(q.toLowerCase())) {
+        results.push({ s, score: 10 });
+      }
+    }
+    // 按 score 升序排
+    results.sort((a, b) => a.score - b.score);
+    return results.slice(0, 30).map(r => r.s);
   },
 };
 
@@ -696,6 +704,43 @@ async function openPoForm(salesOrderId, selectedLineItemIds = null) {
     return;
   }
 
+  // V5-2026-05-24: 查询本订单 SKU 的历史供应商(用于智能推荐)
+  // 不阻塞主流程,异步加载
+  const skusInThisOrder = (so.line_items || []).map(li => li.sku).filter(Boolean);
+  let supplierHistoryMap = {};  // supplier_name → { count, last_at, last_price, skus: [...] }
+  if (skusInThisOrder.length > 0) {
+    try {
+      const { data: hist } = await sb.from('v_sku_supplier_history')
+        .select('*')
+        .in('sku', skusInThisOrder);
+      if (hist && hist.length > 0) {
+        hist.forEach(h => {
+          const key = h.supplier;
+          if (!supplierHistoryMap[key]) {
+            supplierHistoryMap[key] = {
+              supplier: h.supplier,
+              total_count: 0,
+              last_at: h.last_ordered_at,
+              avg_price: 0,
+              prices: [],
+              skus: new Set(),
+            };
+          }
+          const entry = supplierHistoryMap[key];
+          entry.total_count += h.order_count || 0;
+          if (!entry.last_at || h.last_ordered_at > entry.last_at) entry.last_at = h.last_ordered_at;
+          if (h.avg_price) entry.prices.push(h.avg_price);
+          entry.skus.add(h.sku);
+        });
+        // 算平均价
+        Object.values(supplierHistoryMap).forEach(e => {
+          e.avg_price = e.prices.length > 0 ? e.prices.reduce((a,b) => a+b, 0) / e.prices.length : 0;
+          e.skus = Array.from(e.skus);
+        });
+      }
+    } catch (e) { console.warn('[supplier-hist] 查历史失败(不影响主流程):', e); }
+  }
+
   PO_FORM_STATE = {
     salesOrder: so,
     selectedSupplierId: null,
@@ -706,6 +751,7 @@ async function openPoForm(salesOrderId, selectedLineItemIds = null) {
     otherNoteManuallyEdited: false,
     invalidPoIds: new Set(), // 已取消/已驳回 PO 的 ID 集合（用于渲染时过滤显示）
     splitMode: !!selectedSet, // V4：是否是拆单模式（影响表单顶部提示）
+    supplierHistory: supplierHistoryMap, // V5: 本订单 SKU 的历史供应商映射
   };
 
   // 默认勾选未分配且未取消的 line items
@@ -1122,16 +1168,75 @@ function poFormSupplierSearch(q) {
   const results = document.getElementById('poFormSupplierResults');
   const matches = SUPPLIERS.search(q);
   const exists = SUPPLIERS.byName(q.trim());
-  let html = matches.map(s => `
+  
+  // V5-2026-05-24: 智能推荐 - 同 SKU 之前下过单的供应商
+  const history = PO_FORM_STATE?.supplierHistory || {};
+  const historyKeys = Object.keys(history);
+  
+  // 推荐板块(只在没输入搜索词时显示,搜索时让位给搜索结果)
+  let recommendHtml = '';
+  if (!q.trim() && historyKeys.length > 0) {
+    // 排序: 总订单数倒序 + 最近时间倒序
+    const ranked = historyKeys
+      .map(name => history[name])
+      .sort((a, b) => {
+        if (b.total_count !== a.total_count) return b.total_count - a.total_count;
+        return (b.last_at || '').localeCompare(a.last_at || '');
+      })
+      .slice(0, 5);
+    
+    recommendHtml = `
+      <div style="background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%); padding:6px 10px; font-size:11px; font-weight:600; color:#92400e; border-bottom:1px solid #fcd34d;">
+        💡 推荐供应商（基于历史下单）
+      </div>
+      ${ranked.map(h => {
+        const supObj = SUPPLIERS.byName(h.supplier);
+        const priceTxt = h.avg_price ? `均价 ¥${h.avg_price.toFixed(0)}` : '';
+        const lastTxt = h.last_at ? formatShortDate(h.last_at.slice(0,10)) : '';
+        return `
+        <div class="picker-item rec-item" onmousedown="poFormPickSupplierByName('${escapeHtml(h.supplier).replace(/'/g,"\\'")}')">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="color:#92400e; font-weight:600;">${escapeHtml(h.supplier)}</span>
+            <span style="background:rgba(146,64,14,0.12); color:#92400e; padding:0 6px; border-radius:3px; font-size:10px; font-weight:600;">该 SKU 下过 ${h.total_count} 次</span>
+          </div>
+          <div class="stats" style="color:#78350f;">
+            ${priceTxt}${priceTxt && lastTxt ? ' · ' : ''}${lastTxt ? '上次 ' + lastTxt : ''}${supObj?.contact_phone ? ' · ☎ ' + supObj.contact_phone : ''}
+          </div>
+        </div>`;
+      }).join('')}
+      ${matches.length > 0 ? `<div style="background:#f9fafb; padding:6px 10px; font-size:11px; font-weight:600; color:#6b7280; border-top:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb;">所有供应商</div>` : ''}
+    `;
+  }
+  
+  // 给搜索结果加上"这个供应商有历史"的徽章
+  let html = recommendHtml + matches.map(s => {
+    const histInfo = history[s.name];
+    const histBadge = histInfo 
+      ? `<span style="background:rgba(245,158,11,0.18); color:#b45309; padding:0 6px; border-radius:3px; font-size:10px; font-weight:600; margin-left:6px;">⭐ 历史 ${histInfo.total_count}</span>`
+      : '';
+    return `
     <div class="picker-item" onmousedown="poFormPickSupplier('${s.id}', '${escapeHtml(s.name).replace(/'/g,"\\'")}')">
-      <div>${escapeHtml(s.name)}</div>
+      <div>${escapeHtml(s.name)}${histBadge}</div>
       <div class="stats">${s.contact_name || ''} ${s.contact_phone || ''} · ${s.total_orders || 0} 次合作</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+  
   if (q.trim() && !exists) {
     html += `<div class="picker-item new" onmousedown="poFormQuickAddSupplier('${escapeHtml(q.trim()).replace(/'/g,"\\'")}')">+ 新增供应商 "${escapeHtml(q.trim())}"</div>`;
   }
   results.innerHTML = html || '<div class="picker-item" style="color:var(--text-tertiary)">没有匹配的供应商</div>';
   results.classList.add('show');
+}
+
+// V5: 通过名字选择(用于历史推荐 - 可能供应商在 SUPPLIERS 列表里没找到 id)
+function poFormPickSupplierByName(name) {
+  const sup = SUPPLIERS.byName(name);
+  if (sup) {
+    poFormPickSupplier(sup.id, sup.name);
+  } else {
+    // 历史里有但 suppliers 表没有 - 自动添加
+    poFormQuickAddSupplier(name);
+  }
 }
 
 function poFormPickSupplier(id, name) {
@@ -3128,6 +3233,19 @@ function poOpenPrint(poId) {
   const items = po.line_items || [];
   const totalQty = items.reduce((s,x) => s + (x.qty||0), 0);
   const totalAmount = items.reduce((s,x) => s + (x.subtotal||0), 0);
+  
+  // V4-2026-05-24: 打印版同样过滤 SKU(防发给供应商泄露)
+  function _stripSkus(text) {
+    if (!text) return text;
+    return String(text)
+      .replace(/\b[A-Z]{2,}\d+(?:[-_][A-Z0-9]+)*\b/g, (m) => m.length >= 6 ? '' : m)
+      .replace(/\b[A-Z0-9]+(?:[-_][A-Z0-9]+){2,}\b/g, (m) => {
+        const l = (m.match(/[A-Z]/g) || []).length, d = (m.match(/\d/g) || []).length;
+        return (l >= 2 && d >= 4) ? '' : m;
+      })
+      .replace(/\b(SKU|Code|Item|商品编码|货号|编号)\s*[:：]\s*\S+/gi, '')
+      .replace(/\s{2,}/g, ' ').replace(/\n\s*\n/g, '\n').trim();
+  }
 
   document.getElementById('poPrintBody').innerHTML = `
     <div class="po-print" id="poPrintContent">
@@ -3144,7 +3262,7 @@ function poOpenPrint(poId) {
       <div class="meta-bar">
         <span><b>供应商：</b>${escapeHtml(po.supplier)}</span>
         <span><b>关联销售：</b>${escapeHtml(po.order_no || '—')}</span>
-        ${po.promised_date ? `<span><b>交期：</b>${escapeHtml(po.promised_date)}</span>` : ''}
+        
         <span><b>合计：</b><span style="color:#dc2626; font-weight:700;">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span></span>
       </div>
       <!-- 产品表格 -->
@@ -3159,12 +3277,14 @@ function poOpenPrint(poId) {
         </tr></thead>
         <tbody>
           ${items.map((li, i) => {
-            const specs = extractVariantInfo(li.variant || '');
+            const cleanTitle = _stripSkus(li.title_cn || '');
+            const rawSpecs = extractVariantInfo(li.variant || '');
+            const cleanSpecs = _stripSkus(rawSpecs);
             return `
             <tr>
               <td style="text-align:center;">${i+1}</td>
               <td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}">` : '<span style="color:#aaa;">—</span>'}</td>
-              <td>${li.title_cn ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(li.title_cn)}</div>` : ''}${specs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(specs)}</div>` : (li.title_cn ? '' : '<span style="color:#888;">—</span>')}</td>
+              <td>${cleanTitle ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(cleanTitle)}</div>` : ''}${cleanSpecs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(cleanSpecs)}</div>` : (cleanTitle ? '' : '<span style="color:#888;">—</span>')}</td>
               <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px; display:inline-block;">${li.qty}</span>` : li.qty}</td>
               <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
               <td style="text-align:right; font-family:monospace; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
@@ -3261,7 +3381,7 @@ async function poQuickCopyImage(poId) {
       <div class="meta-bar">
         <span><b>供应商：</b>${escapeHtml(po.supplier)}</span>
         <span><b>关联销售：</b>${escapeHtml(po.order_no || '—')}</span>
-        ${po.promised_date ? `<span><b>交期：</b>${escapeHtml(po.promised_date)}</span>` : ''}
+        
         <span><b>合计：</b><span style="color:#dc2626; font-weight:700;">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span></span>
       </div>
       <table>
@@ -3362,6 +3482,31 @@ function _buildSinglePoExportNode(po, includeImages) {
   const items = po.line_items || [];
   const totalQty = items.reduce((s, x) => s + (x.qty || 0), 0);
   const totalAmount = items.reduce((s, x) => s + (x.subtotal || 0), 0);
+  
+  // V4-2026-05-24: SKU 过滤函数 - 防同行通过 SKU 反查我们网站
+  // 删除产品 SKU(VK202208251631-09 / VKC5-240915-01 / DCC-M3115-01 等)
+  // 保留销售订单号(K115612 / K115439 等)和尺寸/颜色/产品名
+  function _stripSkus(text) {
+    if (!text) return text;
+    return String(text)
+      // 模式 1: 2+ 大写字母开头 + 数字 + 可选 - 字母数字段
+      .replace(/\b[A-Z]{2,}\d+(?:[-_][A-Z0-9]+)*\b/g, (match) => {
+        return match.length >= 6 ? '' : match;
+      })
+      // 模式 2: 含 - 的字母数字混合编码(如 VKC5-240915-01)
+      .replace(/\b[A-Z0-9]+(?:[-_][A-Z0-9]+){2,}\b/g, (match) => {
+        const letters = (match.match(/[A-Z]/g) || []).length;
+        const digits = (match.match(/\d/g) || []).length;
+        return (letters >= 2 && digits >= 4) ? '' : match;
+      })
+      // 模式 3: 显式 "SKU: xxx" / "Code: xxx" / "货号: xxx"
+      .replace(/\b(SKU|Code|Item|商品编码|货号|编号)\s*[:：]\s*\S+/gi, '')
+      // 清理多余空格
+      .replace(/\s{2,}/g, ' ')
+      .replace(/\n\s*\n/g, '\n')
+      .trim();
+  }
+  
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; left:-99999px; top:0; width:920px; z-index:-1; background:#fff;';
   wrap.innerHTML = `
@@ -3373,7 +3518,7 @@ function _buildSinglePoExportNode(po, includeImages) {
       <div class="meta-bar">
         <span><b>供应商：</b>${escapeHtml(po.supplier)}</span>
         <span><b>关联销售：</b>${escapeHtml(po.order_no || '—')}</span>
-        ${po.promised_date ? `<span><b>交期：</b>${escapeHtml(po.promised_date)}</span>` : ''}
+        
         <span><b>合计：</b><span style="color:#dc2626; font-weight:700;">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span></span>
       </div>
       <table>
@@ -3387,12 +3532,15 @@ function _buildSinglePoExportNode(po, includeImages) {
         </tr></thead>
         <tbody>
           ${items.map((li, i) => {
-            const specs = extractVariantInfo(li.variant || '');
+            // V4-2026-05-24: title_cn / specs 都先过滤 SKU
+            const cleanTitle = _stripSkus(li.title_cn || '');
+            const rawSpecs = extractVariantInfo(li.variant || '');
+            const cleanSpecs = _stripSkus(rawSpecs);
             return `
             <tr>
               <td style="text-align:center;">${i+1}</td>
               ${includeImages ? `<td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}" crossorigin="anonymous">` : '<span style="color:#aaa;">—</span>'}</td>` : ''}
-              <td>${li.title_cn ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(li.title_cn)}</div>` : ''}<div style="color:var(--text-tertiary); font-family:monospace; font-size:10px;">${escapeHtml(li.sku || '')}</div>${specs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(specs)}</div>` : ''}</td>
+              <td>${cleanTitle ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(cleanTitle)}</div>` : ''}${cleanSpecs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(cleanSpecs)}</div>` : ''}</td>
               <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px;">${li.qty}</span>` : li.qty}</td>
               <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
               <td style="text-align:right; font-family:monospace; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
@@ -3409,7 +3557,7 @@ function _buildSinglePoExportNode(po, includeImages) {
       <div style="background:#fff5f5; border:1px solid #fecaca; padding:12px 14px; margin-top:8px; border-radius:6px;">
         <div style="display:flex; align-items:flex-start; gap:10px;">
           <span style="font-weight:700; color:#dc2626; font-size:13px; white-space:nowrap; flex-shrink:0;">⚠ 订单备注（请写在纸箱上）：</span>
-          <div style="flex:1; color:#7f1d1d; font-weight:600; white-space:pre-wrap; word-break:break-all;">${escapeHtml(po.box_note || '—')}</div>
+          <div style="flex:1; color:#7f1d1d; font-weight:600; white-space:pre-wrap; word-break:break-all;">${escapeHtml(_stripSkus(po.box_note || '') || '—')}</div>
         </div>
       </div>
     </div>`;
@@ -3539,7 +3687,7 @@ function _poBatchExportDocx(list, includeImages) {
       <div style="background:#f5f5f4; padding:8px 12px; border-radius:4px; margin-bottom:10px; font-size:10pt;">
         <b>供应商：</b>${escapeHtml(po.supplier)} &nbsp;|&nbsp; 
         <b>关联销售：</b>${escapeHtml(po.order_no || '—')} &nbsp;|&nbsp; 
-        ${po.promised_date ? `<b>交期：</b>${escapeHtml(po.promised_date)} &nbsp;|&nbsp; ` : ''}
+        
         <b>合计：</b><span style="color:#dc2626; font-weight:700;">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span>
       </div>
       <table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse; width:100%; font-size:10pt;">

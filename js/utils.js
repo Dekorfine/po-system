@@ -2238,3 +2238,134 @@ function renderPaginationBar(opts) {
     </div>
   `;
 }
+
+// ============================================================
+// V5-2026-05-24: 拼音匹配工具
+// 用法: pinyinMatch(haystack, query, opts)
+//   haystack: 待匹配的项,可以是字符串,也可以是对象(指定 fields 时)
+//   query:    用户输入的搜索词 (中文/拼音/首字母都行)
+//   opts:     { pinyinFull, pinyinInitials } - 如果对象已带这两个字段就直接用,不用重算
+// 
+// 灯具供应商常用字典 (~250 个汉字),配合服务端 pinyin_full/initials 实现高性能匹配
+// 
+// 匹配优先级:
+//   1. 原文 includes (中文/英文/数字)
+//   2. 首字母 startsWith
+//   3. 首字母 includes (允许片段在中间)
+//   4. 全拼 startsWith
+//   5. 全拼 includes
+// ============================================================
+
+const _PINYIN_DICT = {
+  '阿':'a','安':'an','艾':'ai','八':'ba','巴':'ba','白':'bai','百':'bai','宝':'bao','北':'bei','贝':'bei',
+  '本':'ben','彬':'bin','波':'bo','博':'bo','布':'bu','邦':'bang','保':'bao','冰':'bing','才':'cai','彩':'cai',
+  '昌':'chang','长':'chang','常':'chang','辰':'chen','晨':'chen','成':'cheng','诚':'cheng','城':'cheng','驰':'chi',
+  '川':'chuan','创':'chuang','春':'chun','聪':'cong','超':'chao','朝':'chao','臣':'chen','达':'da','大':'da',
+  '代':'dai','丹':'dan','德':'de','迪':'di','帝':'di','点':'dian','电':'dian','顶':'ding','东':'dong','都':'dou',
+  '度':'du','多':'duo','灯':'deng','登':'deng','鼎':'ding','动':'dong','冬':'dong','尔':'er','二':'er','恩':'en',
+  '发':'fa','法':'fa','凡':'fan','繁':'fan','方':'fang','芳':'fang','飞':'fei','菲':'fei','丰':'feng','风':'feng',
+  '峰':'feng','锋':'feng','福':'fu','富':'fu','帆':'fan','凤':'feng','芬':'fen','高':'gao','歌':'ge','工':'gong',
+  '功':'gong','光':'guang','广':'guang','贵':'gui','国':'guo','官':'guan','冠':'guan','观':'guan','果':'guo',
+  '钢':'gang','港':'gang','格':'ge','根':'gen','更':'geng','宫':'gong','古':'gu','谷':'gu','哈':'ha','海':'hai',
+  '韩':'han','汉':'han','杭':'hang','航':'hang','豪':'hao','好':'hao','号':'hao','禾':'he','合':'he','和':'he',
+  '河':'he','黑':'hei','红':'hong','宏':'hong','鸿':'hong','湖':'hu','虎':'hu','华':'hua','花':'hua','环':'huan',
+  '欢':'huan','辉':'hui','汇':'hui','惠':'hui','会':'hui','火':'huo','霍':'huo','吉':'ji','基':'ji','集':'ji',
+  '佳':'jia','家':'jia','嘉':'jia','建':'jian','剑':'jian','健':'jian','江':'jiang','将':'jiang','匠':'jiang',
+  '杰':'jie','捷':'jie','金':'jin','锦':'jin','京':'jing','景':'jing','晶':'jing','精':'jing','九':'jiu','久':'jiu',
+  '军':'jun','俊':'jun','骏':'jun','巨':'ju','聚':'ju','居':'ju','劲':'jin','凯':'kai','开':'kai','克':'ke',
+  '科':'ke','可':'ke','康':'kang','坤':'kun','快':'kuai','拉':'la','来':'lai','兰':'lan','蓝':'lan','朗':'lang',
+  '乐':'le','雷':'lei','理':'li','里':'li','丽':'li','力':'li','立':'li','联':'lian','良':'liang','亮':'liang',
+  '林':'lin','灵':'ling','凌':'ling','六':'liu','柳':'liu','隆':'long','龙':'long','鲁':'lu','路':'lu','禄':'lu',
+  '罗':'luo','洛':'luo','吕':'lv','李':'li','梁':'liang','马':'ma','玛':'ma','麦':'mai','茂':'mao','美':'mei',
+  '梅':'mei','蒙':'meng','孟':'meng','米':'mi','密':'mi','明':'ming','名':'ming','铭':'ming','木':'mu','闽':'min',
+  '纳':'na','南':'nan','尼':'ni','泥':'ni','霓':'ni','宁':'ning','诺':'nuo','能':'neng','欧':'ou','偶':'ou',
+  '帕':'pa','派':'pai','潘':'pan','彭':'peng','鹏':'peng','品':'pin','平':'ping','普':'pu','璞':'pu','七':'qi',
+  '齐':'qi','其':'qi','奇':'qi','启':'qi','迁':'qian','前':'qian','乾':'qian','强':'qiang','巧':'qiao','青':'qing',
+  '清':'qing','庆':'qing','秋':'qiu','球':'qiu','泉':'quan','全':'quan','群':'qun','钱':'qian','然':'ran','让':'rang',
+  '日':'ri','荣':'rong','融':'rong','锐':'rui','瑞':'rui','若':'ruo','熔':'rong','柔':'rou','人':'ren','仁':'ren',
+  '塞':'sai','赛':'sai','三':'san','森':'sen','商':'shang','上':'shang','尚':'shang','神':'shen','生':'sheng',
+  '升':'sheng','盛':'sheng','圣':'sheng','十':'shi','石':'shi','时':'shi','世':'shi','事':'shi','舒':'shu','帅':'shuai',
+  '水':'shui','顺':'shun','思':'si','斯':'si','四':'si','宋':'song','松':'song','速':'su','苏':'su','沙':'sha',
+  '邵':'shao','深':'shen','它':'ta','塔':'ta','泰':'tai','太':'tai','唐':'tang','陶':'tao','腾':'teng','田':'tian',
+  '天':'tian','铁':'tie','通':'tong','同':'tong','铜':'tong','统':'tong','途':'tu','图':'tu','土':'tu','团':'tuan',
+  '拓':'tuo','托':'tuo','万':'wan','王':'wang','旺':'wang','威':'wei','维':'wei','伟':'wei','卫':'wei','为':'wei',
+  '文':'wen','沃':'wo','无':'wu','武':'wu','五':'wu','物':'wu','吴':'wu','汪':'wang','希':'xi','溪':'xi','喜':'xi',
+  '夏':'xia','先':'xian','仙':'xian','相':'xiang','香':'xiang','祥':'xiang','小':'xiao','晓':'xiao','心':'xin',
+  '欣':'xin','新':'xin','信':'xin','兴':'xing','星':'xing','秀':'xiu','徐':'xu','旭':'xu','璇':'xuan','雪':'xue',
+  '熊':'xiong','亚':'ya','雅':'ya','烟':'yan','岩':'yan','燕':'yan','阳':'yang','杨':'yang','洋':'yang','一':'yi',
+  '依':'yi','宜':'yi','怡':'yi','艺':'yi','亿':'yi','逸':'yi','银':'yin','英':'ying','盈':'ying','颖':'ying',
+  '永':'yong','勇':'yong','友':'you','佑':'you','游':'you','于':'yu','余':'yu','玉':'yu','宇':'yu','雨':'yu',
+  '元':'yuan','园':'yuan','原':'yuan','远':'yuan','源':'yuan','月':'yue','悦':'yue','云':'yun','运':'yun','韵':'yun',
+  '颜':'yan','尧':'yao','业':'ye','叶':'ye','义':'yi','益':'yi','应':'ying','在':'zai','泽':'ze','展':'zhan',
+  '战':'zhan','张':'zhang','章':'zhang','昭':'zhao','兆':'zhao','赵':'zhao','哲':'zhe','浙':'zhe','真':'zhen',
+  '振':'zhen','正':'zheng','政':'zheng','郑':'zheng','志':'zhi','智':'zhi','中':'zhong','钟':'zhong','众':'zhong',
+  '州':'zhou','周':'zhou','朱':'zhu','主':'zhu','卓':'zhuo','紫':'zi','自':'zi','宗':'zong','总':'zong','尊':'zun',
+  '左':'zuo','作':'zuo','坐':'zuo',
+};
+
+// 字符串 → 全拼(没匹配的字保留原样)
+function _strToPinyinFull(str) {
+  if (!str) return '';
+  let out = '';
+  for (const c of String(str)) {
+    if (_PINYIN_DICT[c]) out += _PINYIN_DICT[c];
+    else if (/[a-zA-Z0-9]/.test(c)) out += c.toLowerCase();
+  }
+  return out;
+}
+
+// 字符串 → 首字母
+function _strToPinyinInitials(str) {
+  if (!str) return '';
+  let out = '';
+  for (const c of String(str)) {
+    if (_PINYIN_DICT[c]) out += _PINYIN_DICT[c][0].toUpperCase();
+    else if (/[a-zA-Z0-9]/.test(c)) out += c.toUpperCase();
+  }
+  return out;
+}
+
+/**
+ * 智能匹配:中文/英文/首字母/全拼都能命中
+ * @param {string} haystack - 被搜索的原文(如供应商名 "霓合")
+ * @param {string} query - 用户输入(如 "NH" / "nh" / "ni" / "霓")
+ * @param {Object} opts - 可选 { pinyinFull: 服务端预算的, pinyinInitials: 服务端预算的 }
+ * @returns {Object|null} { matched: true, score: 数字越小排越前 } 或 null
+ */
+function pinyinMatch(haystack, query, opts) {
+  if (!query || !query.trim()) return { matched: true, score: 100 };
+  if (!haystack) return null;
+  
+  const q = query.trim().toLowerCase();
+  const orig = String(haystack).toLowerCase();
+  
+  // 1. 原文匹配(中文/英文)
+  if (orig.includes(q)) {
+    return { matched: true, score: orig.startsWith(q) ? 1 : 2 };
+  }
+  
+  // 优先用服务端预算的(更快+更准)
+  let initials = (opts && opts.pinyinInitials) || _strToPinyinInitials(haystack);
+  let full = (opts && opts.pinyinFull) || _strToPinyinFull(haystack);
+  initials = initials.toLowerCase();
+  full = full.toLowerCase();
+  
+  // 2. 首字母 startsWith (最常用的场景: NH → 霓合)
+  if (initials.startsWith(q)) return { matched: true, score: 3 };
+  
+  // 3. 首字母 includes (片段在中间: 比如搜 "KS" 匹配 "雷克森")
+  if (initials.includes(q)) return { matched: true, score: 4 };
+  
+  // 4. 全拼 startsWith (nihe → 霓合)
+  if (full.startsWith(q)) return { matched: true, score: 5 };
+  
+  // 5. 全拼 includes
+  if (full.includes(q)) return { matched: true, score: 6 };
+  
+  return null;
+}
+
+// 暴露到全局
+window.pinyinMatch = pinyinMatch;
+window._strToPinyinInitials = _strToPinyinInitials;
+window._strToPinyinFull = _strToPinyinFull;
