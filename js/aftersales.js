@@ -217,15 +217,15 @@ function _renderAftersaleRow(a, i) {
       : '<span class="reason-tag empty">⚠ 未选原因</span>';
     
     return `
-      <div class="record-row after-row s-${a.status}" onclick="openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}')">
+      <div class="record-row after-row s-${a.status}">
         <div class="row-num row-num-with-thumb">
           <span class="row-num-idx">${i + 1}</span>
           ${productImageHtml}
           ${IS_ADMIN && a._agent ? `<div style="font-size:9px;color:var(--text-tertiary);">${escapeHtml(a._agent.slice(0,2))}</div>` : ''}
           ${daysHtml}
         </div>
-        <div><span class="status-pill s-${a.status}">${AFTER_STATUS_LABELS[a.status]}</span></div>
-        <div class="cell-main">
+        <div onclick="openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}')" style="cursor:pointer;"><span class="status-pill s-${a.status}">${AFTER_STATUS_LABELS[a.status]}</span></div>
+        <div class="cell-main" onclick="openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}')" style="cursor:pointer;">
           <div class="order-line">
             <span class="order-no-big">${escapeHtml(a.orderNo || '⚠ 待填订单号')}</span>
             ${siteBadge}

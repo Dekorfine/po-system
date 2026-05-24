@@ -2546,6 +2546,7 @@ function renderPoList() {
             ${items.slice(0,3).map(li => {
               const skuStr = li.sku || '';
               const titleStr = li.title_cn || li.title_en || '';
+              const variantStr = li.variant || '';  // V5: 变体/规格
               const skuClickable = skuStr 
                 ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${escapeHtml(skuStr).replace(/'/g, "\\'")}');return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击查看产品详情">${escapeHtml(skuStr)}</a>` 
                 : '';
@@ -2553,18 +2554,20 @@ function renderPoList() {
                 ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${escapeHtml(skuStr).replace(/'/g, "\\'")}');return false;" style="color:inherit; text-decoration:none; cursor:pointer; border-bottom:1px dashed var(--border-subtle);" title="点击查看产品详情">${escapeHtml(titleStr)}</a>`
                 : escapeHtml(titleStr);
               return `
-              <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+              <div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:6px;">
                 ${li.image_url
                   ? `<img src="${escapeHtml(li.image_url)}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid var(--border-subtle); cursor:zoom-in; flex-shrink:0;" onclick="openImgLightbox('${escapeHtml(li.image_url)}')">`
                   : `<div style="width:50px; height:50px; border-radius:6px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:18px; flex-shrink:0;">📷</div>`}
                 <div style="flex:1; min-width:0; font-size:12px;">
                   <div style="color:var(--text-tertiary); font-family:monospace; font-size:10px;">${skuClickable}</div>
                   <div style="color:var(--text-primary);">${titleClickable} ${(li.qty||0) >= 2 ? `<span style="background:var(--danger); color:white; padding:2px 8px; border-radius:5px; font-weight:700; font-size:14px; margin:0 4px;">× ${li.qty}</span>` : `<span style="color:var(--text-tertiary)">× ${li.qty}</span>`} @ ¥${Number(li.price).toFixed(2)}</div>
+                  ${variantStr ? `<div style="color:var(--text-secondary); font-size:11px; margin-top:2px;">📐 ${escapeHtml(variantStr)}</div>` : ''}
                 </div>
               </div>`;
             }).join('')}
             ${items.length > 3 ? `<div style="color:var(--text-tertiary); font-size:11px;">还有 ${items.length-3} 行…</div>` : ''}
-            <div style="color:var(--text-secondary); margin-top:6px;">📦 ${escapeHtml(p.box_note || '')}</div>
+            ${p.box_note ? `<div style="color:var(--text-secondary); margin-top:6px;">📦 <b>纸箱:</b> ${escapeHtml(p.box_note)}</div>` : ''}
+            ${p.note ? `<div style="color:var(--text-secondary); margin-top:4px; padding:6px 8px; background:rgba(245,158,11,0.06); border-left:2px solid var(--warning); border-radius:3px; white-space:pre-wrap;">📝 <b>其他:</b> ${escapeHtml(p.note)}</div>` : ''}
           </div>
           <div style="font-size: 11px; color: var(--text-tertiary);">
             <div>开单：${created}</div>

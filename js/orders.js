@@ -56,7 +56,7 @@ function _toChaseOrder(row, userIdToName) {
     _po: isPO ? row : null,            // 原始 PO 引用（仅 PO 派生有）
     _agent: userIdToName[row.agent_id] || row.creator_name || '未知',
     _agent_id: row.agent_id,
-    orderNo: isPO ? row.po_number : (row.order_no || ''),  // PO 用 po_number，旧手动用 order_no
+    orderNo: row.order_no || (isPO ? row.po_number : ''),  // V5 修复: 优先销售单号 K1141xx,自定义 PO 没有销售单号才用 PO 号
     site: row.site || '',
     product,
     supplier: row.supplier || '',
@@ -446,15 +446,15 @@ function renderOrderRow(o, i) {
   `;
   
   return `
-    <div class="record-row after-row s-${eff}" onclick="openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')">
+    <div class="record-row after-row s-${eff}">
       <div class="row-num row-num-with-thumb">
         <span class="row-num-idx">${i + 1}</span>
         ${productImageHtml}
         ${IS_ADMIN && o._agent ? `<div style="font-size:9px;color:var(--text-tertiary);">${escapeHtml(o._agent.slice(0,2))}</div>` : ''}
         ${daysHtml}
       </div>
-      <div><span class="status-pill s-${eff}">${ORDER_STATUS_LABELS[o.status] || '未知'}${eff === 'overdue' ? ' ⚠' : ''}</span></div>
-      <div class="cell-main">
+      <div onclick="openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')" style="cursor:pointer;"><span class="status-pill s-${eff}">${ORDER_STATUS_LABELS[o.status] || '未知'}${eff === 'overdue' ? ' ⚠' : ''}</span></div>
+      <div class="cell-main" onclick="openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')" style="cursor:pointer;">
         <div class="order-line">
           <span class="order-no-big">${escapeHtml(o.orderNo || '⚠ 待填订单号')}</span>
           ${poBadge}
@@ -812,9 +812,14 @@ function renderOrderModalContent() {
   const o = currentOrder();
   if (!o) return;
   const eff = getOrderEffStatus(o);
+  // V5-2026-05-24: 同时显示销售单号 + PO 号(如果是 PO 派生)
+  const poBadge = o._isPO && o.poNumber && o.poNumber !== o.orderNo 
+    ? `<span style="font-size:12px;background:rgba(37,99,235,0.1);color:var(--accent);padding:3px 10px;border-radius:5px;font-weight:600;font-family:monospace;margin-left:6px;" title="采购单号">📋 ${escapeHtml(o.poNumber)}</span>` 
+    : '';
   document.getElementById('omHeader').innerHTML = `
     <div class="top">
       <div class="order-no">${escapeHtml(o.orderNo || '(未填订单号)')}</div>
+      ${poBadge}
       ${IS_ADMIN && window._currentItemAgent ? `<span style="font-size:11px;background:rgba(124,58,237,0.1);color:var(--purple);padding:2px 8px;border-radius:4px;font-weight:600;">👤 ${escapeHtml(window._currentItemAgent)}</span>` : ''}
       <div class="top-status"><span class="status-pill s-${eff}" style="display:inline-flex;padding:5px 12px;">${ORDER_STATUS_LABELS[o.status]}${eff === 'overdue' ? ' ⚠ 已逾期' : ''}</span></div>
     </div>
