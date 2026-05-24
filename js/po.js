@@ -811,6 +811,8 @@ function renderPoForm() {
     const imgUrl = sel.customImageUrl || eff.image_url || ownProd.image_url || li.image_url || '';
     const displaySku = sel.customSku || eff.sku || li.sku;
     const displayTitle = sel.customTitleCn || eff.name_cn || ownProd.name_cn || li.title || '(无名)';
+    // V5-2026-05-24: 同时显示英文(如果中英不同)
+    const displayEn = li.title && li.title !== displayTitle ? li.title : '';
     const wasEdited = !!(sel.customSku || sel.customTitleCn || sel.customImageUrl);
     const fullyAssigned = sel.remaining === 0;
     // 已分配的 PO 列表（过滤掉已取消/驳回的，避免显示失效 PO）
@@ -824,7 +826,7 @@ function renderPoForm() {
         ${imgUrl ? `<img loading="lazy" class="li-img" src="${escapeHtml(imgUrl)}" onclick="openImgLightbox('${escapeHtml(imgUrl)}')">` : `<div class="li-noimg">📷</div>`}
         <div class="li-info">
           <div class="sku">${escapeHtml(displaySku)}${wasEdited ? '<span style="margin-left:6px; font-size:10px; padding:1px 6px; background:rgba(124,58,237,0.12); color:#7c3aed; border-radius:3px;">已修改</span>' : ''}</div>
-          <div class="name">${escapeHtml(displayTitle)}</div>
+          <div class="name">${escapeHtml(displayTitle)}${displayEn ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(displayEn)}</span>` : ''}</div>
           <div class="variant">${escapeHtml(li.variant_title || '')}${fullyAssigned ? ' · <span style="color:var(--success)">✓ 已全部开 PO</span>' : sel.assignedQty > 0 ? ` · 剩 ${sel.remaining}/${li.quantity}` : ''}</div>
           ${fullyAssigned && validAssignments.length > 0 ? `
             <div style="margin-top:4px; padding:6px 8px; background:rgba(234,179,8,0.08); border-left:3px solid var(--warning); border-radius:4px; font-size:11px;">
@@ -2546,6 +2548,8 @@ function renderPoList() {
             ${items.slice(0,3).map(li => {
               const skuStr = li.sku || '';
               const titleStr = li.title_cn || li.title_en || '';
+              // V5-2026-05-24: 双语显示 - 如果有中文 + 英文且不同,两个都显示
+              const titleEnStr = (li.title_cn && li.title_en && li.title_cn !== li.title_en) ? li.title_en : '';
               const variantStr = li.variant || '';  // V5: 变体/规格
               const skuClickable = skuStr 
                 ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${escapeHtml(skuStr).replace(/'/g, "\\'")}');return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击查看产品详情">${escapeHtml(skuStr)}</a>` 
@@ -2560,7 +2564,7 @@ function renderPoList() {
                   : `<div style="width:50px; height:50px; border-radius:6px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:18px; flex-shrink:0;">📷</div>`}
                 <div style="flex:1; min-width:0; font-size:12px;">
                   <div style="color:var(--text-tertiary); font-family:monospace; font-size:10px;">${skuClickable}</div>
-                  <div style="color:var(--text-primary);">${titleClickable} ${(li.qty||0) >= 2 ? `<span style="background:var(--danger); color:white; padding:2px 8px; border-radius:5px; font-weight:700; font-size:14px; margin:0 4px;">× ${li.qty}</span>` : `<span style="color:var(--text-tertiary)">× ${li.qty}</span>`} @ ¥${Number(li.price).toFixed(2)}</div>
+                  <div style="color:var(--text-primary);">${titleClickable}${titleEnStr ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(titleEnStr)}</span>` : ''} ${(li.qty||0) >= 2 ? `<span style="background:var(--danger); color:white; padding:2px 8px; border-radius:5px; font-weight:700; font-size:14px; margin:0 4px;">× ${li.qty}</span>` : `<span style="color:var(--text-tertiary)">× ${li.qty}</span>`} @ ¥${Number(li.price).toFixed(2)}</div>
                   ${variantStr ? `<div style="color:var(--text-secondary); font-size:11px; margin-top:2px;">📐 ${escapeHtml(variantStr)}</div>` : ''}
                 </div>
               </div>`;
