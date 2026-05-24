@@ -605,32 +605,25 @@ function openShopifyProductInBrowser(orderId, lineItemId, mode) {
   if (!item) { toast('产品行不存在', 'err'); return; }
   
   // ============ 前台模式 ============
-  // V5-2026-05-24 修复 404:不再瞎猜 product handle,只用真实存在的 URL
+  // V5-2026-05-24: 修复 404 - 用真实 product_handle 跳转
+  // 老订单可能没有 handle,需要先跑 backfill_handles 补全
   if (mode === 'storefront') {
-    // 【层 1】最优: 有 product_handle 直接拼前台 URL
+    // 【唯一正确】有 product_handle 直接拼前台 URL
     if (item.product_handle && order.shop_domain) {
       const url = `https://${order.shop_domain}/products/${item.product_handle}`;
-      console.log('%c[Shopify 前台 · 用 handle]', 'color:#10b981;font-weight:bold', { sku: item.sku, url });
+      console.log('%c[Shopify 前台]', 'color:#10b981;font-weight:bold', { sku: item.sku, url });
       window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
-    // 【层 2】没 handle → 用 Google 搜索 site:xxx.myshopify.com 产品名
-    // (比 Shopify 搜索更可靠,几乎 100% 命中)
-    const productName = item.title || item.sku || '';
-    if (productName && order.shop_domain) {
-      const query = encodeURIComponent(`site:${order.shop_domain} ${productName}`);
-      const url = `https://www.google.com/search?q=${query}&btnI=1`;  // btnI=1 触发"I'm Feeling Lucky"直接跳第一个结果
-      console.log('%c[Shopify 前台 · Google 兜底]', 'color:#f59e0b;font-weight:bold', { 
-        sku: item.sku, 
-        productName, 
-        url 
-      });
+    // 没 handle → 提示去跑补全,跳后台兜底
+    if (item.product_id && order.shop_domain) {
+      toast('该订单缺少 product_handle (老数据),跳后台编辑页。请管理员跑一次 "补全 handle"', 'warn', 5000);
+      // 跳后台,跟单可以从那里点 "在线查看" 跳前台
+      const url = `https://${order.shop_domain}/admin/products/${item.product_id}`;
       window.open(url, '_blank', 'noopener,noreferrer');
-      toast('该订单缺少产品 handle,通过 Google 搜索打开前台页', 'info', 3000);
       return;
     }
-    // 【层 3】都没,提示
-    toast('无法定位前台商品页(数据不全)', 'err');
+    toast('无法定位前台商品页(订单缺产品 ID)', 'err');
     return;
   }
   
