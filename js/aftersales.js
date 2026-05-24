@@ -9,10 +9,136 @@
 // 空字符串 = 无叠加；'thismonth' / 'today' / 'overdue' = 按对应维度过滤
 let _aftersalesQuickMode = '';
 
+// V5-2026-05-24: 售后阈值筛选 + 仅未处理 chip(跟催单一致的体验)
+let _afterThresholdFilter = 0;   // 0=不限,>0=显示发起≥N天的
+let _onlyUnhandled = false;       // 仅显示无任何 followups 的(没人跟进的)
+
+// 计算售后发起距今天数
+function afterDaysSince(a) {
+  if (!a.createdDate) return 0;
+  return Math.floor((Date.now() - new Date(a.createdDate).getTime()) / 86400000);
+}
+
+// ============================================================
+// 售后阈值 chip 渲染 - V5(发起日算 + 红色递进)
+// ============================================================
+function renderAfterThresholdChips() {
+  const el = document.getElementById('afterThresholdChips');
+  if (!el) return;
+  
+  const thresholds = [1, 3, 5, 7, 14, 30];  // 售后专属:更短的周期(售后比催单急)
+  
+  // 基础集合: 只统计"未解决"的(已解决/已取消的不算阈值)
+  const activeSet = AFTERSALES.filter(a => !['resolved', 'cancelled'].includes(a.status));
+  const unhandledCnt = activeSet.filter(a => (a.followups || []).length === 0).length;
+  
+  // AND 组合: 如果勾了"仅未处理",阈值的计数只算未处理的
+  const baseSet = _onlyUnhandled 
+    ? activeSet.filter(a => (a.followups || []).length === 0) 
+    : activeSet;
+  
+  // 颜色递进(售后更紧急,1 天就开始上色)
+  function chipColor(days) {
+    if (days === 0) return '';
+    if (days <= 1)  return '#fbbf24';  // 黄(警觉)
+    if (days <= 3)  return '#f59e0b';  // 橙黄(该催了)
+    if (days <= 5)  return '#ea580c';  // 橙(警告)
+    if (days <= 7)  return '#dc2626';  // 红(严重)
+    if (days <= 14) return '#b91c1c';  // 深红(很久了)
+    return '#7f1d1d';                   // 30+ 极暗红(出大事)
+  }
+  
+  function renderChip(days, count) {
+    const isActive = _afterThresholdFilter === days;
+    const color = chipColor(days);
+    const baseStyle = isActive 
+      ? `background:${color || '#7c3aed'}; color:white; border-color:${color || '#7c3aed'}; box-shadow:0 2px 8px ${color || '#7c3aed'}66, 0 0 0 3px ${color || '#7c3aed'}22; font-weight:600;`
+      : days > 0 ? `border-left:3px solid ${color}; color:${color};` : '';
+    return `<button class="rule-chip ${isActive ? 'active' : ''}" 
+                    onclick="setAfterThreshold(${days})"
+                    style="${baseStyle}"
+                    title="${days === 0 ? '显示全部未解决售后' : '发起超过 ' + days + ' 天的'}">
+              ${days === 0 ? '📋 全部' : '⏰ ≥' + days + '天'} 
+              <span class="cnt-mini" style="${isActive ? 'background:rgba(255,255,255,0.25); color:white;' : ''}">${count}</span>
+            </button>`;
+  }
+  
+  // 自定义天数 chip(如果当前值不在标准列表里,显示"自定义 N 天")
+  const isCustom = _afterThresholdFilter > 0 && !thresholds.includes(_afterThresholdFilter);
+  let customChipHtml = '';
+  if (isCustom) {
+    const cnt = baseSet.filter(a => afterDaysSince(a) >= _afterThresholdFilter).length;
+    customChipHtml = `<button class="rule-chip active" onclick="setAfterThreshold(0)"
+                              style="background:#7f1d1d; color:white; border-color:#7f1d1d; box-shadow:0 2px 8px #7f1d1d66, 0 0 0 3px #7f1d1d22; font-weight:600;"
+                              title="自定义阈值,点击取消">
+                        🎯 自定义 ≥${_afterThresholdFilter}天 <span class="cnt-mini" style="background:rgba(255,255,255,0.25); color:white;">${cnt}</span>
+                        <span style="margin-left:6px; opacity:0.7;">✕</span>
+                      </button>`;
+  }
+  
+  el.innerHTML = `
+    <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">售后阈值:</span>
+    ${renderChip(0, baseSet.length)}
+    ${thresholds.map(d => renderChip(d, baseSet.filter(a => afterDaysSince(a) >= d).length)).join('')}
+    ${customChipHtml}
+    <button class="rule-chip" onclick="openCustomAfterThresholdInput()"
+            title="输入自定义天数(如 21 天)"
+            style="border-style:dashed; color:var(--text-secondary);">
+      🎯 自定义...
+    </button>
+    
+    <span style="margin-left:6px; height:18px; width:1px; background:var(--border);"></span>
+    
+    <button class="rule-chip" 
+            onclick="toggleOnlyUnhandled()" 
+            title="只显示从未填过跟进记录的售后(0 条 followups)"
+            style="${_onlyUnhandled ? 'background:#f59e0b; color:white; border-color:#f59e0b; box-shadow:0 2px 8px #f59e0b66, 0 0 0 3px #f59e0b22; font-weight:600;' : 'border-left:3px solid #f59e0b; color:#b45309;'}">
+      ⚠ 仅未处理 <span class="cnt-mini" style="${_onlyUnhandled ? 'background:rgba(255,255,255,0.25); color:white;' : ''}">${unhandledCnt}</span>
+    </button>
+    
+    <span style="margin-left:auto; font-size: 11px; color: var(--text-tertiary);">
+      未解决 <b style="color:#dc2626;">${activeSet.length}</b> · 待处理 <b style="color:#f59e0b;">${unhandledCnt}</b>
+    </span>
+  `;
+}
+
+function setAfterThreshold(days) {
+  _afterThresholdFilter = days;
+  renderAftersales();
+}
+
+function toggleOnlyUnhandled() {
+  _onlyUnhandled = !_onlyUnhandled;
+  renderAftersales();
+}
+
+async function openCustomAfterThresholdInput() {
+  const v = await showPrompt({
+    title: '🎯 自定义售后阈值',
+    message: '显示"发起超过 N 天还没解决"的售后。\n常用值:1 / 3 / 7 / 14 / 21 / 30 / 45',
+    field: { 
+      label: '天数(发起距今 ≥)', 
+      value: '', 
+      type: 'number',
+      placeholder: '例:21'
+    },
+  });
+  if (v === null) return;
+  const days = parseInt(v, 10);
+  if (!days || days < 1 || days > 999) {
+    toast('请输入 1-999 之间的天数', 'warn');
+    return;
+  }
+  setAfterThreshold(days);
+}
+
 // ============================================================
 // MODULE 2: 售后
 // ============================================================
 function renderAftersales() {
+  // V5: 渲染阈值 chip
+  renderAfterThresholdChips();
+  
   const body = document.getElementById('aftersalesBody');
   const q = (document.getElementById('asSearch').value || '').trim().toLowerCase();
   const fs = document.getElementById('asFilterStatus').value;
@@ -21,6 +147,13 @@ function renderAftersales() {
   const fReason = document.getElementById('asFilterReason').value;
   
   let list = AFTERSALES.filter(a => {
+    // V5-2026-05-24: 阈值过滤(发起 ≥ N 天)
+    if (_afterThresholdFilter > 0 && afterDaysSince(a) < _afterThresholdFilter) return false;
+    // V5-2026-05-24: 仅未处理(没人跟进过的)
+    if (_onlyUnhandled && (a.followups || []).length > 0) return false;
+    // V5: 用了阈值/未处理筛选时,默认隐藏已解决/已取消的(否则不直观)
+    if ((_afterThresholdFilter > 0 || _onlyUnhandled) && ['resolved','cancelled'].includes(a.status)) return false;
+    
     if (q) {
       const t = [a.orderNo, a.product, a.supplier, a.reasonDetail, a._agent, a.site].join(' ').toLowerCase();
       if (!t.includes(q)) return false;
