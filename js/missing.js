@@ -9,16 +9,149 @@
 // '' = 无叠加；'thismonth' = 本月新增；'mine' = 我发起的
 let _missingQuickMode = '';
 
+// V5-2026-05-24: 找灯阈值筛选(跟催单/售后一致的体验)
+let _missingThresholdFilter = 0;   // 0=不限,>0=发布≥N天的
+let _missingOnlyNoReply = false;    // 仅显示无任何 comments 的
+
+// 计算找灯发布距今天数
+function missingDaysSince(m) {
+  if (!m.createdAt) return 0;
+  return Math.floor((Date.now() - new Date(m.createdAt).getTime()) / 86400000);
+}
+
+// ============================================================
+// 找灯阈值 chip 渲染 - V5 (跟催单/售后一致的视觉)
+// ============================================================
+function renderMissingThresholdChips() {
+  const el = document.getElementById('missingThresholdChips');
+  if (!el) return;
+  
+  const thresholds = [3, 7, 15, 30, 60, 90];  // 找灯专属:周期更长
+  
+  // 基础集合: 只统计"搜寻中"的(已找到/已放弃不算阈值)
+  const activeSet = MISSING_LIGHTS.filter(m => m.status === 'searching' && !m.deletedAt);
+  const noReplyCnt = activeSet.filter(m => !(m.comments && m.comments.length > 0)).length;
+  
+  // AND 组合: 如果勾了"仅没人回复",阈值计数只算没人回复的
+  const baseSet = _missingOnlyNoReply 
+    ? activeSet.filter(m => !(m.comments && m.comments.length > 0)) 
+    : activeSet;
+  
+  // 颜色递进(找灯周期长,允许 90 天)
+  function chipColor(days) {
+    if (days === 0) return '';
+    if (days <= 3)   return '#fbbf24';  // 黄
+    if (days <= 7)   return '#f59e0b';  // 橙黄
+    if (days <= 15)  return '#dc2626';  // 红
+    if (days <= 30)  return '#b91c1c';  // 深红
+    if (days <= 60)  return '#991b1b';  // 暗红
+    return '#7f1d1d';                    // 90+ 极暗红
+  }
+  
+  function renderChip(days, count) {
+    const isActive = _missingThresholdFilter === days;
+    const color = chipColor(days);
+    const baseStyle = isActive 
+      ? `background:${color || '#7c3aed'}; color:white; border-color:${color || '#7c3aed'}; box-shadow:0 2px 8px ${color || '#7c3aed'}66, 0 0 0 3px ${color || '#7c3aed'}22; font-weight:600;`
+      : days > 0 ? `border-left:3px solid ${color}; color:${color};` : '';
+    return `<button class="rule-chip ${isActive ? 'active' : ''}" 
+                    onclick="setMissingThreshold(${days})"
+                    style="${baseStyle}"
+                    title="${days === 0 ? '显示全部搜寻中' : '发布超过 ' + days + ' 天的'}">
+              ${days === 0 ? '📋 全部' : '⏰ ≥' + days + '天'} 
+              <span class="cnt-mini" style="${isActive ? 'background:rgba(255,255,255,0.25); color:white;' : ''}">${count}</span>
+            </button>`;
+  }
+  
+  // 自定义天数 chip
+  const isCustom = _missingThresholdFilter > 0 && !thresholds.includes(_missingThresholdFilter);
+  let customChipHtml = '';
+  if (isCustom) {
+    const cnt = baseSet.filter(m => missingDaysSince(m) >= _missingThresholdFilter).length;
+    customChipHtml = `<button class="rule-chip active" onclick="setMissingThreshold(0)"
+                              style="background:#7f1d1d; color:white; border-color:#7f1d1d; box-shadow:0 2px 8px #7f1d1d66, 0 0 0 3px #7f1d1d22; font-weight:600;"
+                              title="自定义阈值,点击取消">
+                        🎯 自定义 ≥${_missingThresholdFilter}天 <span class="cnt-mini" style="background:rgba(255,255,255,0.25); color:white;">${cnt}</span>
+                        <span style="margin-left:6px; opacity:0.7;">✕</span>
+                      </button>`;
+  }
+  
+  el.innerHTML = `
+    <span style="font-size:12px; color:var(--text-secondary); font-weight:600; min-width:64px;">找灯阈值:</span>
+    ${renderChip(0, baseSet.length)}
+    ${thresholds.map(d => renderChip(d, baseSet.filter(m => missingDaysSince(m) >= d).length)).join('')}
+    ${customChipHtml}
+    <button class="rule-chip" onclick="openCustomMissingThresholdInput()"
+            title="输入自定义天数(如 45 天)"
+            style="border-style:dashed; color:var(--text-secondary);">
+      🎯 自定义...
+    </button>
+    
+    <span style="margin-left:6px; height:18px; width:1px; background:var(--border);"></span>
+    
+    <button class="rule-chip" 
+            onclick="toggleMissingNoReply()" 
+            title="只显示从未有人评论的找灯任务"
+            style="${_missingOnlyNoReply ? 'background:#f59e0b; color:white; border-color:#f59e0b; box-shadow:0 2px 8px #f59e0b66, 0 0 0 3px #f59e0b22; font-weight:600;' : 'border-left:3px solid #f59e0b; color:#b45309;'}">
+      💬 仅没人回复 <span class="cnt-mini" style="${_missingOnlyNoReply ? 'background:rgba(255,255,255,0.25); color:white;' : ''}">${noReplyCnt}</span>
+    </button>
+    
+    <span style="margin-left:auto; font-size: 11px; color: var(--text-tertiary);">
+      搜寻中 <b style="color:#dc2626;">${activeSet.length}</b> · 待回复 <b style="color:#f59e0b;">${noReplyCnt}</b>
+    </span>
+  `;
+}
+
+function setMissingThreshold(days) {
+  _missingThresholdFilter = days;
+  renderMissing();
+}
+
+function toggleMissingNoReply() {
+  _missingOnlyNoReply = !_missingOnlyNoReply;
+  renderMissing();
+}
+
+async function openCustomMissingThresholdInput() {
+  const v = await showPrompt({
+    title: '🎯 自定义找灯阈值',
+    message: '显示"发布超过 N 天还没找到"的找灯任务。\n常用值:3 / 7 / 15 / 30 / 45 / 60 / 90',
+    field: { 
+      label: '天数(发布距今 ≥)', 
+      value: '', 
+      type: 'number',
+      placeholder: '例:45'
+    },
+  });
+  if (v === null) return;
+  const days = parseInt(v, 10);
+  if (!days || days < 1 || days > 999) {
+    toast('请输入 1-999 之间的天数', 'warn');
+    return;
+  }
+  setMissingThreshold(days);
+}
+
 // ============================================================
 // MODULE 4: 找灯（共享）
 // ============================================================
 function renderMissing() {
+  // V5: 渲染阈值 chip
+  renderMissingThresholdChips();
+  
   const body = document.getElementById('missingBody');
   const q = (document.getElementById('mSearch').value || '').trim().toLowerCase();
   const fs = document.getElementById('mFilterStatus').value;
   const fSource = document.getElementById('mFilterSource') ? document.getElementById('mFilterSource').value : '';
   
   let list = MISSING_LIGHTS.filter(m => {
+    // V5-2026-05-24: 阈值过滤(发布 ≥ N 天)
+    if (_missingThresholdFilter > 0 && missingDaysSince(m) < _missingThresholdFilter) return false;
+    // V5: 仅没人回复
+    if (_missingOnlyNoReply && (m.comments || []).length > 0) return false;
+    // V5: 用了阈值/仅没回复 → 只看搜寻中的(已找到/已放弃没意义)
+    if ((_missingThresholdFilter > 0 || _missingOnlyNoReply) && m.status !== 'searching') return false;
+    
     if (q) {
       const t = [m.description, m.customerOrderNo, m.creator, (m.comments || []).map(c => c.content + ' ' + (c.suggestedSupplier || '')).join(' ')].join(' ').toLowerCase();
       if (!t.includes(q)) return false;
