@@ -605,29 +605,32 @@ function openShopifyProductInBrowser(orderId, lineItemId, mode) {
   if (!item) { toast('产品行不存在', 'err'); return; }
   
   // ============ 前台模式 ============
+  // V5-2026-05-24 修复 404:不再瞎猜 product handle,只用真实存在的 URL
   if (mode === 'storefront') {
-    // 前台 URL: https://xxx.myshopify.com/products/handle (需要 product handle)
-    // 如果有 handle 直接用,否则用 product_id 兜底,否则搜 SKU
+    // 【层 1】最优: 有 product_handle 直接拼前台 URL
     if (item.product_handle && order.shop_domain) {
       const url = `https://${order.shop_domain}/products/${item.product_handle}`;
-      console.log('%c[打开 Shopify 前台]', 'color:#10b981;font-weight:bold', { sku: item.sku, url });
+      console.log('%c[Shopify 前台 · 用 handle]', 'color:#10b981;font-weight:bold', { sku: item.sku, url });
       window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
-    if (item.product_id && order.shop_domain) {
-      // 用 product_id 跳 — Shopify 会重定向到对应 handle
-      const url = `https://${order.shop_domain}/products/${item.product_id}`;
+    // 【层 2】没 handle → 用 Google 搜索 site:xxx.myshopify.com 产品名
+    // (比 Shopify 搜索更可靠,几乎 100% 命中)
+    const productName = item.title || item.sku || '';
+    if (productName && order.shop_domain) {
+      const query = encodeURIComponent(`site:${order.shop_domain} ${productName}`);
+      const url = `https://www.google.com/search?q=${query}&btnI=1`;  // btnI=1 触发"I'm Feeling Lucky"直接跳第一个结果
+      console.log('%c[Shopify 前台 · Google 兜底]', 'color:#f59e0b;font-weight:bold', { 
+        sku: item.sku, 
+        productName, 
+        url 
+      });
       window.open(url, '_blank', 'noopener,noreferrer');
+      toast('该订单缺少产品 handle,通过 Google 搜索打开前台页', 'info', 3000);
       return;
     }
-    if (item.sku && order.shop_domain) {
-      // 兜底:用 SKU 搜前台
-      const url = `https://${order.shop_domain}/search?q=${encodeURIComponent(item.sku)}`;
-      console.log('%c[搜 Shopify 前台]', 'color:#10b981;font-weight:bold', { sku: item.sku, url });
-      window.open(url, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    toast('无法定位前台商品页', 'err');
+    // 【层 3】都没,提示
+    toast('无法定位前台商品页(数据不全)', 'err');
     return;
   }
   
@@ -635,7 +638,7 @@ function openShopifyProductInBrowser(orderId, lineItemId, mode) {
   // 【层 1】最优: Shopify 后台产品编辑页
   if (item.product_id && order.shop_domain && order.shop_domain !== 'manual') {
     const url = `https://${order.shop_domain}/admin/products/${item.product_id}`;
-    console.log('%c[打开 Shopify 后台产品]', 'color:#2563eb;font-weight:bold', { 
+    console.log('%c[Shopify 后台 · 用 product_id]', 'color:#2563eb;font-weight:bold', { 
       sku: item.sku, product_id: item.product_id, url 
     });
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -645,7 +648,7 @@ function openShopifyProductInBrowser(orderId, lineItemId, mode) {
   // 【层 2】兜底: 用 SKU 搜 Shopify 后台
   if (item.sku && order.shop_domain && order.shop_domain !== 'manual') {
     const url = `https://${order.shop_domain}/admin/products?selectedView=all&query=${encodeURIComponent(item.sku)}`;
-    console.log('%c[搜 Shopify 后台 SKU]', 'color:#f59e0b;font-weight:bold', { sku: item.sku, url });
+    console.log('%c[Shopify 后台 · 搜 SKU]', 'color:#f59e0b;font-weight:bold', { sku: item.sku, url });
     window.open(url, '_blank', 'noopener,noreferrer');
     return;
   }
@@ -1280,14 +1283,18 @@ function renderShopifyOrders() {
         })()}
         <div class="so-card-body">
           <div class="so-products">${productsHtml}</div>
-          <div class="so-recipient">
-            <div class="name">${escapeHtml(customerName)}</div>
-            <div class="email">${escapeHtml(customerEmail)}</div>
-            <div class="country">${SHOPIFY.flagEmoji(country)} ${escapeHtml(city)}${country ? `, ${country}` : ''}</div>
-          </div>
-          <div class="so-amount-block">
-            <div><span class="so-amount-big">${o.total_price ? parseFloat(o.total_price).toFixed(2) : '0.00'}</span><span class="so-amount-cur">${o.currency || ''}</span></div>
-            <div class="so-amount-sub">${totalQty} 件 · ${items.length} 行</div>
+          <div class="so-card-side">
+            <!-- 客户 -->
+            <div class="so-recipient">
+              <div class="name">${escapeHtml(customerName)}</div>
+              ${customerEmail ? `<div class="email">${escapeHtml(customerEmail)}</div>` : ''}
+              <div class="country">${SHOPIFY.flagEmoji(country)} ${escapeHtml(city)}${country ? `, ${country}` : ''}</div>
+            </div>
+            <!-- 金额 -->
+            <div class="so-amount-block">
+              <div><span class="so-amount-big">${o.total_price ? parseFloat(o.total_price).toFixed(2) : '0.00'}</span><span class="so-amount-cur">${o.currency || ''}</span></div>
+              <div class="so-amount-sub">${totalQty} 件 · ${items.length} 行</div>
+            </div>
           </div>
         </div>
         ${splitInfoHtml}
