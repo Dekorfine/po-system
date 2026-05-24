@@ -116,22 +116,25 @@ function renderAftersales() {
       `;
     }
     
-    // V4：左侧"状态"列下方 → 展示产品大图（一眼识别产品）
+    // V4-2026-05-24：左侧"#列"内 → 紧贴行号下方显示产品大图（一眼识别产品）
+    // 改动点：从状态徽章下方移到 # 列内；无图也显示灰色占位；hover 自动放大
     let productImageHtml = '';
     if (productImages.length > 0) {
       const main = productImages[0];
       const restCount = productImages.length - 1;
       const galleryData = JSON.stringify(productImages).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
       productImageHtml = `
-        <div style="position:relative; width:96px; height:96px; margin-top:8px; cursor:pointer; border-radius:6px; overflow:hidden; border:1px solid var(--border); background: var(--bg-elevated);" 
+        <div class="row-prod-thumb has-img" 
              onclick="event.stopPropagation(); viewImageGallery(&quot;${galleryData}&quot;, 0)"
-             title="点击查看产品大图${restCount > 0 ? `（共 ${productImages.length} 张）` : ''}">
-          <img src="${main}" style="width:100%; height:100%; object-fit:cover; display:block;" loading="lazy"
-               onerror="this.style.display='none'; this.parentElement.style.display='none'">
-          <span style="position:absolute; top:2px; left:2px; background:rgba(124,58,237,0.92); color:white; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; pointer-events:none;">产品</span>
-          ${restCount > 0 ? `<span style="position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; pointer-events:none;">+${restCount}</span>` : ''}
+             title="点击查看产品大图${restCount > 0 ? `（共 ${productImages.length} 张）` : ''}｜悬停自动放大">
+          <img src="${main}" loading="lazy"
+               onerror="this.style.display='none'; this.parentElement.classList.add('img-err'); this.parentElement.innerHTML='<div class=&quot;row-prod-fallback&quot;>📷</div>'">
+          ${restCount > 0 ? `<span class="row-prod-badge-count">+${restCount}</span>` : ''}
         </div>
       `;
+    } else {
+      // V4-2026-05-24：无产品图也显示占位（保持 # 列宽度一致 + 视觉对齐）
+      productImageHtml = `<div class="row-prod-thumb no-img" title="该售后暂无关联产品图"><span class="row-prod-fallback">📷</span></div>`;
     }
     
     // 最近跟进
@@ -146,12 +149,13 @@ function renderAftersales() {
     
     return `
       <div class="record-row after-row s-${a.status}" onclick="openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}')">
-        <div class="row-num">
-          ${i + 1}
+        <div class="row-num row-num-with-thumb">
+          <span class="row-num-idx">${i + 1}</span>
+          ${productImageHtml}
           ${IS_ADMIN && a._agent ? `<div style="font-size:9px;color:var(--text-tertiary);">${escapeHtml(a._agent.slice(0,2))}</div>` : ''}
           ${daysHtml}
         </div>
-        <div><span class="status-pill s-${a.status}">${AFTER_STATUS_LABELS[a.status]}</span>${productImageHtml}</div>
+        <div><span class="status-pill s-${a.status}">${AFTER_STATUS_LABELS[a.status]}</span></div>
         <div class="cell-main">
           <div class="order-line">
             <span class="order-no-big">${escapeHtml(a.orderNo || '⚠ 待填订单号')}</span>

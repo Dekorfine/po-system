@@ -6,6 +6,121 @@
 // ============================================================
 
 // ============================================================
+// V4-2026-05-24：催单 / 售后 # 列产品大图样式（自动注入到页面）
+// 不动 styles.css，避免改 index.html。第一次加载时一次性 append。
+// ============================================================
+(function injectRowProdThumbCSS() {
+  if (document.getElementById('row-prod-thumb-style')) return;
+  const style = document.createElement('style');
+  style.id = 'row-prod-thumb-style';
+  style.textContent = `
+    /* # 列容器：允许产品图块在内部垂直堆叠 */
+    .row-num.row-num-with-thumb {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 6px;
+      min-width: 92px;
+    }
+    .row-num.row-num-with-thumb .row-num-idx {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-secondary);
+    }
+
+    /* 产品图容器：80×80，圆角，灰底，紫色"产品"角标，hover 放大 */
+    .row-prod-thumb {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      z-index: 1;
+    }
+    .row-prod-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    /* 紫色"产品"角标（仅有图时显示） */
+    .row-prod-thumb.has-img::before {
+      content: "产品";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      background: rgba(124, 58, 237, 0.92);
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+      pointer-events: none;
+      z-index: 2;
+    }
+    /* +N 张计数角标 */
+    .row-prod-thumb .row-prod-badge-count {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+      pointer-events: none;
+      z-index: 2;
+    }
+    /* 无图占位：浅灰色 + 居中相机图标 */
+    .row-prod-thumb.no-img {
+      background: var(--bg-subtle, #f5f5f5);
+      border-style: dashed;
+      cursor: default;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .row-prod-thumb .row-prod-fallback {
+      font-size: 22px;
+      opacity: 0.35;
+      color: var(--text-tertiary);
+    }
+    .row-prod-thumb.no-img:hover {
+      /* 无图不放大 */
+      transform: none;
+    }
+
+    /* hover 放大效果：有图的图变成 2× + 阴影 + 提升层级 */
+    .row-prod-thumb.has-img:hover {
+      transform: scale(2.2);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+      z-index: 100;
+      border-color: var(--accent, #2563eb);
+    }
+    /* 鼠标移开时图也带过渡（更顺滑） */
+    .row-prod-thumb.has-img {
+      transform-origin: center left;  /* 向右放大，避免左侧被列边裁掉 */
+    }
+
+    /* 防止行高被产品图撑爆破坏视觉 — 整行容器允许 overflow 让放大的图能浮出 */
+    .record-row {
+      overflow: visible !important;
+    }
+    .record-row > * {
+      overflow: visible;
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
+// ============================================================
 // 截图上传（公用）
 // ============================================================
 function setupScreenshotHandlers() {

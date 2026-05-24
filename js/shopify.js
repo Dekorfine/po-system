@@ -1104,6 +1104,13 @@ function renderShopifyOrders() {
     const lineWithPo = items.filter(li => (li.po_assignments || []).length > 0).length;
     const siteCode = SHOPIFY.siteCodeOf(shop);
 
+    // V4 修复（2026-05-24）：退款检测移到 items.map 之前
+    // 之前在 items.map 内的 line 1135 使用 isFullyRefunded 时，它尚未声明（TDZ），
+    // 导致 renderShopifyOrders 渲染时直接抛 ReferenceError，UI 不刷新。
+    const refund = getRefundStatus(o);
+    const isFullyRefunded = refund.level === 'full';
+    const isPartiallyRefunded = refund.level === 'partial';
+
     const productsHtml = items.length > 0 ? items.map(li => {
       const p = productMap[li.sku] || {};
       const imgUrl = p.image_url || li.image_url || '';
@@ -1154,10 +1161,7 @@ function renderShopifyOrders() {
         </div>`;
     }).join('') : `<div style="font-size:12px; color:var(--text-tertiary); padding:8px 0;">（无产品行）</div>`;
 
-    // 退款检测
-    const refund = getRefundStatus(o);
-    const isFullyRefunded = refund.level === 'full';
-    const isPartiallyRefunded = refund.level === 'partial';
+    // V4 修复：退款检测已经在上方（items.map 之前）声明，此处删除重复
 
     // V4：拆单状态显示（已勾选 line_items 数量）
     const splitCount = (SHOPIFY_SPLIT_SEL.get(o.id) || new Set()).size;
