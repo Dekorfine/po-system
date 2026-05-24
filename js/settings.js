@@ -435,3 +435,446 @@ function removeAgent(name) {
   renderSettings();
 }
 
+
+// ============================================================
+// V4-2026-05-24: 老板专属 - 用户管理界面
+// 老板能改任何人的:岗位/sites/modules/is_admin/is_boss
+// ============================================================
+
+// 注入 CSS
+(function _injectBossPanelCSS() {
+  if (document.getElementById('boss-panel-style')) return;
+  const s = document.createElement('style');
+  s.id = 'boss-panel-style';
+  s.textContent = `
+    /* 老板入口按钮 */
+    .boss-mgmt-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 2px 6px rgba(245,158,11,0.3);
+      transition: transform 0.12s;
+    }
+    .boss-mgmt-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(245,158,11,0.4);
+    }
+    
+    /* 老板管理 modal */
+    #bossPanelModal {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 9998;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 30px 16px;
+      overflow-y: auto;
+    }
+    #bossPanelModal.show { display: flex; }
+    .bpm-card {
+      background: white;
+      border-radius: 14px;
+      width: 100%;
+      max-width: 920px;
+      padding: 28px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+      position: relative;
+    }
+    .bpm-close {
+      position: absolute; top: 14px; right: 14px;
+      width: 32px; height: 32px;
+      border: none; background: transparent;
+      cursor: pointer; font-size: 18px;
+      color: #6b7280; border-radius: 6px;
+    }
+    .bpm-close:hover { background: #fee2e2; color: #dc2626; }
+    .bpm-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 20px;
+      padding-bottom: 14px;
+      border-bottom: 2px solid #fde68a;
+    }
+    .bpm-header h2 {
+      margin: 0; font-size: 20px; color: #111827;
+    }
+    .bpm-header .bpm-subtitle {
+      color: #6b7280; font-size: 13px;
+    }
+    .bpm-agent-row {
+      display: grid;
+      grid-template-columns: 50px 1fr auto;
+      gap: 16px;
+      align-items: center;
+      padding: 14px;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      margin-bottom: 10px;
+    }
+    .bpm-agent-row.is-boss {
+      border-color: #f59e0b;
+      background: linear-gradient(to right, #fffbeb, white 30%);
+    }
+    .bpm-agent-row.is-admin:not(.is-boss) {
+      border-color: #2563eb;
+      background: linear-gradient(to right, #eff6ff, white 30%);
+    }
+    .bpm-avatar {
+      width: 50px; height: 50px;
+      border-radius: 50%;
+      background: #e5e7eb;
+      color: #6b7280;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 700;
+    }
+    .bpm-avatar.boss { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: white; }
+    .bpm-avatar.admin { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; }
+    .bpm-info { min-width: 0; }
+    .bpm-name {
+      font-size: 16px; font-weight: 700; color: #111827;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .bpm-role-tag {
+      padding: 2px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .bpm-role-tag.boss { background: #fef3c7; color: #92400e; }
+    .bpm-role-tag.admin { background: #dbeafe; color: #1e40af; }
+    .bpm-role-tag.staff { background: #f3f4f6; color: #4b5563; }
+    .bpm-stats {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+    .bpm-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .bpm-action-btn {
+      padding: 6px 12px;
+      border: 1px solid #d1d5db;
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .bpm-action-btn:hover { background: #f3f4f6; }
+    .bpm-action-btn.active { 
+      background: #2563eb; color: white; border-color: #2563eb;
+    }
+    .bpm-action-btn.danger { color: #dc2626; border-color: #fecaca; }
+    .bpm-action-btn.danger:hover { background: #fee2e2; }
+    
+    /* 编辑详情 modal */
+    .bpm-edit-section {
+      margin-top: 16px;
+      padding: 16px;
+      background: #f9fafb;
+      border-radius: 8px;
+    }
+    .bpm-edit-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #6b7280;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+    .bpm-checkbox-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 8px;
+    }
+    .bpm-checkbox {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 10px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      user-select: none;
+    }
+    .bpm-checkbox:hover { border-color: #93c5fd; }
+    .bpm-checkbox.checked {
+      background: #eff6ff;
+      border-color: #2563eb;
+      color: #1d4ed8;
+      font-weight: 600;
+    }
+    .bpm-checkbox input { margin: 0; }
+  `;
+  document.head.appendChild(s);
+})();
+
+// 注入老板入口按钮到顶栏
+(function _injectBossButton() {
+  const tryInject = () => {
+    if (document.getElementById('bossPanelBtn')) return;
+    // 只有老板能看到
+    if (typeof IS_BOSS === 'undefined' || !IS_BOSS) {
+      setTimeout(tryInject, 1000);  // 等登录完成
+      return;
+    }
+    
+    // 找一个合适的位置 - 顶部右上角
+    const btn = document.createElement('button');
+    btn.id = 'bossPanelBtn';
+    btn.className = 'boss-mgmt-btn';
+    btn.type = 'button';
+    btn.onclick = openBossPanel;
+    btn.innerHTML = `👑 用户管理`;
+    btn.style.cssText = 'position:fixed; top:14px; right:160px; z-index:998;';
+    document.body.appendChild(btn);
+    
+    // 创建 modal 容器
+    if (!document.getElementById('bossPanelModal')) {
+      const modal = document.createElement('div');
+      modal.id = 'bossPanelModal';
+      document.body.appendChild(modal);
+    }
+  };
+  
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(tryInject, 1500);
+  } else {
+    document.addEventListener('DOMContentLoaded', () => setTimeout(tryInject, 1500));
+  }
+})();
+
+// 打开老板管理面板
+function openBossPanel() {
+  if (!IS_BOSS) { toast('仅老板可用', 'warn'); return; }
+  
+  const modal = document.getElementById('bossPanelModal');
+  if (!modal) return;
+  
+  const ALL_MODULES = (typeof ALL_MODULE_KEYS !== 'undefined') 
+    ? ALL_MODULE_KEYS 
+    : ['sales','po','orders','missing','purchases','aftersales','issues','finance','products','consolidation','performance','meetings'];
+  
+  const MODULE_LABELS = {
+    sales: '销售单', po: '采购单', orders: '催单', missing: '找灯',
+    purchases: '线上采购', aftersales: '售后', issues: '供应商问题',
+    finance: '财务收货', products: '产品', consolidation: '合箱',
+    performance: '绩效', meetings: '会议要点',
+  };
+  
+  const SITES = ['VK','DF','DC','PL','RD','MH','LS','MJ','RS'];
+  
+  modal.classList.add('show');
+  modal.innerHTML = `
+    <div class="bpm-card">
+      <button class="bpm-close" onclick="closeBossPanel()">✕</button>
+      <div class="bpm-header">
+        <span style="font-size:28px;">👑</span>
+        <div>
+          <h2>用户管理</h2>
+          <div class="bpm-subtitle">老板专属 · 改任何人的岗位/权限/模块/网站</div>
+        </div>
+      </div>
+      <div id="bossAgentList"></div>
+    </div>
+  `;
+  
+  _renderBossAgentList(ALL_MODULES, MODULE_LABELS, SITES);
+}
+
+function closeBossPanel() {
+  document.getElementById('bossPanelModal')?.classList.remove('show');
+}
+
+function _renderBossAgentList(ALL_MODULES, MODULE_LABELS, SITES) {
+  const list = document.getElementById('bossAgentList');
+  if (!list || !CONFIG.agents) return;
+  
+  list.innerHTML = CONFIG.agents.map(a => {
+    const isBoss = !!a.isBoss;
+    const isAdmin = !!a.isAdmin;
+    const role = isBoss ? '👑 老板' : (isAdmin ? '👔 主管' : '👤 员工');
+    const roleClass = isBoss ? 'boss' : (isAdmin ? 'admin' : 'staff');
+    const oCount = (typeof DATA !== 'undefined') ? DATA.getOrders(a.name).length : 0;
+    const aCount = (typeof DATA !== 'undefined') ? DATA.getAftersales(a.name).length : 0;
+    
+    return `
+      <div class="bpm-agent-row ${isBoss ? 'is-boss' : ''} ${isAdmin && !isBoss ? 'is-admin' : ''}">
+        <div class="bpm-avatar ${roleClass}">${(a.name || '?')[0].toUpperCase()}</div>
+        <div class="bpm-info">
+          <div class="bpm-name">
+            ${escapeHtml(a.name)}
+            <span class="bpm-role-tag ${roleClass}">${role}</span>
+          </div>
+          <div class="bpm-stats">
+            ${oCount} 催单 · ${aCount} 售后 · ${(a.sites || []).length} 个网站 · ${(a.modules || []).length} 个模块
+          </div>
+        </div>
+        <div class="bpm-actions">
+          <button class="bpm-action-btn" onclick="_bossToggleRole('${escapeHtml(a.name)}', 'boss')" title="切换老板权限">
+            ${isBoss ? '✓ 老板' : '设为老板'}
+          </button>
+          <button class="bpm-action-btn" onclick="_bossToggleRole('${escapeHtml(a.name)}', 'admin')" title="切换主管权限">
+            ${isAdmin ? '✓ 主管' : '设为主管'}
+          </button>
+          <button class="bpm-action-btn" onclick="_bossEditAgent('${escapeHtml(a.name)}')">⚙️ 详细</button>
+          ${a.name !== CURRENT_AGENT ? `<button class="bpm-action-btn danger" onclick="_bossRemoveAgent('${escapeHtml(a.name)}')">🗑</button>` : ''}
+        </div>
+        <div id="bossEdit-${escapeHtml(a.name)}" style="grid-column: 1 / -1; display:none;">
+          <div class="bpm-edit-section">
+            <div class="bpm-edit-title">🌍 可访问的网站</div>
+            <div class="bpm-checkbox-grid">
+              ${SITES.map(s => {
+                const checked = (a.sites || []).includes(s);
+                return `
+                  <label class="bpm-checkbox ${checked ? 'checked' : ''}" onclick="_bossToggleSite('${escapeHtml(a.name)}', '${s}', event)">
+                    <input type="checkbox" ${checked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="_bossToggleSite('${escapeHtml(a.name)}', '${s}', event)">
+                    ${s}
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          </div>
+          <div class="bpm-edit-section">
+            <div class="bpm-edit-title">📦 可访问的模块</div>
+            <div class="bpm-checkbox-grid">
+              ${ALL_MODULES.map(m => {
+                const checked = (a.modules || []).includes(m);
+                const label = MODULE_LABELS[m] || m;
+                return `
+                  <label class="bpm-checkbox ${checked ? 'checked' : ''}" onclick="_bossToggleModule('${escapeHtml(a.name)}', '${m}', event)">
+                    <input type="checkbox" ${checked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="_bossToggleModule('${escapeHtml(a.name)}', '${m}', event)">
+                    ${label}
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function _bossToggleRole(name, type) {
+  if (!IS_BOSS) return;
+  const agent = CONFIG.agents.find(a => a.name === name);
+  if (!agent) return;
+  
+  const updates = {};
+  if (type === 'boss') {
+    const newVal = !agent.isBoss;
+    updates.is_boss = newVal;
+    // 老板自动也是主管
+    if (newVal) updates.is_admin = true;
+    if (!confirm(`确定将「${name}」${newVal ? '设为' : '取消'}老板?\n\n${newVal ? '设为老板后可以管理所有员工。' : ''}`)) return;
+  } else if (type === 'admin') {
+    const newVal = !agent.isAdmin;
+    updates.is_admin = newVal;
+    // 取消主管时同时取消老板
+    if (!newVal) updates.is_boss = false;
+    if (!confirm(`确定将「${name}」${newVal ? '设为' : '取消'}主管?`)) return;
+  }
+  
+  try {
+    const { error } = await sb.from('agents').update(updates).eq('user_id', agent._userId);
+    if (error) throw error;
+    
+    // 更新本地缓存
+    if ('is_boss' in updates) agent.isBoss = updates.is_boss;
+    if ('is_admin' in updates) agent.isAdmin = updates.is_admin;
+    
+    toast(`✓ 已更新 ${name} 的权限`);
+    openBossPanel();  // 重新渲染
+  } catch (e) {
+    console.error('更新权限失败:', e);
+    toast('更新失败: ' + (e.message || e), 'err');
+  }
+}
+
+function _bossEditAgent(name) {
+  const detail = document.getElementById(`bossEdit-${name}`);
+  if (detail) {
+    const showing = detail.style.display !== 'none';
+    detail.style.display = showing ? 'none' : 'block';
+  }
+}
+
+async function _bossToggleSite(name, site, event) {
+  if (event) event.stopPropagation();
+  if (!IS_BOSS) return;
+  
+  const agent = CONFIG.agents.find(a => a.name === name);
+  if (!agent) return;
+  
+  const sites = [...(agent.sites || [])];
+  const idx = sites.indexOf(site);
+  if (idx >= 0) sites.splice(idx, 1);
+  else sites.push(site);
+  
+  try {
+    const { error } = await sb.from('agents').update({ sites }).eq('user_id', agent._userId);
+    if (error) throw error;
+    agent.sites = sites;
+    toast(`✓ ${name} 网站权限已更新`);
+    // 不重新渲染整个 modal,避免折叠
+  } catch (e) {
+    console.error('更新失败:', e);
+    toast('更新失败: ' + (e.message || e), 'err');
+  }
+}
+
+async function _bossToggleModule(name, mod, event) {
+  if (event) event.stopPropagation();
+  if (!IS_BOSS) return;
+  
+  const agent = CONFIG.agents.find(a => a.name === name);
+  if (!agent) return;
+  
+  const modules = [...(agent.modules || [])];
+  const idx = modules.indexOf(mod);
+  if (idx >= 0) modules.splice(idx, 1);
+  else modules.push(mod);
+  
+  try {
+    const { error } = await sb.from('agents').update({ modules }).eq('user_id', agent._userId);
+    if (error) throw error;
+    agent.modules = modules;
+    toast(`✓ ${name} 模块权限已更新`);
+  } catch (e) {
+    console.error('更新失败:', e);
+    toast('更新失败: ' + (e.message || e), 'err');
+  }
+}
+
+async function _bossRemoveAgent(name) {
+  if (!IS_BOSS) return;
+  if (!confirm(`确定删除「${name}」?\n\n这只会删除 agents 表的记录,Supabase Auth 用户还在。\n要完全删除需要去 Auth Dashboard 删 user。`)) return;
+  
+  const agent = CONFIG.agents.find(a => a.name === name);
+  if (!agent) return;
+  
+  try {
+    const { error } = await sb.from('agents').delete().eq('user_id', agent._userId);
+    if (error) throw error;
+    
+    // 从本地缓存移除
+    CONFIG.agents = CONFIG.agents.filter(a => a.name !== name);
+    toast(`✓ 已删除 ${name}`);
+    openBossPanel();
+  } catch (e) {
+    console.error('删除失败:', e);
+    toast('删除失败: ' + (e.message || e), 'err');
+  }
+}

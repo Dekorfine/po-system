@@ -66,6 +66,7 @@ const DATA = {
       _userId: a.user_id,
       name: a.name,
       isAdmin: a.is_admin,
+      isBoss: !!a.is_boss,       // V4-2026-05-24: 老板角色
       sites: a.sites || [],
       modules: a.modules || [...ALL_MODULE_KEYS],
     }));
@@ -725,6 +726,7 @@ async function fullSyncPurchases(agentName) {
 let CONFIG = DATA.getConfig();  // 空配置，bootstrap 后填充
 let CURRENT_AGENT = null;       // 字符串：当前账号姓名
 let IS_ADMIN = false;
+let IS_BOSS = false;            // V4-2026-05-24: 老板角色(比主管更高)
 let CURRENT_TAB = 'orders';     // orders | aftersales | issues | missing | purchases | performance
 let ORDERS = [];
 let AFTERSALES = [];
@@ -1576,6 +1578,8 @@ async function onAuthSuccess(session) {
 
   CURRENT_AGENT = agent.name;
   IS_ADMIN = agent.isAdmin;
+  IS_BOSS = !!agent.isBoss;       // V4: 老板角色
+  if (IS_BOSS) IS_ADMIN = true;   // 老板自动拥有主管权限
 
   // 主管可见"📈 数据" tab
   const tabAna = document.getElementById('tabAnalytics');
@@ -1617,6 +1621,7 @@ function subscribeAgentsRealtime() {
           _userId: a.user_id,
           name: a.name,
           isAdmin: a.is_admin,
+          isBoss: !!a.is_boss,       // V4-2026-05-24: 老板角色
           sites: a.sites || [],
           modules: a.modules || [...ALL_MODULE_KEYS],
         }));
@@ -1786,6 +1791,10 @@ function loadAllData() {
   MISSING_LIGHTS = DATA.getMissingLights().filter(m => !m.deletedAt);
   refreshAllSupplierDropdowns();
   updateBadges();
+  // V4-2026-05-24:启动会议要点加载(异步,不阻塞 UI)
+  if (typeof loadMeetings === 'function') {
+    loadMeetings().catch(e => console.warn('[meetings] 加载失败:', e));
+  }
   // 异步加载 PO 派生催单数据（不阻塞 UI）
   if (typeof loadChaseOrders === 'function') {
     loadChaseOrders().catch(e => console.warn('PO 派生催单加载失败:', e));
@@ -1867,6 +1876,9 @@ function renderActiveTab() {
   else if (CURRENT_TAB === 'products') { if (typeof renderProducts === 'function') renderProducts(); }
   else if (CURRENT_TAB === 'analytics') { renderAnalytics(); }
   else if (CURRENT_TAB === 'performance') { renderPerformance(); }
+  else if (CURRENT_TAB === 'meetings') { 
+    if (typeof renderMeetings === 'function') renderMeetings();
+  }
 }
 
 function updateBadges() {

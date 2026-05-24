@@ -2442,6 +2442,7 @@ function renderPoList() {
             ${next ? `<button class="so-action-btn primary" onclick="poAdvance('${p.id}', '${next.value}', '${next.label}')" title="推进到下一步">▶ ${next.label}</button>` : ''}
             ${prev ? `<button class="so-action-btn" onclick="poRevert('${p.id}', '${prev.value}', '${prev.label}')" title="退回上一步">↩ 退回</button>` : ''}
             ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditPrices('${p.id}')" title="修改 PO 内每个产品的数量和单价">✏️ 改价</button>` : ''}
+            ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditDescription('${p.id}')" title="修改产品中文名/英文名/规格/备注（不改数量和价格）">📝 改描述</button>` : ''}
             <button class="so-action-btn" onclick="poPreviewImage('${p.id}')" title="预览订单图（不下载、不复制）｜确认无误后再点复制订单图">👁 预览</button>
             <button class="so-action-btn primary" onclick="poQuickCopyImage('${p.id}')" title="一键生成订单图，直接复制到剪贴板，粘贴到供应商群">📋 复制订单图</button>
             <button class="so-action-btn" onclick="poOpenPrint('${p.id}')" title="预览 + 打印（少数订单需要纸质单据）">🖨 打印</button>
@@ -3802,4 +3803,93 @@ function _poPreviewBlobDownload(blob, poNumber) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ============================================================
+// V4-2026-05-24：修改 PO 产品描述（不动数量/价格）
+// 用户场景：英文翻译错误、中文名要调、纸箱备注要补 — 但数量/价格已经定了不能改
+// ============================================================
+async function poEditDescription(poId) {
+  const po = PO_LIST.find(x => x.id === poId);
+  if (!po) { toast('找不到 PO', 'err'); return; }
+  const items = po.line_items || [];
+  if (items.length === 0) { toast('该 PO 无产品行', 'warn'); return; }
+
+  // 构建字段：先订单备注，再每个产品的 3 个字段
+  const fields = [
+    {
+      key: 'box_note',
+      label: '📦 订单备注（写在纸箱上，供应商会看到）',
+      value: po.box_note || '',
+      type: 'textarea',
+      rows: 3,
+      placeholder: '例：美规110V电压、E27灯头、带调光遥控',
+    },
+  ];
+  
+  items.forEach((li, idx) => {
+    const label = `——— 产品 ${idx + 1} · SKU: ${li.sku || '(无)'} · 数量 ${li.qty} 件 ¥${li.price}/件 (锁定) ———`;
+    // 用一个"分隔字段"标识产品行，但其实只能用 readonly 模拟
+    // showPrompt 不支持纯标题字段,所以把"标识"放到第一个字段的 label 里
+    fields.push({
+      key: `title_cn_${idx}`,
+      label: `${label}\n中文名`,
+      value: li.title_cn || '',
+      type: 'text',
+      placeholder: '例：玻璃花朵铜质壁灯',
+    });
+    fields.push({
+      key: `title_en_${idx}`,
+      label: `产品 ${idx + 1} · 英文名`,
+      value: li.title_en || li.title || '',
+      type: 'text',
+      placeholder: '例：Brass Floral Glass Sconce',
+    });
+    fields.push({
+      key: `variant_${idx}`,
+      label: `产品 ${idx + 1} · 规格描述`,
+      value: li.variant || '',
+      type: 'text',
+      placeholder: '例：220V / 黑色 / E27',
+    });
+  });
+
+  const result = await showPrompt({
+    title: `📝 修改 ${po.po_number} 产品描述`,
+    message: `供应商：${po.supplier || ''} · 共 ${items.length} 项产品\n\n⚠ 此处不能改数量/价格（请用"改价"按钮）。修改后会同步到 PO 数据 + 后续生成的订单图。`,
+    fields,
+    okText: '💾 保存修改',
+    cancelText: '取消',
+  });
+  if (!result) return;
+
+  // 重组 line_items（保留所有原字段,只更新描述类字段）
+  const newLineItems = items.map((li, idx) => ({
+    ...li,
+    title_cn: (result[`title_cn_${idx}`] || '').trim(),
+    title_en: (result[`title_en_${idx}`] || '').trim(),
+    variant: (result[`variant_${idx}`] || '').trim(),
+    // 数量、单价、subtotal 完全不动
+  }));
+  const newBoxNote = (result.box_note || '').trim();
+
+  try {
+    await sb.from('orders').update({
+      line_items: newLineItems,
+      box_note: newBoxNote,
+      updated_at: new Date().toISOString(),
+    }).eq('id', poId);
+    
+    // 更新本地缓存
+    po.line_items = newLineItems;
+    po.box_note = newBoxNote;
+    
+    toast(`✓ 已保存 ${po.po_number} 的描述修改`);
+    
+    // 刷新列表
+    if (typeof renderPo === 'function') renderPo();
+  } catch (e) {
+    console.error('保存 PO 描述失败:', e);
+    toast('保存失败：' + (e.message || e), 'err');
+  }
 }
