@@ -5,9 +5,12 @@
 // 依赖：core.js · utils.js · po.js（共享 PO 状态机/审批）
 // ============================================================
 
-// 催单 tab 快速筛选模式（叠加在 status filter 之上）
-// '' = 无叠加；'thismonth_arrived' = 本月到货；'overdue_or_today' = 逾期或今日要催
+// 催单 tab 快速筛选模式(叠加在 status filter 之上)
+// '' = 无叠加;'thismonth_arrived' = 本月到货;'overdue_or_today' = 逾期或今日要催
 let _ordersQuickMode = '';
+
+// V5-2026-05-24: "仅看 PO 派生" 独立开关(可与阈值组合 AND)
+let _onlyPoSource = false;
 
 // ============================================================
 // PO 派生催单 · 数据加载层
@@ -85,30 +88,115 @@ function chaseDaysSince(o) {
 }
 
 // ============================================================
-// 催单阈值 chip 渲染
+// 催单阈值 chip 渲染 - V5 激进版
+// 支持: 3/7/10/14/21/30/60/自定义 + PO 派生独立 chip + AND 组合
 // ============================================================
 function renderChaseThresholdChips() {
   const el = document.getElementById('chaseThresholdChips');
   if (!el) return;
-  const thresholds = (typeof DATA !== 'undefined' && DATA.getChaseThresholds) ? DATA.getChaseThresholds() : [3, 7, 15, 30];
+  const thresholds = (typeof DATA !== 'undefined' && DATA.getChaseThresholds) ? DATA.getChaseThresholds() : [3, 7, 10, 14, 21, 30, 60];
   const total = CHASE_ORDERS.length;
   const poCnt = CHASE_ORDERS.filter(o => o._isPO).length;
   const manualCnt = total - poCnt;
+  
+  // V5-2026-05-24: 阈值 chip 的计数 - 如果"仅 PO 派生"开了,只算 PO 派生的(AND 组合下的实时计数)
+  const baseSet = _onlyPoSource ? CHASE_ORDERS.filter(o => o._isPO) : CHASE_ORDERS;
+  
+  // 颜色递进: 天数越大颜色越深(红色梯度)
+  function chipColor(days) {
+    if (days === 0) return ''; // 全部默认色
+    if (days <= 3)  return '#fbbf24';  // 黄
+    if (days <= 7)  return '#f59e0b';  // 橙黄
+    if (days <= 10) return '#ea580c';  // 橙
+    if (days <= 14) return '#dc2626';  // 红
+    if (days <= 21) return '#b91c1c';  // 深红
+    if (days <= 30) return '#991b1b';  // 暗红
+    return '#7f1d1d';                   // 60+ 极暗红
+  }
+  
+  function renderChip(days, label, count) {
+    const isActive = _chaseThresholdFilter === days;
+    const color = chipColor(days);
+    const baseStyle = isActive 
+      ? `background:${color || '#7c3aed'}; color:white; border-color:${color || '#7c3aed'}; box-shadow:0 2px 8px ${color || '#7c3aed'}66, 0 0 0 3px ${color || '#7c3aed'}22; font-weight:600;`
+      : days > 0 ? `border-left:3px solid ${color}; color:${color};` : '';
+    return `<button class="rule-chip ${isActive ? 'active' : ''}" 
+                    onclick="setChaseThreshold(${days})"
+                    style="${baseStyle}"
+                    title="${days === 0 ? '显示全部催单' : '下单超过 ' + days + ' 天的'}">
+              ${days === 0 ? '📋 全部' : '⏰ ≥' + days + '天'} 
+              <span class="cnt-mini" style="${isActive ? 'background:rgba(255,255,255,0.25); color:white;' : ''}">${count}</span>
+            </button>`;
+  }
+  
+  // 自定义天数 chip(如果当前值不在标准列表里,显示"自定义 N 天")
+  const isCustom = _chaseThresholdFilter > 0 && !thresholds.includes(_chaseThresholdFilter);
+  let customChipHtml = '';
+  if (isCustom) {
+    const cnt = baseSet.filter(o => chaseDaysSince(o) >= _chaseThresholdFilter).length;
+    customChipHtml = `<button class="rule-chip active" onclick="setChaseThreshold(0)"
+                              style="background:#7f1d1d; color:white; border-color:#7f1d1d; box-shadow:0 2px 8px #7f1d1d66, 0 0 0 3px #7f1d1d22; font-weight:600;"
+                              title="自定义阈值,点击取消">
+                        🎯 自定义 ≥${_chaseThresholdFilter}天 <span class="cnt-mini" style="background:rgba(255,255,255,0.25); color:white;">${cnt}</span>
+                        <span style="margin-left:6px; opacity:0.7;">✕</span>
+                      </button>`;
+  }
+  
   el.innerHTML = `
     <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">催单阈值:</span>
-    <button class="rule-chip ${_chaseThresholdFilter === 0 ? 'active' : ''}" onclick="setChaseThreshold(0)">📋 全部 <span class="cnt-mini">${total}</span></button>
-    ${thresholds.map(d => {
-      const cnt = CHASE_ORDERS.filter(o => chaseDaysSince(o) >= d).length;
-      return `<button class="rule-chip ${_chaseThresholdFilter === d ? 'active' : ''}" onclick="setChaseThreshold(${d})">⏰ ≥${d}天 <span class="cnt-mini">${cnt}</span></button>`;
-    }).join('')}
+    ${renderChip(0, '全部', baseSet.length)}
+    ${thresholds.map(d => renderChip(d, '≥' + d + '天', baseSet.filter(o => chaseDaysSince(o) >= d).length)).join('')}
+    ${customChipHtml}
+    <button class="rule-chip" onclick="openCustomThresholdInput()"
+            title="输入自定义天数(如 45 天)"
+            style="border-style:dashed; color:var(--text-secondary);">
+      🎯 自定义...
+    </button>
+    
+    <span style="margin-left:6px; height:18px; width:1px; background:var(--border);"></span>
+    
+    <button class="rule-chip po-only-chip ${_onlyPoSource ? 'active' : ''}" 
+            onclick="toggleOnlyPoSource()" 
+            title="只显示从销售单开 PO 派生过来的催单(线上订单)"
+            style="${_onlyPoSource ? 'background:#7c3aed; color:white; border-color:#7c3aed; box-shadow:0 2px 8px #7c3aed66, 0 0 0 3px #7c3aed22; font-weight:600;' : 'border-left:3px solid #7c3aed; color:#7c3aed;'}">
+      📦 仅 PO 派生 <span class="cnt-mini" style="${_onlyPoSource ? 'background:rgba(255,255,255,0.25); color:white;' : ''}">${poCnt}</span>
+    </button>
+    
     <span style="margin-left:auto; font-size: 11px; color: var(--text-tertiary);">
       📦 PO 派生 <b style="color:#7c3aed;">${poCnt}</b> · 📝 手动 <b style="color:#d97706;">${manualCnt}</b>
     </span>
   `;
 }
 
+// V5: 打开自定义天数输入对话框
+async function openCustomThresholdInput() {
+  const v = await showPrompt({
+    title: '🎯 自定义催单阈值',
+    message: '显示"下单超过 N 天还没回"的催单。\n常用值:7 / 10 / 14 / 21 / 30 / 45 / 60 / 90',
+    field: { 
+      label: '天数(下单距今 ≥)', 
+      value: '', 
+      type: 'number',
+      placeholder: '例:45'
+    },
+  });
+  if (v === null) return;
+  const days = parseInt(v, 10);
+  if (!days || days < 1 || days > 999) {
+    toast('请输入 1-999 之间的天数', 'warn');
+    return;
+  }
+  setChaseThreshold(days);
+}
+
 function setChaseThreshold(days) {
   _chaseThresholdFilter = days;
+  renderOrders();
+}
+
+// V5-2026-05-24: 切换"仅看 PO 派生"
+function toggleOnlyPoSource() {
+  _onlyPoSource = !_onlyPoSource;
   renderOrders();
 }
 
@@ -129,6 +217,8 @@ function renderOrders() {
   const sortBy = document.getElementById('oSortBy')?.value || 'urgency';
 
   let list = CHASE_ORDERS.filter(o => {
+    // V5-2026-05-24: "仅看 PO 派生" 过滤(与阈值 AND 组合)
+    if (_onlyPoSource && !o._isPO) return false;
     // 阈值过滤
     if (_chaseThresholdFilter > 0 && chaseDaysSince(o) < _chaseThresholdFilter) return false;
     if (q) {
@@ -352,7 +442,7 @@ function renderOrderRow(o, i) {
   
   // 已 N 天（下单至今）—— V3 用阈值高亮：超过最大阈值标红，超过最小阈值标黄
   const days = chaseDaysSince(o);
-  const thresholds = (typeof DATA !== 'undefined' && DATA.getChaseThresholds) ? DATA.getChaseThresholds() : [3, 7, 15, 30];
+  const thresholds = (typeof DATA !== 'undefined' && DATA.getChaseThresholds) ? DATA.getChaseThresholds() : [3, 7, 10, 14, 21, 30, 60];
   const maxTh = thresholds[thresholds.length - 1] || 30;
   const minTh = thresholds[0] || 3;
   let daysCls = '';
