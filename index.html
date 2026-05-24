@@ -20,26 +20,26 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260524p"></script>
-<script src="js/utils.js?v=20260524p"></script>
+<script src="js/core.js?v=20260524q"></script>
+<script src="js/utils.js?v=20260524q"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260524p"></script>
-<script src="js/issues.js?v=20260524p"></script>
+<script src="js/settings.js?v=20260524q"></script>
+<script src="js/issues.js?v=20260524q"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260524p"></script>
-<script src="js/missing.js?v=20260524p"></script>
-<script src="js/orders.js?v=20260524p"></script>
-<script src="js/shopify.js?v=20260524p"></script>
-<script src="js/po.js?v=20260524p"></script>
+<script src="js/aftersales.js?v=20260524q"></script>
+<script src="js/missing.js?v=20260524q"></script>
+<script src="js/orders.js?v=20260524q"></script>
+<script src="js/shopify.js?v=20260524q"></script>
+<script src="js/po.js?v=20260524q"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260524p"></script>
-<script src="js/meetings.js?v=20260524p"></script>
-<script src="js/greeting.js?v=20260524p"></script>
-<script src="js/search.js?v=20260524p"></script>
+<script src="js/translator.js?v=20260524q"></script>
+<script src="js/meetings.js?v=20260524q"></script>
+<script src="js/greeting.js?v=20260524q"></script>
+<script src="js/search.js?v=20260524q"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -413,20 +413,89 @@ body {
   grid-template-columns: 36px 100px minmax(160px, 2fr) 120px 80px 90px 40px;
 }
 
-.record-row.s-pending { box-shadow: inset 4px 0 0 var(--status-pending); }
-.record-row.s-producing { box-shadow: inset 4px 0 0 var(--status-producing); background: rgba(202,138,4,0.03); }
-.record-row.s-shipped { box-shadow: inset 4px 0 0 var(--status-shipped); background: rgba(37,99,235,0.03); }
-.record-row.s-arrived { box-shadow: inset 4px 0 0 var(--status-arrived); background: rgba(13,148,136,0.03); }
-.record-row.s-repairing { box-shadow: inset 4px 0 0 var(--status-repairing); background: rgba(190,24,93,0.04); }
-.record-row.s-delivered { box-shadow: inset 4px 0 0 var(--status-delivered); opacity: 0.7; }
-.record-row.s-cancelled { box-shadow: inset 4px 0 0 var(--status-cancelled); opacity: 0.55; }
-.record-row.s-overdue { box-shadow: inset 4px 0 0 var(--status-overdue); background: rgba(185,28,28,0.05); }
-.record-row.s-resolved { box-shadow: inset 4px 0 0 var(--success); opacity: 0.7; }
-.record-row.s-escalated { box-shadow: inset 4px 0 0 var(--purple); background: rgba(124,58,237,0.04); }
-.record-row.s-contacting { box-shadow: inset 4px 0 0 var(--status-producing); background: rgba(202,138,4,0.03); }
-.record-row.s-searching { box-shadow: inset 4px 0 0 var(--accent); background: rgba(37,99,235,0.03); }
-.record-row.s-found { box-shadow: inset 4px 0 0 var(--success); }
-.record-row.s-abandoned { box-shadow: inset 4px 0 0 var(--status-cancelled); opacity: 0.6; }
+/* V5-2026-05-24: 简洁配色 - 白底 + 左侧 4px 彩色竖条 + 仅逾期/极端状态有背景 */
+.record-row.s-pending { 
+  box-shadow: inset 4px 0 0 var(--status-pending); 
+  background: var(--bg-card);
+}
+.record-row.s-pending_approval { 
+  box-shadow: inset 4px 0 0 var(--warning); 
+  background: var(--bg-card);
+}
+.record-row.s-approved { 
+  box-shadow: inset 4px 0 0 var(--success); 
+  background: var(--bg-card);
+}
+.record-row.s-rejected { 
+  box-shadow: inset 4px 0 0 var(--status-cancelled); 
+  background: var(--bg-card);
+  opacity: 0.6;
+}
+.record-row.s-producing { 
+  box-shadow: inset 4px 0 0 var(--status-producing); 
+  background: var(--bg-card);
+}
+.record-row.s-shipped { 
+  box-shadow: inset 4px 0 0 var(--status-shipped); 
+  background: var(--bg-card);
+}
+.record-row.s-arrived { 
+  box-shadow: inset 4px 0 0 var(--status-arrived); 
+  background: var(--bg-card);
+  opacity: 0.75;
+}
+.record-row.s-repairing { 
+  box-shadow: inset 4px 0 0 var(--status-repairing); 
+  background: var(--bg-card);
+}
+.record-row.s-delivered { 
+  box-shadow: inset 4px 0 0 var(--status-delivered); 
+  background: var(--bg-card);
+  opacity: 0.7;
+}
+.record-row.s-cancelled { 
+  box-shadow: inset 4px 0 0 var(--status-cancelled); 
+  background: var(--bg-card);
+  opacity: 0.5;
+}
+/* 逾期是唯一保留有色背景的状态(高警示性,需要被一眼看到) */
+.record-row.s-overdue { 
+  box-shadow: inset 4px 0 0 var(--status-overdue); 
+  background: rgba(185,28,28,0.04);
+}
+.record-row.s-resolved { 
+  box-shadow: inset 4px 0 0 var(--success); 
+  background: var(--bg-card);
+  opacity: 0.7;
+}
+.record-row.s-escalated { 
+  box-shadow: inset 4px 0 0 var(--purple); 
+  background: var(--bg-card);
+}
+.record-row.s-contacting { 
+  box-shadow: inset 4px 0 0 var(--status-producing); 
+  background: var(--bg-card);
+}
+.record-row.s-searching { 
+  box-shadow: inset 4px 0 0 var(--accent); 
+  background: var(--bg-card);
+}
+.record-row.s-found { 
+  box-shadow: inset 4px 0 0 var(--success); 
+  background: var(--bg-card);
+}
+.record-row.s-abandoned { 
+  box-shadow: inset 4px 0 0 var(--status-cancelled); 
+  background: var(--bg-card);
+  opacity: 0.6;
+}
+/* 鼠标悬停时统一一个微妙的高亮 */
+.record-row:hover {
+  background: var(--bg-row-hover) !important;
+}
+.record-row.s-overdue:hover {
+  background: rgba(185,28,28,0.07) !important;
+}
 
 .row-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-tertiary); text-align: center; }
 
@@ -466,6 +535,13 @@ body {
 .status-pill.s-found::before { background: var(--success); }
 .status-pill.s-abandoned { color: var(--status-cancelled); border-color: rgba(87,83,78,0.3); }
 .status-pill.s-abandoned::before { background: var(--status-cancelled); }
+/* V5-2026-05-24 补全 PO 派生的状态 */
+.status-pill.s-pending_approval { color: var(--warning); border-color: rgba(202,138,4,0.4); background: rgba(202,138,4,0.06); }
+.status-pill.s-pending_approval::before { background: var(--warning); }
+.status-pill.s-approved { color: var(--success); border-color: rgba(21,128,61,0.4); background: rgba(21,128,61,0.06); }
+.status-pill.s-approved::before { background: var(--success); }
+.status-pill.s-rejected { color: var(--status-cancelled); border-color: rgba(87,83,78,0.3); opacity: 0.7; }
+.status-pill.s-rejected::before { background: var(--status-cancelled); }
 
 .cell-text { font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cell-text.muted { color: var(--text-secondary); font-size: 12.5px; }
