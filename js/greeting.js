@@ -276,13 +276,29 @@ function generateDailyGreeting() {
 }
 
 // ============================================================
+// 时段限频:一天分早/中/晚 3 个时段,每个时段最多显示 1 次问候
+// 早 = 5-12 点 / 中 = 12-18 点 / 晚 = 18-29 点(凌晨算晚)
+// ============================================================
+function _getCurrentSlot() {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return 'morning';
+  if (h >= 12 && h < 18) return 'noon';
+  return 'evening';  // 18-23 + 0-4 都算晚
+}
+
+// ============================================================
 // 渲染问候卡片(顶部显示)
 // ============================================================
 function renderGreetingCard() {
-  // 已经显示过 / 用户关闭过
+  // 当前时段是否已显示过?
   const today = new Date().toISOString().slice(0, 10);
-  const lastShownKey = `greeting_shown_${today}_${CURRENT_AGENT}`;
+  const slot = _getCurrentSlot();
+  const lastShownKey = `greeting_shown_${today}_${slot}_${CURRENT_AGENT}`;
   if (sessionStorage.getItem(lastShownKey)) return;
+  if (localStorage.getItem(lastShownKey)) {
+    sessionStorage.setItem(lastShownKey, '1');
+    return;
+  }
   
   // 移除可能存在的旧卡片
   document.getElementById('greetingCard')?.remove();
@@ -298,7 +314,7 @@ function renderGreetingCard() {
   card.id = 'greetingCard';
   card.className = `greeting-card greeting-${g.timeOfDay}`;
   card.innerHTML = `
-    <button class="gc-close" type="button" onclick="dismissGreetingCard()" title="关闭(今天不再显示)">✕</button>
+    <button class="gc-close" type="button" onclick="dismissGreetingCard()" title="关闭(本时段不再显示)">✕</button>
     <div class="gc-content">
       <div class="gc-line gc-line-main">${escapeHtml(g.greeting)}</div>
       ${g.personalLine ? `<div class="gc-line gc-line-personal">${escapeHtml(g.personalLine)}</div>` : ''}
@@ -309,28 +325,33 @@ function renderGreetingCard() {
   `;
   
   tabBar.parentNode.insertBefore(card, tabBar.nextSibling);
+  
+  // 显示后立即标记本时段已看过(防止重试机制重复显示)
+  sessionStorage.setItem(lastShownKey, '1');
+  try { localStorage.setItem(lastShownKey, '1'); } catch(_) {}
 }
 
 function dismissGreetingCard() {
   const today = new Date().toISOString().slice(0, 10);
-  const key = `greeting_shown_${today}_${CURRENT_AGENT}`;
+  const slot = _getCurrentSlot();
+  const key = `greeting_shown_${today}_${slot}_${CURRENT_AGENT}`;
   sessionStorage.setItem(key, '1');
-  // 也记到 localStorage,让多 tab 同步
   try { localStorage.setItem(key, '1'); } catch(_) {}
   document.getElementById('greetingCard')?.remove();
 }
 
-// 检查 localStorage 看今天是不是已经看过(跨 tab 同步)
+// 检查当前时段是不是已经看过(跨 tab 同步)
 function _greetingCheckShown() {
   const today = new Date().toISOString().slice(0, 10);
-  const key = `greeting_shown_${today}_${CURRENT_AGENT}`;
+  const slot = _getCurrentSlot();
+  const key = `greeting_shown_${today}_${slot}_${CURRENT_AGENT}`;
   try {
     if (localStorage.getItem(key)) {
       sessionStorage.setItem(key, '1');
       return true;
     }
   } catch(_) {}
-  return false;
+  return !!sessionStorage.getItem(key);
 }
 
 // ============================================================
@@ -489,7 +510,8 @@ window.tryShowGreeting = tryShowGreeting;
 // 提供手动重新触发(测试用)
 window.testGreeting = function() {
   const today = new Date().toISOString().slice(0, 10);
-  const key = `greeting_shown_${today}_${CURRENT_AGENT}`;
+  const slot = _getCurrentSlot();
+  const key = `greeting_shown_${today}_${slot}_${CURRENT_AGENT}`;
   sessionStorage.removeItem(key);
   try { localStorage.removeItem(key); } catch(_) {}
   document.getElementById('greetingCard')?.remove();
