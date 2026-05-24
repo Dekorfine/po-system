@@ -1683,12 +1683,120 @@ function showMainApp() {
   document.getElementById('mainApp').style.display = 'block';
 }
 
+// ============================================================
+// V4-2026-05-24: 登录错误提示增强
+// 之前:错误信息小、英文、无视觉反馈 → 用户以为"没反应"
+// 现在:中文化 + 大字 + 抖动 + 输入框红边 + 强制 loading
+// ============================================================
+
+// 注入抖动动画 CSS(一次性)
+(function _injectLoginErrorCSS() {
+  if (document.getElementById('login-error-style')) return;
+  const s = document.createElement('style');
+  s.id = 'login-error-style';
+  s.textContent = `
+    @keyframes loginShake {
+      0%, 100% { transform: translateX(0); }
+      15%, 45%, 75% { transform: translateX(-8px); }
+      30%, 60%, 90% { transform: translateX(8px); }
+    }
+    @keyframes loginErrorFadeIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .login-shake { animation: loginShake 0.4s ease-in-out; }
+    .login-input-error {
+      border-color: #dc2626 !important;
+      background: #fef2f2 !important;
+      box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12) !important;
+    }
+    #loginError.show {
+      display: flex !important;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px !important;
+      font-weight: 600;
+      padding: 12px 14px !important;
+      border-left: 4px solid #dc2626 !important;
+      animation: loginErrorFadeIn 0.3s ease-out;
+    }
+    #loginError.show .login-error-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+  `;
+  document.head.appendChild(s);
+})();
+
+// 中文化 Supabase 错误
+function _translateAuthError(rawMsg) {
+  if (!rawMsg) return '登录失败,请稍后再试';
+  const msg = String(rawMsg).toLowerCase();
+  
+  if (msg.includes('invalid login credentials') || 
+      msg.includes('invalid email or password') ||
+      msg.includes('invalid credentials')) {
+    return '邮箱或密码错误 · 请检查后重试';
+  }
+  if (msg.includes('email not confirmed') || msg.includes('not confirmed')) {
+    return '邮箱未验证 · 请联系主管在后台确认账号';
+  }
+  if (msg.includes('user not found')) {
+    return '该邮箱没有注册 · 请检查邮箱或联系主管创建账号';
+  }
+  if (msg.includes('failed to fetch') || msg.includes('network') || msg.includes('networkerror')) {
+    return '网络异常 · 请检查网络连接后重试';
+  }
+  if (msg.includes('too many requests') || msg.includes('rate limit')) {
+    return '尝试次数过多 · 请稍后再试(约 1 分钟)';
+  }
+  if (msg.includes('email') && msg.includes('invalid')) {
+    return '邮箱格式不对 · 请检查';
+  }
+  if (msg.includes('password') && (msg.includes('short') || msg.includes('weak'))) {
+    return '密码不符合要求 · 至少 6 位';
+  }
+  // 默认:保留原文但加中文提示
+  return `登录失败:${rawMsg}`;
+}
+
 function showLoginError(msg) {
   const el = document.getElementById('loginError');
-  if (el) {
-    el.textContent = msg;
-    el.style.display = 'block';
+  if (!el) return;
+  el.innerHTML = `<span class="login-error-icon">⚠</span><span>${escapeHtml(msg)}</span>`;
+  el.style.display = 'flex';
+  el.classList.add('show');
+  
+  // 让输入框变红(错误状态)
+  const emailInput = document.getElementById('loginEmail');
+  const pwdInput = document.getElementById('loginPassword');
+  if (emailInput) emailInput.classList.add('login-input-error');
+  if (pwdInput) pwdInput.classList.add('login-input-error');
+  
+  // 抖动登录卡片(视觉冲击)
+  const card = el.closest('div[style*="background: white"]') || el.parentElement;
+  if (card) {
+    card.classList.remove('login-shake');
+    void card.offsetWidth;  // 重置动画
+    card.classList.add('login-shake');
   }
+  
+  // 自动 focus 到密码框,方便重输
+  if (pwdInput) {
+    pwdInput.value = '';
+    setTimeout(() => pwdInput.focus(), 100);
+  }
+}
+
+function _clearLoginError() {
+  const el = document.getElementById('loginError');
+  if (el) {
+    el.style.display = 'none';
+    el.classList.remove('show');
+    el.textContent = '';
+  }
+  document.getElementById('loginEmail')?.classList.remove('login-input-error');
+  document.getElementById('loginPassword')?.classList.remove('login-input-error');
 }
 
 async function handleLogin(event) {
@@ -1696,24 +1804,66 @@ async function handleLogin(event) {
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
   const btn = document.getElementById('loginBtn');
-  const err = document.getElementById('loginError');
-  err.style.display = 'none';
+  
+  _clearLoginError();
+  
+  // 前端简单校验,避免错误请求
+  if (!email) {
+    showLoginError('请输入邮箱');
+    return false;
+  }
+  if (!password) {
+    showLoginError('请输入密码');
+    return false;
+  }
+  if (!email.includes('@')) {
+    showLoginError('邮箱格式不对 · 请检查(应包含 @)');
+    return false;
+  }
+  
   btn.disabled = true;
   btn.textContent = '登录中...';
+  btn.style.opacity = '0.7';
+  
+  // 强制最少 600ms 的 loading,让用户看到反馈
+  const startTime = Date.now();
+  const ensureMinDelay = async () => {
+    const elapsed = Date.now() - startTime;
+    if (elapsed < 600) await new Promise(r => setTimeout(r, 600 - elapsed));
+  };
 
   try {
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
     if (error) throw error;
+    await ensureMinDelay();
     document.getElementById('loginPassword').value = '';
     await onAuthSuccess(data.session);
   } catch (e) {
-    showLoginError('登录失败：' + (e.message || e));
+    await ensureMinDelay();
+    const friendlyMsg = _translateAuthError(e.message || e);
+    showLoginError(friendlyMsg);
+    console.warn('[登录失败] 原始错误:', e.message || e);
   } finally {
     btn.disabled = false;
     btn.textContent = '登录';
+    btn.style.opacity = '1';
   }
   return false;
 }
+
+// 用户开始输入时,清除错误提示(让 UX 顺滑)
+(function _bindLoginInputClear() {
+  if (window._loginInputClearBound) return;
+  window._loginInputClearBound = true;
+  setTimeout(() => {
+    const emailInput = document.getElementById('loginEmail');
+    const pwdInput = document.getElementById('loginPassword');
+    [emailInput, pwdInput].forEach(el => {
+      if (!el) return;
+      el.addEventListener('input', _clearLoginError);
+    });
+  }, 1500);
+})();
 
 async function handleLogout() {
   if (!confirm('确认登出？')) return;
