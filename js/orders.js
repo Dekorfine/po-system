@@ -245,7 +245,61 @@ function renderOrders() {
   // 普通列表视图
   document.getElementById('ordersGroupedContainer')?.remove();
   card.style.display = 'block';
-  body.innerHTML = list.map((o, i) => renderOrderRow(o, i)).join('');
+  
+  // V4-2026-05-24: 把筛选+排序后的完整列表挂到全局,供导出函数读取
+  window._lastVisibleOrders = list;
+  
+  // V4-2026-05-24: 分页 - 默认 50/页,localStorage 记住偏好
+  if (typeof _ordersPage === 'undefined') {
+    window._ordersPage = {
+      size: parseInt(localStorage.getItem('orders_page_size') || '50', 10),
+      current: 1,
+    };
+  }
+  // 确保 size 合法
+  if (![50, 100].includes(_ordersPage.size)) _ordersPage.size = 50;
+  
+  const totalPages = Math.max(1, Math.ceil(list.length / _ordersPage.size));
+  // 切换数据后 current 越界 → 复位到第 1 页
+  if (_ordersPage.current > totalPages) _ordersPage.current = 1;
+  
+  // 取当前页数据
+  const startIdx = (_ordersPage.current - 1) * _ordersPage.size;
+  const pageItems = list.slice(startIdx, startIdx + _ordersPage.size);
+  
+  // 生成分页栏(顶 + 底)
+  const paginationHtml = renderPaginationBar({
+    total: list.length,
+    currentPage: _ordersPage.current,
+    pageSize: _ordersPage.size,
+    onPageChange: 'setOrdersPage(__PAGE__)',
+    onSizeChange: 'setOrdersPageSize(__SIZE__)',
+  });
+  
+  body.innerHTML = (list.length > _ordersPage.size ? paginationHtml : '') + 
+                   pageItems.map((o, i) => renderOrderRow(o, startIdx + i)).join('') +
+                   (list.length > _ordersPage.size ? paginationHtml : '');
+}
+
+// V4-2026-05-24: 催单分页控制函数
+function setOrdersPage(newPage) {
+  if (typeof _ordersPage === 'undefined') window._ordersPage = { size: 50, current: 1 };
+  _ordersPage.current = newPage;
+  renderOrders();
+  // 滚到顶部
+  setTimeout(() => {
+    document.getElementById('ordersCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 50);
+}
+
+function setOrdersPageSize(newSize) {
+  const size = parseInt(newSize, 10);
+  if (![50, 100].includes(size)) return;
+  if (typeof _ordersPage === 'undefined') window._ordersPage = { size: 50, current: 1 };
+  _ordersPage.size = size;
+  _ordersPage.current = 1;
+  localStorage.setItem('orders_page_size', String(size));
+  renderOrders();
 }
 
 function renderOrderRow(o, i) {

@@ -60,10 +60,70 @@ function renderAftersales() {
   
   if (list.length === 0) {
     body.innerHTML = `<div class="empty-state"><div class="icon">🔧</div><div class="text">${AFTERSALES.length === 0 ? '还没有售后单，点 "+ 新增售后" 开始' : '没有匹配的售后单'}</div>${AFTERSALES.length === 0 ? '<button class="btn primary" onclick="addAftersales()">+ 新增第一个售后单</button>' : ''}</div>`;
+    // V4-2026-05-24: 清空可见数据
+    window._lastVisibleAftersales = [];
     return;
   }
   
-  body.innerHTML = list.map((a, i) => {
+  // V4-2026-05-24: 把筛选+排序后的完整列表挂到全局,供导出函数读取
+  window._lastVisibleAftersales = list;
+  
+  // V4-2026-05-24: 分页 - 默认 50/页,localStorage 记住偏好
+  if (typeof _aftersalesPage === 'undefined') {
+    window._aftersalesPage = {
+      size: parseInt(localStorage.getItem('aftersales_page_size') || '50', 10),
+      current: 1,
+    };
+  }
+  if (![50, 100].includes(_aftersalesPage.size)) _aftersalesPage.size = 50;
+  
+  const totalPages = Math.max(1, Math.ceil(list.length / _aftersalesPage.size));
+  if (_aftersalesPage.current > totalPages) _aftersalesPage.current = 1;
+  
+  const startIdx = (_aftersalesPage.current - 1) * _aftersalesPage.size;
+  const pageItems = list.slice(startIdx, startIdx + _aftersalesPage.size);
+  
+  const paginationHtml = renderPaginationBar({
+    total: list.length,
+    currentPage: _aftersalesPage.current,
+    pageSize: _aftersalesPage.size,
+    onPageChange: 'setAftersalesPage(__PAGE__)',
+    onSizeChange: 'setAftersalesPageSize(__SIZE__)',
+  });
+  
+  // 渲染:顶部分页 + 卡片 + 底部分页(只在数据超过单页时显示分页)
+  const renderRows = pageItems.map((a, i) => {
+    // 还是用原本的渲染函数 - 把 i 替换成 startIdx + i 即可保持行号连续
+    return _renderAftersaleRow(a, startIdx + i);
+  }).join('');
+  
+  body.innerHTML = (list.length > _aftersalesPage.size ? paginationHtml : '') + 
+                   renderRows +
+                   (list.length > _aftersalesPage.size ? paginationHtml : '');
+}
+
+// V4-2026-05-24: 售后分页控制
+function setAftersalesPage(newPage) {
+  if (typeof _aftersalesPage === 'undefined') window._aftersalesPage = { size: 50, current: 1 };
+  _aftersalesPage.current = newPage;
+  renderAftersales();
+  setTimeout(() => {
+    document.getElementById('aftersalesBody')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 50);
+}
+
+function setAftersalesPageSize(newSize) {
+  const size = parseInt(newSize, 10);
+  if (![50, 100].includes(size)) return;
+  if (typeof _aftersalesPage === 'undefined') window._aftersalesPage = { size: 50, current: 1 };
+  _aftersalesPage.size = size;
+  _aftersalesPage.current = 1;
+  localStorage.setItem('aftersales_page_size', String(size));
+  renderAftersales();
+}
+
+// V4-2026-05-24: 把原本 list.map 里那段长行渲染逻辑抽成函数,供分页调用
+function _renderAftersaleRow(a, i) {
     const fuCount = (a.followups || []).length;
     
     // V4：图片拼装策略 — 分两个区域
@@ -189,7 +249,6 @@ function renderAftersales() {
         </div>
       </div>
     `;
-  }).join('');
 }
 
 async function addAftersales() {

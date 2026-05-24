@@ -1921,17 +1921,23 @@ function exportToCSV(rows, headers, filename) {
 // 催单
 async function exportOrdersPDF() {
   if (typeof ORDERS === 'undefined' || !ORDERS) { toast('催单数据未加载', 'warn'); return; }
-  const items = ORDERS.filter(o => !o.deletedAt);
+  // V4-2026-05-24: 导出当前可见(筛选 + 排序后),而不是全集
+  const items = (window._lastVisibleOrders && window._lastVisibleOrders.length > 0) 
+    ? window._lastVisibleOrders 
+    : ORDERS.filter(o => !o.deletedAt);
   await _buildExportPageAndPreview({
     type: 'orders',
     items,
-    title: '📋 催单清单',
+    title: '📋 催单清单' + (window._lastVisibleOrders ? ` (已筛选 ${items.length} 条)` : ''),
     fileName: `催单清单_${new Date().toISOString().slice(0,10)}.pdf`,
   });
 }
 function exportOrdersExcel() {
   if (typeof ORDERS === 'undefined' || !ORDERS) { toast('催单数据未加载', 'warn'); return; }
-  const rows = ORDERS.filter(o => !o.deletedAt).map(o => [
+  const source = (window._lastVisibleOrders && window._lastVisibleOrders.length > 0) 
+    ? window._lastVisibleOrders 
+    : ORDERS.filter(o => !o.deletedAt);
+  const rows = source.map(o => [
     o.orderNo || '', o.site || '', o.product || '', o.supplier || '', o.status || '',
     o.orderDate || '', o.promisedDate || '', (o.followups || []).length, o.notes || '',
   ]);
@@ -1942,17 +1948,23 @@ function exportOrdersExcel() {
 // 售后
 async function exportAftersalesPDF() {
   if (typeof AFTERSALES === 'undefined' || !AFTERSALES) { toast('售后数据未加载', 'warn'); return; }
-  const items = AFTERSALES.filter(a => !a.deletedAt);
+  // V4-2026-05-24: 导出当前可见(筛选 + 排序后),而不是全集
+  const items = (window._lastVisibleAftersales && window._lastVisibleAftersales.length > 0) 
+    ? window._lastVisibleAftersales 
+    : AFTERSALES.filter(a => !a.deletedAt);
   await _buildExportPageAndPreview({
     type: 'aftersales',
     items,
-    title: '🔧 售后清单',
+    title: '🔧 售后清单' + (window._lastVisibleAftersales ? ` (已筛选 ${items.length} 条)` : ''),
     fileName: `售后清单_${new Date().toISOString().slice(0,10)}.pdf`,
   });
 }
 function exportAftersalesExcel() {
   if (typeof AFTERSALES === 'undefined' || !AFTERSALES) { toast('售后数据未加载', 'warn'); return; }
-  const rows = AFTERSALES.filter(a => !a.deletedAt).map(a => [
+  const source = (window._lastVisibleAftersales && window._lastVisibleAftersales.length > 0) 
+    ? window._lastVisibleAftersales 
+    : AFTERSALES.filter(a => !a.deletedAt);
+  const rows = source.map(a => [
     a.orderNo || '', a.site || '', a.product || '', a.supplier || '', a.reason || '',
     a.status || '', a.createdDate || '', a.nextFollow || '', (a.followups || []).length, a.reasonDetail || '',
   ]);
@@ -2055,3 +2067,174 @@ function exportFinanceExcel() {
   
   window._injectExportButtons = tryInject;
 })();
+
+// ============================================================
+// V4-2026-05-24:通用分页组件
+// 用于催单/售后等长列表 — 50/100 每页 + 首页 / 上一页 / 页码 / 下一页 / 末页
+// ============================================================
+
+// 注入分页 CSS(一次性)
+(function _injectPaginationCSS() {
+  if (document.getElementById('pagination-style')) return;
+  const s = document.createElement('style');
+  s.id = 'pagination-style';
+  s.textContent = `
+    .pagination-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      background: var(--bg-elevated, #f9fafb);
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 8px;
+      margin: 8px 0;
+      flex-wrap: wrap;
+      font-size: 13px;
+      color: var(--text-secondary, #4b5563);
+    }
+    .pagination-bar .pgn-info {
+      font-size: 12.5px;
+      color: var(--text-secondary, #6b7280);
+    }
+    .pagination-bar .pgn-info b {
+      color: var(--accent, #2563eb);
+      font-weight: 700;
+    }
+    .pagination-bar .pgn-size-sel {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12.5px;
+      color: var(--text-secondary, #6b7280);
+    }
+    .pagination-bar select {
+      padding: 4px 8px;
+      border: 1px solid var(--border, #d1d5db);
+      border-radius: 6px;
+      font-size: 12.5px;
+      background: white;
+      cursor: pointer;
+    }
+    .pagination-bar .pgn-controls {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .pagination-bar .pgn-btn {
+      min-width: 32px;
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--border, #d1d5db);
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12.5px;
+      color: var(--text-primary, #1f2937);
+      transition: all 0.12s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pagination-bar .pgn-btn:hover:not(:disabled):not(.active) {
+      background: var(--bg-hover, #f3f4f6);
+      border-color: var(--accent, #2563eb);
+      color: var(--accent, #2563eb);
+    }
+    .pagination-bar .pgn-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .pagination-bar .pgn-btn.active {
+      background: var(--accent, #2563eb);
+      color: white;
+      border-color: var(--accent, #2563eb);
+      font-weight: 600;
+    }
+    .pagination-bar .pgn-btn.first-last {
+      font-weight: 600;
+    }
+    .pagination-bar .pgn-ellipsis {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 24px;
+      color: var(--text-tertiary, #9ca3af);
+    }
+    @media (max-width: 720px) {
+      .pagination-bar { padding: 8px 10px; gap: 8px; }
+      .pagination-bar .pgn-info { width: 100%; text-align: center; }
+      .pagination-bar .pgn-size-sel { flex: 1; }
+      .pagination-bar .pgn-controls { flex: 1; justify-content: flex-end; }
+      .pagination-bar .pgn-btn { min-width: 28px; height: 28px; padding: 0 6px; font-size: 11.5px; }
+    }
+  `;
+  document.head.appendChild(s);
+})();
+
+/**
+ * 渲染分页栏(顶部 + 底部各调一次)
+ * @param {Object} opts
+ * @param {number} opts.total       总数据条数
+ * @param {number} opts.currentPage 当前页码(从 1 开始)
+ * @param {number} opts.pageSize    每页数量
+ * @param {string} opts.onPageChange JS 表达式字符串,用 (newPage) 占位 
+ *                                   例如 "setOrdersPage(__PAGE__)"
+ * @param {string} opts.onSizeChange JS 表达式字符串,用 __SIZE__ 占位
+ *                                   例如 "setOrdersPageSize(__SIZE__)"
+ * @returns {string} HTML
+ */
+function renderPaginationBar(opts) {
+  const total = Math.max(0, opts.total || 0);
+  const pageSize = Math.max(1, opts.pageSize || 50);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const current = Math.max(1, Math.min(opts.currentPage || 1, totalPages));
+  
+  // 显示哪些页码 - 最多显示 ~7 个连续页码,过多就用 ...
+  let pageNums = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pageNums.push(i);
+  } else {
+    pageNums.push(1);  // 始终显示第一页
+    if (current > 4) pageNums.push('...');
+    const start = Math.max(2, current - 2);
+    const end = Math.min(totalPages - 1, current + 2);
+    for (let i = start; i <= end; i++) pageNums.push(i);
+    if (current < totalPages - 3) pageNums.push('...');
+    pageNums.push(totalPages);  // 始终显示最后一页
+  }
+  
+  const startIdx = (current - 1) * pageSize + 1;
+  const endIdx = Math.min(total, current * pageSize);
+  
+  const handler = (pageExpr) => opts.onPageChange.replace('__PAGE__', pageExpr);
+  const sizeHandler = opts.onSizeChange ? opts.onSizeChange.replace('__SIZE__', 'this.value') : '';
+  
+  const numsHtml = pageNums.map(p => {
+    if (p === '...') return `<span class="pgn-ellipsis">…</span>`;
+    return `<button class="pgn-btn ${p === current ? 'active' : ''}" onclick="${handler(p)}">${p}</button>`;
+  }).join('');
+  
+  return `
+    <div class="pagination-bar">
+      <div class="pgn-info">
+        共 <b>${total}</b> 条 · 当前 <b>${startIdx}-${endIdx}</b> · 共 <b>${totalPages}</b> 页
+      </div>
+      <div class="pgn-size-sel">
+        每页 
+        <select onchange="${sizeHandler}">
+          <option value="50" ${pageSize === 50 ? 'selected' : ''}>50</option>
+          <option value="100" ${pageSize === 100 ? 'selected' : ''}>100</option>
+        </select>
+      </div>
+      <div class="pgn-controls">
+        <button class="pgn-btn first-last" onclick="${handler(1)}" ${current === 1 ? 'disabled' : ''} title="首页">⏮</button>
+        <button class="pgn-btn" onclick="${handler(current - 1)}" ${current === 1 ? 'disabled' : ''} title="上一页">‹</button>
+        ${numsHtml}
+        <button class="pgn-btn" onclick="${handler(current + 1)}" ${current === totalPages ? 'disabled' : ''} title="下一页">›</button>
+        <button class="pgn-btn first-last" onclick="${handler(totalPages)}" ${current === totalPages ? 'disabled' : ''} title="末页">⏭</button>
+      </div>
+    </div>
+  `;
+}
