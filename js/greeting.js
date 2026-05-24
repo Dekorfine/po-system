@@ -184,10 +184,27 @@ function _greetingGetUserStats() {
 }
 
 // ============================================================
+// 昵称映射(显示在问候里的称呼,比 agents 表的正式名字更亲切)
+// 找不到映射就用原名
+// ============================================================
+const _GREETING_NICKNAMES = {
+  '跟单主管': '周周',
+  '周成秀': '周周',
+  // 后续要加更多昵称在这里加
+  // 例如: 'Aylin': 'Aylin', 'Bonnie': 'Bonnie',  // 英文名已经够亲切了不用改
+  // '王某某': '小王',
+};
+
+function _getDisplayName(rawName) {
+  if (!rawName) return '同学';
+  return _GREETING_NICKNAMES[rawName] || rawName;
+}
+
+// ============================================================
 // 核心:生成个性化问候语
 // ============================================================
 function generateDailyGreeting() {
-  const name = CURRENT_AGENT || '同学';
+  const name = _getDisplayName(CURRENT_AGENT);
   const timeOfDay = _greetingGetTimeOfDay();
   const dayOfWeek = new Date().getDay();
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;

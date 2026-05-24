@@ -19,13 +19,9 @@
   const s = document.createElement('style');
   s.id = 'search-style';
   s.textContent = `
-    /* 顶部触发按钮 */
+    /* 顶部触发按钮(注入到 .header-actions 容器内,跟随顶栏布局) */
     .global-search-btn {
-      position: fixed;
-      top: 14px;
-      right: 280px;
-      z-index: 999;
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 8px;
       padding: 6px 14px;
@@ -37,6 +33,8 @@
       font-size: 13px;
       transition: all 0.15s;
       box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      vertical-align: middle;
+      margin-right: 4px;
     }
     .global-search-btn:hover {
       border-color: #93c5fd;
@@ -53,11 +51,10 @@
       border: 1px solid #e5e7eb;
     }
     @media (max-width: 1280px) {
-      .global-search-btn { right: 200px; }
       .global-search-btn .gsb-text { display: none; }
     }
     @media (max-width: 760px) {
-      .global-search-btn { right: 80px; padding: 6px 8px; }
+      .global-search-btn { padding: 6px 8px; }
       .global-search-btn .gsb-kbd { display: none; }
     }
 
@@ -267,7 +264,23 @@
       <span class="gsb-text">搜索全部</span>
       <span class="gsb-kbd">${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'} K</span>
     `;
-    document.body.appendChild(btn);
+    
+    // 注入到 .header-actions 容器内的最前面(贴近角色徽章)
+    // 这样跟随顶栏布局,绝对不会和别的元素重叠
+    const headerActions = document.querySelector('.header-actions');
+    if (headerActions) {
+      // 插到 agent-pill 之后(避免最左/最右的边角)
+      const agentPill = headerActions.querySelector('#agentPill');
+      if (agentPill && agentPill.nextSibling) {
+        headerActions.insertBefore(btn, agentPill.nextSibling);
+      } else {
+        headerActions.insertBefore(btn, headerActions.firstChild);
+      }
+    } else {
+      // 兜底: 找不到容器就 fallback 到 body 右上角(老逻辑)
+      btn.style.cssText = 'position:fixed; top:14px; right:14px; z-index:999;';
+      document.body.appendChild(btn);
+    }
     
     // 创建 modal 容器
     if (!document.getElementById('globalSearchModal')) {
@@ -288,8 +301,12 @@
   
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     setTimeout(tryInject, 800);
+    setTimeout(tryInject, 2500);  // 重试一次,等顶栏渲染完
   } else {
-    document.addEventListener('DOMContentLoaded', () => setTimeout(tryInject, 800));
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(tryInject, 800);
+      setTimeout(tryInject, 2500);
+    });
   }
 })();
 

@@ -630,15 +630,28 @@ function removeAgent(name) {
       return;
     }
     
-    // 找一个合适的位置 - 顶部右上角
     const btn = document.createElement('button');
     btn.id = 'bossPanelBtn';
     btn.className = 'boss-mgmt-btn';
     btn.type = 'button';
     btn.onclick = openBossPanel;
     btn.innerHTML = `👑 用户管理`;
-    btn.style.cssText = 'position:fixed; top:14px; right:160px; z-index:998;';
-    document.body.appendChild(btn);
+    
+    // 注入到 .header-actions 顶栏(跟随布局,不固定定位)
+    const headerActions = document.querySelector('.header-actions');
+    if (headerActions) {
+      // 插到 .global-search-btn 之后,或最前面
+      const searchBtn = headerActions.querySelector('#globalSearchBtn');
+      if (searchBtn && searchBtn.nextSibling) {
+        headerActions.insertBefore(btn, searchBtn.nextSibling);
+      } else {
+        headerActions.insertBefore(btn, headerActions.firstChild);
+      }
+    } else {
+      // 兜底
+      btn.style.cssText = 'position:fixed; top:14px; right:14px; z-index:998;';
+      document.body.appendChild(btn);
+    }
     
     // 创建 modal 容器
     if (!document.getElementById('bossPanelModal')) {
@@ -650,8 +663,12 @@ function removeAgent(name) {
   
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     setTimeout(tryInject, 1500);
+    setTimeout(tryInject, 3500);  // 重试一次
   } else {
-    document.addEventListener('DOMContentLoaded', () => setTimeout(tryInject, 1500));
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(tryInject, 1500);
+      setTimeout(tryInject, 3500);
+    });
   }
 })();
 
