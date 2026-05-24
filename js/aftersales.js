@@ -70,7 +70,14 @@ function renderAftersales() {
     // ① 跟单手动上传的图（→ 右侧"截图"列：处理进度可视化）
     const manualScreenshots = [...(a.screenshots || []), ...((a.followups || []).flatMap(f => f.screenshots || []))];
     // ② 产品图：通过 orderNo 反查关联销售单/PO（→ 左侧"状态"列下方：识别产品）
-    const productImages = _getRelatedOrderImages(a.orderNo);
+    let productImages = _getRelatedOrderImages(a.orderNo);
+    // V4-2026-05-24：产品图反查不到时 → 兜底用跟单上传的沟通截图
+    // 让 # 列大图位永远有内容可看（"一眼识货"的体验不被未填产品破坏）
+    let productImageSource = 'product';  // 'product' = 来自产品库 | 'manual' = 来自沟通截图兜底
+    if (productImages.length === 0 && manualScreenshots.length > 0) {
+      productImages = manualScreenshots.slice(0, 4);
+      productImageSource = 'manual';
+    }
     
     const lastFu = fuCount > 0 ? a.followups[fuCount - 1] : null;
     const siteBadge = a.site ? `<span class="site-badge s-${a.site}">${escapeHtml(a.site)}</span>` : '';
@@ -118,23 +125,25 @@ function renderAftersales() {
     
     // V4-2026-05-24：左侧"#列"内 → 紧贴行号下方显示产品大图（一眼识别产品）
     // 改动点：从状态徽章下方移到 # 列内；无图也显示灰色占位；hover 自动放大
+    // 角标语义：紫色"产品"（来自产品库标准图）/ 蓝色"实拍"（兜底用沟通截图）
     let productImageHtml = '';
     if (productImages.length > 0) {
       const main = productImages[0];
       const restCount = productImages.length - 1;
       const galleryData = JSON.stringify(productImages).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+      const sourceCls = productImageSource === 'manual' ? 'src-manual' : 'src-product';
       productImageHtml = `
-        <div class="row-prod-thumb has-img" 
+        <div class="row-prod-thumb has-img ${sourceCls}" 
              onclick="event.stopPropagation(); viewImageGallery(&quot;${galleryData}&quot;, 0)"
-             title="点击查看产品大图${restCount > 0 ? `（共 ${productImages.length} 张）` : ''}｜悬停自动放大">
+             title="${productImageSource === 'manual' ? '实拍/沟通图' : '产品图'}｜点击查看大图${restCount > 0 ? `（共 ${productImages.length} 张）` : ''}｜悬停自动放大">
           <img src="${main}" loading="lazy"
                onerror="this.style.display='none'; this.parentElement.classList.add('img-err'); this.parentElement.innerHTML='<div class=&quot;row-prod-fallback&quot;>📷</div>'">
           ${restCount > 0 ? `<span class="row-prod-badge-count">+${restCount}</span>` : ''}
         </div>
       `;
     } else {
-      // V4-2026-05-24：无产品图也显示占位（保持 # 列宽度一致 + 视觉对齐）
-      productImageHtml = `<div class="row-prod-thumb no-img" title="该售后暂无关联产品图"><span class="row-prod-fallback">📷</span></div>`;
+      // V4-2026-05-24：无任何图也显示占位（保持 # 列宽度一致 + 视觉对齐）
+      productImageHtml = `<div class="row-prod-thumb no-img" title="该售后暂无关联产品图/沟通图"><span class="row-prod-fallback">📷</span></div>`;
     }
     
     // 最近跟进

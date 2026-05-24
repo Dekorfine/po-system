@@ -49,8 +49,38 @@
       object-fit: cover;
       display: block;
     }
-    /* 紫色"产品"角标（仅有图时显示） */
-    .row-prod-thumb.has-img::before {
+    /* 紫色"产品"角标（产品库标准图） */
+    .row-prod-thumb.has-img.src-product::before {
+      content: "产品";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      background: rgba(124, 58, 237, 0.92);
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+      pointer-events: none;
+      z-index: 2;
+    }
+    /* 蓝色"实拍"角标（兜底用沟通截图） */
+    .row-prod-thumb.has-img.src-manual::before {
+      content: "实拍";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      background: rgba(37, 99, 235, 0.92);
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+      pointer-events: none;
+      z-index: 2;
+    }
+    /* 兼容：旧版没传图源 class 时也加默认"产品"角标 */
+    .row-prod-thumb.has-img:not(.src-product):not(.src-manual)::before {
       content: "产品";
       position: absolute;
       top: 2px;
