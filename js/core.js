@@ -373,7 +373,7 @@ const DATA = {
     if (Array.isArray(v) && v.length > 0) {
       return v.map(n => parseInt(n)).filter(n => !isNaN(n) && n > 0).sort((a, b) => a - b);
     }
-    return [3, 7, 15, 30];  // 默认
+    return [3, 7, 10, 14, 21, 30, 60];  // V5: 7 个阈值更细
   },
   async saveChaseThresholds(arr) {
     if (!IS_ADMIN) throw new Error('只有主管能修改催单阈值');
@@ -753,6 +753,9 @@ let _asFbTab = 'overdue';
 const ORDER_STATUS_LABELS = {
   pending: '待下采购', producing: '生产中', shipped: '已发货',
   arrived: '已到货', cancelled: '取消',
+  // V5-2026-05-24 补全 PO 派生可能用到的状态
+  pending_approval: '待审批', approved: '已批准',
+  rejected: '已驳回',
 };
 const AFTER_STATUS_LABELS = {
   pending: '待处理', contacting: '沟通中', repairing: '返修中',
