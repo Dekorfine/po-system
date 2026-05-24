@@ -107,6 +107,66 @@ function scanOverdueIssues() {
   const s = document.createElement('style');
   s.id = 'issue-modal-r1-style';
   s.textContent = `
+    /* V4-2026-05-24 修复：强制设置 #issueModal 容器为全屏遮罩 modal
+       之前直接 innerHTML 替换内容，但容器本身没有 fixed/overlay 样式，
+       导致 modal 内容直接铺在页面上，下层 tab 栏/列表/按钮穿透显示。*/
+    #issueModal {
+      position: fixed !important;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 9999;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px 20px;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+    #issueModal.show {
+      display: flex !important;
+    }
+    #issueModal .modal-card {
+      background: white !important;
+      padding: 28px !important;
+      border-radius: 14px !important;
+      width: 100% !important;
+      max-width: 760px !important;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+      position: relative;
+      margin: 0 auto;
+      animation: ismFadeIn 0.18s ease-out;
+    }
+    @keyframes ismFadeIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    #issueModal .modal-close {
+      position: absolute;
+      top: 14px; right: 14px;
+      width: 32px; height: 32px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 18px;
+      color: #6b7280;
+      border-radius: 6px;
+      line-height: 1;
+      z-index: 1;
+    }
+    #issueModal .modal-close:hover {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+    #issueModal h2 {
+      font-size: 18px;
+      margin: 0 0 18px 0;
+      padding-right: 40px;
+      color: #111827;
+    }
+
+    /* 内部表单结构 */
     .ism-section {
       margin-bottom: 16px;
       padding-bottom: 14px;
@@ -187,10 +247,41 @@ function scanOverdueIssues() {
       display: flex; gap: 8px; justify-content: flex-end;
       padding-top: 16px; margin-top: 8px;
       border-top: 1px solid var(--border-subtle, #e5e7eb);
+      position: sticky;
+      bottom: -28px;
+      background: white;
+      margin: 16px -28px -28px -28px;
+      padding: 16px 28px;
+      border-bottom-left-radius: 14px;
+      border-bottom-right-radius: 14px;
     }
     .ism-footer .ism-hint {
       flex: 1; font-size: 12px; color: var(--text-tertiary, #9ca3af);
       display: flex; align-items: center;
+    }
+    .ism-footer button {
+      padding: 8px 18px;
+      border-radius: 6px;
+      border: 1px solid var(--border, #d1d5db);
+      background: white;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .ism-footer button.primary {
+      background: #2563eb;
+      color: white;
+      border-color: #2563eb;
+    }
+    .ism-footer button.primary:hover { background: #1d4ed8; }
+    .ism-footer button.danger {
+      background: #fee2e2;
+      color: #dc2626;
+      border-color: #fecaca;
+    }
+    .ism-footer button.danger:hover { background: #fecaca; }
+    .ism-footer button:not(.primary):not(.danger):hover {
+      background: #f3f4f6;
     }
 
     .ism-timeline-section { margin-top: 8px; }
