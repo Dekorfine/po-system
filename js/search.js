@@ -251,36 +251,61 @@
 // 注入搜索按钮 + modal 容器
 (function _injectSearchUI() {
   const tryInject = () => {
-    if (document.getElementById('globalSearchBtn')) return;
+    if (document.getElementById('globalSearchBtn')) {
+      console.log('[search] 按钮已存在,跳过');
+      return;
+    }
     
-    // 创建顶部按钮
+    // 找顶栏容器
+    const headerActions = document.querySelector('.header-actions');
+    if (!headerActions) {
+      console.warn('[search] 找不到 .header-actions,稍后重试');
+      return false;  // 让外层重试
+    }
+    
+    // 创建按钮(用 inline style 强制覆盖任何 CSS 缓存问题)
     const btn = document.createElement('button');
     btn.id = 'globalSearchBtn';
     btn.className = 'global-search-btn';
     btn.type = 'button';
     btn.onclick = openGlobalSearch;
+    // ⚠ inline style 强制覆盖:position 静态 + 跟随顶栏布局
+    btn.style.cssText = `
+      position: static !important;
+      display: inline-flex !important;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      color: #6b7280;
+      cursor: pointer;
+      font-size: 13px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      vertical-align: middle;
+      margin: 0 4px;
+      top: auto !important;
+      right: auto !important;
+      left: auto !important;
+      bottom: auto !important;
+      z-index: auto !important;
+    `;
     btn.innerHTML = `
       <span style="font-size:14px;">🔍</span>
       <span class="gsb-text">搜索全部</span>
-      <span class="gsb-kbd">${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'} K</span>
+      <span class="gsb-kbd" style="background:#f3f4f6;color:#6b7280;padding:1px 6px;border-radius:4px;font-size:11px;font-family:monospace;border:1px solid #e5e7eb;">${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'} K</span>
     `;
     
-    // 注入到 .header-actions 容器内的最前面(贴近角色徽章)
-    // 这样跟随顶栏布局,绝对不会和别的元素重叠
-    const headerActions = document.querySelector('.header-actions');
-    if (headerActions) {
-      // 插到 agent-pill 之后(避免最左/最右的边角)
-      const agentPill = headerActions.querySelector('#agentPill');
-      if (agentPill && agentPill.nextSibling) {
-        headerActions.insertBefore(btn, agentPill.nextSibling);
-      } else {
-        headerActions.insertBefore(btn, headerActions.firstChild);
-      }
+    // 插到 agent-pill 之后(顶栏第二个位置)
+    const agentPill = headerActions.querySelector('#agentPill');
+    if (agentPill && agentPill.nextSibling) {
+      headerActions.insertBefore(btn, agentPill.nextSibling);
     } else {
-      // 兜底: 找不到容器就 fallback 到 body 右上角(老逻辑)
-      btn.style.cssText = 'position:fixed; top:14px; right:14px; z-index:999;';
-      document.body.appendChild(btn);
+      headerActions.insertBefore(btn, headerActions.firstChild);
     }
+    
+    console.log('[search] ✓ 搜索按钮已注入到顶栏');
     
     // 创建 modal 容器
     if (!document.getElementById('globalSearchModal')) {
@@ -290,23 +315,33 @@
     }
     
     // 注册键盘快捷键
-    document.addEventListener('keydown', (e) => {
-      // Cmd+K / Ctrl+K
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        openGlobalSearch();
-      }
-    });
+    if (!window._searchKbdBound) {
+      window._searchKbdBound = true;
+      document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+          e.preventDefault();
+          openGlobalSearch();
+        }
+      });
+    }
+    
+    return true;
+  };
+  
+  // 多次重试 - 等 .header-actions 渲染出来
+  const retry = (count = 0) => {
+    if (tryInject()) return;
+    if (count < 20) {  // 重试 20 次,共 ~20 秒
+      setTimeout(() => retry(count + 1), 1000);
+    } else {
+      console.error('[search] 重试 20 次失败,顶栏没找到');
+    }
   };
   
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(tryInject, 800);
-    setTimeout(tryInject, 2500);  // 重试一次,等顶栏渲染完
+    retry();
   } else {
-    document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(tryInject, 800);
-      setTimeout(tryInject, 2500);
-    });
+    document.addEventListener('DOMContentLoaded', () => retry());
   }
 })();
 

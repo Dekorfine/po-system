@@ -623,11 +623,19 @@ function removeAgent(name) {
 // 注入老板入口按钮到顶栏
 (function _injectBossButton() {
   const tryInject = () => {
-    if (document.getElementById('bossPanelBtn')) return;
+    if (document.getElementById('bossPanelBtn')) {
+      console.log('[boss] 按钮已存在,跳过');
+      return true;
+    }
     // 只有老板能看到
     if (typeof IS_BOSS === 'undefined' || !IS_BOSS) {
-      setTimeout(tryInject, 1000);  // 等登录完成
-      return;
+      return false;  // 等登录完成
+    }
+    
+    const headerActions = document.querySelector('.header-actions');
+    if (!headerActions) {
+      console.warn('[boss] 找不到 .header-actions,稍后重试');
+      return false;
     }
     
     const btn = document.createElement('button');
@@ -636,39 +644,60 @@ function removeAgent(name) {
     btn.type = 'button';
     btn.onclick = openBossPanel;
     btn.innerHTML = `👑 用户管理`;
+    // 强制 inline style 覆盖缓存
+    btn.style.cssText = `
+      position: static !important;
+      display: inline-flex !important;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 2px 6px rgba(245,158,11,0.3);
+      vertical-align: middle;
+      margin: 0 4px;
+      top: auto !important;
+      right: auto !important;
+    `;
     
-    // 注入到 .header-actions 顶栏(跟随布局,不固定定位)
-    const headerActions = document.querySelector('.header-actions');
-    if (headerActions) {
-      // 插到 .global-search-btn 之后,或最前面
-      const searchBtn = headerActions.querySelector('#globalSearchBtn');
-      if (searchBtn && searchBtn.nextSibling) {
-        headerActions.insertBefore(btn, searchBtn.nextSibling);
+    const searchBtn = headerActions.querySelector('#globalSearchBtn');
+    if (searchBtn && searchBtn.nextSibling) {
+      headerActions.insertBefore(btn, searchBtn.nextSibling);
+    } else {
+      const agentPill = headerActions.querySelector('#agentPill');
+      if (agentPill && agentPill.nextSibling) {
+        headerActions.insertBefore(btn, agentPill.nextSibling);
       } else {
         headerActions.insertBefore(btn, headerActions.firstChild);
       }
-    } else {
-      // 兜底
-      btn.style.cssText = 'position:fixed; top:14px; right:14px; z-index:998;';
-      document.body.appendChild(btn);
     }
     
-    // 创建 modal 容器
+    console.log('[boss] ✓ 老板按钮已注入到顶栏');
+    
     if (!document.getElementById('bossPanelModal')) {
       const modal = document.createElement('div');
       modal.id = 'bossPanelModal';
       document.body.appendChild(modal);
     }
+    return true;
+  };
+  
+  const retry = (count = 0) => {
+    if (tryInject()) return;
+    if (count < 30) {  // 重试 30 次(老板可能登录慢一点)
+      setTimeout(() => retry(count + 1), 1000);
+    }
   };
   
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(tryInject, 1500);
-    setTimeout(tryInject, 3500);  // 重试一次
+    retry();
   } else {
-    document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(tryInject, 1500);
-      setTimeout(tryInject, 3500);
-    });
+    document.addEventListener('DOMContentLoaded', () => retry());
   }
 })();
 

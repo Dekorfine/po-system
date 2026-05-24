@@ -445,16 +445,46 @@ function _greetingCheckShown() {
   document.head.appendChild(s);
 })();
 
-// 自动启动:登录后延迟 800ms 显示问候(等数据加载完)
-window.addEventListener('load', () => {
-  setTimeout(() => {
-    if (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) {
-      if (!_greetingCheckShown()) {
-        renderGreetingCard();
-      }
+// 自动启动:登录后多次尝试显示问候(等数据加载完)
+function tryShowGreeting() {
+  if (typeof CURRENT_AGENT === 'undefined' || !CURRENT_AGENT) {
+    return false;
+  }
+  if (_greetingCheckShown()) {
+    console.log('[greeting] 今天已显示过,跳过');
+    return true;
+  }
+  // 已经显示了?
+  if (document.getElementById('greetingCard')) {
+    return true;
+  }
+  // 找不到锚点 → 等
+  const tabSample = document.querySelector('.tab-item');
+  if (!tabSample) return false;
+  
+  renderGreetingCard();
+  console.log(`[greeting] ✓ 问候卡片已显示,称呼: ${_getDisplayName(CURRENT_AGENT)}`);
+  return true;
+}
+
+// 暴露给 core.js 在登录成功后调用
+window.tryShowGreeting = tryShowGreeting;
+
+// 多次重试机制
+(function _autoShowGreeting() {
+  const retry = (count = 0) => {
+    if (tryShowGreeting()) return;
+    if (count < 30) {  // 重试 30 次,共 ~30 秒(等 CURRENT_AGENT 和 .tab-item 都就位)
+      setTimeout(() => retry(count + 1), 1000);
     }
-  }, 800);
-});
+  };
+  
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    retry();
+  } else {
+    window.addEventListener('load', () => retry());
+  }
+})();
 
 // 提供手动重新触发(测试用)
 window.testGreeting = function() {
@@ -462,5 +492,6 @@ window.testGreeting = function() {
   const key = `greeting_shown_${today}_${CURRENT_AGENT}`;
   sessionStorage.removeItem(key);
   try { localStorage.removeItem(key); } catch(_) {}
+  document.getElementById('greetingCard')?.remove();
   renderGreetingCard();
 };
