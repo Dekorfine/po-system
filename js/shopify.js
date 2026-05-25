@@ -606,12 +606,17 @@ function openShopifyProductInBrowser(orderId, lineItemId, mode) {
   
   // ============ 前台模式 ============
   // V5-2026-05-24: 修复 404 - 用真实 product_handle 跳转
+  // V5-W3-2026-05-25: 加 ?variant=xxx 深链到客户实际买的 SKU
+  //   不加 → 只到产品页,显示默认 variant(可能是错的颜色/尺寸)
+  //   加上 → Shopify 自动选中该 variant + 显示对应图 + 对应价格
   // 老订单可能没有 handle,需要先跑 backfill_handles 补全
   if (mode === 'storefront') {
     // 【唯一正确】有 product_handle 直接拼前台 URL
     if (item.product_handle && order.shop_domain) {
-      const url = `https://${order.shop_domain}/products/${item.product_handle}`;
-      console.log('%c[Shopify 前台]', 'color:#10b981;font-weight:bold', { sku: item.sku, url });
+      // V5-W3: 拼 variant query 让前台直接打开客户买的那个 SKU
+      const variantParam = item.variant_id ? `?variant=${item.variant_id}` : '';
+      const url = `https://${order.shop_domain}/products/${item.product_handle}${variantParam}`;
+      console.log('%c[Shopify 前台]', 'color:#10b981;font-weight:bold', { sku: item.sku, variant_id: item.variant_id, url });
       window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
