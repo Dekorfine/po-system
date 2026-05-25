@@ -3305,7 +3305,15 @@ function poOpenPrint(poId) {
           </tr>
         </tbody>
       </table>
-      <!-- 订单备注：紧贴合计行下方，独占整行（其他备注已去除，规格直接在表格内）-->
+      <!-- V5-W3-2026-05-26 恢复:其他备注(po.note)显示 — 上次"已去除"是误删,跟单填的特殊要求/细节不能在打印件里丢失 -->
+      ${po.note ? `
+      <div style="background:#fffbeb; border:1px solid #fde68a; padding:10px 14px; margin-top:8px; border-radius:6px;">
+        <div style="display:flex; align-items:flex-start; gap:10px;">
+          <span style="font-weight:700; color:#b45309; font-size:13px; white-space:nowrap; flex-shrink:0;">📝 其他备注：</span>
+          <div style="flex:1; color:#78350f; white-space:pre-wrap; word-break:break-word; font-size:12.5px; line-height:1.55;">${escapeHtml(po.note)}</div>
+        </div>
+      </div>` : ''}
+      <!-- 订单备注：紧贴合计行下方，独占整行 -->
       <div style="background:#fff5f5; border:1px solid #fecaca; padding:12px 14px; margin-top:8px; border-radius:6px;">
         <div style="display:flex; align-items:flex-start; gap:10px;">
           <span style="font-weight:700; color:#dc2626; font-size:13px; white-space:nowrap; flex-shrink:0;">⚠ 订单备注（请写在纸箱上）：</span>
