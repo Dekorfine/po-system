@@ -20,28 +20,28 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525l"></script>
-<script src="js/utils.js?v=20260525l"></script>
+<script src="js/core.js?v=20260525n"></script>
+<script src="js/utils.js?v=20260525n"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525l"></script>
-<script src="js/issues.js?v=20260525l"></script>
+<script src="js/settings.js?v=20260525n"></script>
+<script src="js/issues.js?v=20260525n"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525l"></script>
-<script src="js/missing.js?v=20260525l"></script>
-<script src="js/orders.js?v=20260525l"></script>
-<script src="js/shopify.js?v=20260525l"></script>
-<script src="js/po.js?v=20260525l"></script>
+<script src="js/aftersales.js?v=20260525n"></script>
+<script src="js/missing.js?v=20260525n"></script>
+<script src="js/orders.js?v=20260525n"></script>
+<script src="js/shopify.js?v=20260525n"></script>
+<script src="js/po.js?v=20260525n"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script src="js/cross-dept.js?v=20260525l"></script>
+<script src="js/cross-dept.js?v=20260525n"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525l"></script>
-<script src="js/meetings.js?v=20260525l"></script>
-<script src="js/greeting.js?v=20260525l"></script>
-<script src="js/search.js?v=20260525l"></script>
+<script src="js/translator.js?v=20260525n"></script>
+<script src="js/meetings.js?v=20260525n"></script>
+<script src="js/greeting.js?v=20260525n"></script>
+<script src="js/search.js?v=20260525n"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -3433,76 +3433,132 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   left: 0;
   top: 0;
   bottom: 0;
-  width: 56px;
+  width: 150px;  /* 展开模式 - 有文字标签 */
   background: var(--bg-card);
   border-right: 1px solid var(--border-subtle);
   z-index: 50;
-  padding: 8px 0;
+  padding: 8px 0 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
+  align-items: stretch;
+  gap: 1px;
   box-shadow: 0 0 12px rgba(0,0,0,0.04);
   overflow-y: auto;
   overflow-x: hidden;
+  transition: width 0.18s ease;
 }
+.side-tab-bar.collapsed { width: 56px; }
 .side-tab-bar::-webkit-scrollbar { width: 4px; }
 .side-tab-bar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
 .side-tab-bar-spacer {
   height: 60px;
   flex-shrink: 0;
 }
-.side-tab-item {
-  width: 42px;
-  height: 42px;
+
+/* 顶部收起/展开切换按钮 */
+.side-tab-toggle {
+  height: 28px;
+  margin: 0 8px 4px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 19px;
+  justify-content: flex-end;
+  padding: 0 6px;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 5px;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.side-tab-toggle:hover { background: var(--bg-elevated); color: var(--accent); }
+.side-tab-bar.collapsed .side-tab-toggle {
+  justify-content: center;
+  margin: 0 auto 4px;
+  width: 42px;
+}
+
+.side-tab-item {
+  height: 38px;
+  margin: 1px 8px;
+  padding: 0 10px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
   color: var(--text-secondary);
   position: relative;
   transition: all 0.12s;
   flex-shrink: 0;
 }
+.side-tab-bar.collapsed .side-tab-item {
+  width: 42px;
+  margin: 1px auto;
+  padding: 0;
+  justify-content: center;
+}
 .side-tab-item:hover {
   background: var(--bg-elevated);
   color: var(--accent);
-  transform: translateX(2px);
 }
 .side-tab-item.active {
-  background: rgba(37,99,235,0.12);
+  background: rgba(37,99,235,0.10);
   color: var(--accent);
+  font-weight: 600;
 }
 .side-tab-item.active::before {
   content: '';
   position: absolute;
   left: -8px;
-  top: 8px;
-  bottom: 8px;
+  top: 6px;
+  bottom: 6px;
   width: 3px;
   background: var(--accent);
   border-radius: 0 2px 2px 0;
 }
+.side-tab-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+.side-tab-bar.collapsed .side-tab-icon { font-size: 19px; }
+.side-tab-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+.side-tab-bar.collapsed .side-tab-label { display: none; }
+
 .side-tab-badge {
+  background: #dc2626;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 8px;
+  min-width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.side-tab-bar.collapsed .side-tab-badge {
   position: absolute;
   top: 2px;
   right: 2px;
   min-width: 14px;
   height: 14px;
   padding: 0 3px;
-  background: #dc2626;
-  color: white;
   font-size: 9px;
-  font-weight: 700;
   border-radius: 7px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   border: 2px solid var(--bg-card);
+  line-height: 10px;
 }
 .side-tab-badge.zero { display: none; }
+
 .side-tab-tooltip {
   position: absolute;
   left: 100%;
@@ -3519,25 +3575,31 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   transition: all 0.12s;
   z-index: 100;
 }
-.side-tab-item:hover .side-tab-tooltip {
+/* 只在收起模式显示 tooltip(展开模式有 label 已经足够)*/
+.side-tab-bar.collapsed .side-tab-item:hover .side-tab-tooltip {
   opacity: 1;
   transform: translateX(0);
 }
+.side-tab-bar:not(.collapsed) .side-tab-tooltip { display: none; }
+
 .side-tab-divider {
-  width: 32px;
+  width: calc(100% - 24px);
   height: 1px;
   background: var(--border-subtle);
-  margin: 4px 0;
+  margin: 4px 12px;
   flex-shrink: 0;
 }
+
 /* 当 sidebar 显示时,主内容区往右挪 */
-body.has-side-tabs #mainApp { padding-left: 56px; }
-/* V5-W3-2026-05-26 fix: 内容左对齐(不再居中),避免侧栏旁出现大空白 */
+body.has-side-tabs #mainApp { padding-left: 150px; }
+body.has-side-tabs.side-collapsed #mainApp { padding-left: 56px; }
+/* V5-W3-2026-05-26 fix v2: 有侧栏时取消 max-width 限制,内容填满到屏幕右边 */
 body.has-side-tabs .header-top,
 body.has-side-tabs .tab-nav,
 body.has-side-tabs .section-block {
-  margin-left: 16px !important;
-  margin-right: auto !important;
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 /* 当 tab 被指定为 'side' 时,从顶栏隐藏 */
 .tab-nav .tab-item[data-zone="side"] { display: none; }
@@ -3548,30 +3610,37 @@ body.has-side-tabs .section-block {
   padding: 8px 0 12px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 4px;
   border-top: 1px solid var(--border-subtle);
   width: 100%;
+  flex-shrink: 0;
 }
 .side-tab-customize {
-  width: 42px;
-  height: 42px;
+  height: 38px;
+  margin: 0 8px;
+  padding: 0 10px;
   display: flex;
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  font-size: 18px;
+  gap: 10px;
+  font-size: 13px;
   cursor: pointer;
-  border-radius: 8px;
-  color: var(--text-secondary);
+  border-radius: 6px;
+  color: var(--accent);
   background: rgba(37,99,235,0.06);
   border: 1px dashed var(--accent);
   position: relative;
   transition: all 0.15s;
 }
+.side-tab-bar.collapsed .side-tab-customize {
+  width: 42px;
+  margin: 0 auto;
+  padding: 0;
+  justify-content: center;
+}
 .side-tab-customize:hover {
   background: rgba(37,99,235,0.15);
-  color: var(--accent);
-  transform: scale(1.05);
 }
 
 /* 布局自定义弹窗 */
