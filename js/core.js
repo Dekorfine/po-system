@@ -2209,6 +2209,10 @@ function renderActiveTab() {
   else if (CURRENT_TAB === 'meetings') { 
     if (typeof renderMeetings === 'function') renderMeetings();
   }
+  // V5-W3-2026-05-26: 跨部门协作 tab(美工/客服消息互通)
+  else if (CURRENT_TAB === 'cross_dept') {
+    if (typeof cdmOnTabActivate === 'function') cdmOnTabActivate();
+  }
 }
 
 function updateBadges() {
