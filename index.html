@@ -20,26 +20,26 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260524y"></script>
-<script src="js/utils.js?v=20260524y"></script>
+<script src="js/core.js?v=20260525a"></script>
+<script src="js/utils.js?v=20260525a"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260524y"></script>
-<script src="js/issues.js?v=20260524y"></script>
+<script src="js/settings.js?v=20260525a"></script>
+<script src="js/issues.js?v=20260525a"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260524y"></script>
-<script src="js/missing.js?v=20260524y"></script>
-<script src="js/orders.js?v=20260524y"></script>
-<script src="js/shopify.js?v=20260524y"></script>
-<script src="js/po.js?v=20260524y"></script>
+<script src="js/aftersales.js?v=20260525a"></script>
+<script src="js/missing.js?v=20260525a"></script>
+<script src="js/orders.js?v=20260525a"></script>
+<script src="js/shopify.js?v=20260525a"></script>
+<script src="js/po.js?v=20260525a"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260524y"></script>
-<script src="js/meetings.js?v=20260524y"></script>
-<script src="js/greeting.js?v=20260524y"></script>
-<script src="js/search.js?v=20260524y"></script>
+<script src="js/translator.js?v=20260525a"></script>
+<script src="js/meetings.js?v=20260525a"></script>
+<script src="js/greeting.js?v=20260525a"></script>
+<script src="js/search.js?v=20260525a"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -2842,20 +2842,23 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 
 .so-products { display: flex; flex-direction: column; gap: 8px; }
+/* V5-W3-2026-05-25 终极版:店小秘式紧凑 flex 布局
+   旧:grid 90px 1fr auto → info 列拉伸,中间留白
+   新:flex 紧贴左对齐 → 内容自然宽度,右侧空间留给视觉呼吸 */
 .so-product-line {
-  display: grid;
-  grid-template-columns: 90px 1fr auto;
+  display: flex;
+  align-items: flex-start;
   gap: 14px;
-  align-items: flex-start;  /* 改成 top 对齐,长产品名时更整齐 */
   padding: 6px 0;
 }
 .so-product-line + .so-product-line {
   border-top: 1px dashed var(--border-subtle);
   padding-top: 12px;
 }
-/* V5-2026-05-25: leftcol 容器 — 让 checkbox 绝对定位在图上,grid 永远 3 列 */
+/* leftcol 容器 — checkbox 绝对定位在图上 */
 .so-prod-leftcol {
   position: relative;
+  flex: 0 0 90px;      /* 固定 90px,不缩不伸 */
   width: 90px;
   height: 90px;
 }
@@ -2884,7 +2887,13 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   display: flex; align-items: center; justify-content: center;
   color: var(--text-tertiary); font-size: 24px;
 }
-.so-prod-info { font-size: 13px; min-width: 0; }
+/* V5-W3:info 用 flex: 0 1 auto → 自然内容宽度,不强制拉伸 */
+.so-prod-info {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 480px;        /* 防止超长标题撑得太宽 */
+  font-size: 13px;
+}
 .so-prod-sku {
   font-family: 'JetBrains Mono', monospace; font-size: 11px;
   color: var(--accent); margin-bottom: 2px;
@@ -2896,10 +2905,14 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 .so-prod-variant { font-size: 11px; color: var(--text-secondary); line-height: 1.3; }
+/* V5-W3:qty 紧贴 info 右边,不再"顶到右边" */
 .so-prod-qty {
-  text-align: right; white-space: nowrap;
+  flex: 0 0 auto;          /* 自然宽度 */
+  text-align: left;
+  white-space: nowrap;
   font-family: 'JetBrains Mono', monospace; font-size: 13px;
   color: var(--text-primary);
+  padding-top: 2px;        /* 跟 SKU 行视觉对齐 */
 }
 .so-prod-qty .price { font-size: 11px; color: var(--text-tertiary); display: block; }
 
@@ -2938,12 +2951,24 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 @media (max-width: 640px) {
   #salesStoresGrid { grid-template-columns: 1fr !important; }
-  .so-product-line { grid-template-columns: 70px 1fr; }
-  /* V5-2026-05-25: 手机端 leftcol 同步缩小到 70px */
-  .so-prod-leftcol { width: 70px; height: 70px; }
+  /* V5-W3:手机端 — flex 换行模式,info 占满第一行右半,qty 换到第二行 */
+  .so-product-line { flex-wrap: wrap; }
+  .so-prod-leftcol { 
+    flex: 0 0 70px;
+    width: 70px; height: 70px; 
+  }
   .so-prod-leftcol .so-prod-img,
   .so-prod-leftcol .so-prod-noimg { width: 70px !important; height: 70px !important; }
-  .so-prod-qty { grid-column: 2; text-align: left; }
+  .so-prod-info { 
+    flex: 1 1 calc(100% - 84px);   /* 占满图右边的剩余宽度 */
+    max-width: none;
+    min-width: 0;
+  }
+  .so-prod-qty { 
+    flex: 0 0 100%;                 /* 单独占一整行,在图下面 */
+    padding-left: 84px;             /* 跟 info 对齐(70 图 + 14 gap)*/
+    text-align: left;
+  }
 }
 
 /* 自动同步指示器 */
@@ -3867,6 +3892,9 @@ textarea.form-control { resize: vertical; min-height: 70px; }
           <button class="rule-chip" data-rule="big_amount" onclick="shopifySetRule('big_amount')">💰 大额 ≥¥3000 <span class="cnt-mini" id="ruleCnt_big_amount">0</span></button>
           <button class="rule-chip" data-rule="big_qty" onclick="shopifySetRule('big_qty')">📦 高数量 ≥5件 <span class="cnt-mini" id="ruleCnt_big_qty">0</span></button>
           <button class="rule-chip" data-rule="overdue" onclick="shopifySetRule('overdue')">⏰ 超时未发 ≥7天 <span class="cnt-mini" id="ruleCnt_overdue">0</span></button>
+          <!-- V5-W3-2026-05-25: 运输方式快筛(纯 ADD)-->
+          <button class="rule-chip" data-rule="express_shipping" onclick="shopifySetRule('express_shipping')" title="客户付了快速运输费(express/expedited/priority/overnight)">⚡ 快速运输 <span class="cnt-mini" id="ruleCnt_express_shipping">0</span></button>
+          <button class="rule-chip" data-rule="standard_shipping" onclick="shopifySetRule('standard_shipping')" title="客户选了标准运输">🚚 标准运输 <span class="cnt-mini" id="ruleCnt_standard_shipping">0</span></button>
           <button class="rule-chip" data-rule="manual" onclick="shopifySetRule('manual')">✍ 自定义订单 <span class="cnt-mini" id="ruleCnt_manual">0</span></button>
           <button class="rule-chip" data-rule="unknown_sku" onclick="shopifySetRule('unknown_sku')">❓ 未配对 SKU <span class="cnt-mini" id="ruleCnt_unknown_sku">0</span></button>
         </div>
