@@ -20,28 +20,28 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525k"></script>
-<script src="js/utils.js?v=20260525k"></script>
+<script src="js/core.js?v=20260525l"></script>
+<script src="js/utils.js?v=20260525l"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525k"></script>
-<script src="js/issues.js?v=20260525k"></script>
+<script src="js/settings.js?v=20260525l"></script>
+<script src="js/issues.js?v=20260525l"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525k"></script>
-<script src="js/missing.js?v=20260525k"></script>
-<script src="js/orders.js?v=20260525k"></script>
-<script src="js/shopify.js?v=20260525k"></script>
-<script src="js/po.js?v=20260525k"></script>
+<script src="js/aftersales.js?v=20260525l"></script>
+<script src="js/missing.js?v=20260525l"></script>
+<script src="js/orders.js?v=20260525l"></script>
+<script src="js/shopify.js?v=20260525l"></script>
+<script src="js/po.js?v=20260525l"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script src="js/cross-dept.js?v=20260525k"></script>
+<script src="js/cross-dept.js?v=20260525l"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525k"></script>
-<script src="js/meetings.js?v=20260525k"></script>
-<script src="js/greeting.js?v=20260525k"></script>
-<script src="js/search.js?v=20260525k"></script>
+<script src="js/translator.js?v=20260525l"></script>
+<script src="js/meetings.js?v=20260525l"></script>
+<script src="js/greeting.js?v=20260525l"></script>
+<script src="js/search.js?v=20260525l"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -3532,8 +3532,47 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 /* 当 sidebar 显示时,主内容区往右挪 */
 body.has-side-tabs #mainApp { padding-left: 56px; }
+/* V5-W3-2026-05-26 fix: 内容左对齐(不再居中),避免侧栏旁出现大空白 */
+body.has-side-tabs .header-top,
+body.has-side-tabs .tab-nav,
+body.has-side-tabs .section-block {
+  margin-left: 16px !important;
+  margin-right: auto !important;
+}
 /* 当 tab 被指定为 'side' 时,从顶栏隐藏 */
 .tab-nav .tab-item[data-zone="side"] { display: none; }
+
+/* 侧栏底部固定按钮(永远显示) */
+.side-tab-bottom {
+  margin-top: auto;
+  padding: 8px 0 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border-top: 1px solid var(--border-subtle);
+  width: 100%;
+}
+.side-tab-customize {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: rgba(37,99,235,0.06);
+  border: 1px dashed var(--accent);
+  position: relative;
+  transition: all 0.15s;
+}
+.side-tab-customize:hover {
+  background: rgba(37,99,235,0.15);
+  color: var(--accent);
+  transform: scale(1.05);
+}
 
 /* 布局自定义弹窗 */
 .tab-layout-modal {
