@@ -413,9 +413,16 @@ function compressImage(file) {
   });
 }
 
+// V5-W3-2026-05-26: 统一所有 gallery 函数到 #imgLightbox(不再用 #imageViewer)
+//   原因:用户希望催单/售后/找灯/会议/供应商问题/销售单/PO/产品库 全部共享一个 lightbox
+//   原 #imageViewer DOM 保留作为 dormant 元素(防止某处直接引用报错)
+//   所有 JS 调用点(viewImage / viewImageGallery)接口不变,内部全部代理到 #imgLightbox
 function viewImage(src) {
-  document.getElementById('imageViewerImg').src = src;
-  document.getElementById('imageViewer').classList.add('show');
+  // 单图:清空多图状态(防止还残留 prev/next 按钮),然后用 openImgLightbox 显示
+  _galleryImages = [];
+  _galleryIndex = 0;
+  _ensureLightboxNav(false);  // 隐藏多图导航
+  openImgLightbox(src);
 }
 
 // V4：通过订单号查关联销售单/PO 的产品图（售后、催单等模块用）
@@ -476,7 +483,11 @@ function _getRelatedOrderImages(orderNo) {
 }
 
 function closeImageViewer() {
-  document.getElementById('imageViewer').classList.remove('show');
+  // V5-W3-2026-05-26:代理到 closeImgLightbox(不带 event,所以不会被 IMG 检查拦截)
+  if (typeof closeImgLightbox === 'function') closeImgLightbox();
+  _galleryImages = [];
+  _galleryIndex = 0;
+  _ensureLightboxNav(false);
 }
 
 // V4：多图轮播预览（催单列表点击大图时使用，支持左右切换）
@@ -501,27 +512,34 @@ function viewImageGallery(jsonData, startIdx) {
 function _renderGalleryFrame() {
   if (!_galleryImages.length) return;
   const cur = _galleryImages[_galleryIndex];
-  document.getElementById('imageViewerImg').src = cur;
-  document.getElementById('imageViewer').classList.add('show');
-  
-  // 在 imageViewer 里加左右切换控件（如果不存在）
-  const viewer = document.getElementById('imageViewer');
+  // V5-W3-2026-05-26:用 openImgLightbox 显示(享受异步加载 + body lock + 店小秘式 CSS)
+  openImgLightbox(cur);
+  // 多图时添加/更新左右切换控件 → 现在加到 #imgLightbox 里
+  _ensureLightboxNav(_galleryImages.length > 1);
+}
+
+// V5-W3-2026-05-26:把多图导航控件加到 #imgLightbox(原来加在 #imageViewer)
+function _ensureLightboxNav(show) {
+  const viewer = document.getElementById('imgLightbox');
+  if (!viewer) return;
   let nav = viewer.querySelector('.gallery-nav');
-  if (!nav && _galleryImages.length > 1) {
-    nav = document.createElement('div');
-    nav.className = 'gallery-nav';
-    nav.style.cssText = 'position:absolute; bottom:30px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:14px; background:rgba(0,0,0,0.7); padding:10px 20px; border-radius:30px; z-index:10000;';
-    nav.innerHTML = `
-      <button onclick="event.stopPropagation(); galleryPrev()" style="background:rgba(255,255,255,0.15); border:none; color:white; width:36px; height:36px; border-radius:50%; cursor:pointer; font-size:18px;">‹</button>
-      <span id="galleryCounter" style="color:white; font-size:13px; font-family:monospace; min-width:50px; text-align:center;">1 / ${_galleryImages.length}</span>
-      <button onclick="event.stopPropagation(); galleryNext()" style="background:rgba(255,255,255,0.15); border:none; color:white; width:36px; height:36px; border-radius:50%; cursor:pointer; font-size:18px;">›</button>
-    `;
-    viewer.appendChild(nav);
-  }
-  if (nav) {
-    nav.style.display = _galleryImages.length > 1 ? 'flex' : 'none';
+  if (show) {
+    if (!nav) {
+      nav = document.createElement('div');
+      nav.className = 'gallery-nav';
+      nav.style.cssText = 'position:absolute; bottom:30px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:14px; background:rgba(0,0,0,0.7); padding:10px 20px; border-radius:30px; z-index:10000;';
+      nav.innerHTML = `
+        <button onclick="event.stopPropagation(); galleryPrev()" style="background:rgba(255,255,255,0.15); border:none; color:white; width:36px; height:36px; border-radius:50%; cursor:pointer; font-size:18px;">‹</button>
+        <span id="galleryCounter" style="color:white; font-size:13px; font-family:monospace; min-width:50px; text-align:center;">1 / ${_galleryImages.length}</span>
+        <button onclick="event.stopPropagation(); galleryNext()" style="background:rgba(255,255,255,0.15); border:none; color:white; width:36px; height:36px; border-radius:50%; cursor:pointer; font-size:18px;">›</button>
+      `;
+      viewer.appendChild(nav);
+    }
+    nav.style.display = 'flex';
     const counter = document.getElementById('galleryCounter');
     if (counter) counter.textContent = `${_galleryIndex + 1} / ${_galleryImages.length}`;
+  } else if (nav) {
+    nav.style.display = 'none';
   }
 }
 
@@ -537,14 +555,15 @@ function galleryNext() {
   _renderGalleryFrame();
 }
 
-// 左右方向键切换（图片预览打开时生效）
+// V5-W3-2026-05-26:键盘监听切到 #imgLightbox
+// 左右方向键切换 / ESC 关闭(图片预览打开时生效)
 document.addEventListener('keydown', (e) => {
-  const viewer = document.getElementById('imageViewer');
+  const viewer = document.getElementById('imgLightbox');
   if (!viewer || !viewer.classList.contains('show')) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeImageViewer(); return; }
   if (_galleryImages.length < 2) return;
   if (e.key === 'ArrowLeft') { e.preventDefault(); galleryPrev(); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); galleryNext(); }
-  else if (e.key === 'Escape') { closeImageViewer(); }
 });
 
 // ============================================================

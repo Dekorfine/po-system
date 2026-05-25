@@ -260,6 +260,8 @@ function renderMissingCard(m) {
         <span class="status-badge s-${m.status}">${MISSING_STATUS_LABELS[m.status]}</span>
         ${m.source === 'purchase' ? '<span class="source-badge" style="position:absolute;top:8px;left:8px;background:rgba(202,138,4,0.95);color:white;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;">🛒 采购需求</span>' : ''}
         ${canDelete ? `<button class="card-delete" onclick="event.stopPropagation(); delMissingRow('${m._id}')" title="删除">🗑</button>` : ''}
+        ${canDelete ? `<button class="card-quick found ${m.status === 'found' ? 'is-current' : ''}" onclick="event.stopPropagation(); quickMarkMissingFound('${m._id}')" title="${m.status === 'found' ? '当前: 已找到 · 点击恢复成搜寻中' : '一键标记为「已找到」'}">✓</button>` : ''}
+        ${canDelete ? `<button class="card-quick archive ${m.status === 'abandoned' ? 'is-current' : ''}" onclick="event.stopPropagation(); quickMarkMissingArchived('${m._id}')" title="${m.status === 'abandoned' ? '当前: 已存档 · 点击恢复成搜寻中' : '存档(标记为已放弃)'}">📦</button>` : ''}
         ${cmtCount > 0 ? `<span class="comments-badge" style="${canDelete ? 'top: 44px;' : ''}">💬 ${cmtCount}</span>` : ''}
         ${realCount > 0 ? `<span class="comments-badge" style="${canDelete ? (cmtCount > 0 ? 'top: 76px;' : 'top: 44px;') : (cmtCount > 0 ? 'top: 40px;' : '')}; background: rgba(13,148,136,0.95);">📸 ${realCount}</span>` : ''}
       </div>
@@ -1254,3 +1256,57 @@ async function doStitch() {
   }
 }
 
+
+// ============================================================
+// V5-W3-2026-05-26: 找灯卡片右上角快速操作按钮的 handler(纯 ADD)
+//   - quickMarkMissingFound: 一键把状态切到 'found'(或 toggle 回 'searching')
+//   - quickMarkMissingArchived: 一键存档(状态 → 'abandoned'),或 toggle 回 'searching'
+//   纯新增,不动 missing.js 任何已有函数(adoptComment 之类的复杂流程都不动)
+// ============================================================
+async function quickMarkMissingFound(id) {
+  const m = MISSING_LIGHTS.find(x => x._id === id);
+  if (!m) return;
+  if (m.creator !== CURRENT_AGENT && !IS_ADMIN) { 
+    toast('只有发起人或主管能改状态', 'err'); 
+    return; 
+  }
+  // 已经是 found → toggle 回 searching
+  if (m.status === 'found') {
+    if (!confirm('当前任务已是「已找到」状态。\n要恢复成「搜寻中」吗?')) return;
+    m.status = 'searching';
+    delete m.foundAt;
+    delete m.adoptedHelper;
+  } else {
+    m.status = 'found';
+    m.foundAt = new Date().toISOString();
+  }
+  DATA.saveMissingLights(MISSING_LIGHTS);
+  renderMissing();
+  if (typeof updateMissingStats === 'function') updateMissingStats();
+  toast(m.status === 'found' ? '✓ 已标记为「已找到」' : '↩ 已恢复成「搜寻中」');
+  try { await DATA.saveAndSyncMissing(); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
+}
+
+async function quickMarkMissingArchived(id) {
+  const m = MISSING_LIGHTS.find(x => x._id === id);
+  if (!m) return;
+  if (m.creator !== CURRENT_AGENT && !IS_ADMIN) { 
+    toast('只有发起人或主管能改状态', 'err'); 
+    return; 
+  }
+  // 已经存档 → toggle 回 searching
+  if (m.status === 'abandoned') {
+    if (!confirm('当前任务已是「已存档/已放弃」状态。\n要恢复成「搜寻中」吗?')) return;
+    m.status = 'searching';
+  } else {
+    if (!confirm('确认存档这个找灯任务吗?\n\n存档后任务会从活跃列表移除,\n可通过筛选「已放弃」找回。')) return;
+    m.status = 'abandoned';
+  }
+  DATA.saveMissingLights(MISSING_LIGHTS);
+  renderMissing();
+  if (typeof updateMissingStats === 'function') updateMissingStats();
+  toast(m.status === 'abandoned' ? '📦 已存档' : '↩ 已恢复成「搜寻中」');
+  try { await DATA.saveAndSyncMissing(); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
+}
