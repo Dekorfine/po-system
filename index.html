@@ -20,28 +20,28 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525o"></script>
-<script src="js/utils.js?v=20260525o"></script>
+<script src="js/core.js?v=20260525q"></script>
+<script src="js/utils.js?v=20260525q"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525o"></script>
-<script src="js/issues.js?v=20260525o"></script>
+<script src="js/settings.js?v=20260525q"></script>
+<script src="js/issues.js?v=20260525q"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525o"></script>
-<script src="js/missing.js?v=20260525o"></script>
-<script src="js/orders.js?v=20260525o"></script>
-<script src="js/shopify.js?v=20260525o"></script>
-<script src="js/po.js?v=20260525o"></script>
+<script src="js/aftersales.js?v=20260525q"></script>
+<script src="js/missing.js?v=20260525q"></script>
+<script src="js/orders.js?v=20260525q"></script>
+<script src="js/shopify.js?v=20260525q"></script>
+<script src="js/po.js?v=20260525q"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script src="js/cross-dept.js?v=20260525o"></script>
+<script src="js/cross-dept.js?v=20260525q"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525o"></script>
-<script src="js/meetings.js?v=20260525o"></script>
-<script src="js/greeting.js?v=20260525o"></script>
-<script src="js/search.js?v=20260525o"></script>
+<script src="js/translator.js?v=20260525q"></script>
+<script src="js/meetings.js?v=20260525q"></script>
+<script src="js/greeting.js?v=20260525q"></script>
+<script src="js/search.js?v=20260525q"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -3807,6 +3807,122 @@ body.has-side-tabs .section-block {
 }
 .cdm-form-grid textarea { resize: vertical; min-height: 70px; }
 
+/* V5-W3 v22-CW: 紧急横幅 */
+.cdm-urgent-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: linear-gradient(to right, rgba(254,226,226,0.7), rgba(254,243,199,0.7));
+  border: 2px solid #fca5a5;
+  animation: cdmBannerPulse 2.4s ease-in-out infinite;
+}
+.cdm-urgent-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #dc2626;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  animation: cdmIconPulse 1.2s ease-in-out infinite;
+}
+.cdm-urgent-text { flex: 1; min-width: 0; }
+.cdm-urgent-title { font-weight: 700; font-size: 13.5px; color: #7f1d1d; }
+.cdm-urgent-sub { margin-top: 2px; font-size: 12px; color: #991b1b; display: flex; gap: 14px; flex-wrap: wrap; }
+.cdm-urgent-sub b { color: #dc2626; font-weight: 700; }
+@keyframes cdmBannerPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.0); }
+  50% { box-shadow: 0 0 0 4px rgba(220,38,38,0.15); }
+}
+@keyframes cdmIconPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+/* V5-W3 v22-CW: 超时卡和闪烁 */
+.cdm-stat.cdm-stat-alert {
+  background: rgba(254,226,226,0.5) !important;
+  border-color: #fca5a5 !important;
+  animation: cdmStatPulse 2s ease-in-out infinite;
+}
+@keyframes cdmStatPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.0); }
+  50% { box-shadow: 0 0 0 3px rgba(220,38,38,0.18); }
+}
+.cdm-overdue-card {
+  background: rgba(254,242,242,0.5) !important;
+  border-color: #fca5a5 !important;
+}
+.cdm-overdue-dot {
+  background: #dc2626;
+  color: white;
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+  animation: cdmIconPulse 1.4s ease-in-out infinite;
+}
+.cdm-chip-pulse {
+  animation: cdmChipPulse 1.4s ease-in-out infinite;
+}
+@keyframes cdmChipPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* V5-W3 v22-CW 补丁: watcher 多选/显示样式 */
+.cdm-watcher-chip {
+  padding: 5px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.12s;
+  font-family: inherit;
+}
+.cdm-watcher-chip:hover { border-color: #7c3aed; color: #7c3aed; background: rgba(124,58,237,0.04); }
+.cdm-watcher-chip.selected {
+  background: rgba(124,58,237,0.12);
+  border-color: #7c3aed;
+  color: #5b21b6;
+  font-weight: 600;
+}
+.cdm-watcher-existing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 9px;
+  background: rgba(124,58,237,0.10);
+  color: #5b21b6;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.cdm-watcher-x {
+  border: none;
+  background: transparent;
+  color: #5b21b6;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 5px;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cdm-watcher-x:hover { background: rgba(220,38,38,0.15); color: #dc2626; }
+
 </style>
 </head>
 <body>
@@ -4786,7 +4902,7 @@ body.has-side-tabs .section-block {
   </div>
 </div>
 
-<!-- ============ V5-W3-2026-05-26: 跨部门协作 - 新建消息 Modal ============ -->
+<!-- ============ V5-W3-2026-05-26 v22-CW: 跨部门协作 - 新建消息 Modal ============ -->
 <div class="modal-bg" id="cdmNewModal">
   <div class="cdm-modal">
     <div class="cdm-modal-head">
@@ -4796,7 +4912,7 @@ body.has-side-tabs .section-block {
     <div class="cdm-modal-body">
       <div class="cdm-form-grid">
         <label class="req">发给部门</label>
-        <select id="cdmNewToSystem">
+        <select id="cdmNewToSystem" onchange="cdmUpdateSuggestedReceiver()">
           <option value="">-- 选择接收部门 --</option>
           <option value="design">🎨 美工部 (design)</option>
           <option value="cs">💬 客服部 (cs)</option>
@@ -4804,11 +4920,7 @@ body.has-side-tabs .section-block {
 
         <label>分类</label>
         <select id="cdmNewCategory">
-          <option value="general">💬 一般沟通</option>
-          <option value="website_fix">🔧 网站修正</option>
-          <option value="price_error">💰 价格错误</option>
-          <option value="new_product">✨ 新品上架</option>
-          <option value="aftersales">🛠 售后协调</option>
+          <!-- 由 cdmPopulateCategorySelects() 动态填充 (11 个分类) -->
         </select>
 
         <label>优先级</label>
@@ -4819,8 +4931,27 @@ body.has-side-tabs .section-block {
           <option value="low">低</option>
         </select>
 
+        <label>🌐 关联网站</label>
+        <select id="cdmNewRelatedShop" onchange="cdmUpdateSuggestedReceiver()">
+          <option value="">— 不关联 —</option>
+          <!-- 由 cdmPopulateShopDropdown() 动态填充 -->
+        </select>
+
+        <label>建议负责人</label>
+        <div id="cdmSuggestedReceiverHint" style="display:flex; align-items:center; padding:6px 0;">
+          <span style="color:var(--text-tertiary); font-size:11.5px;">选了「关联网站」+「发给部门」后会自动建议负责人</span>
+        </div>
+
+        <label>👁 额外通知</label>
+        <div>
+          <div id="cdmNewWatchersArea" style="display:flex; flex-wrap:wrap; gap:6px;">
+            <div style="font-size:11.5px; color:var(--text-tertiary); padding:6px 0;">选了「发给部门」后这里会显示对方部门可关注的人</div>
+          </div>
+          <div style="font-size:10.5px; color:var(--text-tertiary); margin-top:4px;">这些人在收件箱也能看到此工单 · 工单完成时也会通知他们</div>
+        </div>
+
         <label class="req">标题</label>
-        <input type="text" id="cdmNewTitle" placeholder="一句话说清是什么事(例如:Aurora-Floor 已下单 请上架)">
+        <input type="text" id="cdmNewTitle" placeholder="一句话说清是什么事(例:VKW5-X 价格错了 改成 $XX)">
 
         <label>正文</label>
         <textarea id="cdmNewBody" rows="4" placeholder="详细说明(可空)..."></textarea>
@@ -4871,6 +5002,42 @@ body.has-side-tabs .section-block {
   <div class="modal-foot" style="padding:12px 18px; border-top:1px solid var(--border-subtle); display:flex; justify-content:flex-end; gap:8px;">
     <button class="btn" onclick="closeBatchPoModal()">取消</button>
     <button class="btn primary" onclick="batchPoSubmit()">🚀 生成 PO</button>
+  </div>
+</div>
+
+<!-- ============ V5-W3-2026-05-26 v22-CW: 店铺负责人管理 Modal ============ -->
+<div class="modal-bg" id="cdmShopOwnersModal">
+  <div class="cdm-modal" style="max-width: 880px;">
+    <div class="cdm-modal-head">
+      <h3>🌐 店铺负责人管理</h3>
+      <button class="cdm-modal-close" onclick="cdmCloseShopOwnersManager()">✕</button>
+    </div>
+    <div class="cdm-modal-body" id="cdmShopOwnersBody" style="max-height:70vh; overflow-y:auto;">
+      <!-- 由 cdmRenderShopOwnersList() 动态填充 -->
+    </div>
+    <div class="cdm-modal-foot">
+      <button class="btn primary" onclick="cdmCloseShopOwnersManager()">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ V5-W3-2026-05-26 v22-CW: 超时阈值设置 Modal ============ -->
+<div class="modal-bg" id="cdmTimeoutModal">
+  <div class="cdm-modal" style="max-width: 720px;">
+    <div class="cdm-modal-head">
+      <h3>⏰ 超时阈值设置(本部门)</h3>
+      <button class="cdm-modal-close" onclick="cdmCloseTimeoutSettings()">✕</button>
+    </div>
+    <div class="cdm-modal-body" id="cdmTimeoutBody" style="max-height:70vh; overflow-y:auto;">
+      <!-- 由 cdmRenderTimeoutSettings() 动态填充 -->
+    </div>
+    <div class="cdm-modal-foot">
+      <button class="btn" onclick="cdmResetAllTimeouts()" style="color:var(--danger);">⟲ 全部恢复默认</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" onclick="cdmCloseTimeoutSettings()">取消</button>
+        <button class="btn primary" onclick="cdmSaveTimeoutConfig()">✓ 保存</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -4954,23 +5121,28 @@ body.has-side-tabs .section-block {
         <h2 style="display:inline-block;">📨 跨部门协作</h2>
         <span class="cdm-subtitle">与 🎨 美工 · 💬 客服 实时协作 · 自动同步</span>
       </div>
-      <div style="display:flex; gap:8px;">
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <span id="cdmAdminButtons" style="display:inline-flex; gap:6px;"></span>
         <button class="btn primary" onclick="cdmOpenNewModal()">✏ 新建消息</button>
         <button class="btn ghost" onclick="cdmLoadMessages()" title="刷新">⟳</button>
       </div>
     </div>
 
-    <!-- 统计卡片 -->
+    <!-- V5-W3 v22-CW: 顶部紧急横幅(自动显示/隐藏)-->
+    <div id="cdmUrgentBanner" class="cdm-urgent-banner" style="display:none;"></div>
+
+    <!-- 5 个统计卡片 -->
     <div class="cdm-stats-grid" id="cdmStatsContainer"></div>
 
-    <!-- 收发件箱 sub-tabs -->
+    <!-- 4 个 sub-tabs(v22-CW)-->
     <div class="cdm-subtabs">
       <button id="cdmTabInbox" class="cdm-subtab active" onclick="cdmSwitchTab('inbox')">📥 收件箱</button>
-      <button id="cdmTabOutbox" class="cdm-subtab" onclick="cdmSwitchTab('outbox')">📤 发件箱</button>
-      <button id="cdmTabAll" class="cdm-subtab" onclick="cdmSwitchTab('all')">📋 全部</button>
+      <button id="cdmTabAssigned" class="cdm-subtab" onclick="cdmSwitchTab('assigned-to-me')">📌 分派给我</button>
+      <button id="cdmTabOverdue" class="cdm-subtab" onclick="cdmSwitchTab('overdue')">⏰ 超时</button>
+      <button id="cdmTabSent" class="cdm-subtab" onclick="cdmSwitchTab('sent')">📤 发件箱</button>
     </div>
 
-    <!-- 筛选区:时间 chip + 4 下拉 + 搜索 -->
+    <!-- 筛选区 -->
     <div class="cdm-filters">
       <div class="cdm-time-chips">
         <span class="cdm-time-chip active" data-range="all"   onclick="cdmSetTimeRange('all', this)">全部</span>
@@ -4980,7 +5152,7 @@ body.has-side-tabs .section-block {
         <span class="cdm-time-chip"        data-range="30d"   onclick="cdmSetTimeRange('30d', this)">近 30 天</span>
       </div>
       <div class="cdm-filter-row">
-        <input id="cdmSearchInput" placeholder="🔍 搜索标题 / 正文 / 关联引用 / 对方姓名..." oninput="cdmOnSearchInput(this.value)">
+        <input id="cdmSearchInput" placeholder="🔍 搜索标题 / 正文 / 网站 / 关联引用 / 对方姓名..." oninput="cdmOnSearchInput(this.value)">
         <select id="cdmFilterStatus" onchange="cdmSetFilter('status', this.value)">
           <option value="">所有状态</option>
           <option value="pending">⏳ 待处理</option>
@@ -4997,11 +5169,6 @@ body.has-side-tabs .section-block {
         </select>
         <select id="cdmFilterCategory" onchange="cdmSetFilter('category', this.value)">
           <option value="">所有分类</option>
-          <option value="general">💬 一般沟通</option>
-          <option value="website_fix">🔧 网站修正</option>
-          <option value="price_error">💰 价格错误</option>
-          <option value="new_product">✨ 新品上架</option>
-          <option value="aftersales">🛠 售后协调</option>
         </select>
         <select id="cdmFilterSystem" onchange="cdmSetFilter('system', this.value)">
           <option value="">所有部门</option>
