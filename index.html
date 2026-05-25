@@ -20,28 +20,28 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525t"></script>
-<script src="js/utils.js?v=20260525t"></script>
+<script src="js/core.js?v=20260525u"></script>
+<script src="js/utils.js?v=20260525u"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525t"></script>
-<script src="js/issues.js?v=20260525t"></script>
+<script src="js/settings.js?v=20260525u"></script>
+<script src="js/issues.js?v=20260525u"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525t"></script>
-<script src="js/missing.js?v=20260525t"></script>
-<script src="js/orders.js?v=20260525t"></script>
-<script src="js/shopify.js?v=20260525t"></script>
-<script src="js/po.js?v=20260525t"></script>
+<script src="js/aftersales.js?v=20260525u"></script>
+<script src="js/missing.js?v=20260525u"></script>
+<script src="js/orders.js?v=20260525u"></script>
+<script src="js/shopify.js?v=20260525u"></script>
+<script src="js/po.js?v=20260525u"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script src="js/cross-dept.js?v=20260525t"></script>
+<script src="js/cross-dept.js?v=20260525u"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525t"></script>
-<script src="js/meetings.js?v=20260525t"></script>
-<script src="js/greeting.js?v=20260525t"></script>
-<script src="js/search.js?v=20260525t"></script>
+<script src="js/translator.js?v=20260525u"></script>
+<script src="js/meetings.js?v=20260525u"></script>
+<script src="js/greeting.js?v=20260525u"></script>
+<script src="js/search.js?v=20260525u"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -5404,7 +5404,7 @@ body.has-side-tabs .section-block {
           <button class="fu-type-btn" data-type="arrive" onclick="setOmFuType('arrive')">📦 到货</button>
           <button class="fu-type-btn" data-type="other" onclick="setOmFuType('other')">📌 其他</button>
         </div>
-        <textarea class="form-control" id="omNewNote" placeholder="跟进内容，例如：催问生产进度，供应商承诺周五前发货 / 货已到仓 ..."></textarea>
+        <textarea class="form-control" id="omNewNote" data-paste-target="order_fu" placeholder="跟进内容，例如：催问生产进度，供应商承诺周五前发货 / 货已到仓 ..."></textarea>
         <div class="drop-zone" id="omFuDropZone" style="margin-top: 10px;"><input type="file" id="omFuFileInput" accept="image/*" multiple>📎 截图（可选，拖拽/粘贴/选择）</div>
         <div class="drop-zone-thumbs" id="omFuThumbs"></div>
         <div class="fu-add-bottom">
@@ -5465,7 +5465,7 @@ body.has-side-tabs .section-block {
         <div style="font-size: 11.5px; color: var(--text-tertiary); margin-bottom: 6px;">具体类型（可选，选了更便于统计）</div>
         <div class="status-grid cols-3" id="asmSubReasonGrid"></div>
       </div>
-      <textarea class="form-control" id="asmReasonDetail" placeholder="详细描述售后情况（如：客户反馈灯罩有 2cm 长的裂痕）" style="margin-top: 10px;" oninput="onAfterField('reasonDetail', this.value)"></textarea>
+      <textarea class="form-control" id="asmReasonDetail" data-paste-target="after_orig" placeholder="详细描述售后情况（如：客户反馈灯罩有 2cm 长的裂痕）" style="margin-top: 10px;" oninput="onAfterField('reasonDetail', this.value)"></textarea>
     </div>
     <div class="od-section">
       <div class="od-section-title">当前处理状态</div>
@@ -5493,7 +5493,7 @@ body.has-side-tabs .section-block {
     <div class="od-section">
       <div class="od-section-title">+ 添加处理记录</div>
       <div class="fu-add-area">
-        <textarea class="form-control" id="asmNewNote" placeholder="处理进展，如：已联系供应商，安排返修 / 司机已取走问题件 / 客户已收到换货 ..."></textarea>
+        <textarea class="form-control" id="asmNewNote" data-paste-target="after_fu" placeholder="处理进展，如：已联系供应商，安排返修 / 司机已取走问题件 / 客户已收到换货 ..."></textarea>
         <div class="drop-zone" id="asmFuDropZone" style="margin-top: 10px;"><input type="file" id="asmFuFileInput" accept="image/*" multiple>📎 截图（可选）</div>
         <div class="drop-zone-thumbs" id="asmFuThumbs"></div>
         <div class="fu-add-bottom">
@@ -5590,7 +5590,7 @@ body.has-side-tabs .section-block {
       </div>
       <div class="form-group" style="margin-top: 10px; margin-bottom: 0;">
         <label>灯具描述 *</label>
-        <textarea class="form-control" id="mmDescription" placeholder="详细描述灯具：款式、材质、风格、参考链接 ..." oninput="onMissingField('description', this.value)"></textarea>
+        <textarea class="form-control" id="mmDescription" data-paste-target="missing_orig" placeholder="详细描述灯具：款式、材质、风格、参考链接 ..." oninput="onMissingField('description', this.value)"></textarea>
       </div>
       <div class="form-group" style="margin-top: 10px; margin-bottom: 0;">
         <label>📏 规格 / 数量 / 特殊要求</label>
