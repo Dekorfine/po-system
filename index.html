@@ -20,28 +20,28 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525s"></script>
-<script src="js/utils.js?v=20260525s"></script>
+<script src="js/core.js?v=20260525t"></script>
+<script src="js/utils.js?v=20260525t"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525s"></script>
-<script src="js/issues.js?v=20260525s"></script>
+<script src="js/settings.js?v=20260525t"></script>
+<script src="js/issues.js?v=20260525t"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525s"></script>
-<script src="js/missing.js?v=20260525s"></script>
-<script src="js/orders.js?v=20260525s"></script>
-<script src="js/shopify.js?v=20260525s"></script>
-<script src="js/po.js?v=20260525s"></script>
+<script src="js/aftersales.js?v=20260525t"></script>
+<script src="js/missing.js?v=20260525t"></script>
+<script src="js/orders.js?v=20260525t"></script>
+<script src="js/shopify.js?v=20260525t"></script>
+<script src="js/po.js?v=20260525t"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script src="js/cross-dept.js?v=20260525s"></script>
+<script src="js/cross-dept.js?v=20260525t"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525s"></script>
-<script src="js/meetings.js?v=20260525s"></script>
-<script src="js/greeting.js?v=20260525s"></script>
-<script src="js/search.js?v=20260525s"></script>
+<script src="js/translator.js?v=20260525t"></script>
+<script src="js/meetings.js?v=20260525t"></script>
+<script src="js/greeting.js?v=20260525t"></script>
+<script src="js/search.js?v=20260525t"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -888,6 +888,55 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .drop-zone { border: 2px dashed var(--border-input); border-radius: 8px; padding: 14px; text-align: center; background: var(--bg-card); transition: all 0.15s; cursor: pointer; font-size: 12px; color: var(--text-secondary); }
 .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: rgba(37,99,235,0.04); color: var(--accent); }
 .drop-zone input[type=file] { display: none; }
+
+/* V22-CY+ 2026-05-26: 供应商问题 - 图片瀑布流 */
+.ism-drop-zone {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  gap: 6px;
+  padding: 6px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  min-height: 40px;
+}
+.ism-drop-zone.dragging {
+  background: rgba(37,99,235,0.08);
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+.ism-photo-tile {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 5px;
+  overflow: hidden;
+  background: white;
+  border: 1px solid var(--border-subtle);
+}
+.ism-photo-tile img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  cursor: zoom-in;
+  display: block;
+}
+.ism-photo-tile .rm {
+  position: absolute;
+  top: 2px; right: 2px;
+  width: 20px; height: 20px;
+  border: none;
+  background: rgba(220,38,38,0.9);
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.ism-photo-tile:hover .rm { opacity: 1; }
 .drop-zone-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .drop-zone-thumb { position: relative; }
 .drop-zone-thumb img { width: 64px; height: 64px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; }
