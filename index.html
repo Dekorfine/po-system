@@ -20,26 +20,26 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525c"></script>
-<script src="js/utils.js?v=20260525c"></script>
+<script src="js/core.js?v=20260525e"></script>
+<script src="js/utils.js?v=20260525e"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525c"></script>
-<script src="js/issues.js?v=20260525c"></script>
+<script src="js/settings.js?v=20260525e"></script>
+<script src="js/issues.js?v=20260525e"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525c"></script>
-<script src="js/missing.js?v=20260525c"></script>
-<script src="js/orders.js?v=20260525c"></script>
-<script src="js/shopify.js?v=20260525c"></script>
-<script src="js/po.js?v=20260525c"></script>
+<script src="js/aftersales.js?v=20260525e"></script>
+<script src="js/missing.js?v=20260525e"></script>
+<script src="js/orders.js?v=20260525e"></script>
+<script src="js/shopify.js?v=20260525e"></script>
+<script src="js/po.js?v=20260525e"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525c"></script>
-<script src="js/meetings.js?v=20260525c"></script>
-<script src="js/greeting.js?v=20260525c"></script>
-<script src="js/search.js?v=20260525c"></script>
+<script src="js/translator.js?v=20260525e"></script>
+<script src="js/meetings.js?v=20260525e"></script>
+<script src="js/greeting.js?v=20260525e"></script>
+<script src="js/search.js?v=20260525e"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -1189,6 +1189,39 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .missing-card:hover .card-delete { display: flex; }
 .missing-card:hover .card-delete + .comments-badge { display: none; }
 
+/* V5-W3-2026-05-26: 找灯卡片右上角快速操作按钮(纯 ADD,跟原 card-delete 并排) */
+.missing-card .card-quick {
+  position: absolute; top: 10px;
+  border: none; width: 24px; height: 24px;
+  border-radius: 50%; cursor: pointer;
+  display: none; align-items: center; justify-content: center;
+  font-size: 11px; color: white; z-index: 2;
+  transition: transform 0.12s ease;
+}
+.missing-card:hover .card-quick { display: flex; }
+.missing-card .card-quick:hover { transform: scale(1.12); }
+/* ✓ 标记已找到(绿色) — 位置:删除左边 */
+.missing-card .card-quick.found {
+  right: 42px;
+  background: rgba(21,128,61,0.92);
+}
+.missing-card .card-quick.found.is-current {
+  background: rgba(255,255,255,0.95); color: var(--success, #15803d);
+  box-shadow: 0 0 0 2px var(--success, #15803d) inset;
+}
+/* 📦 存档(灰色) — 位置:更左边 */
+.missing-card .card-quick.archive {
+  right: 74px;
+  background: rgba(75,85,99,0.92);
+  font-size: 10px;
+}
+.missing-card .card-quick.archive.is-current {
+  background: rgba(255,255,255,0.95); color: #4b5563;
+  box-shadow: 0 0 0 2px #4b5563 inset;
+}
+/* hover 任意 quick 按钮时,旁边的 comments-badge 也隐藏 */
+.missing-card:hover .card-quick ~ .comments-badge { display: none; }
+
 /* 找灯 tab 隐藏 records-header */
 .missing-header { display: none !important; }
 
@@ -1202,28 +1235,31 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 
 /* Image viewer */
 /* V5-W3-2026-05-25: 图片预览改成店小秘式中央悬浮(浅背景 + 白卡片 + 阴影)
-   只改 CSS,JS 函数完全不动 → 售后/催单/找灯/会议/供应商问题 所有点击大图自动升级 */
+   只改 CSS,JS 函数完全不动 → 售后/催单/找灯/会议/供应商问题 所有点击大图自动升级
+   V5-W3 二次调整:lightbox 加大到 1600px 上限,移除内边距,让图片本身就是卡片 */
 .image-viewer { 
   display: none; 
   position: fixed; 
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(15, 23, 42, 0.18);   /* 浅色遮罩(店小秘式),能透出底下内容 */
+  background: rgba(15, 23, 42, 0.22);   /* 浅色遮罩,能透出底下内容 */
   z-index: 200; 
   align-items: center; 
   justify-content: center; 
   cursor: pointer;
-  padding: 24px;
+  padding: 20px;
   box-sizing: border-box;
-  backdrop-filter: blur(2px);            /* 轻微模糊,聚焦图片 */
+  backdrop-filter: blur(2px);
 }
 .image-viewer.show { display: flex; }
 .image-viewer img { 
-  max-width: min(85vw, 800px);          /* 不超过 800px,避免太大 */
-  max-height: 80vh;
+  max-width: min(95vw, 1600px);          /* 大幅提升:从 800px → 1600px */
+  max-height: 90vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
   background: white;
-  padding: 10px;
-  border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0,0,0,0.05);
+  border-radius: 10px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0,0,0,0.06);
   cursor: default;
   display: block;
 }
@@ -1232,16 +1268,17 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   top: 24px; right: 24px; 
   color: #1f2937;
   background: white;
-  font-size: 20px; font-weight: 700;
+  font-size: 22px; font-weight: 700;
   border: none; 
   border-radius: 50%;
-  width: 36px; height: 36px;
+  width: 40px; height: 40px;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
   display: flex; align-items: center; justify-content: center;
   transition: all 0.15s;
+  z-index: 201;
 }
-.image-viewer .close:hover { background: #f3f4f6; transform: scale(1.05); }
+.image-viewer .close:hover { background: #f3f4f6; transform: scale(1.08); }
 
 /* Toast */
 .toast { position: fixed; top: 24px; right: 24px; background: var(--bg-card); border: 1px solid var(--border); border-left: 4px solid var(--success); border-radius: 10px; padding: 14px 22px; font-size: 13px; z-index: 200; box-shadow: var(--shadow-lg); animation: toastIn 0.3s ease; }
@@ -3030,15 +3067,16 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* 图片放大 Lightbox */
-/* V5-W3-2026-05-25: img-lightbox 也升级店小秘式(跟 image-viewer 一致) */
+/* V5-W3-2026-05-25: img-lightbox 也升级店小秘式(跟 image-viewer 一致)
+   V5-W3 二次调整:加大到 1600px,移除多余 padding */
 .img-lightbox {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.18);    /* 浅色遮罩(原来 88% 改成 18%) */
+  background: rgba(15, 23, 42, 0.22);
   z-index: 9998;
   cursor: zoom-out;
-  padding: 24px;
+  padding: 20px;
   box-sizing: border-box;
   backdrop-filter: blur(2px);
 }
@@ -3048,15 +3086,14 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   justify-content: center;
 }
 .img-lightbox-img {
-  max-width: min(85vw, 800px);            /* 跟 image-viewer 一致 */
-  max-height: 80vh;
+  max-width: min(95vw, 1600px);          /* 跟 image-viewer 一致:1600px 上限 */
+  max-height: 90vh;
   width: auto;
   height: auto;
   object-fit: contain;
-  border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0,0,0,0.05);
+  border-radius: 10px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0,0,0,0.06);
   background: white;
-  padding: 10px;
   display: block;
 }
 .img-lightbox-close {
@@ -3065,16 +3102,61 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   background: white;
   border: none; 
   color: #1f2937;
-  width: 36px; height: 36px;
+  width: 40px; height: 40px;
   border-radius: 50%;
-  font-size: 20px; font-weight: 700;
+  font-size: 22px; font-weight: 700;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: all 0.15s;
-  z-index: 1;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+  z-index: 9999;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
 }
-.img-lightbox-close:hover { background: #f3f4f6; transform: scale(1.05); }
+.img-lightbox-close:hover { background: #f3f4f6; transform: scale(1.08); }
+
+/* ============================================================
+   V5-W3-2026-05-26: 统一所有"点击查看大图"缩略图的悬停自动放大
+   覆盖范围:销售单/采购单/产品库/售后/催单/找灯/上传/timeline 截图
+   现有的 row-prod-thumb 已经在 utils.js 里有更激进的 2.2x 放大,
+   这里给其他所有缩略图加 1.8x 的统一放大效果(包括阴影 + 边框高亮)
+   ============================================================ */
+.so-prod-img,
+.li-img,
+.prod-img,
+.screenshot-thumb,
+.after-thumb,
+.timeline-screenshots img,
+.drop-zone-thumb > img,
+.missing-card .cover img {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  cursor: zoom-in;
+}
+.so-prod-img:hover,
+.li-img:hover,
+.prod-img:hover,
+.screenshot-thumb:hover,
+.after-thumb:hover,
+.timeline-screenshots img:hover,
+.drop-zone-thumb > img:hover,
+.missing-card .cover img:hover {
+  transform: scale(1.85);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.32), 0 0 0 2px var(--accent, #2563eb);
+  z-index: 100;
+  position: relative;
+  border-color: var(--accent, #2563eb);
+}
+/* 让父容器在 hover 时释放 overflow,防止放大后被裁掉 */
+.so-card:has(.so-prod-img:hover),
+.so-product-line:has(.so-prod-img:hover),
+.po-card:has(.li-img:hover),
+.po-line:has(.li-img:hover),
+.product-card:has(.prod-img:hover),
+.timeline-screenshots:has(img:hover),
+.drop-zone-thumb:has(img:hover),
+.fu-screenshots:has(img:hover) {
+  overflow: visible !important;
+  z-index: 100;
+  position: relative;
+}
 
 /* ============ 批次 4 新增弹窗 overlay（修复位置 bug） ============ */
 /* 6 个新弹窗的 .modal 不能用原系统的卡片样式，要 reset 成全屏遮罩 */
