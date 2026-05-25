@@ -2516,12 +2516,20 @@ function applyTabLayout() {
   const sideBar = document.getElementById('sideTabBar');
   if (!sideBar) return;
 
+  // 读侧栏是否收起(localStorage)
+  const isCollapsed = localStorage.getItem('side_tab_collapsed') === '1';
+  sideBar.classList.toggle('collapsed', isCollapsed);
+
   // 清空 sidebar
   sideBar.innerHTML = '';
-  // 顶部预留空间(让 sidebar 内容从 header 下方开始)
-  const spacer = document.createElement('div');
-  spacer.className = 'side-tab-bar-spacer';
-  sideBar.appendChild(spacer);
+
+  // 顶部收起/展开切换按钮
+  const toggleBtn = document.createElement('div');
+  toggleBtn.className = 'side-tab-toggle';
+  toggleBtn.title = isCollapsed ? '展开侧栏' : '收起侧栏';
+  toggleBtn.innerHTML = isCollapsed ? '⏵' : '⏴';
+  toggleBtn.onclick = toggleSidebarCollapsed;
+  sideBar.appendChild(toggleBtn);
 
   let hasSideTabs = false;
 
@@ -2534,7 +2542,6 @@ function applyTabLayout() {
 
     if (zone === 'side') {
       hasSideTabs = true;
-      // 在 sidebar 创建对应图标
       const meta = TAB_META[t] || { icon: '◆', label: t, badgeId: null };
       // 不渲染明明 display:none 的(比如 tabAnalytics)
       if (el.style.display === 'none' && el.id === 'tabAnalytics') return;
@@ -2557,7 +2564,8 @@ function applyTabLayout() {
         }
       }
       side.innerHTML = `
-        ${meta.icon}
+        <span class="side-tab-icon">${meta.icon}</span>
+        <span class="side-tab-label">${meta.label}</span>
         ${meta.badgeId ? `<span class="side-tab-badge ${badgeClass}" data-mirror-of="${meta.badgeId}">${badgeText}</span>` : ''}
         <span class="side-tab-tooltip">${meta.label}</span>
       `;
@@ -2573,16 +2581,35 @@ function applyTabLayout() {
     bottom.className = 'side-tab-bottom';
     bottom.innerHTML = `
       <div class="side-tab-customize" onclick="openTabLayoutModal()" title="自定义工作台布局">
-        📐
+        <span class="side-tab-icon">📐</span>
+        <span class="side-tab-label">自定义布局</span>
         <span class="side-tab-tooltip">📐 自定义布局</span>
       </div>
     `;
     sideBar.appendChild(bottom);
     sideBar.style.display = 'flex';
     document.body.classList.add('has-side-tabs');
+    document.body.classList.toggle('side-collapsed', isCollapsed);
   } else {
     sideBar.style.display = 'none';
     document.body.classList.remove('has-side-tabs');
+    document.body.classList.remove('side-collapsed');
+  }
+}
+
+// V5-W3-2026-05-26: 切换侧栏收起/展开
+function toggleSidebarCollapsed() {
+  const sb = document.getElementById('sideTabBar');
+  if (!sb) return;
+  const isNowCollapsed = !sb.classList.contains('collapsed');
+  sb.classList.toggle('collapsed', isNowCollapsed);
+  document.body.classList.toggle('side-collapsed', isNowCollapsed);
+  localStorage.setItem('side_tab_collapsed', isNowCollapsed ? '1' : '0');
+  // 更新顶部切换按钮的图标
+  const toggleBtn = sb.querySelector('.side-tab-toggle');
+  if (toggleBtn) {
+    toggleBtn.innerHTML = isNowCollapsed ? '⏵' : '⏴';
+    toggleBtn.title = isNowCollapsed ? '展开侧栏' : '收起侧栏';
   }
 }
 
