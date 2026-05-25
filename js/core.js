@@ -2568,6 +2568,16 @@ function applyTabLayout() {
 
   // 显示/隐藏 sidebar
   if (hasSideTabs) {
+    // V5-W3-2026-05-26: 底部固定 📐 自定义布局按钮(永远显示,不依赖顶栏)
+    const bottom = document.createElement('div');
+    bottom.className = 'side-tab-bottom';
+    bottom.innerHTML = `
+      <div class="side-tab-customize" onclick="openTabLayoutModal()" title="自定义工作台布局">
+        📐
+        <span class="side-tab-tooltip">📐 自定义布局</span>
+      </div>
+    `;
+    sideBar.appendChild(bottom);
     sideBar.style.display = 'flex';
     document.body.classList.add('has-side-tabs');
   } else {
