@@ -20,28 +20,28 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525u"></script>
-<script src="js/utils.js?v=20260525u"></script>
+<script src="js/core.js?v=20260525w"></script>
+<script src="js/utils.js?v=20260525w"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525u"></script>
-<script src="js/issues.js?v=20260525u"></script>
+<script src="js/settings.js?v=20260525w"></script>
+<script src="js/issues.js?v=20260525w"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525u"></script>
-<script src="js/missing.js?v=20260525u"></script>
-<script src="js/orders.js?v=20260525u"></script>
-<script src="js/shopify.js?v=20260525u"></script>
-<script src="js/po.js?v=20260525u"></script>
+<script src="js/aftersales.js?v=20260525w"></script>
+<script src="js/missing.js?v=20260525w"></script>
+<script src="js/orders.js?v=20260525w"></script>
+<script src="js/shopify.js?v=20260525w"></script>
+<script src="js/po.js?v=20260525w"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script src="js/cross-dept.js?v=20260525u"></script>
+<script src="js/cross-dept.js?v=20260525w"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525u"></script>
-<script src="js/meetings.js?v=20260525u"></script>
-<script src="js/greeting.js?v=20260525u"></script>
-<script src="js/search.js?v=20260525u"></script>
+<script src="js/translator.js?v=20260525w"></script>
+<script src="js/meetings.js?v=20260525w"></script>
+<script src="js/greeting.js?v=20260525w"></script>
+<script src="js/search.js?v=20260525w"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -4403,7 +4403,7 @@ body.has-side-tabs .section-block {
       </div>
       <div class="form-group">
         <label>商品描述 / 规格</label>
-        <textarea class="form-control" id="pmDescription" placeholder="风格、材质、颜色、规格、特殊要求等" oninput="onPurchaseField('description', this.value)" style="min-height: 60px;"></textarea>
+        <textarea class="form-control" id="pmDescription" data-paste-target="purchase_orig" placeholder="风格、材质、颜色、规格、特殊要求等" oninput="onPurchaseField('description', this.value)" style="min-height: 60px;"></textarea>
       </div>
     </div>
     
@@ -4460,7 +4460,7 @@ body.has-side-tabs .section-block {
     
     <div class="od-section">
       <div class="od-section-title">备注</div>
-      <textarea class="form-control" id="pmNotes" placeholder="特殊要求、备注等" oninput="onPurchaseField('notes', this.value)" style="min-height: 50px;"></textarea>
+      <textarea class="form-control" id="pmNotes" data-paste-target="purchase_orig" placeholder="特殊要求、备注等" oninput="onPurchaseField('notes', this.value)" style="min-height: 50px;"></textarea>
     </div>
     
     <!-- V4：快递单号自动追踪 -->
@@ -5594,7 +5594,7 @@ body.has-side-tabs .section-block {
       </div>
       <div class="form-group" style="margin-top: 10px; margin-bottom: 0;">
         <label>📏 规格 / 数量 / 特殊要求</label>
-        <textarea class="form-control" id="mmSpecs" placeholder="如：直径 60cm · 数量 2 个 · 暖白光 · 美规挂板 · 可控硅调光 ..." oninput="onMissingField('specs', this.value)" style="min-height: 50px;"></textarea>
+        <textarea class="form-control" id="mmSpecs" data-paste-target="missing_orig" placeholder="如：直径 60cm · 数量 2 个 · 暖白光 · 美规挂板 · 可控硅调光 ..." oninput="onMissingField('specs', this.value)" style="min-height: 50px;"></textarea>
         <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">💡 这里写的内容会出现在导出图片里，订单号不会泄露给供应商</div>
       </div>
     </div>
@@ -5616,7 +5616,7 @@ body.has-side-tabs .section-block {
     <div class="od-section">
       <div class="od-section-title">+ 添加评论 / 实拍</div>
       <div class="fu-add-area">
-        <textarea class="form-control" id="mmNewComment" placeholder="知道供应商？直接写出来。其他线索、问询情况也可以写..."></textarea>
+        <textarea class="form-control" id="mmNewComment" data-paste-target="missing_orig" placeholder="知道供应商？直接写出来。其他线索、问询情况也可以写..."></textarea>
         <!-- V4：实拍上传区合并到评论区（替代原独立 section）-->
         <div class="drop-zone" id="mmRealDropZone" style="margin-top: 8px; padding: 8px 12px; font-size: 12px;">
           <input type="file" id="mmRealFileInput" accept="image/*" multiple>
@@ -5748,7 +5748,7 @@ body.has-side-tabs .section-block {
           <button class="fu-type-btn" data-type="response" onclick="setBcType('response')">📨 供应商反馈</button>
           <button class="fu-type-btn" data-type="other" onclick="setBcType('other')">📌 其他</button>
         </div>
-        <textarea class="form-control" id="bcNote" placeholder="例如：今天再次催问所有订单的生产进度，要求明确发货日期 / 已和供应商负责人沟通..."></textarea>
+        <textarea class="form-control" id="bcNote" data-paste-target="batch_chase" placeholder="例如：今天再次催问所有订单的生产进度，要求明确发货日期 / 已和供应商负责人沟通..."></textarea>
         <div class="drop-zone" id="bcDropZone" style="margin-top: 10px;"><input type="file" id="bcFileInput" accept="image/*" multiple>📎 共用截图（可选，加到所有选中订单）</div>
         <div class="drop-zone-thumbs" id="bcThumbs"></div>
         <div class="fu-add-bottom">
