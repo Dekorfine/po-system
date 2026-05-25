@@ -20,26 +20,26 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525a"></script>
-<script src="js/utils.js?v=20260525a"></script>
+<script src="js/core.js?v=20260525b"></script>
+<script src="js/utils.js?v=20260525b"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525a"></script>
-<script src="js/issues.js?v=20260525a"></script>
+<script src="js/settings.js?v=20260525b"></script>
+<script src="js/issues.js?v=20260525b"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525a"></script>
-<script src="js/missing.js?v=20260525a"></script>
-<script src="js/orders.js?v=20260525a"></script>
-<script src="js/shopify.js?v=20260525a"></script>
-<script src="js/po.js?v=20260525a"></script>
+<script src="js/aftersales.js?v=20260525b"></script>
+<script src="js/missing.js?v=20260525b"></script>
+<script src="js/orders.js?v=20260525b"></script>
+<script src="js/shopify.js?v=20260525b"></script>
+<script src="js/po.js?v=20260525b"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525a"></script>
-<script src="js/meetings.js?v=20260525a"></script>
-<script src="js/greeting.js?v=20260525a"></script>
-<script src="js/search.js?v=20260525a"></script>
+<script src="js/translator.js?v=20260525b"></script>
+<script src="js/meetings.js?v=20260525b"></script>
+<script src="js/greeting.js?v=20260525b"></script>
+<script src="js/search.js?v=20260525b"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -4511,8 +4511,10 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         </div>
       </div>
       <div class="form-row col-2" style="margin-top: 10px;">
-        <div class="form-group" style="margin-bottom: 0;"><label>产品 / SKU</label><input type="text" class="form-control" id="asmProduct" placeholder="吊灯A型" oninput="onAfterField('product', this.value)"></div>
-        <div class="form-group" style="margin-bottom: 0;"><label>供应商</label><input type="text" class="form-control" id="asmSupplier" placeholder="广州X厂" list="asSuppliersList" oninput="onAfterField('supplier', this.value)"><datalist id="asSuppliersList"></datalist></div>
+        <!-- V5-W3-2026-05-25: SKU 字段隐藏(订单号+凭证截图已能定位产品)
+             用 display:none 保留 DOM,避免 aftersales.js 读取报错 -->
+        <div class="form-group" style="margin-bottom: 0; display: none;"><label>产品 / SKU</label><input type="text" class="form-control" id="asmProduct" placeholder="吊灯A型" oninput="onAfterField('product', this.value)"></div>
+        <div class="form-group" style="margin-bottom: 0; grid-column: 1 / -1;"><label>供应商</label><input type="text" class="form-control" id="asmSupplier" placeholder="广州X厂" list="asSuppliersList" oninput="onAfterField('supplier', this.value)"><datalist id="asSuppliersList"></datalist></div>
       </div>
       <div class="form-group" style="margin-top: 10px; margin-bottom: 0;"><label>📅 售后发起日期</label><input type="date" class="form-control mono" id="asmCreatedDate" onchange="onAfterField('createdDate', this.value)"></div>
     </div>
