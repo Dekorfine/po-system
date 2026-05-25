@@ -423,6 +423,62 @@ const SHOPIFY_SEARCH = {
   sortBy: 'order_date_desc',  // 排序方式
 };
 
+// ============================================================
+// V5-W3-2026-05-25: 新增元素的 helper 函数(纯 ADD,不动任何已有逻辑)
+//   1. 国家代码 → 中文(US → 美国,避免下单错误)
+//   2. 运输方式(Standard / Express,筛选 + 显示)
+//   3. 付款时间(类似店小秘,下单 + 付款 都展示)
+// 全部从 raw_payload 提取,不需要后端改动
+// ============================================================
+const COUNTRY_CN_MAP = {
+  US:'美国', CA:'加拿大', GB:'英国', UK:'英国', AU:'澳大利亚', NZ:'新西兰',
+  FR:'法国', DE:'德国', IT:'意大利', ES:'西班牙', NL:'荷兰', BE:'比利时',
+  CH:'瑞士', AT:'奥地利', IE:'爱尔兰', PT:'葡萄牙', GR:'希腊',
+  SE:'瑞典', NO:'挪威', DK:'丹麦', FI:'芬兰', IS:'冰岛',
+  PL:'波兰', CZ:'捷克', HU:'匈牙利', RO:'罗马尼亚', BG:'保加利亚',
+  RU:'俄罗斯', UA:'乌克兰', TR:'土耳其', IL:'以色列',
+  JP:'日本', KR:'韩国', CN:'中国', HK:'香港', TW:'台湾', MO:'澳门',
+  SG:'新加坡', MY:'马来西亚', TH:'泰国', PH:'菲律宾', VN:'越南', ID:'印尼',
+  IN:'印度', PK:'巴基斯坦', BD:'孟加拉国', LK:'斯里兰卡',
+  BR:'巴西', MX:'墨西哥', AR:'阿根廷', CL:'智利', CO:'哥伦比亚', PE:'秘鲁',
+  SA:'沙特阿拉伯', AE:'阿联酋', QA:'卡塔尔', KW:'科威特', BH:'巴林', OM:'阿曼',
+  ZA:'南非', EG:'埃及', NG:'尼日利亚', KE:'肯尼亚', MA:'摩洛哥',
+  PR:'波多黎各',
+};
+function countryToChinese(code) {
+  if (!code) return '';
+  return COUNTRY_CN_MAP[String(code).toUpperCase()] || '';
+}
+// 提取 Shopify 订单的运输方式 title(如 "Standard Shipping (4-6weeks)")
+function getShippingMethod(o) {
+  const sl = (o && o.raw_payload && o.raw_payload.shipping_lines) || null;
+  if (Array.isArray(sl) && sl.length > 0) {
+    return String(sl[0].title || '').trim();
+  }
+  return '';
+}
+// 提取付款时间(processed_at)
+function getPaymentTime(o) {
+  return (o && o.raw_payload && o.raw_payload.processed_at) || null;
+}
+// 判断是否快速运输(模糊匹配多种关键词,大小写不敏感)
+function isExpressShipping(o) {
+  const m = getShippingMethod(o).toLowerCase();
+  if (!m) return false;
+  return /express|expedit|priority|overnight|快速|fast|2[\s-]?day|3[\s-]?day|next[\s-]?day/i.test(m);
+}
+// 格式化 ISO 时间为 "MM-DD HH:mm"(下单/付款时间用)
+function fmtShortDateTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const dy = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${mo}-${dy} ${hh}:${mm}`;
+}
+
 // 选中订单 ID 集合
 const SHOPIFY_SELECTED = new Set();
 // V4：销售单拆单选择（orderId -> Set<shopify_line_item_id>），用于"仅为选中开 PO"
@@ -548,6 +604,12 @@ function _orderMatchesRule(o, rule) {
         return !eff;
       });
     }
+    // V5-W3-2026-05-25: 运输方式快筛(纯 ADD)
+    case 'express_shipping': return isExpressShipping(o);
+    case 'standard_shipping': {
+      const m = getShippingMethod(o);
+      return !!m && !isExpressShipping(o);
+    }
     default: return true;
   }
 }
@@ -565,7 +627,7 @@ function shopifyRefreshRuleCounts() {
   // 全局 active 范围（待审核 + 待处理，不含已完成/已取消）
   const globalActive = all.filter(o => o.local_status !== 'cancelled' && o.local_status !== 'done');
 
-  const rules = ['has_note', 'has_internal', 'refunded', 'big_amount', 'big_qty', 'overdue', 'manual', 'unknown_sku'];
+  const rules = ['has_note', 'has_internal', 'refunded', 'big_amount', 'big_qty', 'overdue', 'express_shipping', 'standard_shipping', 'manual', 'unknown_sku'];
   SHOPIFY._ruleGlobalCounts = {};
   rules.forEach(r => {
     const cnt = currentScope.filter(o => _orderMatchesRule(o, r)).length;
@@ -1093,6 +1155,7 @@ function renderShopifyOrders() {
     const ruleLabels = {
       has_note: '有备注', has_internal: '有内部备注', refunded: '退款单', big_amount: '大额 ≥¥3000',
       big_qty: '高数量 ≥5件', overdue: '超时未发 ≥7天', manual: '自定义订单', unknown_sku: '未配对 SKU',
+      express_shipping: '⚡ 快速运输', standard_shipping: '🚚 标准运输',
     };
 
     // 优先级最高：当前 sub-tab 下点了某规则空，但全局有 → 引导切到「全部」
@@ -1267,6 +1330,22 @@ function renderShopifyOrders() {
               ${escapeHtml(o.shopify_order_number || '#' + (o.shopify_order_id || ''))} <span class="ext">↗</span>
             </a>` : `<span class="so-order-no" style="color:var(--text-primary); font-weight:600;" title="手动创建的订单">${escapeHtml(o.shopify_order_number || '#' + (o.shopify_order_id || ''))} <span style="font-size:10px; color:var(--text-tertiary);">(手动)</span></span>`}
             <span>下单 <b>${dateStr} ${timeStr}</b></span>
+            ${(() => {
+              // V5-W3-2026-05-25: 加客户付款时间(纯 ADD)
+              const pt = getPaymentTime(o);
+              const ptStr = fmtShortDateTime(pt);
+              return ptStr ? `<span style="color:var(--text-secondary);">付款 <b style="color:var(--success);">${ptStr}</b></span>` : '';
+            })()}
+            ${(() => {
+              // V5-W3-2026-05-25: 加运输方式(快速/标准)
+              const sm = getShippingMethod(o);
+              if (!sm) return '';
+              const exp = isExpressShipping(o);
+              const icon = exp ? '⚡' : '🚚';
+              const col = exp ? '#dc2626' : 'var(--text-secondary)';
+              const bg = exp ? 'rgba(220,38,38,0.08)' : 'rgba(0,0,0,0.04)';
+              return `<span style="display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:4px; background:${bg}; color:${col}; font-size:11px; font-weight:600;" title="客户选的运输方式">${icon} ${escapeHtml(sm)}</span>`;
+            })()}
           </div>
           <div class="so-top-status">
             ${refund.level !== 'none' ? `<span style="display:inline-block; padding:2px 8px; border-radius:4px; background:${refund.bg}; color:${refund.color}; font-size:11px; font-weight:600; margin-right:4px;">${refund.label}</span>` : ''}
@@ -1295,6 +1374,7 @@ function renderShopifyOrders() {
               <div class="name">${escapeHtml(customerName)}</div>
               ${customerEmail ? `<div class="email">${escapeHtml(customerEmail)}</div>` : ''}
               <div class="country">${SHOPIFY.flagEmoji(country)} ${escapeHtml(city)}${country ? `, ${country}` : ''}</div>
+              ${countryToChinese(country) ? `<div style="font-size:11px; color:var(--accent); font-weight:600; margin-top: 2px;" title="自动翻译,避免下错单">📍 ${countryToChinese(country)}</div>` : ''}
             </div>
             <!-- 金额 -->
             <div class="so-amount-block">
