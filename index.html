@@ -20,26 +20,26 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525e"></script>
-<script src="js/utils.js?v=20260525e"></script>
+<script src="js/core.js?v=20260525f"></script>
+<script src="js/utils.js?v=20260525f"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525e"></script>
-<script src="js/issues.js?v=20260525e"></script>
+<script src="js/settings.js?v=20260525f"></script>
+<script src="js/issues.js?v=20260525f"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525e"></script>
-<script src="js/missing.js?v=20260525e"></script>
-<script src="js/orders.js?v=20260525e"></script>
-<script src="js/shopify.js?v=20260525e"></script>
-<script src="js/po.js?v=20260525e"></script>
+<script src="js/aftersales.js?v=20260525f"></script>
+<script src="js/missing.js?v=20260525f"></script>
+<script src="js/orders.js?v=20260525f"></script>
+<script src="js/shopify.js?v=20260525f"></script>
+<script src="js/po.js?v=20260525f"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525e"></script>
-<script src="js/meetings.js?v=20260525e"></script>
-<script src="js/greeting.js?v=20260525e"></script>
-<script src="js/search.js?v=20260525e"></script>
+<script src="js/translator.js?v=20260525f"></script>
+<script src="js/meetings.js?v=20260525f"></script>
+<script src="js/greeting.js?v=20260525f"></script>
+<script src="js/search.js?v=20260525f"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -1181,43 +1181,46 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .missing-card .card-delete {
   position: absolute; top: 10px; right: 10px;
   background: rgba(185,28,28,0.92); color: white;
-  border: none; width: 24px; height: 24px;
+  border: none; width: 28px; height: 28px;
   border-radius: 50%; cursor: pointer;
   display: none; align-items: center; justify-content: center;
-  font-size: 11px; z-index: 2;
+  font-size: 12px; z-index: 999;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
 .missing-card:hover .card-delete { display: flex; }
 .missing-card:hover .card-delete + .comments-badge { display: none; }
 
-/* V5-W3-2026-05-26: 找灯卡片右上角快速操作按钮(纯 ADD,跟原 card-delete 并排) */
+/* V5-W3-2026-05-26: 找灯卡片右上角快速操作按钮(纯 ADD,跟原 card-delete 并排)
+   V5-W3-2026-05-26 二次调整:z-index 拔高到 999 + 尺寸加大到 28x28 防止被盖被误触 */
 .missing-card .card-quick {
   position: absolute; top: 10px;
-  border: none; width: 24px; height: 24px;
+  border: none; width: 28px; height: 28px;
   border-radius: 50%; cursor: pointer;
   display: none; align-items: center; justify-content: center;
-  font-size: 11px; color: white; z-index: 2;
+  font-size: 12px; color: white; z-index: 999;
   transition: transform 0.12s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
 .missing-card:hover .card-quick { display: flex; }
-.missing-card .card-quick:hover { transform: scale(1.12); }
+.missing-card .card-quick:hover { transform: scale(1.15); }
 /* ✓ 标记已找到(绿色) — 位置:删除左边 */
 .missing-card .card-quick.found {
-  right: 42px;
+  right: 46px;
   background: rgba(21,128,61,0.92);
 }
 .missing-card .card-quick.found.is-current {
-  background: rgba(255,255,255,0.95); color: var(--success, #15803d);
-  box-shadow: 0 0 0 2px var(--success, #15803d) inset;
+  background: rgba(255,255,255,0.97); color: var(--success, #15803d);
+  box-shadow: 0 0 0 2px var(--success, #15803d) inset, 0 2px 8px rgba(0,0,0,0.25);
 }
 /* 📦 存档(灰色) — 位置:更左边 */
 .missing-card .card-quick.archive {
-  right: 74px;
+  right: 82px;
   background: rgba(75,85,99,0.92);
-  font-size: 10px;
+  font-size: 11px;
 }
 .missing-card .card-quick.archive.is-current {
-  background: rgba(255,255,255,0.95); color: #4b5563;
-  box-shadow: 0 0 0 2px #4b5563 inset;
+  background: rgba(255,255,255,0.97); color: #4b5563;
+  box-shadow: 0 0 0 2px #4b5563 inset, 0 2px 8px rgba(0,0,0,0.25);
 }
 /* hover 任意 quick 按钮时,旁边的 comments-badge 也隐藏 */
 .missing-card:hover .card-quick ~ .comments-badge { display: none; }
@@ -3115,9 +3118,10 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 
 /* ============================================================
    V5-W3-2026-05-26: 统一所有"点击查看大图"缩略图的悬停自动放大
-   覆盖范围:销售单/采购单/产品库/售后/催单/找灯/上传/timeline 截图
+   覆盖范围:销售单/采购单/产品库/售后/催单/会议/供应商问题/上传/timeline 截图
    现有的 row-prod-thumb 已经在 utils.js 里有更激进的 2.2x 放大,
    这里给其他所有缩略图加 1.8x 的统一放大效果(包括阴影 + 边框高亮)
+   V5-W3-2026-05-26 二次调整:找灯卡片图不参与悬停放大(否则会盖住卡片右上的操作按钮)
    ============================================================ */
 .so-prod-img,
 .li-img,
@@ -3125,8 +3129,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .screenshot-thumb,
 .after-thumb,
 .timeline-screenshots img,
-.drop-zone-thumb > img,
-.missing-card .cover img {
+.drop-zone-thumb > img {
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
   cursor: zoom-in;
 }
@@ -3136,8 +3139,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .screenshot-thumb:hover,
 .after-thumb:hover,
 .timeline-screenshots img:hover,
-.drop-zone-thumb > img:hover,
-.missing-card .cover img:hover {
+.drop-zone-thumb > img:hover {
   transform: scale(1.85);
   box-shadow: 0 8px 28px rgba(0,0,0,0.32), 0 0 0 2px var(--accent, #2563eb);
   z-index: 100;
