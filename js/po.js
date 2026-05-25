@@ -18,7 +18,7 @@ async function openCustomPoModal() {
     boxNote: '',
     otherNote: '',
     lineItems: [
-      { id: 'cpo-1', sku: '', title: '', variant: '', image_url: '', qty: 1, price: 0 }
+      { id: 'cpo-1', sku: '', title: '', variant: '', image_url: '', qty: 1, price: 0, note: '' }
     ],
   };
   document.getElementById('customPoModal').style.display = 'flex';
@@ -42,6 +42,14 @@ function renderCustomPo() {
         <input type="text" placeholder="SKU * (如 VKW-XX 或 CUSTOM-001)" value="${escapeHtml(li.sku)}" oninput="cpoSetLine('${li.id}','sku',this.value)" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;">
         <input type="text" placeholder="产品中文名 *" value="${escapeHtml(li.title)}" oninput="cpoSetLine('${li.id}','title',this.value)" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;">
         <input type="text" placeholder="变体/规格（如 80cm 黑色）" value="${escapeHtml(li.variant)}" oninput="cpoSetLine('${li.id}','variant',this.value)" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;">
+        <!-- V5-W3-2026-05-26: Custom PO 也加 per-line 备注(跟单填,会进打印件的"备注"列)-->
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span style="font-size:10.5px; color:var(--text-secondary); font-weight:500; flex-shrink:0; min-width:60px;">📝 本行备注:</span>
+          <input type="text" placeholder="尺寸/色温/特殊要求/电气标准等(可选)" 
+            value="${escapeHtml(li.note || '')}" 
+            oninput="cpoSetLine('${li.id}','note',this.value)" 
+            style="flex:1; padding:5px 8px; font-size:11px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card);">
+        </div>
       </div>
       <input type="number" min="1" placeholder="数量" value="${li.qty}" oninput="cpoSetLine('${li.id}','qty',this.value); updateCpoTotal();" style="width:100%; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:5px; text-align:center; ${Number(li.qty) >= 2 ? 'background:rgba(220,38,38,0.08); border:2px solid #dc2626; color:#dc2626; font-weight:700;' : ''}">
       <input type="number" min="0" step="0.01" placeholder="单价" value="${li.price}" oninput="cpoSetLine('${li.id}','price',this.value); updateCpoTotal();" style="width:100%; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:5px; text-align:center;">
@@ -111,7 +119,7 @@ function cpoSetLine(id, field, val) {
 
 function cpoAddLine() {
   const newId = 'cpo-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-  CUSTOM_PO_STATE.lineItems.push({ id: newId, sku: '', title: '', variant: '', image_url: '', qty: 1, price: 0 });
+  CUSTOM_PO_STATE.lineItems.push({ id: newId, sku: '', title: '', variant: '', image_url: '', qty: 1, price: 0, note: '' });
   renderCustomPo();
 }
 
@@ -242,6 +250,9 @@ async function saveCustomPo() {
     price: Number(li.price),
     subtotal: Number(li.qty) * Number(li.price),
     is_custom: true,
+    // V5-W3-2026-05-26: Custom PO 也带 per-line 字段(自定义单可能不关联具体国家,标准留空,跟单按需填备注)
+    electrical_standard: '',
+    line_note: (li.note || '').trim(),
   }));
   const totalAmount = liData.reduce((s, x) => s + x.subtotal, 0);
 
@@ -749,6 +760,11 @@ async function openPoForm(salesOrderId, selectedLineItemIds = null) {
     customLines: [],         // 跟单追加的自定义产品（差价/配件/换货等）
     otherNote: '',
     otherNoteManuallyEdited: false,
+    // V5-W3-2026-05-26: per-line 备注(每行独立)
+    // lineNotes: { [shopify_line_item_id]: '本行备注内容' }
+    // lineNotesManuallyEdited: { [shopify_line_item_id]: true } — 跟单手动改过则不再自动覆盖
+    lineNotes: {},
+    lineNotesManuallyEdited: {},
     invalidPoIds: new Set(), // 已取消/已驳回 PO 的 ID 集合（用于渲染时过滤显示）
     splitMode: !!selectedSet, // V4：是否是拆单模式（影响表单顶部提示）
     supplierHistory: supplierHistoryMap, // V5: 本订单 SKU 的历史供应商映射
@@ -846,6 +862,16 @@ function renderPoForm() {
             <a href="javascript:void(0)" onclick="poFormEditLine('${li.shopify_line_item_id}')" style="color:#7c3aed; text-decoration:none; font-weight:500;">🔧 修改 SKU / 图 / 名 (换货/差价)</a>
             ${wasEdited ? `<a href="javascript:void(0)" onclick="poFormResetLine('${li.shopify_line_item_id}')" style="color:var(--text-tertiary); text-decoration:none;">↺ 恢复默认</a>` : ''}
           </div>
+          <!-- V5-W3-2026-05-26: per-line 备注输入框(每行独立,跟单可编辑)-->
+          <div style="margin-top:6px; display:flex; gap:6px; align-items:center;">
+            <span style="font-size:11px; color:var(--text-secondary); font-weight:500; flex-shrink:0; min-width:60px;">📝 本行备注:</span>
+            <input type="text" 
+              value="${escapeHtml(PO_FORM_STATE.lineNotes[li.shopify_line_item_id] || '')}"
+              placeholder="自动填入 / 跟单可编辑(尺寸/色温/特殊要求/加急等)"
+              oninput="poFormSetLineNote('${li.shopify_line_item_id}', this.value)"
+              ${fullyAssigned ? 'disabled' : ''}
+              style="flex:1; padding:4px 8px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card); color:var(--text-primary); font-family:inherit;">
+          </div>
         </div>
         <div style="position:relative;">
           <input type="number" min="1" max="${sel.remaining}" value="${sel.qty}" placeholder="数量"
@@ -901,34 +927,40 @@ function renderPoForm() {
   const totalQty = selected.reduce((s, [_, sel]) => s + (Number(sel.qty) || 0), 0)
     + customLines.reduce((s, cl) => s + (Number(cl.qty) || 0), 0);
 
-  // 自动生成订单备注 = [电气标准] + 销售订单编号（写纸箱用）
+  // V5-W3-2026-05-26 方案 B:box_note 只放销售单号(纸箱小标签用)
+  //   旧:autoNote = "美规110V电压 K115784"(纸箱写不下)
+  //   新:autoNote = "K115784",电气标准移到 line_items[].electrical_standard 列(供应商参考)
   const countryCode = (so.shipping_address && (so.shipping_address.country_code || so.shipping_address.country)) || so.shipping_country || '';
   const standard = getElectricalStandard(countryCode, so.shipping_address?.country || so.shipping_country);
-  const autoNote = standard ? `${standard} ${so.shopify_order_number || ''}`.trim() : `${so.shopify_order_number || ''}`;
+  const autoNote = `${so.shopify_order_number || ''}`;
 
-  // 其他备注自动生成：
-  // - 如果该 SKU 有维护 notes（products.notes）→ 优先使用 notes（避免和自动提取重复）
-  // - 如果没维护 → 自动从 variant_title 提取尺寸/色温
-  // 每次勾选变化都重新生成；用户手动改过则保留
-  if (!PO_FORM_STATE.otherNoteManuallyEdited) {
-    const segments = [];
-    console.log('%c[PoForm] 准备提取 variant 信息', 'color:#2563eb; font-weight:bold');
-    selected.forEach(([liid]) => {
-      const li = items.find(x => x.shopify_line_item_id === liid);
-      if (!li) return;
-      const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
-      const userNotes = (eff.notes || '').trim();
-      console.log('  - SKU:', li.sku, '| variant_title:', JSON.stringify(li.variant_title || '(空)'), '| SKU 备注:', JSON.stringify(userNotes));
-      // 优先级：用户维护的 notes > 自动提取
-      if (userNotes) {
-        segments.push(userNotes);
-      } else {
-        const extracted = extractVariantInfo(li.variant_title || '');
-        if (extracted) segments.push(extracted);
-      }
-    });
-    PO_FORM_STATE.otherNote = segments.join('\n\n');
-    console.log('%c[PoForm] 最终其他备注:', 'color:#2563eb; font-weight:bold', JSON.stringify(PO_FORM_STATE.otherNote));
+  // V5-W3-2026-05-26 per-line 备注自动生成：
+  // - 每行独立生成,存到 PO_FORM_STATE.lineNotes[liid]
+  // - 优先级:SKU 维护的 notes (products.notes) > 自动从 variant_title 提取尺寸/色温
+  // - 跟单手动改过的行(lineNotesManuallyEdited[liid] === true)不再自动覆盖
+  // - 电气标准不再混入备注 — 它去自己的"下单标准"列了
+  console.log('%c[PoForm] 准备生成 per-line 备注', 'color:#2563eb; font-weight:bold');
+  selected.forEach(([liid]) => {
+    if (PO_FORM_STATE.lineNotesManuallyEdited[liid]) return;  // 跟单改过的不动
+    const li = items.find(x => x.shopify_line_item_id === liid);
+    if (!li) return;
+    const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
+    const userNotes = (eff.notes || '').trim();
+    let lineNote = '';
+    if (userNotes) {
+      lineNote = userNotes;
+    } else {
+      const extracted = extractVariantInfo(li.variant_title || '');
+      if (extracted) lineNote = extracted;
+    }
+    PO_FORM_STATE.lineNotes[liid] = lineNote;
+    console.log('  - SKU:', li.sku, '| 自动生成:', JSON.stringify(lineNote));
+  });
+
+  // V5-W3 兼容:otherNote 仍保留作为"全单 PO-level 备注"(可选)
+  // 不再自动生成,跟单可在表单底部手填(用于全 PO 的全局说明)
+  if (!PO_FORM_STATE.otherNoteManuallyEdited && !PO_FORM_STATE.otherNote) {
+    PO_FORM_STATE.otherNote = '';  // 默认空,不再自动塞 variant 信息(那些去 lineNotes 了)
   }
 
   body.innerHTML = `
@@ -1000,8 +1032,8 @@ function renderPoForm() {
         <input type="text" id="poFormBoxNote" class="form-control" value="${escapeHtml(autoNote)}" placeholder="自动生成">
       </div>
       <div style="grid-column: 1/-1;">
-        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">其他备注 <span style="color:var(--text-tertiary); font-weight:normal;">(自动提取尺寸/色温/材质，可编辑)</span></label>
-        <textarea id="poFormNote" class="form-control" rows="5" placeholder="特殊要求、加急、配件…" oninput="PO_FORM_STATE.otherNote = this.value; PO_FORM_STATE.otherNoteManuallyEdited = true;">${escapeHtml(PO_FORM_STATE.otherNote || '')}</textarea>
+        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">全单备注 <span style="color:var(--text-tertiary); font-weight:normal;">(可选 · 适用于整张 PO 的说明,比如"全部本周必出"。<b>per-line 细节请填到上面每行的「📝 本行备注」</b>)</span></label>
+        <textarea id="poFormNote" class="form-control" rows="2" placeholder="可空。整张 PO 的通用说明..." oninput="PO_FORM_STATE.otherNote = this.value; PO_FORM_STATE.otherNoteManuallyEdited = true;">${escapeHtml(PO_FORM_STATE.otherNote || '')}</textarea>
       </div>
     </div>
 
@@ -1031,6 +1063,15 @@ function renderPoForm() {
 function poFormToggleItem(liid, checked) {
   PO_FORM_STATE.lineItemSelections[liid].checked = checked;
   renderPoForm();
+}
+// V5-W3-2026-05-26: per-line 备注 setter (跟单编辑某行备注时调用)
+//   不调 renderPoForm()(避免每输一个字符就重渲染丢焦点)
+//   标记 lineNotesManuallyEdited[liid] 防止自动逻辑覆盖
+function poFormSetLineNote(liid, val) {
+  PO_FORM_STATE.lineNotes = PO_FORM_STATE.lineNotes || {};
+  PO_FORM_STATE.lineNotesManuallyEdited = PO_FORM_STATE.lineNotesManuallyEdited || {};
+  PO_FORM_STATE.lineNotes[liid] = val;
+  PO_FORM_STATE.lineNotesManuallyEdited[liid] = true;
 }
 function poFormSetQty(liid, val) {
   PO_FORM_STATE.lineItemSelections[liid].qty = parseInt(val) || 0;
@@ -1403,6 +1444,11 @@ async function poFormDoSave(groups, common) {
     const allInserts = [];
     const allLineItemUpdates = JSON.parse(JSON.stringify(so.line_items));  // 深拷
 
+    // V5-W3-2026-05-26: 在 PO 层面计算电气标准(从销售订单的国家)
+    // 后续每个 liData 都会带上这个 standard(per-line 字段,future 合箱时可不同)
+    const _coCode = (so.shipping_address && (so.shipping_address.country_code || so.shipping_address.country)) || so.shipping_country || '';
+    const _poStandard = getElectricalStandard(_coCode, so.shipping_address?.country || so.shipping_country) || '';
+
     for (const g of groups) {
       // 生成 PO 编号
       const { data: poNum, error: poNumErr } = await sb.rpc('generate_po_number');
@@ -1425,6 +1471,9 @@ async function poFormDoSave(groups, common) {
           price: Number(sel.price),
           subtotal: Number(sel.qty) * Number(sel.price),
           edited: !!(sel.customSku || sel.customTitleCn || sel.customImageUrl),
+          // V5-W3-2026-05-26: per-line 电气标准 + 备注
+          electrical_standard: _poStandard,
+          line_note: (PO_FORM_STATE.lineNotes && PO_FORM_STATE.lineNotes[liid]) || '',
         };
       });
       // 把自定义产品行追加到 liData
@@ -1440,6 +1489,9 @@ async function poFormDoSave(groups, common) {
           price: Number(cl.price),
           subtotal: Number(cl.qty) * Number(cl.price),
           is_custom: true,
+          // V5-W3-2026-05-26: 自定义行也带上电气标准(默认跟订单走)+ 空 line_note(跟单填)
+          electrical_standard: _poStandard,
+          line_note: cl.note || '',
         });
       });
       const totalAmount = liData.reduce((s, x) => s + x.subtotal, 0);
@@ -2218,9 +2270,10 @@ async function renderPo() {
     PO_LIST = data || [];
 
     // 预加载相关销售单的 shopify_order_id + shop_domain（用于点击销售单号跳转 Shopify 后台）
+    // V5-W3-2026-05-26: 多取 shipping_address(老 PO 打印时兜底算电气标准用)
     const salesOrderIds = [...new Set(PO_LIST.map(p => p.sales_order_id).filter(Boolean))];
     if (salesOrderIds.length > 0) {
-      const { data: sos } = await sb.from('shopify_orders').select('id, shopify_order_id, shop_domain').in('id', salesOrderIds);
+      const { data: sos } = await sb.from('shopify_orders').select('id, shopify_order_id, shop_domain, shipping_address').in('id', salesOrderIds);
       PO_SALES_ORDERS_MAP = {};
       (sos || []).forEach(o => { PO_SALES_ORDERS_MAP[o.id] = o; });
     } else {
@@ -3240,6 +3293,18 @@ function poOpenPrint(poId) {
   const items = po.line_items || [];
   const totalQty = items.reduce((s,x) => s + (x.qty||0), 0);
   const totalAmount = items.reduce((s,x) => s + (x.subtotal||0), 0);
+
+  // V5-W3-2026-05-26: 老 PO 没有 line.electrical_standard 字段,从关联销售单兜底计算一个 PO-level standard
+  // (新 PO 每行都已经存了 electrical_standard,优先用 line item 自己的)
+  let _lookupStd = '';
+  try {
+    const soInfo = (typeof PO_SALES_ORDERS_MAP !== 'undefined') ? (PO_SALES_ORDERS_MAP[po.sales_order_id] || {}) : {};
+    const shipping = soInfo.shipping_address || {};
+    const co = shipping.country_code || shipping.country || '';
+    if (co && typeof getElectricalStandard === 'function') {
+      _lookupStd = getElectricalStandard(co, shipping.country || '') || '';
+    }
+  } catch (e) { console.warn('[poOpenPrint] 电气标准兜底查询失败:', e); }
   
   // V4-2026-05-24: 打印版同样过滤 SKU(防发给供应商泄露)
   function _stripSkus(text) {
@@ -3275,49 +3340,52 @@ function poOpenPrint(poId) {
       <!-- 产品表格 -->
       <table>
         <thead><tr>
-          <th width="32" style="text-align:center;">#</th>
-          <th width="66">图片</th>
+          <th width="28" style="text-align:center;">#</th>
+          <th width="60">图片</th>
           <th>产品规格</th>
-          <th width="56" style="text-align:center;">数量</th>
-          <th width="80" style="text-align:right;">单价</th>
-          <th width="92" style="text-align:right;">小计</th>
+          <th width="70" style="text-align:center; background:#fef9f3;">下单标准</th>
+          <th width="44" style="text-align:center;">数量</th>
+          <th width="68" style="text-align:right;">单价</th>
+          <th width="76" style="text-align:right;">小计</th>
+          <th width="110" style="background:#fffdf7;">备注</th>
         </tr></thead>
         <tbody>
           ${items.map((li, i) => {
             const cleanTitle = _stripSkus(li.title_cn || '');
             const rawSpecs = extractVariantInfo(li.variant || '');
             const cleanSpecs = _stripSkus(rawSpecs);
+            // V5-W3-2026-05-26: per-line 电气标准 + 备注(优先用 line_item 自己的字段,fallback 到 PO-level)
+            const lineStd = li.electrical_standard || _lookupStd || '';
+            const lineNote = li.line_note || '';
             return `
             <tr>
               <td style="text-align:center;">${i+1}</td>
               <td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}">` : '<span style="color:#aaa;">—</span>'}</td>
               <td>${cleanTitle ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(cleanTitle)}</div>` : ''}${cleanSpecs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(cleanSpecs)}</div>` : (cleanTitle ? '' : '<span style="color:#888;">—</span>')}</td>
+              <td style="text-align:center; background:#fef9f3; padding:4px 3px; vertical-align:middle; word-break:keep-all;">${lineStd ? `<b style="color:#c2410c; font-family:monospace; font-size:11px; font-weight:600; line-height:1.3; display:inline-block;">${escapeHtml(lineStd)}</b>` : '<span style="color:#aaa;">—</span>'}</td>
               <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px; display:inline-block;">${li.qty}</span>` : li.qty}</td>
               <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
               <td style="text-align:right; font-family:monospace; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
+              <td style="background:#fffdf7; font-size:10.5px; color:#444; vertical-align:top; padding:5px 7px; white-space:pre-wrap; line-height:1.4;">${lineNote ? escapeHtml(lineNote) : '<span style="color:#bbb; font-style:italic;">(无)</span>'}</td>
             </tr>`;
           }).join('')}
           <tr class="total-row">
             <td colspan="3" style="text-align:right;">合 计</td>
+            <td style="background:#fef9f3;"></td>
             <td style="text-align:center;">${totalQty}</td>
             <td></td>
             <td style="text-align:right; font-family:monospace; color:#dc2626;">¥ ${totalAmount.toFixed(2)}</td>
+            <td style="background:#fffdf7;"></td>
           </tr>
         </tbody>
       </table>
-      <!-- V5-W3-2026-05-26 恢复:其他备注(po.note)显示 — 上次"已去除"是误删,跟单填的特殊要求/细节不能在打印件里丢失 -->
-      ${po.note ? `
-      <div style="background:#fffbeb; border:1px solid #fde68a; padding:10px 14px; margin-top:8px; border-radius:6px;">
-        <div style="display:flex; align-items:flex-start; gap:10px;">
-          <span style="font-weight:700; color:#b45309; font-size:13px; white-space:nowrap; flex-shrink:0;">📝 其他备注：</span>
-          <div style="flex:1; color:#78350f; white-space:pre-wrap; word-break:break-word; font-size:12.5px; line-height:1.55;">${escapeHtml(po.note)}</div>
-        </div>
-      </div>` : ''}
+      <!-- V5-W3-2026-05-26: 移除黄色"其他备注"框(内容已并入备注列 per-line)
+           只保留红框 订单备注(纸箱用),并简化为只显示销售单号 -->
       <!-- 订单备注：紧贴合计行下方，独占整行 -->
       <div style="background:#fff5f5; border:1px solid #fecaca; padding:12px 14px; margin-top:8px; border-radius:6px;">
         <div style="display:flex; align-items:flex-start; gap:10px;">
           <span style="font-weight:700; color:#dc2626; font-size:13px; white-space:nowrap; flex-shrink:0;">⚠ 订单备注（请写在纸箱上）：</span>
-          <div style="flex:1; color:#7f1d1d; font-weight:600; white-space:pre-wrap; word-break:break-all;">${escapeHtml(po.box_note || '—')}</div>
+          <div style="flex:1; color:#7f1d1d; font-weight:600; white-space:pre-wrap; word-break:break-all; font-family:monospace; font-size:14px;">${escapeHtml(po.box_note || '—')}</div>
         </div>
       </div>
     </div>
