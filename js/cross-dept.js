@@ -55,6 +55,23 @@ const CDM_OWNER_ROLES = {
   designer: { label: '设计师', color: '#ea580c' },
 };
 
+// V22-CY: 内置 13 个网站预设(避免员工拼写不一致导致自动派单失效)
+const SHOPS_PRESET = [
+  { id: 'vakkerlight',    label: 'Vakkerlight',         category: '独立站' },
+  { id: 'docos',          label: 'Docos.us',            category: '独立站' },
+  { id: 'mooijane',       label: 'Mooijane',            category: '独立站' },
+  { id: 'mooiehome',      label: 'Mooiehome',           category: '独立站' },
+  { id: 'radilum',        label: 'Radilum',             category: '独立站' },
+  { id: 'mooielight',     label: 'Mooielight',          category: '独立站' },
+  { id: 'dekorfine',      label: 'Dekorfine',           category: '独立站' },
+  { id: 'pinlighting',    label: 'Pinlighting',         category: '独立站' },
+  { id: 'lumioshine',     label: 'Lumioshine',          category: '独立站' },
+  { id: 'rayonshine',     label: 'Rayonshine',          category: '独立站' },
+  { id: 'alibaba',        label: '阿里巴巴国际站',         category: '平台' },
+  { id: 'radilum-inc',    label: 'Radilum INC',         category: '实体公司' },
+  { id: 'other',          label: '其他(手填备注)',       category: '其他' },
+];
+
 // ─────────────── 状态 ───────────────
 let CDM_MESSAGES = [];
 let SHOP_OWNERS = [];
@@ -215,11 +232,52 @@ function cdmHandleRealtimeChange(payload) {
     if (payload.new.to_system === 'po' && payload.new.from_user_id !== me.id) cdmShowNotification(payload.new);
   } else if (payload.eventType === 'UPDATE') {
     const idx = CDM_MESSAGES.findIndex(m => m.id === payload.new.id);
+    const oldRow = idx >= 0 ? CDM_MESSAGES[idx] : (payload.old || null);
     if (idx >= 0) CDM_MESSAGES[idx] = payload.new;
     else CDM_MESSAGES.unshift(payload.new);
     cdmRender(); cdmUpdateHeaderBadge();
     // 如果详情正打开,刷新
     if (CDM_CURRENT_DETAIL_ID === payload.new.id) cdmRenderDetail(payload.new);
+    // v22-CW: 别人完成我发出的工单 → owner 收到桌面通知
+    const wasNotDone = oldRow && oldRow.status !== 'done';
+    const nowDone = payload.new.status === 'done';
+    const iAmOwner = (payload.new.from_system === 'po' && payload.new.from_user_id === me.id);
+    const someoneElseCompleted = (payload.new.completed_by_id && payload.new.completed_by_id !== me.id);
+    if (wasNotDone && nowDone && iAmOwner && someoneElseCompleted && CDM_NOTIFICATION_PERMISSION) {
+      try {
+        const completer = payload.new.completed_by_name || payload.new.completed_by_id || '对方';
+        const n = new Notification(`✅ 你的工单已完成`, {
+          body: `「${payload.new.title || '(无标题)'}」· 由 ${completer} 完成`,
+          tag: 'done-' + payload.new.id,
+        });
+        n.onclick = () => {
+          try { window.focus(); } catch(_) {}
+          if (typeof switchTab === 'function') switchTab('cross_dept');
+          setTimeout(() => cdmOpenDetail(payload.new.id), 250);
+          n.close();
+        };
+      } catch (e) {}
+    }
+    // v22-CW: 主管分派工单给我 → 我收到桌面通知
+    const wasNotAssignedToMe = !oldRow || oldRow.assigned_to_id !== me.id;
+    const nowAssignedToMe = payload.new.assigned_to_id === me.id;
+    const assignedBySomeoneElse = (payload.new.assigned_by_id && payload.new.assigned_by_id !== me.id);
+    if (wasNotAssignedToMe && nowAssignedToMe && assignedBySomeoneElse && CDM_NOTIFICATION_PERMISSION) {
+      try {
+        const assigner = payload.new.assigned_by_name || payload.new.assigned_by_id || '主管';
+        const n = new Notification(`📌 工单分派给你了`, {
+          body: `「${payload.new.title || '(无标题)'}」· 由 ${assigner} 分派`,
+          tag: 'assigned-' + payload.new.id,
+          requireInteraction: true,
+        });
+        n.onclick = () => {
+          try { window.focus(); } catch(_) {}
+          if (typeof switchTab === 'function') switchTab('cross_dept');
+          setTimeout(() => cdmOpenDetail(payload.new.id), 250);
+          n.close();
+        };
+      } catch (e) {}
+    }
   } else if (payload.eventType === 'DELETE') {
     CDM_MESSAGES = CDM_MESSAGES.filter(m => m.id !== payload.old.id);
     cdmRender(); cdmUpdateHeaderBadge();
@@ -585,6 +643,11 @@ function cdmOpenNewModal(preset = {}) {
   document.getElementById('cdmNewRelRef').value = preset.related_ref || '';
   cdmPopulateShopDropdown();
   document.getElementById('cdmNewRelatedShop').value = preset.related_shop || '';
+  // V22-CY: 清空自定义网站名 + 隐藏框
+  const custom = document.getElementById('cdmNewCustomShopName');
+  const customWrap = document.getElementById('cdmNewCustomShopWrap');
+  if (custom) custom.value = '';
+  if (customWrap) customWrap.style.display = 'none';
   cdmUpdateSuggestedReceiver();
   modal.classList.add('show');
 }
@@ -593,21 +656,35 @@ function cdmCloseNewModal() { document.getElementById('cdmNewModal')?.classList.
 function cdmPopulateShopDropdown() {
   const el = document.getElementById('cdmNewRelatedShop');
   if (!el) return;
-  const shops = Array.from(new Set((SHOP_OWNERS || []).map(s => s.shopName))).sort();
-  el.innerHTML = `<option value="">— 不关联 —</option>` + shops.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  // V22-CY: 用 SHOPS_PRESET 而不是从 shop_owners 提取(避免拼写不一致)
+  const groups = ['独立站', '平台', '实体公司'];
+  const groupIcons = { '独立站': '📦', '平台': '🛒', '实体公司': '🏢' };
+  el.innerHTML = `<option value="">— 不关联(通用工单)—</option>` +
+    groups.map(g => `
+      <optgroup label="${groupIcons[g] || ''} ${g}">
+        ${SHOPS_PRESET.filter(s => s.category === g).map(s => `<option value="${escapeHtml(s.label)}">${escapeHtml(s.label)}</option>`).join('')}
+      </optgroup>
+    `).join('') +
+    `<option value="__other__">📝 其他(手填备注)</option>`;
 }
 function cdmUpdateSuggestedReceiver() {
   const shop = document.getElementById('cdmNewRelatedShop')?.value || '';
   const toSys = document.getElementById('cdmNewToSystem')?.value || '';
   const hintEl = document.getElementById('cdmSuggestedReceiverHint');
+  const customWrap = document.getElementById('cdmNewCustomShopWrap');
+  // V22-CY: "其他"时显示手填框
+  if (customWrap) customWrap.style.display = (shop === '__other__') ? 'block' : 'none';
+
   let suggestedUserId = null;
   if (hintEl) {
-    if (!shop || !toSys) {
+    if (shop === '__other__') {
+      hintEl.innerHTML = '<span style="color:#b45309; font-size:11.5px;">⚠ 其他网站 · 不自动派单 · 请手动指定接收人</span>';
+    } else if (!shop || !toSys) {
       hintEl.innerHTML = '<span style="color:var(--text-tertiary); font-size:11.5px;">选了「关联网站」+「发给部门」后会自动建议负责人</span>';
     } else {
       const candidates = SHOP_OWNERS.filter(s => s.shopName === shop && s.system === toSys);
       if (candidates.length === 0) {
-        hintEl.innerHTML = '<span style="color:var(--text-tertiary); font-size:11.5px;">该部门此网站还没维护负责人</span>';
+        hintEl.innerHTML = '<span style="color:var(--text-tertiary); font-size:11.5px;">该部门此网站还没维护负责人 · 主管去「🌐 店铺负责人」添加</span>';
       } else {
         const primary = candidates.find(c => c.role === 'primary') || candidates.find(c => c.role === 'manager') || candidates[0];
         suggestedUserId = primary.userId;
@@ -674,14 +751,20 @@ async function cdmSubmitNew() {
   const body = document.getElementById('cdmNewBody').value.trim();
   const relT = document.getElementById('cdmNewRelType').value;
   const relR = document.getElementById('cdmNewRelRef').value.trim();
-  const relShop = document.getElementById('cdmNewRelatedShop').value;
+  let relShop = document.getElementById('cdmNewRelatedShop').value;
+  // V22-CY: "其他"时取自定义输入框
+  if (relShop === '__other__') {
+    relShop = (document.getElementById('cdmNewCustomShopName')?.value || '').trim() || null;
+  } else if (!relShop) {
+    relShop = null;
+  }
   if (!toSys) { toast('请选择接收部门', 'err'); return; }
   if (toSys === 'po') { toast('不能发给自己部门', 'err'); return; }
   if (!title) { toast('请填标题', 'err'); return; }
 
-  // 自动建议的接收人(如有)
+  // 自动建议的接收人(如有)— "其他"网站跳过自动派
   let toUserId = null, toUserName = null;
-  if (relShop && toSys) {
+  if (relShop && toSys && document.getElementById('cdmNewRelatedShop').value !== '__other__') {
     const candidates = SHOP_OWNERS.filter(s => s.shopName === relShop && s.system === toSys);
     const primary = candidates.find(c => c.role === 'primary') || candidates.find(c => c.role === 'manager') || candidates[0];
     if (primary) { toUserId = primary.userId; toUserName = primary.userName; }
@@ -998,9 +1081,21 @@ function cdmRenderShopOwnersList() {
       💡 维护本部门(<b style="color:#2563eb;">📋 跟单</b>)员工与网站的负责关系 · 三方共享 · 只能编辑本部门记录
     </div>
     <div style="background:var(--bg-elevated); padding:12px 14px; border-radius:8px; margin-bottom:18px;">
-      <div style="font-weight:600; font-size:13px; margin-bottom:8px; color:var(--text-primary);">➕ 新增负责人</div>
+      <div style="font-weight:600; font-size:13px; margin-bottom:8px; color:var(--text-primary);">➕ 新增负责人 <span style="font-size:11px; color:var(--text-tertiary); font-weight:400;">· 网站从预设列表选(避免拼写不一致)</span></div>
       <div style="display:grid; grid-template-columns: 2fr 2fr 1fr 2fr auto; gap:8px; align-items:center;">
-        <input id="cdmOwnerShopName" placeholder="网站名(如 Vakkerlight)" style="padding:7px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
+        <select id="cdmOwnerShopName" onchange="cdmOnOwnerShopChange()" style="padding:7px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
+          <option value="">— 选择网站 —</option>
+          <optgroup label="📦 独立站">
+            ${SHOPS_PRESET.filter(s => s.category === '独立站').map(s => `<option value="${escapeHtml(s.label)}">${escapeHtml(s.label)}</option>`).join('')}
+          </optgroup>
+          <optgroup label="🛒 平台">
+            ${SHOPS_PRESET.filter(s => s.category === '平台').map(s => `<option value="${escapeHtml(s.label)}">${escapeHtml(s.label)}</option>`).join('')}
+          </optgroup>
+          <optgroup label="🏢 实体公司">
+            ${SHOPS_PRESET.filter(s => s.category === '实体公司').map(s => `<option value="${escapeHtml(s.label)}">${escapeHtml(s.label)}</option>`).join('')}
+          </optgroup>
+          <option value="__other__">📝 其他(手填)</option>
+        </select>
         <select id="cdmOwnerUser" style="padding:7px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
           <option value="">-- 选员工 --</option>${userOpts}
         </select>
@@ -1009,6 +1104,10 @@ function cdmRenderShopOwnersList() {
         </select>
         <input id="cdmOwnerNotes" placeholder="备注(可选)" style="padding:7px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
         <button class="btn primary" onclick="cdmSaveOwnerFromForm()">+ 添加</button>
+      </div>
+      <div id="cdmOwnerCustomShopWrap" style="display:none; margin-top:8px;">
+        <input id="cdmOwnerCustomShopName" placeholder="输入网站名(选了「其他」时必填)" style="width:100%; padding:7px 10px; font-size:12.5px; border:1px solid #ea580c; border-radius:5px; background:rgba(234,88,12,0.05);">
+        <div style="font-size:10.5px; color:var(--text-tertiary); margin-top:2px;">⚠ 自由填写的网站名会被独立看待 · 拼写不一致会导致系统当成不同网站</div>
       </div>
     </div>
     <div style="font-weight:600; font-size:13px; margin-bottom:8px; color:var(--text-primary);">现有负责人 (按网站分组)</div>
@@ -1045,12 +1144,28 @@ function cdmRenderShopOwnersList() {
   `;
 }
 
+// V22-CY: 切换网站下拉显示/隐藏"其他"手填输入框
+function cdmOnOwnerShopChange() {
+  const sel = document.getElementById('cdmOwnerShopName');
+  const wrap = document.getElementById('cdmOwnerCustomShopWrap');
+  if (!sel || !wrap) return;
+  wrap.style.display = (sel.value === '__other__') ? 'block' : 'none';
+}
+
 async function cdmSaveOwnerFromForm() {
-  const shopName = document.getElementById('cdmOwnerShopName').value.trim();
+  const shopVal = document.getElementById('cdmOwnerShopName').value;
+  let shopName = shopVal;
+  // V22-CY: "其他"选项时用手填字段
+  if (shopVal === '__other__') {
+    const custom = (document.getElementById('cdmOwnerCustomShopName').value || '').trim();
+    if (!custom) { toast('选了「其他」请填写网站名', 'err'); return; }
+    shopName = custom;
+  } else if (!shopName) {
+    toast('请选择网站', 'err'); return;
+  }
   const userVal = document.getElementById('cdmOwnerUser').value;
   const role = document.getElementById('cdmOwnerRole').value;
   const notes = document.getElementById('cdmOwnerNotes').value.trim();
-  if (!shopName) { toast('请填网站名', 'err'); return; }
   if (!userVal) { toast('请选员工', 'err'); return; }
   const [userId, userName] = userVal.split('|');
   const row = {
@@ -1069,6 +1184,8 @@ async function cdmSaveOwnerFromForm() {
     if (error) throw error;
     toast('✓ 已添加');
     document.getElementById('cdmOwnerShopName').value = '';
+    document.getElementById('cdmOwnerCustomShopName').value = '';
+    document.getElementById('cdmOwnerCustomShopWrap').style.display = 'none';
     document.getElementById('cdmOwnerUser').value = '';
     document.getElementById('cdmOwnerNotes').value = '';
     await cdmLoadShopOwners();
