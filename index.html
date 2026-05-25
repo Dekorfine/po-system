@@ -20,28 +20,28 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525i"></script>
-<script src="js/utils.js?v=20260525i"></script>
+<script src="js/core.js?v=20260525k"></script>
+<script src="js/utils.js?v=20260525k"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525i"></script>
-<script src="js/issues.js?v=20260525i"></script>
+<script src="js/settings.js?v=20260525k"></script>
+<script src="js/issues.js?v=20260525k"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525i"></script>
-<script src="js/missing.js?v=20260525i"></script>
-<script src="js/orders.js?v=20260525i"></script>
-<script src="js/shopify.js?v=20260525i"></script>
-<script src="js/po.js?v=20260525i"></script>
+<script src="js/aftersales.js?v=20260525k"></script>
+<script src="js/missing.js?v=20260525k"></script>
+<script src="js/orders.js?v=20260525k"></script>
+<script src="js/shopify.js?v=20260525k"></script>
+<script src="js/po.js?v=20260525k"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script src="js/cross-dept.js?v=20260525i"></script>
+<script src="js/cross-dept.js?v=20260525k"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525i"></script>
-<script src="js/meetings.js?v=20260525i"></script>
-<script src="js/greeting.js?v=20260525i"></script>
-<script src="js/search.js?v=20260525i"></script>
+<script src="js/translator.js?v=20260525k"></script>
+<script src="js/meetings.js?v=20260525k"></script>
+<script src="js/greeting.js?v=20260525k"></script>
+<script src="js/search.js?v=20260525k"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -3427,6 +3427,146 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   .product-row > *:nth-child(n+4), .product-header > *:nth-child(n+4) { display: none; }
 }
 
+/* ============ V5-W3-2026-05-26: IDE 风格侧边栏 ============ */
+.side-tab-bar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 56px;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border-subtle);
+  z-index: 50;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 0 12px rgba(0,0,0,0.04);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.side-tab-bar::-webkit-scrollbar { width: 4px; }
+.side-tab-bar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.side-tab-bar-spacer {
+  height: 60px;
+  flex-shrink: 0;
+}
+.side-tab-item {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  cursor: pointer;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  position: relative;
+  transition: all 0.12s;
+  flex-shrink: 0;
+}
+.side-tab-item:hover {
+  background: var(--bg-elevated);
+  color: var(--accent);
+  transform: translateX(2px);
+}
+.side-tab-item.active {
+  background: rgba(37,99,235,0.12);
+  color: var(--accent);
+}
+.side-tab-item.active::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+.side-tab-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  background: #dc2626;
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg-card);
+}
+.side-tab-badge.zero { display: none; }
+.side-tab-tooltip {
+  position: absolute;
+  left: 100%;
+  margin-left: 12px;
+  background: #1c1917;
+  color: white;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all 0.12s;
+  z-index: 100;
+}
+.side-tab-item:hover .side-tab-tooltip {
+  opacity: 1;
+  transform: translateX(0);
+}
+.side-tab-divider {
+  width: 32px;
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 0;
+  flex-shrink: 0;
+}
+/* 当 sidebar 显示时,主内容区往右挪 */
+body.has-side-tabs #mainApp { padding-left: 56px; }
+/* 当 tab 被指定为 'side' 时,从顶栏隐藏 */
+.tab-nav .tab-item[data-zone="side"] { display: none; }
+
+/* 布局自定义弹窗 */
+.tab-layout-modal {
+  max-width: 560px; width: 90%; max-height: 80vh;
+  background: var(--bg-card); border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  display: flex; flex-direction: column;
+}
+.tab-layout-modal h3 { margin: 0; padding: 14px 18px; border-bottom: 1px solid var(--border-subtle); font-size: 15px; }
+.tab-layout-body { padding: 12px 18px; overflow-y: auto; flex: 1; }
+.tab-layout-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 6px;
+  margin-bottom: 3px;
+}
+.tab-layout-row:hover { background: var(--bg-elevated); }
+.tab-layout-row .label { flex: 1; font-size: 13px; }
+.tab-layout-row .icon { font-size: 18px; width: 28px; text-align: center; }
+.tab-layout-toggle {
+  display: inline-flex; gap: 4px; padding: 2px;
+  background: var(--bg-elevated); border-radius: 6px;
+}
+.tab-layout-toggle button {
+  padding: 4px 12px; font-size: 11.5px; font-weight: 500;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-secondary); border-radius: 4px;
+}
+.tab-layout-toggle button.active {
+  background: var(--bg-card); color: var(--text-primary);
+  box-shadow: var(--shadow-sm); font-weight: 600;
+}
+.tab-layout-foot { padding: 12px 18px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; }
+
 /* ============ V5-W3-2026-05-26: 跨部门协作模块 CSS ============ */
 .cdm-header-badge-wrap {
   position: relative;
@@ -3641,6 +3781,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
         <span class="sync-label">已同步</span>
       </span>
       <button class="btn ghost" onclick="openTrash()" title="回收站">🗑</button>
+      <button class="btn ghost" onclick="openTabLayoutModal()" title="自定义工作台布局(选哪些 tab 放顶部/哪些放侧栏)">📐</button>
       <button class="btn ghost" onclick="openSettings()">⚙</button>
       <button class="btn ghost" onclick="exportCurrentTab()">⬇ Excel</button>
     </div>
@@ -3664,6 +3805,9 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="tab-item" data-tab="performance" onclick="switchTab('performance')">📊 绩效 <span class="badge zero" id="badgePerformance">0</span><a href="?tab=performance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
   </div>
 </div>
+
+<!-- V5-W3-2026-05-26: IDE 风格侧边栏(less-used tab,图标 only) — 由 JS 动态填充 -->
+<aside id="sideTabBar" class="side-tab-bar" style="display:none;"></aside>
 
 <!-- ============ TAB 1: 催单 ============ -->
 <div class="tab-content active" data-tab="orders">
@@ -4255,6 +4399,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
           <span style="font-size: 12px; color: var(--text-secondary);">已选 <b id="salesSelectedCount" style="color:var(--accent); font-size: 13px;">0</b> 个</span>
           <span style="flex: 1;"></span>
           <button class="btn small" id="batchApproveBtn" onclick="shopifyBatchApprove()" disabled title="把所选的「待审核」推到「待处理」">✓ 批量审核</button>
+          <button class="btn small" id="batchOpenPoBtn" onclick="shopifyBatchOpenPo()" disabled title="把所选订单批量开成采购单(同一供应商,自动按国家拆 PO)" style="background:rgba(37,99,235,0.08); color:var(--accent); font-weight:600;">📦 批量开 PO</button>
           <button class="btn small" id="batchDoneBtn" onclick="shopifyBatchMarkDone()" disabled title="批量标记为已完成">✅ 批量完成</button>
           <button class="btn small danger" id="batchCancelBtn" onclick="shopifyBatchCancel()" disabled title="批量取消订单">⊘ 批量取消</button>
           <span style="font-size: 12px; color: var(--text-tertiary);">|</span>
@@ -4603,6 +4748,42 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     </div>
     <div class="cdm-modal-body" id="cdmDetailBody">
       <!-- 由 cdmRenderDetail() 动态填充 -->
+    </div>
+  </div>
+</div>
+
+<!-- ============ V5-W3-2026-05-26: 销售单批量开 PO Modal ============ -->
+<div id="batchPoModal" class="modal" style="display:none; max-width:1100px;">
+  <div class="modal-head" style="padding:14px 18px; border-bottom:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
+    <h3 style="margin:0; font-size:15px;">📦 批量开 PO · 一次性给同一供应商下单</h3>
+    <button class="cdm-modal-close" onclick="closeBatchPoModal()">✕</button>
+  </div>
+  <div class="modal-body" id="batchPoBody" style="padding:16px 18px; max-height:75vh; overflow-y:auto;">
+    <!-- 由 renderBatchPoModal() 动态填充 -->
+  </div>
+  <div class="modal-foot" style="padding:12px 18px; border-top:1px solid var(--border-subtle); display:flex; justify-content:flex-end; gap:8px;">
+    <button class="btn" onclick="closeBatchPoModal()">取消</button>
+    <button class="btn primary" onclick="batchPoSubmit()">🚀 生成 PO</button>
+  </div>
+</div>
+
+<!-- ============ V5-W3-2026-05-26: 工作台布局自定义 Modal ============ -->
+<div class="modal-bg" id="tabLayoutModal">
+  <div class="tab-layout-modal">
+    <h3>📐 自定义工作台布局</h3>
+    <div class="tab-layout-body">
+      <div style="font-size:12px; color:var(--text-secondary); margin-bottom:12px; padding:8px 12px; background:rgba(37,99,235,0.06); border-left:3px solid var(--accent); border-radius:4px;">
+        💡 <b>「顶部」</b> 是常用的 — 完整 tab(图标+文字+徽章)显示在页头
+        <br>💡 <b>「侧栏」</b> 是不常用的 — 只显示图标在左侧,鼠标悬停看名称
+      </div>
+      <div id="tabLayoutList"></div>
+    </div>
+    <div class="tab-layout-foot">
+      <button class="btn" onclick="resetTabLayout()">↺ 恢复默认</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" onclick="closeTabLayoutModal()">取消</button>
+        <button class="btn primary" onclick="saveTabLayout()">✓ 保存并应用</button>
+      </div>
     </div>
   </div>
 </div>
