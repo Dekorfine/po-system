@@ -206,7 +206,11 @@ function setupScreenshotHandlers() {
     dz.addEventListener('mouseenter', () => { _pasteTarget = cfg.target; });
   });
   
-  // 全局粘贴：自动按当前 modal 决定上传位置
+  // 全局粘贴：项目标准 paste 路由(2026-05-26 升级)
+  // 优先级:
+  //   1. activeElement 的 data-paste-target 属性 (推荐 · 给 textarea/input 加标记即可)
+  //   2. 鼠标 hover 的 drop zone _pasteTarget
+  //   3. 模态框默认 target (modalDefaults)
   document.addEventListener('paste', e => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -218,17 +222,30 @@ function setupScreenshotHandlers() {
     }
     if (!hasImage) return;
     
-    // 决定 target：优先用鼠标 hover 设置的 _pasteTarget，否则按当前 modal 自动判断
-    let target = _pasteTarget;
+    // 决定 target —— 三级优先级
+    let target = null;
+    
+    // 1. 当前焦点元素的 data-paste-target 属性
+    const active = document.activeElement;
+    if (active && active.dataset && active.dataset.pasteTarget) {
+      target = active.dataset.pasteTarget;
+    }
+    
+    // 2. 鼠标 hover 设置的 _pasteTarget
+    if (!target && _pasteTarget) {
+      target = _pasteTarget;
+    }
+    
+    // 3. 按当前 modal 自动判断默认 target
     if (!target) {
       const visibleModal = document.querySelector('.modal-bg.show');
       if (!visibleModal) return;
       const modalDefaults = {
-        orderModal: 'order_fu',           // 订单：默认进跟进区
+        orderModal: 'order_fu',
         aftersalesModal: 'after_fu',
-        issueModal: 'issue_fu',
-        missingModal: 'missing_orig',      // 找灯：进图片区
-        purchaseModal: 'purchase_orig',    // 采购：进图片区
+        issueModal: 'issue_orig',          // V22-CY+ 改:默认进描述区(更常用)
+        missingModal: 'missing_orig',
+        purchaseModal: 'purchase_orig',
         batchChaseModal: 'batch_chase',
       };
       target = modalDefaults[visibleModal.id];
@@ -243,7 +260,21 @@ function setupScreenshotHandlers() {
         if (f) files.push(f);
       }
     }
-    if (files.length > 0) handleFiles(files, target);
+    if (files.length > 0) {
+      // V22-CY+ 2026-05-26: 给用户即时反馈,知道粘贴被识别了
+      if (typeof toast === 'function') {
+        const targetLabels = {
+          issue_orig: '问题描述区',  issue_fu: '沟通记录',
+          order_orig: '订单描述',    order_fu: '订单跟进',
+          after_orig: '售后描述',    after_fu: '售后跟进',
+          missing_orig: '找灯描述',  missing_real: '找灯实物图',
+          purchase_orig: '采购描述',  batch_chase: '批量催单',
+        };
+        const label = targetLabels[target] || target;
+        toast(`📋 检测到剪贴板图片 · 上传到「${label}」...`, 'info', 2000);
+      }
+      handleFiles(files, target);
+    }
   });
 }
 
@@ -346,9 +377,17 @@ function attachScreenshot(dataURL, target) {
     _newScreenshots_fu.push(dataURL);
     renderTempThumbs('ismFuThumbs', _newScreenshots_fu, 'fu');
   } else if (target === 'issue_orig') {
-    // V22-CY+: 供应商问题主描述区的图片
-    persistCurrentIssue(it => { if (!it.screenshots) it.screenshots = []; it.screenshots.push(dataURL); }, true);
-    _renderIssueModal({ isDraft: false });
+    // V22-CY+ 2026-05-26: 供应商问题主描述区图片(支持 draft 和已保存两种状态)
+    if (typeof _issueDraft !== 'undefined' && _issueDraft && (typeof _currentItemId === 'undefined' || !_currentItemId)) {
+      // Draft 模式 — 写到 _issueDraft.screenshots
+      if (!_issueDraft.screenshots) _issueDraft.screenshots = [];
+      _issueDraft.screenshots.push(dataURL);
+      _renderIssueModal({ isDraft: true });
+    } else {
+      // 已保存模式 — 用 persistCurrentIssue 写
+      persistCurrentIssue(it => { if (!it.screenshots) it.screenshots = []; it.screenshots.push(dataURL); }, true);
+      _renderIssueModal({ isDraft: false });
+    }
   } else if (target === 'missing_orig') {
     const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
     if (m) {
