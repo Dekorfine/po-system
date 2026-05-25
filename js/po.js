@@ -1792,11 +1792,15 @@ function openSupplierEdit(id) {
     </div>
   `;
   document.getElementById('supplierEditModal').style.display = 'flex';
+  // V22-CY+ 2026-05-26: 注册 paste 支持(QR 收款码可粘贴)
+  _setupSupplierEditPaste();
 }
 
 function closeSupplierEdit() {
   document.getElementById('supplierEditModal').style.display = 'none';
   SUPPLIER_EDIT_ID = null;
+  // V22-CY+: 卸载 paste handler
+  _teardownSupplierEditPaste();
 }
 
 async function supplierSave() {
@@ -1866,6 +1870,13 @@ async function supplierSave() {
 async function supplierUploadImage(inputEl, hiddenId) {
   const file = inputEl.files && inputEl.files[0];
   if (!file) return;
+  await _supplierDoUploadFile(file, hiddenId);
+  inputEl.value = '';  // 重置 file input 以便再次选同名文件
+}
+
+// V22-CY+ 2026-05-26: 抽出文件→上传→更新预览的逻辑(给 paste 复用)
+async function _supplierDoUploadFile(file, hiddenId) {
+  if (!file.type.startsWith('image/')) { toast(`${file.name || '文件'} 不是图片`, 'err'); return; }
   try {
     toast('上传中...', 'info');
     const url = await uploadImageToStorage(file);
@@ -1873,11 +1884,10 @@ async function supplierUploadImage(inputEl, hiddenId) {
     if (hiddenInput) {
       hiddenInput.value = url;
       // 更新预览
-      const wrapper = inputEl.closest('.image-field-wrapper');
+      const wrapper = document.querySelector(`.image-field-wrapper[data-target="${hiddenId}"]`);
       if (wrapper) {
         const box = wrapper.querySelector('.image-preview-box');
         if (box) {
-          // 保留 file input
           const fileInput = box.querySelector('input[type=file]');
           box.innerHTML = `<img src="${escapeHtml(url)}" style="max-height:120px; max-width:100%;">`;
           if (fileInput) box.appendChild(fileInput);
@@ -1888,6 +1898,85 @@ async function supplierUploadImage(inputEl, hiddenId) {
   } catch (e) {
     toast('上传失败：' + (e.message || e), 'err');
   }
+}
+
+// V22-CY+ 2026-05-26: 供应商编辑 modal 的 paste 支持
+// 鼠标 hover 在哪个 wrapper 上 → 粘贴/拖拽就进那个字段
+let _SUPPLIER_PASTE_TARGET = null;
+let _supplierPasteHandler = null;
+
+function _setupSupplierEditPaste() {
+  const modal = document.getElementById('supplierEditModal');
+  if (!modal) return;
+  
+  // 给两个 wrapper 加 hover/drag 监听 + 视觉提示
+  const wrappers = modal.querySelectorAll('.image-field-wrapper[data-target]');
+  wrappers.forEach(w => {
+    const target = w.dataset.target;
+    if (!target) return;
+    // hover 时设为粘贴目标 + 视觉高亮
+    w.addEventListener('mouseenter', () => {
+      _SUPPLIER_PASTE_TARGET = target;
+      w.style.outline = '2px solid var(--accent, #2563eb)';
+      w.style.outlineOffset = '2px';
+    });
+    w.addEventListener('mouseleave', () => {
+      w.style.outline = '';
+      w.style.outlineOffset = '';
+    });
+    // 拖拽进入也设
+    w.addEventListener('dragover', e => {
+      e.preventDefault();
+      _SUPPLIER_PASTE_TARGET = target;
+      w.style.outline = '2px dashed var(--accent, #2563eb)';
+      w.style.background = 'rgba(37,99,235,0.05)';
+    });
+    w.addEventListener('dragleave', () => {
+      w.style.outline = '';
+      w.style.background = '';
+    });
+    w.addEventListener('drop', async e => {
+      e.preventDefault();
+      w.style.outline = '';
+      w.style.background = '';
+      const file = e.dataTransfer?.files?.[0];
+      if (file) await _supplierDoUploadFile(file, target);
+    });
+  });
+  
+  // 卸掉旧的(防止重复注册)
+  if (_supplierPasteHandler) {
+    document.removeEventListener('paste', _supplierPasteHandler);
+  }
+  
+  // 文档级 paste(只在 supplierEditModal 打开时生效)
+  _supplierPasteHandler = async (e) => {
+    if (modal.style.display !== 'flex') return;
+    const items = e.clipboardData?.items || [];
+    let imageFile = null;
+    for (const item of items) {
+      if (item.type?.startsWith('image/')) {
+        imageFile = item.getAsFile();
+        break;
+      }
+    }
+    if (!imageFile) return;
+    e.preventDefault();
+    // 默认进支付宝(如果 hover 未设置过)
+    const target = _SUPPLIER_PASTE_TARGET || 'seAlipayQrUrl';
+    const fieldLabel = target === 'seAlipayQrUrl' ? '支付宝收款码' : (target === 'seWechatQrUrl' ? '微信收款码' : target);
+    toast(`📋 检测到剪贴板图片 · 上传到「${fieldLabel}」...`, 'info', 2000);
+    await _supplierDoUploadFile(imageFile, target);
+  };
+  document.addEventListener('paste', _supplierPasteHandler);
+}
+
+function _teardownSupplierEditPaste() {
+  if (_supplierPasteHandler) {
+    document.removeEventListener('paste', _supplierPasteHandler);
+    _supplierPasteHandler = null;
+  }
+  _SUPPLIER_PASTE_TARGET = null;
 }
 
 // V4：主管审批/驳回供应商
