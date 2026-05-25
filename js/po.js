@@ -765,6 +765,9 @@ async function openPoForm(salesOrderId, selectedLineItemIds = null) {
     // lineNotesManuallyEdited: { [shopify_line_item_id]: true } — 跟单手动改过则不再自动覆盖
     lineNotes: {},
     lineNotesManuallyEdited: {},
+    // V5-W3-2026-05-26 BUG FIX: 跟单改过的 boxNote 不能在 renderPoForm 重渲时被冲掉
+    boxNote: '',
+    boxNoteManuallyEdited: false,
     invalidPoIds: new Set(), // 已取消/已驳回 PO 的 ID 集合（用于渲染时过滤显示）
     splitMode: !!selectedSet, // V4：是否是拆单模式（影响表单顶部提示）
     supplierHistory: supplierHistoryMap, // V5: 本订单 SKU 的历史供应商映射
@@ -933,6 +936,10 @@ function renderPoForm() {
   const countryCode = (so.shipping_address && (so.shipping_address.country_code || so.shipping_address.country)) || so.shipping_country || '';
   const standard = getElectricalStandard(countryCode, so.shipping_address?.country || so.shipping_country);
   const autoNote = `${so.shopify_order_number || ''}`;
+  // V5-W3-2026-05-26 BUG FIX:同步 autoNote 到 state(但跟单改过的不动)
+  if (!PO_FORM_STATE.boxNoteManuallyEdited) {
+    PO_FORM_STATE.boxNote = autoNote;
+  }
 
   // V5-W3-2026-05-26 per-line 备注自动生成：
   // - 每行独立生成,存到 PO_FORM_STATE.lineNotes[liid]
@@ -1029,7 +1036,8 @@ function renderPoForm() {
       </div>
       <div style="grid-column: 1/-1;">
         <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">订单备注 (会写在纸箱上，供应商对单用) *</label>
-        <input type="text" id="poFormBoxNote" class="form-control" value="${escapeHtml(autoNote)}" placeholder="自动生成">
+        <input type="text" id="poFormBoxNote" class="form-control" value="${escapeHtml(PO_FORM_STATE.boxNote || autoNote)}" placeholder="自动生成"
+          oninput="PO_FORM_STATE.boxNote = this.value; PO_FORM_STATE.boxNoteManuallyEdited = true;">
       </div>
       <div style="grid-column: 1/-1;">
         <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">全单备注 <span style="color:var(--text-tertiary); font-weight:normal;">(可选 · 适用于整张 PO 的说明,比如"全部本周必出"。<b>per-line 细节请填到上面每行的「📝 本行备注」</b>)</span></label>
