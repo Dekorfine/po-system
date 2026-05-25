@@ -20,26 +20,28 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525h"></script>
-<script src="js/utils.js?v=20260525h"></script>
+<script src="js/core.js?v=20260525i"></script>
+<script src="js/utils.js?v=20260525i"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525h"></script>
-<script src="js/issues.js?v=20260525h"></script>
+<script src="js/settings.js?v=20260525i"></script>
+<script src="js/issues.js?v=20260525i"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525h"></script>
-<script src="js/missing.js?v=20260525h"></script>
-<script src="js/orders.js?v=20260525h"></script>
-<script src="js/shopify.js?v=20260525h"></script>
-<script src="js/po.js?v=20260525h"></script>
+<script src="js/aftersales.js?v=20260525i"></script>
+<script src="js/missing.js?v=20260525i"></script>
+<script src="js/orders.js?v=20260525i"></script>
+<script src="js/shopify.js?v=20260525i"></script>
+<script src="js/po.js?v=20260525i"></script>
+<!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
+<script src="js/cross-dept.js?v=20260525i"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525h"></script>
-<script src="js/meetings.js?v=20260525h"></script>
-<script src="js/greeting.js?v=20260525h"></script>
-<script src="js/search.js?v=20260525h"></script>
+<script src="js/translator.js?v=20260525i"></script>
+<script src="js/meetings.js?v=20260525i"></script>
+<script src="js/greeting.js?v=20260525i"></script>
+<script src="js/search.js?v=20260525i"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -3425,6 +3427,139 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   .product-row > *:nth-child(n+4), .product-header > *:nth-child(n+4) { display: none; }
 }
 
+/* ============ V5-W3-2026-05-26: 跨部门协作模块 CSS ============ */
+.cdm-header-badge-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 16px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cdm-header-badge-wrap:hover { background: rgba(37,99,235,0.10); }
+.cdm-header-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: #dc2626;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg-card);
+}
+.cdm-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
+.cdm-header h2 { font-size: 18px; font-weight: 600; margin: 0; color: var(--text-primary); }
+.cdm-subtitle { font-size: 12px; color: var(--text-tertiary); margin-left: 8px; }
+.cdm-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.cdm-stat {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px 14px;
+  transition: all 0.15s;
+}
+.cdm-stat:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.cdm-stat-label { font-size: 11px; color: var(--text-tertiary); font-weight: 500; margin-bottom: 4px; }
+.cdm-stat-value { font-size: 24px; font-weight: 700; color: var(--text-primary); line-height: 1.1; }
+.cdm-stat-sub { font-size: 10.5px; color: var(--text-tertiary); margin-top: 3px; }
+.cdm-subtabs { display: flex; gap: 4px; border-bottom: 2px solid var(--border-subtle); margin-bottom: 12px; padding-bottom: 0; }
+.cdm-subtab {
+  background: transparent; border: none; padding: 8px 14px;
+  font-size: 13px; font-weight: 500;
+  color: var(--text-secondary); cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  border-radius: 4px 4px 0 0;
+  transition: all 0.15s;
+}
+.cdm-subtab:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.cdm-subtab.active { color: #2563eb; border-bottom-color: #2563eb; background: rgba(37,99,235,0.04); }
+.cdm-count { font-size: 11px; color: var(--text-tertiary); margin-left: 2px; }
+.cdm-unread-dot {
+  background: #dc2626; color: white; padding: 1px 6px;
+  border-radius: 8px; font-size: 10px; font-weight: 700;
+  margin-left: 4px;
+}
+.cdm-filters { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+.cdm-time-chips { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.cdm-time-chip {
+  display: inline-flex; align-items: center;
+  padding: 4px 10px; font-size: 11.5px; font-weight: 500;
+  background: var(--bg-elevated); color: var(--text-secondary);
+  border-radius: 12px; cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.12s;
+}
+.cdm-time-chip:hover { background: rgba(37,99,235,0.06); color: #2563eb; }
+.cdm-time-chip.active { background: #2563eb; color: white; }
+.cdm-filter-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cdm-filter-row input, .cdm-filter-row select {
+  padding: 6px 10px; font-size: 12.5px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--bg-card); color: var(--text-primary);
+  font-family: inherit;
+}
+.cdm-filter-row input { flex: 1; min-width: 220px; }
+.cdm-filter-row select { min-width: 110px; }
+.cdm-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.cdm-card:hover { border-color: #2563eb; box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.cdm-card.cdm-unread { background: rgba(37,99,235,0.035); border-color: rgba(37,99,235,0.3); }
+.cdm-chip { padding: 1px 7px; border-radius: 3px; font-size: 11px; font-weight: 500; display: inline-flex; align-items: center; }
+.cdm-unread-pulse {
+  display: inline-block; width: 8px; height: 8px;
+  background: #2563eb; border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 0 0 rgba(37,99,235,0.5);
+  animation: cdmPulse 1.6s infinite;
+}
+@keyframes cdmPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(37,99,235,0.5); }
+  70%  { box-shadow: 0 0 0 8px rgba(37,99,235,0); }
+  100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+}
+.cdm-modal { max-width: 640px; width: 92%; max-height: 86vh; display: flex; flex-direction: column; background: var(--bg-card); border-radius: 12px; box-shadow: var(--shadow-lg); }
+.cdm-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border-subtle); }
+.cdm-modal-head h3 { font-size: 15px; font-weight: 600; margin: 0; color: var(--text-primary); }
+.cdm-modal-close { background: transparent; border: none; font-size: 20px; color: var(--text-tertiary); cursor: pointer; padding: 0 4px; }
+.cdm-modal-body { padding: 16px 18px; overflow-y: auto; flex: 1; }
+.cdm-modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border-subtle); }
+.cdm-form-grid { display: grid; grid-template-columns: 110px 1fr; gap: 10px 14px; align-items: center; }
+.cdm-form-grid label { font-size: 12px; font-weight: 500; color: var(--text-secondary); text-align: right; }
+.cdm-form-grid label.req::after { content: ' *'; color: var(--danger); }
+.cdm-form-grid select, .cdm-form-grid input, .cdm-form-grid textarea {
+  padding: 7px 10px; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--bg-card); color: var(--text-primary);
+  font-family: inherit; width: 100%;
+}
+.cdm-form-grid textarea { resize: vertical; min-height: 70px; }
+
 </style>
 </head>
 <body>
@@ -3486,6 +3621,12 @@ textarea.form-control { resize: vertical; min-height: 70px; }
       </div>
     </div>
     <div class="header-actions">
+      <!-- V5-W3-2026-05-26: 跨部门未读消息徽章(全局长链接监听)-->
+      <a href="javascript:void(0)" id="cdmHeaderBadgeWrap" onclick="switchTab('cross_dept')"
+         class="cdm-header-badge-wrap" title="跨部门消息">
+        📨
+        <span id="cdmHeaderBadge" class="cdm-header-badge" style="display:none;">0</span>
+      </a>
       <div class="agent-pill" id="agentPill" onclick="handleLogout()" title="点击登出">
         <div class="avatar" id="curAvatar">?</div>
         <div class="name" id="curName">未登录</div>
@@ -3517,6 +3658,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     <div class="tab-item" data-tab="issues" onclick="switchTab('issues')">⚠ 供应商问题 <span class="badge zero" id="badgeIssues">0</span><a href="?tab=issues" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="finance" onclick="switchTab('finance')">✓ 财务收货 <span class="badge zero" id="badgeFinance">0</span><a href="?tab=finance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="products" onclick="switchTab('products')">📚 产品 <span class="badge zero" id="badgeProducts">0</span><a href="?tab=products" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="cross_dept" onclick="switchTab('cross_dept')">📨 跨部门 <span class="badge zero" id="badgeCrossDept">0</span><a href="?tab=cross_dept" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="consolidation" onclick="switchTab('consolidation')">🧊 合箱<a href="?tab=consolidation" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="analytics" onclick="switchTab('analytics')" id="tabAnalytics" style="display:none;">📈 数据<a href="?tab=analytics" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="performance" onclick="switchTab('performance')">📊 绩效 <span class="badge zero" id="badgePerformance">0</span><a href="?tab=performance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
@@ -4392,6 +4534,79 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   </div>
 </div>
 
+<!-- ============ V5-W3-2026-05-26: 跨部门协作 - 新建消息 Modal ============ -->
+<div class="modal-bg" id="cdmNewModal">
+  <div class="cdm-modal">
+    <div class="cdm-modal-head">
+      <h3>✏ 新建跨部门消息</h3>
+      <button class="cdm-modal-close" onclick="cdmCloseNewModal()">✕</button>
+    </div>
+    <div class="cdm-modal-body">
+      <div class="cdm-form-grid">
+        <label class="req">发给部门</label>
+        <select id="cdmNewToSystem">
+          <option value="">-- 选择接收部门 --</option>
+          <option value="design">🎨 美工部 (design)</option>
+          <option value="cs">💬 客服部 (cs)</option>
+        </select>
+
+        <label>分类</label>
+        <select id="cdmNewCategory">
+          <option value="general">💬 一般沟通</option>
+          <option value="website_fix">🔧 网站修正</option>
+          <option value="price_error">💰 价格错误</option>
+          <option value="new_product">✨ 新品上架</option>
+          <option value="aftersales">🛠 售后协调</option>
+        </select>
+
+        <label>优先级</label>
+        <select id="cdmNewPriority">
+          <option value="normal">一般</option>
+          <option value="urgent">🔥 紧急</option>
+          <option value="high">⚠ 重要</option>
+          <option value="low">低</option>
+        </select>
+
+        <label class="req">标题</label>
+        <input type="text" id="cdmNewTitle" placeholder="一句话说清是什么事(例如:Aurora-Floor 已下单 请上架)">
+
+        <label>正文</label>
+        <textarea id="cdmNewBody" rows="4" placeholder="详细说明(可空)..."></textarea>
+
+        <label>关联类型</label>
+        <select id="cdmNewRelType">
+          <option value="">无</option>
+          <option value="order">📦 订单</option>
+          <option value="product">🏷 产品</option>
+          <option value="review">⭐ 评论</option>
+          <option value="sales_log">📊 销售记录</option>
+          <option value="customer">👤 客户</option>
+        </select>
+
+        <label>关联引用</label>
+        <input type="text" id="cdmNewRelRef" placeholder="订单号 / SKU / URL...(可空)">
+      </div>
+    </div>
+    <div class="cdm-modal-foot">
+      <button class="btn" onclick="cdmCloseNewModal()">取消</button>
+      <button class="btn primary" onclick="cdmSubmitNew()">📤 发送</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ V5-W3-2026-05-26: 跨部门协作 - 详情 Modal ============ -->
+<div class="modal-bg" id="cdmDetailModal">
+  <div class="cdm-modal" style="max-width: 720px;">
+    <div class="cdm-modal-head">
+      <h3>📨 消息详情</h3>
+      <button class="cdm-modal-close" onclick="cdmCloseDetail()">✕</button>
+    </div>
+    <div class="cdm-modal-body" id="cdmDetailBody">
+      <!-- 由 cdmRenderDetail() 动态填充 -->
+    </div>
+  </div>
+</div>
+
 <script>
   // 监听合箱 iframe 发来的高度通知，自动调整 iframe 高度（消除内部滚动条）
   window.addEventListener('message', function(e) {
@@ -4439,6 +4654,84 @@ textarea.form-control { resize: vertical; min-height: 70px; }
     </div>
 
     <div id="analyticsBody" style="margin-top: 14px; min-height: 400px;"></div>
+  </div>
+</div>
+
+<!-- ============ V5-W3-2026-05-26: TAB 跨部门协作 ============ -->
+<div class="tab-content" data-tab="cross_dept">
+  <div class="section-block">
+    <!-- 头部 -->
+    <div class="cdm-header">
+      <div>
+        <h2 style="display:inline-block;">📨 跨部门协作</h2>
+        <span class="cdm-subtitle">与 🎨 美工 · 💬 客服 实时协作 · 自动同步</span>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn primary" onclick="cdmOpenNewModal()">✏ 新建消息</button>
+        <button class="btn ghost" onclick="cdmLoadMessages()" title="刷新">⟳</button>
+      </div>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="cdm-stats-grid" id="cdmStatsContainer"></div>
+
+    <!-- 收发件箱 sub-tabs -->
+    <div class="cdm-subtabs">
+      <button id="cdmTabInbox" class="cdm-subtab active" onclick="cdmSwitchTab('inbox')">📥 收件箱</button>
+      <button id="cdmTabOutbox" class="cdm-subtab" onclick="cdmSwitchTab('outbox')">📤 发件箱</button>
+      <button id="cdmTabAll" class="cdm-subtab" onclick="cdmSwitchTab('all')">📋 全部</button>
+    </div>
+
+    <!-- 筛选区:时间 chip + 4 下拉 + 搜索 -->
+    <div class="cdm-filters">
+      <div class="cdm-time-chips">
+        <span class="cdm-time-chip active" data-range="all"   onclick="cdmSetTimeRange('all', this)">全部</span>
+        <span class="cdm-time-chip"        data-range="today" onclick="cdmSetTimeRange('today', this)">今天</span>
+        <span class="cdm-time-chip"        data-range="3d"    onclick="cdmSetTimeRange('3d', this)">近 3 天</span>
+        <span class="cdm-time-chip"        data-range="7d"    onclick="cdmSetTimeRange('7d', this)">近 7 天</span>
+        <span class="cdm-time-chip"        data-range="30d"   onclick="cdmSetTimeRange('30d', this)">近 30 天</span>
+      </div>
+      <div class="cdm-filter-row">
+        <input id="cdmSearchInput" placeholder="🔍 搜索标题 / 正文 / 关联引用 / 对方姓名..." oninput="cdmOnSearchInput(this.value)">
+        <select id="cdmFilterStatus" onchange="cdmSetFilter('status', this.value)">
+          <option value="">所有状态</option>
+          <option value="pending">⏳ 待处理</option>
+          <option value="in_progress">🔄 处理中</option>
+          <option value="done">✅ 已完成</option>
+          <option value="cancelled">✕ 已取消</option>
+        </select>
+        <select id="cdmFilterPriority" onchange="cdmSetFilter('priority', this.value)">
+          <option value="">所有优先级</option>
+          <option value="urgent">🔥 紧急</option>
+          <option value="high">⚠ 重要</option>
+          <option value="normal">一般</option>
+          <option value="low">低</option>
+        </select>
+        <select id="cdmFilterCategory" onchange="cdmSetFilter('category', this.value)">
+          <option value="">所有分类</option>
+          <option value="general">💬 一般沟通</option>
+          <option value="website_fix">🔧 网站修正</option>
+          <option value="price_error">💰 价格错误</option>
+          <option value="new_product">✨ 新品上架</option>
+          <option value="aftersales">🛠 售后协调</option>
+        </select>
+        <select id="cdmFilterSystem" onchange="cdmSetFilter('system', this.value)">
+          <option value="">所有部门</option>
+          <option value="design">🎨 美工</option>
+          <option value="cs">💬 客服</option>
+        </select>
+        <button class="btn small" onclick="cdmResetFilters()" title="清除所有筛选">⊘ 清除</button>
+      </div>
+    </div>
+
+    <!-- 上分页 -->
+    <div id="cdmPaginationTop"></div>
+
+    <!-- 列表 -->
+    <div id="cdmListContainer"></div>
+
+    <!-- 下分页 -->
+    <div id="cdmPaginationBottom"></div>
   </div>
 </div>
 
