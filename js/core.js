@@ -313,6 +313,11 @@ const DATA = {
   // 订单
   getOrders(agent) { return this._cache.ordersByAgent[agent] || []; },
   saveOrders(agent, arr) {
+    // V5-2026-05-25: 切换视角下拦截
+    if (typeof IS_IMPERSONATING !== 'undefined' && IS_IMPERSONATING) {
+      if (typeof toast === 'function') toast('👁 切换视角下不能修改订单 · 请先切回原视角', 'err', 4000);
+      return;
+    }
     this._cache.ordersByAgent[agent] = arr;
     this._debounce('orders_' + agent, 250, () => fullSyncOrders(agent));
   },
@@ -320,6 +325,10 @@ const DATA = {
   // 售后
   getAftersales(agent) { return this._cache.aftersalesByAgent[agent] || []; },
   saveAftersales(agent, arr) {
+    if (typeof IS_IMPERSONATING !== 'undefined' && IS_IMPERSONATING) {
+      if (typeof toast === 'function') toast('👁 切换视角下不能修改售后 · 请先切回原视角', 'err', 4000);
+      return;
+    }
     this._cache.aftersalesByAgent[agent] = arr;
     this._debounce('after_' + agent, 250, () => fullSyncAftersales(agent));
   },
@@ -327,6 +336,10 @@ const DATA = {
   // 供应商问题
   getIssues(agent) { return this._cache.issuesByAgent[agent] || []; },
   saveIssues(agent, arr) {
+    if (typeof IS_IMPERSONATING !== 'undefined' && IS_IMPERSONATING) {
+      if (typeof toast === 'function') toast('👁 切换视角下不能修改供应商问题 · 请先切回原视角', 'err', 4000);
+      return;
+    }
     this._cache.issuesByAgent[agent] = arr;
     this._debounce('issues_' + agent, 250, () => fullSyncIssues(agent));
   },
@@ -334,6 +347,10 @@ const DATA = {
   // 找灯
   getMissingLights() { return this._cache.missingLights; },
   saveMissingLights(arr) {
+    if (typeof IS_IMPERSONATING !== 'undefined' && IS_IMPERSONATING) {
+      if (typeof toast === 'function') toast('👁 切换视角下不能修改找灯 · 请先切回原视角', 'err', 4000);
+      return;
+    }
     this._cache.missingLights = arr;
     this._debounce('missing', 250, () => fullSyncMissing());
   },
@@ -348,6 +365,10 @@ const DATA = {
     return all;
   },
   savePurchases(agent, arr) {
+    if (typeof IS_IMPERSONATING !== 'undefined' && IS_IMPERSONATING) {
+      if (typeof toast === 'function') toast('👁 切换视角下不能修改采购 · 请先切回原视角', 'err', 4000);
+      return;
+    }
     this._cache.purchasesByAgent[agent] = arr;
     this._debounce('purchases_' + agent, 250, () => fullSyncPurchases(agent));
   },
@@ -727,6 +748,14 @@ let CONFIG = DATA.getConfig();  // 空配置，bootstrap 后填充
 let CURRENT_AGENT = null;       // 字符串：当前账号姓名
 let IS_ADMIN = false;
 let IS_BOSS = false;            // V4-2026-05-24: 老板角色(比主管更高)
+
+// V5-2026-05-25: 视角切换(impersonation)系统
+// 老板可切换到任何账户视角；主管可切换到普通员工视角
+// 切换后处于"只读模式" — 不能改数据,避免误操作员工的数据
+let ORIGINAL_AGENT = null;      // 真实身份(登录时的)
+let ORIGINAL_IS_ADMIN = false;
+let ORIGINAL_IS_BOSS = false;
+let IS_IMPERSONATING = false;   // 是否处于切换视角状态
 let CURRENT_TAB = 'orders';     // orders | aftersales | issues | missing | purchases | performance
 let ORDERS = [];
 let AFTERSALES = [];
@@ -1584,6 +1613,12 @@ async function onAuthSuccess(session) {
   IS_BOSS = !!agent.isBoss;       // V4: 老板角色
   if (IS_BOSS) IS_ADMIN = true;   // 老板自动拥有主管权限
 
+  // V5-2026-05-25: 记录真实身份(切换视角时要能切回)
+  ORIGINAL_AGENT = CURRENT_AGENT;
+  ORIGINAL_IS_ADMIN = IS_ADMIN;
+  ORIGINAL_IS_BOSS = IS_BOSS;
+  IS_IMPERSONATING = false;
+
   // 主管可见"📈 数据" tab
   const tabAna = document.getElementById('tabAnalytics');
   if (tabAna) tabAna.style.display = IS_ADMIN ? '' : 'none';
@@ -1879,11 +1914,19 @@ function init() {
   // 已迁移到 bootstrap，此处空实现
 }
 
-function loginAs(name) {
+function loginAs(name, opts) {
+  opts = opts || {};
   const agent = CONFIG.agents.find(a => a.name === name);
   if (!agent) return;
   CURRENT_AGENT = name;
   IS_ADMIN = agent.isAdmin || false;
+  IS_BOSS = !!agent.isBoss;           // V5-2026-05-25: loginAs 也要处理 IS_BOSS
+  if (IS_BOSS) IS_ADMIN = true;       // 老板自动拥有主管权限
+
+  // V5-2026-05-25: 视角切换状态
+  IS_IMPERSONATING = !!opts.impersonating;
+  document.body.classList.toggle('impersonating-readonly', IS_IMPERSONATING);
+
   DATA.setCurrentAgent(name);
   
   // 主管可见"📈 数据" tab
@@ -1895,16 +1938,150 @@ function loginAs(name) {
   const mySites = agent.sites || [];
   const siteStr = mySites.length > 0 ? mySites.join(' / ') : '未设置';
   const sitesHTML = IS_ADMIN ? '' : `<span class="my-sites ${mySites.length > 0 ? 'has-sites' : ''}">📍 ${escapeHtml(siteStr)}</span>`;
-  document.getElementById('curName').innerHTML = (IS_ADMIN ? '<span class="admin-badge">主管</span>' : '') + escapeHtml(name) + sitesHTML;
+  // V5-2026-05-25: 老板加 👑 标识,主管加 主管 标识
+  const roleBadge = IS_BOSS ? '<span class="boss-badge">👑 老板</span>' : (IS_ADMIN ? '<span class="admin-badge">主管</span>' : '');
+  document.getElementById('curName').innerHTML = roleBadge + escapeHtml(name) + sitesHTML;
   document.getElementById('agentPill').classList.toggle('admin', IS_ADMIN);
   document.getElementById('ordersAdminNote').style.display = IS_ADMIN ? 'inline-flex' : 'none';
   document.getElementById('asAdminNote').style.display = IS_ADMIN ? 'inline-flex' : 'none';
   
+  // V5-2026-05-25: 视角切换按钮可见性(只有真实身份是老板或主管才显示)
+  const switchBtn = document.getElementById('agentSwitchBtn');
+  if (switchBtn) {
+    switchBtn.style.display = (ORIGINAL_IS_BOSS || ORIGINAL_IS_ADMIN) ? 'inline-flex' : 'none';
+  }
+
+  // V5-2026-05-25: 更新切换视角的 banner
+  updateImpersonationBanner();
+
   closeModal('agentModal');
   loadAllData();
   applyModuleVisibility();
   restoreLastTab();
   renderActiveTab();
+}
+
+// ============================================================
+// V5-2026-05-25: 视角切换(impersonation)系统
+//
+// 权限矩阵:
+//   👑 老板  → 可切换到所有人(老板/主管/普通员工)
+//   🛡 主管  → 可切换到普通员工(不能切到老板/其他主管)
+//   👤 员工  → 看不到切换按钮
+//
+// 切换后:
+//   - body 加 .impersonating-readonly class → CSS 禁用关键写操作按钮
+//   - 顶部显示橙色 banner 提示当前视角 + 切回原视角按钮
+//   - dbWriteGuard() 在所有数据保存前拦截,防止误操作员工数据
+// ============================================================
+function openAgentSwitchModal() {
+  if (!ORIGINAL_IS_BOSS && !ORIGINAL_IS_ADMIN) {
+    toast('您没有切换视角的权限', 'err');
+    return;
+  }
+  let targets = (CONFIG.agents || []).filter(a => a.name !== ORIGINAL_AGENT);
+  if (!ORIGINAL_IS_BOSS) {
+    // 主管:只能切到普通员工(非老板、非主管)
+    targets = targets.filter(a => !a.isBoss && !a.isAdmin);
+  }
+  // 老板:可切到所有人(已经过滤了自己)
+  
+  // 按角色排序:老板优先 > 主管 > 普通员工 → 名字
+  targets.sort((a, b) => {
+    const rankA = a.isBoss ? 0 : (a.isAdmin ? 1 : 2);
+    const rankB = b.isBoss ? 0 : (b.isAdmin ? 1 : 2);
+    if (rankA !== rankB) return rankA - rankB;
+    return a.name.localeCompare(b.name, 'zh-CN');
+  });
+  
+  const listEl = document.getElementById('agentSwitchList');
+  if (!listEl) return;
+  
+  if (targets.length === 0) {
+    listEl.innerHTML = '<div style="padding:24px; text-align:center; color:var(--text-tertiary); font-size:13px;">没有可切换的账号</div>';
+  } else {
+    listEl.innerHTML = targets.map(a => {
+      const role = a.isBoss ? '<span class="agent-switch-role boss">👑 老板</span>' 
+                            : a.isAdmin ? '<span class="agent-switch-role admin">🛡 主管</span>'
+                                        : '<span class="agent-switch-role">👤 员工</span>';
+      const siteStr = (a.sites || []).length > 0 ? (a.sites || []).join(' / ') : '未设置';
+      const nameEsc = (a.name || '').replace(/'/g, "\\'");
+      return `<button class="agent-switch-card" onclick="switchToAgent('${escapeHtml(nameEsc)}')" type="button">
+        <div class="agent-switch-avatar">${escapeHtml((a.name || '?')[0].toUpperCase())}</div>
+        <div class="agent-switch-info">
+          <div class="agent-switch-name">${escapeHtml(a.name || '')}</div>
+          <div class="agent-switch-meta">${role}<span style="color:var(--text-tertiary); font-size:11px; margin-left:8px;">📍 ${escapeHtml(siteStr)}</span></div>
+        </div>
+        <div class="agent-switch-arrow">→</div>
+      </button>`;
+    }).join('');
+  }
+  
+  // 显示当前真实身份提示
+  const currentInfoEl = document.getElementById('agentSwitchCurrentInfo');
+  if (currentInfoEl) {
+    const myRole = ORIGINAL_IS_BOSS ? '👑 老板' : (ORIGINAL_IS_ADMIN ? '🛡 主管' : '👤 员工');
+    currentInfoEl.innerHTML = `当前身份: <b>${escapeHtml(ORIGINAL_AGENT || '')}</b> · ${myRole}`;
+  }
+  
+  document.getElementById('agentSwitchModal').classList.add('show');
+}
+
+function switchToAgent(name) {
+  if (!name || name === ORIGINAL_AGENT) {
+    return switchBackToOriginal();
+  }
+  closeModal('agentSwitchModal');
+  loginAs(name, { impersonating: true });
+  toast(`👁 已切换到 ${name} 的视角 · 当前是只读模式,不能修改数据`, 'success', 4000);
+}
+
+function switchBackToOriginal() {
+  if (!ORIGINAL_AGENT) return;
+  closeModal('agentSwitchModal');
+  loginAs(ORIGINAL_AGENT, { impersonating: false });
+  toast(`↩ 已切回 ${ORIGINAL_AGENT} 的视角`, 'success');
+}
+
+function updateImpersonationBanner() {
+  let banner = document.getElementById('impersonationBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'impersonationBanner';
+    banner.className = 'impersonation-banner';
+    // 插入到 app-header 之前(顶部最显眼)
+    const header = document.querySelector('.app-header');
+    if (header && header.parentNode) {
+      header.parentNode.insertBefore(banner, header);
+    } else {
+      document.body.prepend(banner);
+    }
+  }
+  if (IS_IMPERSONATING && CURRENT_AGENT && ORIGINAL_AGENT) {
+    banner.innerHTML = `
+      <span class="imp-banner-text">
+        <span class="imp-banner-icon">👁</span>
+        你正在以 <b>${escapeHtml(CURRENT_AGENT)}</b> 的视角查看
+        <span class="imp-banner-tag">只读模式</span>
+      </span>
+      <button class="imp-banner-back" onclick="switchBackToOriginal()" type="button">
+        ↩ 切回 ${escapeHtml(ORIGINAL_AGENT)}
+      </button>
+    `;
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+// V5-2026-05-25: 数据写入守卫 — 切换视角下拦截所有写操作
+// 用法: 在任何 save/insert/delete/update 前调用 if (!dbWriteGuard('保存订单')) return;
+function dbWriteGuard(action) {
+  if (IS_IMPERSONATING) {
+    toast(`👁 ${action || '此操作'}已禁用 · 当前是切换视角(只读模式)。请先点顶部 banner 「切回原视角」`, 'err', 5000);
+    return false;
+  }
+  return true;
 }
 
 // 获取当前用户可见的模块

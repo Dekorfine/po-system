@@ -1185,10 +1185,15 @@ function renderShopifyOrders() {
       const splitCheckbox = canSplit 
         ? `<input type="checkbox" class="so-split-checkbox" data-order-id="${o.id}" data-line-id="${li.shopify_line_item_id}" onclick="event.stopPropagation();soToggleSplitItem('${o.id}','${li.shopify_line_item_id}',this.checked)" title="勾选后可拆单（仅为选中行开 PO）" style="margin-right: 8px; cursor: pointer; flex-shrink: 0;">`
         : '';
+      // V5-2026-05-25 修复布局错位:
+      // 旧:splitCheckbox + img + info + qty = 4 个子元素塞进 3 列 grid → qty 换行 + 图被推到 1fr 列
+      // 新:把 checkbox 绝对定位包进 leftcol,grid 永远 3 列
       return `
         <div class="so-product-line">
-          ${splitCheckbox}
-          ${imgUrl ? `<img loading="lazy" class="so-prod-img" src="${escapeHtml(imgUrl)}" data-fullsrc="${escapeHtml(imgUrl)}" onclick="openImgLightbox(this.dataset.fullsrc)" alt="">` : `<div class="so-prod-noimg">📷</div>`}
+          <div class="so-prod-leftcol">
+            ${splitCheckbox}
+            ${imgUrl ? `<img loading="lazy" class="so-prod-img" src="${escapeHtml(imgUrl)}" data-fullsrc="${escapeHtml(imgUrl)}" onclick="openImgLightbox(this.dataset.fullsrc)" alt="">` : `<div class="so-prod-noimg">📷</div>`}
+          </div>
           <div class="so-prod-info">
             ${li.sku ? `<div class="so-prod-sku">SKU: ${skuClickable}${shopifyIcons}${localProductIcon}${hasPo ? ' · <span style="color:var(--success)">✓ 已开 PO</span>' : ''}</div>` : ''}
             <div class="so-prod-name">${titleClickable}${nameCn ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(li.title || '')}</span>` : ''}</div>
