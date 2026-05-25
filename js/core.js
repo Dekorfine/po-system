@@ -1719,6 +1719,8 @@ function showMainApp() {
   document.getElementById('loadingScreen').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('mainApp').style.display = 'block';
+  // V5-W3-2026-05-26: 显示主应用后立刻应用用户的 tab 布局
+  setTimeout(() => { if (typeof applyTabLayout === 'function') applyTabLayout(); }, 50);
 }
 
 // ============================================================
@@ -2464,3 +2466,210 @@ function toggleFb(id, e) {
   c.classList.toggle('collapsed');
   c.dataset.userToggled = '1';
 }
+
+// ============================================================================
+// V5-W3-2026-05-26: 工作台布局自定义(IDE 风格 · 顶部+侧栏)
+// ============================================================================
+const TAB_LAYOUT_KEY = 'tab_layout_v1';
+const TAB_LAYOUT_DEFAULT = {
+  // 常用 — 显示在顶部
+  sales:         'top',
+  po:            'top',
+  orders:        'top',
+  aftersales:    'top',
+  products:      'top',
+  // 不常用 — 显示在左侧栏(图标 only)
+  missing:       'side',
+  purchases:     'side',
+  issues:        'side',
+  finance:       'side',
+  cross_dept:    'side',
+  consolidation: 'side',
+  performance:   'side',
+  analytics:     'side',
+};
+const TAB_META = {
+  sales:         { icon: '📥', label: '销售单',     badgeId: 'badgeSales' },
+  po:            { icon: '📦', label: '采购单',     badgeId: 'badgePo' },
+  orders:        { icon: '📋', label: '催单',       badgeId: 'badgeOrders' },
+  missing:       { icon: '🔍', label: '找灯',       badgeId: 'badgeMissing' },
+  purchases:     { icon: '🛒', label: '线上采购',   badgeId: 'badgePurchases' },
+  aftersales:    { icon: '🔧', label: '售后',       badgeId: 'badgeAftersales' },
+  issues:        { icon: '⚠',  label: '供应商问题', badgeId: 'badgeIssues' },
+  finance:       { icon: '✓',  label: '财务收货',   badgeId: 'badgeFinance' },
+  products:      { icon: '📚', label: '产品',       badgeId: 'badgeProducts' },
+  cross_dept:    { icon: '📨', label: '跨部门',     badgeId: 'badgeCrossDept' },
+  consolidation: { icon: '🧊', label: '合箱',       badgeId: null },
+  analytics:     { icon: '📈', label: '数据',       badgeId: null },
+  performance:   { icon: '📊', label: '绩效',       badgeId: 'badgePerformance' },
+};
+
+function getTabLayout() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(TAB_LAYOUT_KEY) || '{}');
+    return { ...TAB_LAYOUT_DEFAULT, ...stored };
+  } catch (_) { return { ...TAB_LAYOUT_DEFAULT }; }
+}
+
+function applyTabLayout() {
+  const layout = getTabLayout();
+  const sideBar = document.getElementById('sideTabBar');
+  if (!sideBar) return;
+
+  // 清空 sidebar
+  sideBar.innerHTML = '';
+  // 顶部预留空间(让 sidebar 内容从 header 下方开始)
+  const spacer = document.createElement('div');
+  spacer.className = 'side-tab-bar-spacer';
+  sideBar.appendChild(spacer);
+
+  let hasSideTabs = false;
+
+  // 遍历每个 tab,根据 layout 决定 zone
+  document.querySelectorAll('.tab-nav .tab-item').forEach(el => {
+    const t = el.dataset.tab;
+    if (!t) return;
+    const zone = layout[t] || 'top';
+    el.dataset.zone = zone;
+
+    if (zone === 'side') {
+      hasSideTabs = true;
+      // 在 sidebar 创建对应图标
+      const meta = TAB_META[t] || { icon: '◆', label: t, badgeId: null };
+      // 不渲染明明 display:none 的(比如 tabAnalytics)
+      if (el.style.display === 'none' && el.id === 'tabAnalytics') return;
+
+      const side = document.createElement('div');
+      side.className = 'side-tab-item';
+      side.dataset.tab = t;
+      side.dataset.zone = 'side';
+      const isActive = (CURRENT_TAB === t);
+      if (isActive) side.classList.add('active');
+
+      // 徽章值(从 topbar 元素读)
+      let badgeText = '0';
+      let badgeClass = 'zero';
+      if (meta.badgeId) {
+        const topBadge = document.getElementById(meta.badgeId);
+        if (topBadge) {
+          badgeText = topBadge.textContent || '0';
+          badgeClass = topBadge.classList.contains('zero') ? 'zero' : '';
+        }
+      }
+      side.innerHTML = `
+        ${meta.icon}
+        ${meta.badgeId ? `<span class="side-tab-badge ${badgeClass}" data-mirror-of="${meta.badgeId}">${badgeText}</span>` : ''}
+        <span class="side-tab-tooltip">${meta.label}</span>
+      `;
+      side.addEventListener('click', () => switchTab(t));
+      sideBar.appendChild(side);
+    }
+  });
+
+  // 显示/隐藏 sidebar
+  if (hasSideTabs) {
+    sideBar.style.display = 'flex';
+    document.body.classList.add('has-side-tabs');
+  } else {
+    sideBar.style.display = 'none';
+    document.body.classList.remove('has-side-tabs');
+  }
+}
+
+// 让 updateBadges() 也同步刷新 sidebar 徽章
+function syncSideBadges() {
+  document.querySelectorAll('.side-tab-badge').forEach(badge => {
+    const srcId = badge.dataset.mirrorOf;
+    if (!srcId) return;
+    const src = document.getElementById(srcId);
+    if (!src) return;
+    badge.textContent = src.textContent;
+    badge.classList.toggle('zero', src.classList.contains('zero'));
+  });
+}
+
+// 让 switchTab 也刷新 sidebar 高亮(monkey-patch)
+const _origSwitchTab = window.switchTab;
+window.switchTab = function(name) {
+  _origSwitchTab.call(this, name);
+  document.querySelectorAll('.side-tab-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.tab === name);
+  });
+};
+
+// 让 updateBadges 调用后同步 sidebar
+const _origUpdateBadges = window.updateBadges;
+window.updateBadges = function() {
+  _origUpdateBadges.call(this);
+  syncSideBadges();
+};
+
+// ============ 布局自定义弹窗 ============
+function openTabLayoutModal() {
+  const layout = getTabLayout();
+  const list = document.getElementById('tabLayoutList');
+  if (!list) return;
+  // 渲染每个 tab 的 toggle
+  list.innerHTML = Object.keys(TAB_META).map(t => {
+    const meta = TAB_META[t];
+    const zone = layout[t] || 'top';
+    // 隐藏的 analytics 也允许配置
+    return `
+      <div class="tab-layout-row">
+        <span class="icon">${meta.icon}</span>
+        <span class="label">${meta.label}</span>
+        <div class="tab-layout-toggle">
+          <button class="${zone === 'top' ? 'active' : ''}" onclick="_tabLayoutSetZone('${t}', 'top', this)">顶部</button>
+          <button class="${zone === 'side' ? 'active' : ''}" onclick="_tabLayoutSetZone('${t}', 'side', this)">侧栏</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+  document.getElementById('tabLayoutModal').classList.add('show');
+}
+
+let _tabLayoutDraft = null;
+function _tabLayoutSetZone(tab, zone, btnEl) {
+  if (!_tabLayoutDraft) _tabLayoutDraft = getTabLayout();
+  _tabLayoutDraft[tab] = zone;
+  // 切换按钮高亮
+  const row = btnEl.closest('.tab-layout-row');
+  row.querySelectorAll('.tab-layout-toggle button').forEach(b => b.classList.remove('active'));
+  btnEl.classList.add('active');
+}
+
+function saveTabLayout() {
+  if (_tabLayoutDraft) {
+    localStorage.setItem(TAB_LAYOUT_KEY, JSON.stringify(_tabLayoutDraft));
+    _tabLayoutDraft = null;
+  }
+  closeTabLayoutModal();
+  applyTabLayout();
+  if (typeof toast === 'function') toast('✓ 布局已保存');
+}
+
+function closeTabLayoutModal() {
+  document.getElementById('tabLayoutModal')?.classList.remove('show');
+  _tabLayoutDraft = null;
+}
+
+function resetTabLayout() {
+  if (!confirm('恢复默认布局?(销售/采购/催单/售后/产品 在顶部,其余在侧栏)')) return;
+  localStorage.removeItem(TAB_LAYOUT_KEY);
+  _tabLayoutDraft = null;
+  closeTabLayoutModal();
+  applyTabLayout();
+  if (typeof toast === 'function') toast('✓ 已恢复默认布局');
+}
+
+// 登录后(等 mainApp 显示后)应用一次布局
+window.addEventListener('DOMContentLoaded', () => {
+  let attempts = 0;
+  const wait = setInterval(() => {
+    const m = document.getElementById('mainApp');
+    if ((m && m.style.display !== 'none') || attempts++ > 120) {
+      clearInterval(wait);
+      if (m && m.style.display !== 'none') applyTabLayout();
+    }
+  }, 500);
+});

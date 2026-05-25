@@ -3461,6 +3461,17 @@ async function poQuickCopyImage(poId) {
   const totalQty = items.reduce((s,x) => s + (x.qty||0), 0);
   const totalAmount = items.reduce((s,x) => s + (x.subtotal||0), 0);
 
+  // V5-W3-2026-05-26: 老 PO 兜底电气标准查询
+  let _lookupStd = '';
+  try {
+    const soInfo = (typeof PO_SALES_ORDERS_MAP !== 'undefined') ? (PO_SALES_ORDERS_MAP[po.sales_order_id] || {}) : {};
+    const shipping = soInfo.shipping_address || {};
+    const co = shipping.country_code || shipping.country || '';
+    if (co && typeof getElectricalStandard === 'function') {
+      _lookupStd = getElectricalStandard(co, shipping.country || '') || '';
+    }
+  } catch (e) {}
+
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; left:-99999px; top:0; width:920px; z-index:-1;';
   wrap.innerHTML = `
@@ -3480,28 +3491,36 @@ async function poQuickCopyImage(poId) {
           <th width="32" style="text-align:center;">#</th>
           <th width="66">图片</th>
           <th>产品规格</th>
-          <th width="56" style="text-align:center;">数量</th>
-          <th width="80" style="text-align:right;">单价</th>
-          <th width="92" style="text-align:right;">小计</th>
+          <th width="70" style="text-align:center; background:#fef9f3;">下单标准</th>
+          <th width="44" style="text-align:center;">数量</th>
+          <th width="68" style="text-align:right;">单价</th>
+          <th width="76" style="text-align:right;">小计</th>
+          <th width="110" style="background:#fffdf7;">备注</th>
         </tr></thead>
         <tbody>
           ${items.map((li, i) => {
             const specs = extractVariantInfo(li.variant || '');
+            const lineStd = li.electrical_standard || _lookupStd || '';
+            const lineNote = li.line_note || '';
             return `
             <tr>
               <td style="text-align:center;">${i+1}</td>
               <td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}" crossorigin="anonymous">` : '<span style="color:#aaa;">—</span>'}</td>
               <td>${li.title_cn ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(li.title_cn)}</div>` : ''}${specs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(specs)}</div>` : ''}</td>
+              <td style="text-align:center; background:#fef9f3; padding:4px 3px; vertical-align:middle; word-break:keep-all;">${lineStd ? `<b style="color:#c2410c; font-family:monospace; font-size:11px; font-weight:600; line-height:1.3; display:inline-block;">${escapeHtml(lineStd)}</b>` : '<span style="color:#aaa;">—</span>'}</td>
               <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px;">${li.qty}</span>` : li.qty}</td>
               <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
               <td style="text-align:right; font-family:monospace; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
+              <td style="background:#fffdf7; font-size:10.5px; color:#444; vertical-align:top; padding:5px 7px; white-space:pre-wrap; line-height:1.4;">${lineNote ? escapeHtml(lineNote) : '<span style="color:#bbb; font-style:italic;">(无)</span>'}</td>
             </tr>`;
           }).join('')}
           <tr class="total-row">
             <td colspan="3" style="text-align:right;">合 计</td>
+            <td style="background:#fef9f3;"></td>
             <td style="text-align:center;">${totalQty}</td>
             <td></td>
             <td style="text-align:right; font-family:monospace; color:#dc2626;">¥ ${totalAmount.toFixed(2)}</td>
+            <td style="background:#fffdf7;"></td>
           </tr>
         </tbody>
       </table>
@@ -3573,26 +3592,29 @@ function _buildSinglePoExportNode(po, includeImages) {
   const items = po.line_items || [];
   const totalQty = items.reduce((s, x) => s + (x.qty || 0), 0);
   const totalAmount = items.reduce((s, x) => s + (x.subtotal || 0), 0);
+
+  // V5-W3-2026-05-26: 老 PO 兜底电气标准查询
+  let _lookupStd = '';
+  try {
+    const soInfo = (typeof PO_SALES_ORDERS_MAP !== 'undefined') ? (PO_SALES_ORDERS_MAP[po.sales_order_id] || {}) : {};
+    const shipping = soInfo.shipping_address || {};
+    const co = shipping.country_code || shipping.country || '';
+    if (co && typeof getElectricalStandard === 'function') {
+      _lookupStd = getElectricalStandard(co, shipping.country || '') || '';
+    }
+  } catch (e) {}
   
   // V4-2026-05-24: SKU 过滤函数 - 防同行通过 SKU 反查我们网站
-  // 删除产品 SKU(VK202208251631-09 / VKC5-240915-01 / DCC-M3115-01 等)
-  // 保留销售订单号(K115612 / K115439 等)和尺寸/颜色/产品名
   function _stripSkus(text) {
     if (!text) return text;
     return String(text)
-      // 模式 1: 2+ 大写字母开头 + 数字 + 可选 - 字母数字段
-      .replace(/\b[A-Z]{2,}\d+(?:[-_][A-Z0-9]+)*\b/g, (match) => {
-        return match.length >= 6 ? '' : match;
-      })
-      // 模式 2: 含 - 的字母数字混合编码(如 VKC5-240915-01)
+      .replace(/\b[A-Z]{2,}\d+(?:[-_][A-Z0-9]+)*\b/g, (match) => match.length >= 6 ? '' : match)
       .replace(/\b[A-Z0-9]+(?:[-_][A-Z0-9]+){2,}\b/g, (match) => {
         const letters = (match.match(/[A-Z]/g) || []).length;
         const digits = (match.match(/\d/g) || []).length;
         return (letters >= 2 && digits >= 4) ? '' : match;
       })
-      // 模式 3: 显式 "SKU: xxx" / "Code: xxx" / "货号: xxx"
       .replace(/\b(SKU|Code|Item|商品编码|货号|编号)\s*[:：]\s*\S+/gi, '')
-      // 清理多余空格
       .replace(/\s{2,}/g, ' ')
       .replace(/\n\s*\n/g, '\n')
       .trim();
@@ -3617,31 +3639,38 @@ function _buildSinglePoExportNode(po, includeImages) {
           <th width="32" style="text-align:center;">#</th>
           ${includeImages ? '<th width="66">图片</th>' : ''}
           <th>产品规格</th>
-          <th width="56" style="text-align:center;">数量</th>
-          <th width="80" style="text-align:right;">单价</th>
-          <th width="92" style="text-align:right;">小计</th>
+          <th width="70" style="text-align:center; background:#fef9f3;">下单标准</th>
+          <th width="44" style="text-align:center;">数量</th>
+          <th width="68" style="text-align:right;">单价</th>
+          <th width="76" style="text-align:right;">小计</th>
+          <th width="110" style="background:#fffdf7;">备注</th>
         </tr></thead>
         <tbody>
           ${items.map((li, i) => {
-            // V4-2026-05-24: title_cn / specs 都先过滤 SKU
             const cleanTitle = _stripSkus(li.title_cn || '');
             const rawSpecs = extractVariantInfo(li.variant || '');
             const cleanSpecs = _stripSkus(rawSpecs);
+            const lineStd = li.electrical_standard || _lookupStd || '';
+            const lineNote = li.line_note || '';
             return `
             <tr>
               <td style="text-align:center;">${i+1}</td>
               ${includeImages ? `<td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}" crossorigin="anonymous">` : '<span style="color:#aaa;">—</span>'}</td>` : ''}
               <td>${cleanTitle ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(cleanTitle)}</div>` : ''}${cleanSpecs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(cleanSpecs)}</div>` : ''}</td>
+              <td style="text-align:center; background:#fef9f3; padding:4px 3px; vertical-align:middle; word-break:keep-all;">${lineStd ? `<b style="color:#c2410c; font-family:monospace; font-size:11px; font-weight:600; line-height:1.3; display:inline-block;">${escapeHtml(lineStd)}</b>` : '<span style="color:#aaa;">—</span>'}</td>
               <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px;">${li.qty}</span>` : li.qty}</td>
               <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
               <td style="text-align:right; font-family:monospace; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
+              <td style="background:#fffdf7; font-size:10.5px; color:#444; vertical-align:top; padding:5px 7px; white-space:pre-wrap; line-height:1.4;">${lineNote ? escapeHtml(lineNote) : '<span style="color:#bbb; font-style:italic;">(无)</span>'}</td>
             </tr>`;
           }).join('')}
           <tr class="total-row">
             <td colspan="${includeImages ? 3 : 2}" style="text-align:right;">合 计</td>
+            <td style="background:#fef9f3;"></td>
             <td style="text-align:center;">${totalQty}</td>
             <td></td>
             <td style="text-align:right; font-family:monospace; color:#dc2626;">¥ ${totalAmount.toFixed(2)}</td>
+            <td style="background:#fffdf7;"></td>
           </tr>
         </tbody>
       </table>
@@ -3771,6 +3800,16 @@ function _poBatchExportDocx(list, includeImages) {
     const items = po.line_items || [];
     const totalQty = items.reduce((s, x) => s + (x.qty || 0), 0);
     const totalAmount = items.reduce((s, x) => s + (x.subtotal || 0), 0);
+    // V5-W3-2026-05-26: 老 PO 兜底电气标准查询
+    let _lookupStd = '';
+    try {
+      const soInfo = (typeof PO_SALES_ORDERS_MAP !== 'undefined') ? (PO_SALES_ORDERS_MAP[po.sales_order_id] || {}) : {};
+      const shipping = soInfo.shipping_address || {};
+      const co = shipping.country_code || shipping.country || '';
+      if (co && typeof getElectricalStandard === 'function') {
+        _lookupStd = getElectricalStandard(co, shipping.country || '') || '';
+      }
+    } catch (e) {}
     return `
     <div style="page-break-after: always; padding: 20px;">
       <h2 style="margin:0 0 6px; font-size:18pt; color:#1c1917;">📋 采购单 ${escapeHtml(po.po_number)}</h2>
@@ -3787,29 +3826,37 @@ function _poBatchExportDocx(list, includeImages) {
             <th style="width:40px;">#</th>
             ${includeImages ? '<th style="width:80px;">图片</th>' : ''}
             <th>产品规格</th>
+            <th style="width:70px; background:#fef9f3;">下单标准</th>
             <th style="width:60px;">数量</th>
             <th style="width:80px;">单价</th>
             <th style="width:90px;">小计</th>
+            <th style="width:120px; background:#fffdf7;">备注</th>
           </tr>
         </thead>
         <tbody>
           ${items.map((li, i) => {
             const specs = extractVariantInfo(li.variant || '');
+            const lineStd = li.electrical_standard || _lookupStd || '';
+            const lineNote = li.line_note || '';
             return `
             <tr>
               <td style="text-align:center;">${i+1}</td>
               ${includeImages ? `<td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}" style="width:60px; height:60px; object-fit:cover;">` : '—'}</td>` : ''}
               <td>${li.title_cn ? `<b>${escapeHtml(li.title_cn)}</b><br>` : ''}<span style="color:#78716c; font-size:8pt;">${escapeHtml(li.sku || '')}</span>${specs ? `<br><span style="color:#555; font-size:9pt;">${escapeHtml(specs)}</span>` : ''}</td>
+              <td style="text-align:center; background:#fef9f3;"><b style="color:#c2410c; font-size:9pt;">${escapeHtml(lineStd) || '—'}</b></td>
               <td style="text-align:center; ${li.qty >= 2 ? 'background:#dc2626; color:white; font-weight:700;' : ''}">${li.qty}</td>
               <td style="text-align:right;">¥ ${Number(li.price).toFixed(2)}</td>
               <td style="text-align:right; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
+              <td style="background:#fffdf7; font-size:9pt; color:#444; vertical-align:top;">${lineNote ? escapeHtml(lineNote) : ''}</td>
             </tr>`;
           }).join('')}
           <tr style="background:#fef3c7; font-weight:700;">
             <td colspan="${includeImages ? 3 : 2}" style="text-align:right;">合 计</td>
+            <td style="background:#fef9f3;"></td>
             <td style="text-align:center;">${totalQty}</td>
             <td></td>
             <td style="text-align:right; color:#dc2626;">¥ ${totalAmount.toFixed(2)}</td>
+            <td style="background:#fffdf7;"></td>
           </tr>
         </tbody>
       </table>

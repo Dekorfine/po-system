@@ -781,7 +781,7 @@ function shopifyUpdateBatchUI() {
   const cntEl = document.getElementById('salesSelectedCount');
   if (cntEl) cntEl.textContent = n;
   const disabled = n === 0;
-  ['batchApproveBtn', 'batchDoneBtn', 'batchCancelBtn'].forEach(id => {
+  ['batchApproveBtn', 'batchDoneBtn', 'batchCancelBtn', 'batchOpenPoBtn'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = disabled;
   });
@@ -1722,3 +1722,464 @@ async function saveCustomOrder() {
 }
 
 
+
+// ============================================================================
+// V5-W3-2026-05-26: 销售单批量开 PO
+// ----------------------------------------------------------------------------
+// 用户场景:搜了同款 SKU 有 N 个订单,想一次性给同一供应商开 PO
+// 流程:
+//   1) 用户勾选多个销售单 → 点「📦 批量开 PO」
+//   2) 弹出预览:按"国家"自动分组(同国家 = 1 张 PO,多 SKU)
+//   3) 选供应商 + 基础单价 → 点"生成 N 张 PO"
+//   4) 后端循环 insert N 张 PO
+// 不同国家 → 自动拆成多张 PO(因为电气标准不同)
+// 同一国家不同 SKU → 合并到 1 张 PO
+// ============================================================================
+
+let BATCH_PO_STATE = null;
+
+async function shopifyBatchOpenPo() {
+  const ids = [...SHOPIFY_SELECTED];
+  if (ids.length === 0) { toast('请先勾选要开 PO 的销售单', 'warn'); return; }
+  
+  const orders = (SHOPIFY._orders || []).filter(o => ids.includes(o.id));
+  if (orders.length === 0) { toast('找不到所选订单', 'err'); return; }
+  
+  // 过滤掉已被全部开过 PO 的 line items
+  // 构建分组:按国家分组, 每个国家组里再合并相同 SKU
+  const groups = {};  // { 'US_美规110V电压': { country: 'US', standard: '美规110V电压', orders: [...], lines: [...] } }
+  
+  for (const o of orders) {
+    const coCode = (o.shipping_address && (o.shipping_address.country_code || o.shipping_address.country)) || o.shipping_country || 'UNKNOWN';
+    const standard = (typeof getElectricalStandard === 'function')
+      ? (getElectricalStandard(coCode, o.shipping_address?.country || o.shipping_country) || '')
+      : '';
+    const groupKey = `${coCode}_${standard}`;
+    if (!groups[groupKey]) {
+      groups[groupKey] = {
+        country: coCode,
+        countryName: o.shipping_address?.country || o.shipping_country || coCode,
+        standard,
+        orders: [],
+        lines: [],  // 每条:{ orderId, orderNo, liid, sku, title_cn, variant, image_url, qty, originalPrice, note, included }
+      };
+    }
+    groups[groupKey].orders.push(o);
+    
+    for (const li of (o.line_items || [])) {
+      // 跳过已完全开过 PO 的 line item
+      const assigned = (li.po_assignments || []).reduce((s, a) => s + (a.qty || 0), 0);
+      const remaining = (li.quantity || 0) - assigned;
+      if (remaining <= 0) continue;
+      
+      // 默认价格:effective.last_purchase_price > 0 > 0
+      let defaultPrice = 0;
+      try {
+        const eff = (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) 
+          ? PRODUCTS_CACHE.effectiveBySku(li.sku) 
+          : null;
+        if (eff && eff.last_purchase_price) defaultPrice = Number(eff.last_purchase_price);
+      } catch (_) {}
+      
+      // 自动提取本行备注(从 variant)
+      let lineNote = '';
+      try { 
+        if (typeof extractVariantInfo === 'function') lineNote = extractVariantInfo(li.variant_title || '') || '';
+      } catch (_) {}
+      
+      groups[groupKey].lines.push({
+        orderId: o.id,
+        orderNo: o.shopify_order_number,
+        liid: li.shopify_line_item_id,
+        sku: li.sku || '',
+        title_cn: li.title_cn || li.title || '',
+        title_en: li.title || '',
+        variant: li.variant_title || '',
+        image_url: li.image_url || '',
+        qty: remaining,
+        originalQty: remaining,
+        price: defaultPrice,
+        note: lineNote,
+        included: true,
+      });
+    }
+  }
+  
+  // 过滤掉空组(都已开过 PO)
+  const validGroups = Object.entries(groups).filter(([k, g]) => g.lines.length > 0);
+  if (validGroups.length === 0) {
+    toast('所选订单已全部开过 PO,没有可开的 line item', 'warn');
+    return;
+  }
+  
+  // 初始化状态
+  BATCH_PO_STATE = {
+    groups: validGroups.map(([k, g]) => ({ key: k, ...g })),
+    supplierName: '',
+    supplierId: null,
+    promisedDate: new Date().toISOString().slice(0, 10),
+    globalNote: '',
+  };
+  
+  document.getElementById('batchPoModal').style.display = 'flex';
+  renderBatchPoModal();
+}
+
+function renderBatchPoModal() {
+  const s = BATCH_PO_STATE;
+  if (!s) return;
+  const body = document.getElementById('batchPoBody');
+  if (!body) return;
+  
+  // 统计:总行数 + 总件数
+  let totalLines = 0, totalQty = 0, totalAmount = 0;
+  s.groups.forEach(g => {
+    g.lines.forEach(l => {
+      if (l.included) {
+        totalLines++;
+        totalQty += Number(l.qty) || 0;
+        totalAmount += (Number(l.qty) || 0) * (Number(l.price) || 0);
+      }
+    });
+  });
+  const willCreate = s.groups.filter(g => g.lines.some(l => l.included)).length;
+  
+  // 国旗
+  const flagOf = (code) => {
+    const map = { US: '🇺🇸', UK: '🇬🇧', GB: '🇬🇧', CA: '🇨🇦', AU: '🇦🇺', DE: '🇩🇪', FR: '🇫🇷', MX: '🇲🇽', IT: '🇮🇹', ES: '🇪🇸', NL: '🇳🇱' };
+    return map[code] || '🌐';
+  };
+  
+  body.innerHTML = `
+    <div style="background:rgba(37,99,235,0.06); padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:12px; color:var(--text-secondary); border-left:3px solid var(--accent);">
+      💡 将创建 <b style="color:var(--accent);">${willCreate} 张 PO</b> · 共 <b>${totalLines}</b> 行 · 总 <b>${totalQty}</b> 件 · 合计 <b style="color:var(--danger);">¥ ${totalAmount.toFixed(2)}</b>
+      <br>📌 同一国家的所有 SKU 合并成 1 张 PO,不同国家自动拆 PO(因为电气标准不同)
+    </div>
+    
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+      <div>
+        <label style="display:block; font-size:11.5px; font-weight:600; color:var(--text-secondary); margin-bottom:3px;">供应商 <span style="color:var(--danger);">*</span></label>
+        <div style="display:flex; gap:6px; position:relative;">
+          <input type="text" id="batchPoSupplierInput" value="${escapeHtml(s.supplierName)}" placeholder="🔍 搜索 / 直接添加..." 
+            oninput="batchPoSupplierSearch(this.value)" onfocus="batchPoSupplierSearch(this.value)" 
+            onblur="setTimeout(()=>{const r=document.getElementById('batchPoSupplierResults'); if(r)r.style.display='none';}, 200)"
+            style="flex:1; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">
+          <div id="batchPoSupplierResults" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:10; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; max-height:220px; overflow-y:auto; box-shadow:var(--shadow-md); margin-top:4px;"></div>
+        </div>
+      </div>
+      <div>
+        <label style="display:block; font-size:11.5px; font-weight:600; color:var(--text-secondary); margin-bottom:3px;">下单日期 <span style="color:var(--danger);">*</span></label>
+        <input type="date" value="${s.promisedDate}" oninput="BATCH_PO_STATE.promisedDate=this.value" 
+          style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">
+      </div>
+    </div>
+    
+    <div style="margin-bottom: 14px;">
+      <label style="display:block; font-size:11.5px; font-weight:600; color:var(--text-secondary); margin-bottom:3px;">全单备注 <span style="font-weight:400; color:var(--text-tertiary);">(可选,会应用到所有 PO 的"全单备注"字段)</span></label>
+      <input type="text" value="${escapeHtml(s.globalNote)}" oninput="BATCH_PO_STATE.globalNote=this.value" 
+        placeholder="例:本周必出 / 优先 / 整批包装统一标准"
+        style="width:100%; padding:7px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">
+    </div>
+    
+    <!-- 预览:每个国家组一张表格 -->
+    ${s.groups.map((g, gi) => {
+      const groupQty = g.lines.filter(l => l.included).reduce((s, l) => s + Number(l.qty || 0), 0);
+      const groupAmount = g.lines.filter(l => l.included).reduce((s, l) => s + Number(l.qty || 0) * Number(l.price || 0), 0);
+      const includedCount = g.lines.filter(l => l.included).length;
+      return `
+        <div style="border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:12px; overflow:hidden;">
+          <div style="background:#fef9f3; padding:10px 14px; border-bottom:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:600; font-size:13.5px;">
+              ${flagOf(g.country)} <b>PO #${gi+1}</b> · ${escapeHtml(g.countryName)}
+              ${g.standard ? ` · <span style="color:#c2410c; font-family:monospace; font-size:12px;">${escapeHtml(g.standard)}</span>` : ''}
+            </div>
+            <div style="font-size:12px; color:var(--text-secondary);">
+              ${includedCount}/${g.lines.length} 行 · ${groupQty} 件 · <b style="color:var(--danger);">¥ ${groupAmount.toFixed(2)}</b>
+            </div>
+          </div>
+          <div style="padding:0;">
+            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+              <thead>
+                <tr style="background:var(--bg-elevated);">
+                  <th style="width:30px; padding:6px 4px;"><input type="checkbox" ${g.lines.every(l => l.included) ? 'checked' : ''} onchange="batchPoToggleGroup(${gi}, this.checked)"></th>
+                  <th style="width:80px; padding:6px;">订单号</th>
+                  <th style="width:46px; padding:6px;"></th>
+                  <th style="padding:6px;">SKU / 产品名 / 变体</th>
+                  <th style="width:60px; padding:6px; text-align:center;">数量</th>
+                  <th style="width:80px; padding:6px; text-align:right;">单价 ¥</th>
+                  <th style="width:80px; padding:6px; text-align:right;">小计</th>
+                  <th style="padding:6px;">本行备注</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${g.lines.map((l, li) => `
+                  <tr style="border-top:1px solid var(--border-subtle); ${!l.included ? 'opacity:0.4; background:var(--bg-elevated);' : ''}">
+                    <td style="padding:5px 4px; text-align:center;"><input type="checkbox" ${l.included ? 'checked' : ''} onchange="batchPoToggleLine(${gi}, ${li}, this.checked)"></td>
+                    <td style="padding:5px; font-family:monospace; font-size:11px; color:#2563eb;">${escapeHtml(l.orderNo || '')}</td>
+                    <td style="padding:3px;">${l.image_url ? `<img src="${escapeHtml(l.image_url)}" style="width:40px; height:40px; object-fit:cover; border-radius:4px;">` : '<div style="width:40px; height:40px; background:var(--bg-elevated); border-radius:4px; display:flex; align-items:center; justify-content:center; color:#aaa;">📷</div>'}</td>
+                    <td style="padding:5px; font-size:11.5px;">
+                      <div style="font-family:monospace; color:var(--text-tertiary); font-size:10.5px;">${escapeHtml(l.sku || '—')}</div>
+                      <div style="font-weight:500;">${escapeHtml(l.title_cn || l.title_en || '')}</div>
+                      ${l.variant ? `<div style="color:var(--text-tertiary); font-size:10.5px;">${escapeHtml(l.variant)}</div>` : ''}
+                    </td>
+                    <td style="padding:5px;">
+                      <input type="number" min="1" max="${l.originalQty}" value="${l.qty}" oninput="batchPoSetLine(${gi}, ${li}, 'qty', this.value)" 
+                        style="width:100%; padding:4px 6px; font-size:12px; text-align:center; border:1px solid var(--border); border-radius:4px;">
+                    </td>
+                    <td style="padding:5px;">
+                      <input type="number" min="0" step="0.01" value="${l.price}" oninput="batchPoSetLine(${gi}, ${li}, 'price', this.value)" 
+                        style="width:100%; padding:4px 6px; font-size:12px; text-align:right; border:1px solid var(--border); border-radius:4px;">
+                    </td>
+                    <td style="padding:5px; text-align:right; font-family:monospace; font-weight:500;">¥ ${(Number(l.qty) * Number(l.price)).toFixed(2)}</td>
+                    <td style="padding:5px;">
+                      <input type="text" value="${escapeHtml(l.note)}" oninput="batchPoSetLine(${gi}, ${li}, 'note', this.value)" placeholder="尺寸/色温/特殊要求"
+                        style="width:100%; padding:4px 6px; font-size:11px; border:1px solid var(--border); border-radius:4px;">
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }).join('')}
+    
+    <!-- 全行单价批量填(快捷)-->
+    <div style="background:var(--bg-elevated); padding:10px 14px; border-radius:6px; margin-top:8px; display:flex; gap:10px; align-items:center; font-size:12.5px;">
+      <span style="color:var(--text-secondary); font-weight:500;">💡 快捷:</span>
+      <input type="number" id="batchPoApplyPriceInput" placeholder="批量单价 ¥" step="0.01" min="0" 
+        style="width:120px; padding:5px 8px; font-size:12px; border:1px solid var(--border); border-radius:4px;">
+      <button class="btn small" onclick="batchPoApplyPriceAll()">📋 应用到全部行</button>
+      <span style="flex:1;"></span>
+      <button class="btn small" onclick="batchPoToggleAll(true)">☑ 全选</button>
+      <button class="btn small" onclick="batchPoToggleAll(false)">☐ 全不选</button>
+    </div>
+  `;
+}
+
+function batchPoSetLine(gi, li, field, val) {
+  const line = BATCH_PO_STATE.groups[gi].lines[li];
+  if (!line) return;
+  if (field === 'qty') line.qty = Math.max(1, Math.min(Number(val) || 1, line.originalQty));
+  else if (field === 'price') line.price = Math.max(0, Number(val) || 0);
+  else line[field] = val;
+  // 只更新该行的小计(避免重渲染冲掉焦点)— 简单做法:全刷
+  renderBatchPoModal();
+  // 重新聚焦
+  setTimeout(() => {
+    const inputs = document.querySelectorAll(`#batchPoBody table tbody tr`);
+    if (inputs[gi * 100 + li]) inputs[gi * 100 + li].querySelector(`input[oninput*="'${field}'"]`)?.focus();
+  }, 0);
+}
+
+function batchPoToggleLine(gi, li, checked) {
+  BATCH_PO_STATE.groups[gi].lines[li].included = checked;
+  renderBatchPoModal();
+}
+
+function batchPoToggleGroup(gi, checked) {
+  BATCH_PO_STATE.groups[gi].lines.forEach(l => l.included = checked);
+  renderBatchPoModal();
+}
+
+function batchPoToggleAll(checked) {
+  BATCH_PO_STATE.groups.forEach(g => g.lines.forEach(l => l.included = checked));
+  renderBatchPoModal();
+}
+
+function batchPoApplyPriceAll() {
+  const v = Number(document.getElementById('batchPoApplyPriceInput').value);
+  if (!v || v <= 0) { toast('请填入有效价格', 'warn'); return; }
+  BATCH_PO_STATE.groups.forEach(g => g.lines.forEach(l => { if (l.included) l.price = v; }));
+  renderBatchPoModal();
+}
+
+function closeBatchPoModal() {
+  document.getElementById('batchPoModal').style.display = 'none';
+  BATCH_PO_STATE = null;
+}
+
+// 供应商搜索(复用 SUPPLIERS)
+async function batchPoSupplierSearch(q) {
+  const r = document.getElementById('batchPoSupplierResults');
+  if (!r) return;
+  q = (q || '').trim().toLowerCase();
+  if (typeof SUPPLIERS === 'undefined' || !SUPPLIERS.loadAll) { return; }
+  let list = SUPPLIERS.allCached() || [];
+  if (q) list = list.filter(s => (s.name || '').toLowerCase().includes(q));
+  list = list.slice(0, 20);
+  if (list.length === 0) {
+    r.innerHTML = `<div style="padding:10px; font-size:12px; color:var(--text-tertiary); text-align:center;">未找到 · <button class="btn small primary" onclick="batchPoUseRawSupplier()">直接用「${escapeHtml(q)}」</button></div>`;
+  } else {
+    r.innerHTML = list.map(s => `
+      <div onclick="batchPoPickSupplier('${s.id || ''}', '${escapeHtml(s.name || '').replace(/'/g, "\\'")}')" 
+        style="padding:8px 12px; font-size:12.5px; cursor:pointer; border-bottom:1px solid var(--border-subtle);" 
+        onmouseover="this.style.background='var(--bg-elevated)'" onmouseout="this.style.background='transparent'">
+        ${escapeHtml(s.name || '')}
+      </div>
+    `).join('');
+  }
+  r.style.display = 'block';
+}
+
+function batchPoPickSupplier(id, name) {
+  BATCH_PO_STATE.supplierId = id || null;
+  BATCH_PO_STATE.supplierName = name || '';
+  document.getElementById('batchPoSupplierInput').value = name || '';
+  document.getElementById('batchPoSupplierResults').style.display = 'none';
+}
+
+function batchPoUseRawSupplier() {
+  const raw = document.getElementById('batchPoSupplierInput').value.trim();
+  if (!raw) return;
+  BATCH_PO_STATE.supplierId = null;
+  BATCH_PO_STATE.supplierName = raw;
+  document.getElementById('batchPoSupplierResults').style.display = 'none';
+}
+
+async function batchPoSubmit() {
+  const s = BATCH_PO_STATE;
+  if (!s) return;
+  // 取最新供应商名(input 可能没失焦没触发 pick)
+  const supName = document.getElementById('batchPoSupplierInput').value.trim();
+  if (!supName) { toast('请填供应商', 'err'); return; }
+  s.supplierName = supName;
+  
+  if (!s.promisedDate) { toast('请填下单日期', 'err'); return; }
+  
+  // 收集有效组
+  const validGroups = s.groups.filter(g => g.lines.some(l => l.included));
+  if (validGroups.length === 0) { toast('请至少勾选一行', 'err'); return; }
+  
+  // 验证所有有效行都有价格
+  for (const g of validGroups) {
+    for (const l of g.lines) {
+      if (l.included && (!l.price || l.price <= 0)) {
+        toast(`订单 ${l.orderNo} 的 ${l.sku} 没填单价`, 'err'); return;
+      }
+    }
+  }
+  
+  if (!confirm(`确认生成 ${validGroups.length} 张 PO?\n供应商:${supName}\n点确定后会全部插入数据库,无法撤销(但可后续取消单张 PO)`)) return;
+  
+  // 当前用户
+  let agentId = (typeof CURRENT_USER_ID !== 'undefined') ? CURRENT_USER_ID : null;
+  if (!agentId) { 
+    try { const { data: { user } } = await sb.auth.getUser(); agentId = user?.id; } catch (_) {}
+  }
+  if (!agentId) { toast('未登录', 'err'); return; }
+  const creator = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) || '未知';
+  
+  // 顺序循环生成 PO(避免并发拿同号)
+  const created = [];
+  let failed = 0;
+  
+  for (const g of validGroups) {
+    try {
+      // 拿 PO 编号
+      const { data: poNum, error: poNumErr } = await sb.rpc('generate_po_number');
+      if (poNumErr) throw poNumErr;
+      if (!poNum) throw new Error('generate_po_number 返回空');
+      
+      // 组装 line_items
+      const liData = g.lines.filter(l => l.included).map(l => ({
+        shopify_line_item_id: l.liid,
+        sku: l.sku,
+        title_cn: l.title_cn,
+        title_en: l.title_en,
+        variant: l.variant,
+        image_url: l.image_url,
+        qty: Number(l.qty),
+        price: Number(l.price),
+        subtotal: Number(l.qty) * Number(l.price),
+        electrical_standard: g.standard || '',
+        line_note: l.note || '',
+        _source_order_no: l.orderNo,
+        _source_order_id: l.orderId,
+      }));
+      
+      const totalQty = liData.reduce((sum, x) => sum + x.qty, 0);
+      const totalAmount = liData.reduce((sum, x) => sum + x.subtotal, 0);
+      
+      // 用第一个 order id 作为 sales_order_id(因为 schema 只能存一个)
+      // 多订单合并 PO 时,后续在 line_items 里的 _source_order_no 用来追溯
+      const firstOrderId = liData[0]?._source_order_id || g.orders[0]?.id || null;
+      const allOrderNos = [...new Set(liData.map(x => x._source_order_no).filter(Boolean))];
+      const orderNoStr = allOrderNos.join(' / ');
+      
+      // 审批触发
+      const needsApproval = liData.some(li => li.qty > 20) || totalAmount > 5000;
+      const initialStatus = needsApproval ? 'pending_approval' : 'producing';
+      
+      const poRow = {
+        agent_id: agentId,
+        po_number: poNum,
+        source: 'batch',  // 批量来源标识
+        supplier: supName,
+        product: liData.map(x => x.title_cn).filter(Boolean).join(' / ').slice(0, 200),
+        status: initialStatus,
+        promised_date: s.promisedDate,
+        line_items: liData,
+        box_note: orderNoStr,  // 多订单号用 / 连
+        total_amount: totalAmount,
+        sales_order_id: firstOrderId,
+        creator_name: creator,
+        site: g.orders[0]?.site_code || g.orders[0]?.shop_domain || '',
+        order_no: orderNoStr,
+        note: s.globalNote || '',
+        followups: [],
+      };
+      
+      const { data: insertedPo, error: insErr } = await sb.from('orders').insert(poRow).select().single();
+      if (insErr) throw insErr;
+      created.push(insertedPo);
+      
+      // 更新每个销售订单的 line_items[].po_assignments
+      const ordersByOrderId = {};
+      liData.forEach(li => {
+        if (!ordersByOrderId[li._source_order_id]) ordersByOrderId[li._source_order_id] = [];
+        ordersByOrderId[li._source_order_id].push(li);
+      });
+      
+      for (const [oid, oLis] of Object.entries(ordersByOrderId)) {
+        const so = (SHOPIFY._orders || []).find(o => o.id === oid);
+        if (!so) continue;
+        const updatedLineItems = JSON.parse(JSON.stringify(so.line_items || []));
+        oLis.forEach(li => {
+          const target = updatedLineItems.find(x => x.shopify_line_item_id === li.shopify_line_item_id);
+          if (target) {
+            target.po_assignments = target.po_assignments || [];
+            target.po_assignments.push({
+              po_id: insertedPo.id,
+              po_number: poNum,
+              qty: li.qty,
+              supplier: supName,
+              created_at: new Date().toISOString(),
+            });
+          }
+        });
+        // 同步到 DB
+        await sb.from('shopify_orders').update({ 
+          line_items: updatedLineItems, 
+          updated_at: new Date().toISOString() 
+        }).eq('id', oid);
+        // 本地更新
+        so.line_items = updatedLineItems;
+      }
+      
+    } catch (e) {
+      console.error('[BatchPO] 组生成失败:', g, e);
+      failed++;
+    }
+  }
+  
+  if (created.length > 0) {
+    toast(`✓ 成功生成 ${created.length} 张 PO${failed ? ` · ⚠ ${failed} 张失败` : ''}`);
+    closeBatchPoModal();
+    SHOPIFY_SELECTED.clear();
+    SHOPIFY.invalidateOrders();
+    await shopifyReloadOrdersAndRender(true);
+  } else {
+    toast(`❌ 全部失败 (${failed} 张)`, 'err');
+  }
+}

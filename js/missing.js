@@ -217,7 +217,8 @@ function renderMissingCard(m) {
   const cmtCount = (m.comments || []).length;
   const screenshots = m.screenshots || [];
   const realCount = (m.realPhotos || []).length;
-  const canDelete = m.creator === CURRENT_AGENT || IS_ADMIN;
+  // V5-W3-2026-05-26 权限放开:所有跟单都能操作(改状态/删除/修改),不再限发起人
+  const canDelete = !!CURRENT_AGENT;
   const desc = (m.description || '').trim();
   
   // 多图自适应布局
@@ -712,7 +713,7 @@ function delMissingRow(id) {
   // 找到原始 missing（包括已删除的）
   const m = DATA.getMissingLights().find(x => x._id === id);
   if (!m) return;
-  if (m.creator !== CURRENT_AGENT && !IS_ADMIN) { toast('只能删自己发起的任务', 'err'); return; }
+  // V5-W3-2026-05-26 权限放开:所有跟单都能操作
   if (!confirm('确定删除这个找灯任务？\n\n（删除后会进回收站，30 天内可恢复）')) return;
   m.deletedAt = new Date().toISOString();
   m.deletedBy = CURRENT_AGENT;
@@ -785,8 +786,9 @@ function renderMissingModalContent() {
   } else {
     cl.innerHTML = cmts.map((c, i) => {
       const isAdopted = c.adopted;
-      const canAdopt = m.creator === CURRENT_AGENT && c.suggestedSupplier && !isAdopted && c.user !== CURRENT_AGENT;
-      const canRevoke = m.creator === CURRENT_AGENT && isAdopted;
+      // V5-W3-2026-05-26 权限放开:所有跟单都能采纳/撤销建议(不再限发起人)
+      const canAdopt = !!CURRENT_AGENT && c.suggestedSupplier && !isAdopted && c.user !== CURRENT_AGENT;
+      const canRevoke = !!CURRENT_AGENT && isAdopted;
       const canEdit = (c.user === CURRENT_AGENT || IS_ADMIN);
       const editedTag = c.editedAt ? `<span style="color: var(--text-tertiary); font-size: 10.5px; margin-left: 4px;" title="${escapeHtml(c.editedAt)}">· 已编辑</span>` : '';
       return `
@@ -820,12 +822,7 @@ async function onMissingField(field, value) {
   const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
   if (!m) return;
   // 权限检查：只有发起人或主管能修改
-  if (m.creator !== CURRENT_AGENT && !IS_ADMIN) {
-    toast('只有发起人能修改这个找灯任务', 'err');
-    // 还原 UI 状态
-    renderMissingModalContent();
-    return;
-  }
+  // V5-W3-2026-05-26 权限放开:所有跟单都能操作
   m[field] = value;
   DATA.saveMissingLights(MISSING_LIGHTS);
   renderMissingModalContent();
@@ -846,7 +843,7 @@ async function deleteCurrentMissingSync() {
 function deleteCurrentMissing() {
   const m = DATA.getMissingLights().find(x => x._id === _currentItemId);
   if (!m) return;
-  if (m.creator !== CURRENT_AGENT && !IS_ADMIN) { toast('只能删自己发起的任务', 'err'); return; }
+  // V5-W3-2026-05-26 权限放开:所有跟单都能操作
   if (!confirm('确定删除这个任务？\n\n（删除后会进回收站，30 天内可恢复）')) return;
   m.deletedAt = new Date().toISOString();
   m.deletedBy = CURRENT_AGENT;
@@ -977,7 +974,7 @@ async function rmMissingRealPhoto(i) {
 async function adoptComment(idx) {
   const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
   if (!m) return;
-  if (m.creator !== CURRENT_AGENT) { toast('只有发起人能采纳', 'err'); return; }
+  // V5-W3-2026-05-26 权限放开:所有跟单都能操作
   const c = m.comments[idx];
   if (!c || !c.suggestedSupplier) return;
   if (!confirm(`采纳 ${c.user} 推荐的「${c.suggestedSupplier}」？\n\n${c.user} 将获得 ${SCORE_RULES.missingHelp} 分贡献积分。\n任务状态将自动切换为「已找到」。`)) return;
@@ -1025,7 +1022,7 @@ async function adoptComment(idx) {
 async function revokeAdopt(idx) {
   const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
   if (!m) return;
-  if (m.creator !== CURRENT_AGENT) { toast('只有发起人能撤销', 'err'); return; }
+  // V5-W3-2026-05-26 权限放开:所有跟单都能操作
   if (!confirm('撤销采纳？该评论者将失去贡献积分。')) return;
   const c = m.comments[idx];
   c.adopted = false;
@@ -1045,7 +1042,7 @@ async function revokeAdopt(idx) {
 async function rmMissingScreenshot(i) {
   const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
   if (!m) return;
-  if (m.creator !== CURRENT_AGENT && !IS_ADMIN) { toast('只有发起人能修改', 'err'); return; }
+  // V5-W3-2026-05-26 权限放开:所有跟单都能操作
   m.screenshots.splice(i, 1);
   DATA.saveMissingLights(MISSING_LIGHTS);
   renderMissingModalContent();
@@ -1266,10 +1263,7 @@ async function doStitch() {
 async function quickMarkMissingFound(id) {
   const m = MISSING_LIGHTS.find(x => x._id === id);
   if (!m) return;
-  if (m.creator !== CURRENT_AGENT && !IS_ADMIN) { 
-    toast('只有发起人或主管能改状态', 'err'); 
-    return; 
-  }
+  // V5-W3-2026-05-26 权限放开:所有跟单都能操作
   // 已经是 found → toggle 回 searching
   if (m.status === 'found') {
     if (!confirm('当前任务已是「已找到」状态。\n要恢复成「搜寻中」吗?')) return;
@@ -1291,10 +1285,7 @@ async function quickMarkMissingFound(id) {
 async function quickMarkMissingArchived(id) {
   const m = MISSING_LIGHTS.find(x => x._id === id);
   if (!m) return;
-  if (m.creator !== CURRENT_AGENT && !IS_ADMIN) { 
-    toast('只有发起人或主管能改状态', 'err'); 
-    return; 
-  }
+  // V5-W3-2026-05-26 权限放开:所有跟单都能操作
   // 已经存档 → toggle 回 searching
   if (m.status === 'abandoned') {
     if (!confirm('当前任务已是「已存档/已放弃」状态。\n要恢复成「搜寻中」吗?')) return;
