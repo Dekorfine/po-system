@@ -345,6 +345,10 @@ function attachScreenshot(dataURL, target) {
   } else if (target === 'issue_fu') {
     _newScreenshots_fu.push(dataURL);
     renderTempThumbs('ismFuThumbs', _newScreenshots_fu, 'fu');
+  } else if (target === 'issue_orig') {
+    // V22-CY+: 供应商问题主描述区的图片
+    persistCurrentIssue(it => { if (!it.screenshots) it.screenshots = []; it.screenshots.push(dataURL); }, true);
+    _renderIssueModal({ isDraft: false });
   } else if (target === 'missing_orig') {
     const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
     if (m) {

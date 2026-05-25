@@ -691,8 +691,13 @@ function _renderIssueModal({ isDraft }) {
         </div>
         <div class="ism-fu-input-row">
           <input type="date" id="ismNewDate" value="${new Date().toISOString().slice(0,10)}">
-          <textarea id="ismNewNote" placeholder="本次沟通了什么？对方答复？下一步？" rows="2"></textarea>
+          <textarea id="ismNewNote" placeholder="本次沟通了什么？对方答复？下一步？ · 可 Ctrl+V 粘贴截图" rows="2" onpaste="onIssueFuPaste(event)"></textarea>
           <button class="btn primary" onclick="addIssueFollowup()" style="flex-shrink:0; align-self:stretch;">+ 添加</button>
+        </div>
+        <div style="margin-top:6px; display:flex; align-items:center; gap:8px;">
+          <button type="button" class="btn small" onclick="document.getElementById('ismFuFileInput').click()">📷 上传图片</button>
+          <input type="file" id="ismFuFileInput" accept="image/*" multiple style="display:none;" onchange="onIssueFuFiles(this.files)">
+          <span style="font-size:11px; color:var(--text-tertiary);">将沟通截图直接保存到记录里</span>
         </div>
         <div id="ismFuThumbs" style="display:flex; gap:4px; margin-top:6px;"></div>
       </div>
@@ -769,9 +774,30 @@ function _renderIssueModal({ isDraft }) {
       
       <div class="ism-section">
         <div class="ism-section-title">详细描述</div>
-        <textarea id="ismDescription" rows="4" placeholder="详细描述问题或要求"
+        <textarea id="ismDescription" rows="4" placeholder="详细描述问题或要求 · 可在此 Ctrl+V 粘贴截图"
                   style="width: 100%; padding: 10px 12px; border: 1px solid var(--border, #d1d5db); border-radius: 6px; font-size: 13px; box-sizing: border-box; font-family: inherit; resize: vertical;"
+                  onpaste="onIssueDescPaste(event)"
                   ${isDraft ? '' : `onchange="onIssueField('description', this.value.trim())"`}>${escapeHtml(data.description || data.requirement || '')}</textarea>
+        
+        <!-- V22-CY+ 图片区:粘贴/上传/拖拽 -->
+        <div style="margin-top:8px;">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+            <span style="font-size:11.5px; color:var(--text-secondary); font-weight:500;">📷 问题截图(可粘贴 / 上传 / 拖拽)</span>
+            <button type="button" class="btn small" onclick="document.getElementById('ismDescFileInput').click()">+ 上传图片</button>
+            <input type="file" id="ismDescFileInput" accept="image/*" multiple style="display:none;" onchange="onIssueDescFiles(this.files)">
+          </div>
+          <div id="ismDescThumbs" class="ism-drop-zone" ondrop="onIssueDescDrop(event)" ondragover="event.preventDefault(); this.classList.add('dragging');" ondragleave="this.classList.remove('dragging');">
+            ${(data.screenshots || []).length === 0 
+              ? '<div style="grid-column:1/-1; padding:14px; text-align:center; color:var(--text-tertiary); font-size:12px; border:1px dashed var(--border); border-radius:6px;">📭 还没有图片 · 直接 Ctrl+V 粘贴 / 拖拽进来 / 点上方「+ 上传图片」</div>'
+              : (data.screenshots || []).map((s, i) => `
+                <div class="ism-photo-tile">
+                  <img src="${s}" onclick="viewImage('${s}')">
+                  ${isDraft ? '' : `<button class="rm" onclick="delIssueDescScreenshot(${i})" title="删除">×</button>`}
+                </div>
+              `).join('')
+            }
+          </div>
+        </div>
       </div>
       
       <div class="ism-section">
@@ -901,4 +927,74 @@ function updateIssueStats() {
   set('isResolved', res);
   set('isStuck', stuck);
   if (typeof updateBadges === 'function') updateBadges();
+}
+
+// ============================================================
+// V22-CY+ 2026-05-26: 供应商问题 - 图片上传(主描述 + 沟通记录)
+// ============================================================
+
+// 主描述图片 · 文件选择
+async function onIssueDescFiles(files) {
+  if (!files || files.length === 0) return;
+  await handleFiles(files, 'issue_orig');
+}
+
+// 主描述图片 · 拖拽
+async function onIssueDescDrop(event) {
+  event.preventDefault();
+  const dropZone = event.currentTarget;
+  if (dropZone) dropZone.classList.remove('dragging');
+  const files = event.dataTransfer.files;
+  if (files && files.length > 0) await handleFiles(files, 'issue_orig');
+}
+
+// 主描述图片 · Ctrl+V 粘贴
+async function onIssueDescPaste(event) {
+  const items = (event.clipboardData || event.originalEvent?.clipboardData)?.items;
+  if (!items) return;
+  const files = [];
+  for (const item of items) {
+    if (item.kind === 'file' && item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      if (file) files.push(file);
+    }
+  }
+  if (files.length === 0) return;
+  event.preventDefault();  // 阻止默认粘贴(避免 base64 文本进 textarea)
+  await handleFiles(files, 'issue_orig');
+}
+
+// 主描述图片 · 删除
+function delIssueDescScreenshot(idx) {
+  if (!confirm('删除这张图片?')) return;
+  persistCurrentIssue(it => {
+    if (it.screenshots && it.screenshots[idx] !== undefined) {
+      it.screenshots.splice(idx, 1);
+    }
+  }, true);
+  _renderIssueModal({ isDraft: false });
+}
+
+// 沟通记录图片 · 文件选择
+async function onIssueFuFiles(files) {
+  if (!files || files.length === 0) return;
+  if (!Array.isArray(_newScreenshots_fu)) _newScreenshots_fu = [];
+  await handleFiles(files, 'issue_fu');
+}
+
+// 沟通记录图片 · Ctrl+V 粘贴
+async function onIssueFuPaste(event) {
+  const items = (event.clipboardData || event.originalEvent?.clipboardData)?.items;
+  if (!items) return;
+  const files = [];
+  for (const item of items) {
+    if (item.kind === 'file' && item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      if (file) files.push(file);
+    }
+  }
+  if (files.length === 0) return;
+  event.preventDefault();
+  if (!Array.isArray(_newScreenshots_fu)) _newScreenshots_fu = [];
+  await handleFiles(files, 'issue_fu');
 }
