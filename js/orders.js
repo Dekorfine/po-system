@@ -466,7 +466,7 @@ function renderOrderRow(o, i) {
     thumbsHtml = `
       <div style="display:flex; gap:4px; align-items:flex-start;">
         <div style="position:relative; width:90px; height:90px; flex-shrink:0; cursor:pointer; border-radius:6px; overflow:hidden; border:1px solid var(--border); background: var(--bg-elevated);" 
-             onclick="event.stopPropagation(); viewImageGallery(&quot;${galleryData}&quot;, 0)">
+             onclick="event.stopPropagation(); viewImageGallery('${galleryData}', 0)">
           <img src="${main}" style="width:100%; height:100%; object-fit:cover; display:block;" loading="lazy" 
                onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--text-tertiary);font-size:11px;&quot;>加载失败</div>'">
           ${sourceBadge}
@@ -477,7 +477,7 @@ function renderOrderRow(o, i) {
             ${rest.map((s, idx) => `
               <img src="${s}" style="width:28px; height:28px; object-fit:cover; border-radius:4px; cursor:pointer; border:1px solid var(--border); flex-shrink:0;" 
                    loading="lazy"
-                   onclick="event.stopPropagation(); viewImageGallery(&quot;${galleryData}&quot;, ${idx + 1})"
+                   onclick="event.stopPropagation(); viewImageGallery('${galleryData}', ${idx + 1})"
                    onerror="this.style.display='none'">
             `).join('')}
             ${totalRemain > 0 ? `<span style="font-size:10px; color:var(--text-tertiary); width:28px; text-align:center; line-height:1.2;">+${totalRemain}</span>` : ''}
@@ -497,7 +497,7 @@ function renderOrderRow(o, i) {
     const sourceCls = productImageSource === 'manual' ? 'src-manual' : 'src-product';
     productImageHtml = `
       <div class="row-prod-thumb has-img ${sourceCls}" 
-           onclick="event.stopPropagation(); viewImageGallery(&quot;${galleryData}&quot;, 0)"
+           onclick="event.stopPropagation(); viewImageGallery('${galleryData}', 0)"
            title="${productImageSource === 'manual' ? '实拍/沟通图' : '产品图'}｜点击查看大图${restCount > 0 ? `（共 ${productImages.length} 张）` : ''}｜悬停自动放大">
         <img src="${main}" loading="lazy"
              onerror="this.style.display='none'; this.parentElement.classList.add('img-err'); this.parentElement.innerHTML='<div class=&quot;row-prod-fallback&quot;>📷</div>'">
