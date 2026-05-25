@@ -1150,7 +1150,10 @@ function renderShopifyOrders() {
 
     const productsHtml = items.length > 0 ? items.map(li => {
       const p = productMap[li.sku] || {};
-      const imgUrl = p.image_url || li.image_url || '';
+      // V5-W3-2026-05-25 修复:优先用 line_item 的 variant 真图,fallback 到 products 表主图
+      // 旧逻辑 `p.image_url || li.image_url` → 总显示主图(products 表存的是主图)
+      // 新逻辑 `li.image_url || p.image_url` → 显示客户实际买的那张 variant 图
+      const imgUrl = li.image_url || p.image_url || '';
       const nameCn = p.name_cn || '';
       const title = nameCn || li.title || '(无名)';
       const variant = li.variant_title || '';
