@@ -7270,5 +7270,160 @@ HOGO
 })();
 </script>
 
+<!-- V20260526k: 关键修复 · JS 运行时强制卡片紧凑布局(店小秘风格)-->
+<!-- 直接给 DOM 元素加 inline style · 绕过 CSS 缓存 -->
+<script>
+(function() {
+  'use strict';
+  
+  // 强制销售单卡片 + PO 卡片紧凑布局
+  function _forceCompactCardLayout() {
+    // ============ 销售单 so-card-body ============
+    document.querySelectorAll('.so-card-body').forEach(function(el) {
+      // 强制 flex 布局
+      el.style.setProperty('display', 'flex', 'important');
+      el.style.setProperty('align-items', 'flex-start', 'important');
+      el.style.setProperty('gap', '20px', 'important');
+      el.style.setProperty('padding', '12px 14px', 'important');
+      el.style.removeProperty('grid-template-columns');
+      
+      // 强制子元素布局
+      var products = el.querySelector(':scope > .so-products');
+      if (products) {
+        products.style.setProperty('flex', '1 1 auto', 'important');
+        products.style.setProperty('min-width', '0', 'important');
+        products.style.setProperty('max-width', '720px', 'important');
+        products.style.setProperty('display', 'flex', 'important');
+        products.style.setProperty('flex-direction', 'column', 'important');
+        products.style.setProperty('gap', '8px', 'important');
+        products.style.removeProperty('margin-left');
+        products.style.removeProperty('margin-right');
+      }
+      var side = el.querySelector(':scope > .so-card-side');
+      if (side) {
+        side.style.setProperty('flex-shrink', '0', 'important');
+        side.style.setProperty('flex-grow', '0', 'important');
+        side.style.setProperty('width', '220px', 'important');
+        side.style.setProperty('min-width', '0', 'important');
+        side.style.setProperty('margin-left', '0', 'important');
+        side.style.setProperty('margin-right', '0', 'important');
+        side.style.setProperty('display', 'flex', 'important');
+        side.style.setProperty('flex-direction', 'column', 'important');
+        side.style.setProperty('gap', '8px', 'important');
+        side.style.setProperty('padding-left', '14px', 'important');
+        side.style.setProperty('border-left', '1px dashed var(--border-subtle)', 'important');
+      }
+    });
+    
+    // ============ PO 卡片 po-card-top ============
+    document.querySelectorAll('.po-card-top').forEach(function(el) {
+      el.style.setProperty('display', 'flex', 'important');
+      el.style.setProperty('align-items', 'center', 'important');
+      el.style.setProperty('flex-wrap', 'wrap', 'important');
+      el.style.setProperty('gap', '14px', 'important');
+      el.style.setProperty('padding', '10px 14px', 'important');
+      el.style.removeProperty('grid-template-columns');
+      
+      // 直接子元素(3 列:PO 编号 / 供应商 / 金额)
+      var children = el.children;
+      if (children[0]) {
+        children[0].style.setProperty('flex', '1 1 auto', 'important');
+        children[0].style.setProperty('min-width', '280px', 'important');
+        children[0].style.setProperty('max-width', '660px', 'important');
+        children[0].style.removeProperty('margin-left');
+      }
+      if (children[1]) {
+        children[1].style.setProperty('flex-shrink', '0', 'important');
+        children[1].style.setProperty('flex-grow', '0', 'important');
+        children[1].style.setProperty('min-width', '140px', 'important');
+        children[1].style.setProperty('max-width', '240px', 'important');
+        children[1].style.removeProperty('margin-left');
+      }
+      if (children[2]) {
+        children[2].style.setProperty('flex-shrink', '0', 'important');
+        children[2].style.setProperty('flex-grow', '0', 'important');
+        children[2].style.setProperty('width', '160px', 'important');
+        children[2].style.setProperty('text-align', 'right', 'important');
+        children[2].style.setProperty('margin-left', '0', 'important');
+      }
+    });
+    
+    // ============ PO 卡片 po-card-body ============
+    document.querySelectorAll('.po-card-body').forEach(function(el) {
+      el.style.setProperty('display', 'flex', 'important');
+      el.style.setProperty('align-items', 'flex-start', 'important');
+      el.style.setProperty('gap', '24px', 'important');
+      el.style.setProperty('padding', '10px 14px', 'important');
+      el.style.removeProperty('grid-template-columns');
+      
+      var children = el.children;
+      if (children[0]) {
+        children[0].style.setProperty('flex', '1 1 auto', 'important');
+        children[0].style.setProperty('min-width', '0', 'important');
+        children[0].style.setProperty('max-width', '780px', 'important');
+        children[0].style.removeProperty('margin-left');
+      }
+      if (children[1]) {
+        children[1].style.setProperty('flex-shrink', '0', 'important');
+        children[1].style.setProperty('flex-grow', '0', 'important');
+        children[1].style.setProperty('width', '200px', 'important');
+        children[1].style.setProperty('margin-left', '0', 'important');
+      }
+    });
+  }
+  
+  // 暴露给 window(方便手动调试)
+  window._forceCompactCardLayout = _forceCompactCardLayout;
+  
+  // 1. 启动后多次执行(应对异步渲染)
+  function _initialForceBurst() {
+    [50, 200, 500, 1000, 2000, 3500].forEach(function(ms) {
+      setTimeout(_forceCompactCardLayout, ms);
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initialForceBurst);
+  } else {
+    _initialForceBurst();
+  }
+  
+  // 2. MutationObserver · 监听 DOM 变化(新卡片渲染时立即应用)
+  if (window.MutationObserver) {
+    var cardObserver = new MutationObserver(function(muts) {
+      var hasNewCards = false;
+      for (var i = 0; i < muts.length; i++) {
+        for (var j = 0; j < muts[i].addedNodes.length; j++) {
+          var n = muts[i].addedNodes[j];
+          if (n.nodeType === 1 && (
+            n.classList && (n.classList.contains('so-card') || n.classList.contains('po-card')) ||
+            (n.querySelector && (n.querySelector('.so-card-body') || n.querySelector('.po-card-body')))
+          )) {
+            hasNewCards = true;
+            break;
+          }
+        }
+        if (hasNewCards) break;
+      }
+      if (hasNewCards) {
+        setTimeout(_forceCompactCardLayout, 20);  // 等 DOM 稳定
+      }
+    });
+    // 监听整个 mainApp 的子树变化
+    setTimeout(function() {
+      var main = document.getElementById('mainApp');
+      if (main) cardObserver.observe(main, { childList: true, subtree: true });
+    }, 500);
+  }
+  
+  // 3. 兜底:每 1.5 秒强制执行一次(防止任何遗漏)
+  setInterval(_forceCompactCardLayout, 1500);
+  
+  // 4. 窗口大小变化时执行(响应式)
+  window.addEventListener('resize', _forceCompactCardLayout);
+  
+  console.log('[卡片布局修复 V20260526k] 运行时强制紧凑布局脚本已加载 · 销售单 + PO');
+})();
+</script>
+
 </body>
 </html>
