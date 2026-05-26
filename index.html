@@ -26,6 +26,7 @@
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260525z"></script>
 <script src="js/help.js?v=20260525z"></script>
+<script src="js/dateFilter.js?v=20260526a"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
@@ -5650,6 +5651,44 @@ body.has-side-tabs .section-block {
   </div>
 </div>
 
+<!-- ============ V20260525a1: 通用自定义日期范围对话框 ============ -->
+<div class="modal-bg" id="customDateRangeModal">
+  <div class="feedback-new-modal" style="max-width:440px;">
+    <div class="feedback-modal-head">
+      <h3 style="margin:0;">📅 自定义日期范围</h3>
+      <button class="modal-close" onclick="closeCustomDateRange()">✕</button>
+    </div>
+    <div class="feedback-modal-body">
+      <div style="background:rgba(37,99,235,0.06); padding:10px 14px; border-left:3px solid var(--accent); border-radius:0 6px 6px 0; font-size:12.5px; margin-bottom:14px;">
+        💡 直接选起止日期 · 例如统计某个项目周期 / 某个客户专项 / 某次活动期间
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div>
+          <label class="fb-label">从</label>
+          <input type="date" id="dfCustomFrom" class="form-control">
+        </div>
+        <div>
+          <label class="fb-label">到</label>
+          <input type="date" id="dfCustomTo" class="form-control">
+        </div>
+      </div>
+      <!-- 快捷按钮 -->
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:14px;">
+        <span style="font-size:11.5px; color:var(--text-tertiary); width:100%;">⚡ 快速填充:</span>
+        <button class="btn small" onclick="(()=>{const t=new Date();const a=new Date(t);a.setDate(t.getDate()-6);document.getElementById('dfCustomFrom').value=a.toISOString().slice(0,10);document.getElementById('dfCustomTo').value=t.toISOString().slice(0,10);})()">近 7 天</button>
+        <button class="btn small" onclick="(()=>{const t=new Date();const a=new Date(t);a.setDate(t.getDate()-29);document.getElementById('dfCustomFrom').value=a.toISOString().slice(0,10);document.getElementById('dfCustomTo').value=t.toISOString().slice(0,10);})()">近 30 天</button>
+        <button class="btn small" onclick="(()=>{const t=new Date();const a=new Date(t.getFullYear(),t.getMonth(),1);const b=new Date(t.getFullYear(),t.getMonth()+1,0);document.getElementById('dfCustomFrom').value=a.toISOString().slice(0,10);document.getElementById('dfCustomTo').value=b.toISOString().slice(0,10);})()">本月</button>
+        <button class="btn small" onclick="(()=>{const t=new Date();const a=new Date(t.getFullYear(),t.getMonth()-1,1);const b=new Date(t.getFullYear(),t.getMonth(),0);document.getElementById('dfCustomFrom').value=a.toISOString().slice(0,10);document.getElementById('dfCustomTo').value=b.toISOString().slice(0,10);})()">上月</button>
+        <button class="btn small" onclick="(()=>{const t=new Date();const a=new Date(t.getFullYear(),0,1);const b=new Date(t.getFullYear(),11,31);document.getElementById('dfCustomFrom').value=a.toISOString().slice(0,10);document.getElementById('dfCustomTo').value=b.toISOString().slice(0,10);})()">本年</button>
+      </div>
+    </div>
+    <div class="feedback-modal-foot">
+      <button class="btn ghost" onclick="closeCustomDateRange()">取消</button>
+      <button class="btn primary" onclick="confirmCustomDateRange()">✓ 应用</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ V5-W3-2026-05-26: 反馈中心 Modals ============ -->
 <!-- 新建反馈 -->
 <div class="modal-bg" id="feedbackNewModal">
@@ -5799,14 +5838,18 @@ body.has-side-tabs .section-block {
         <br>📊 <b>JSON</b>:原始数据 · 给开发或备份用。
       </div>
       
-      <label class="fb-label">📁 导出范围</label>
+      <label class="fb-label">📁 业务范围</label>
       <select id="fbDlScope" class="form-control" onchange="_feedbackUpdateDlPreview()">
         <option value="all">📋 全部反馈</option>
         <option value="pending">📥 仅待处理(pending + 分析中)</option>
         <option value="urgent">🔴 仅紧急/高优先级</option>
         <option value="with_screenshots">📷 仅含截图的</option>
-        <option value="last_week">📅 仅近 7 天</option>
         <option value="mine">👤 仅我提的</option>
+      </select>
+      
+      <label class="fb-label" style="margin-top:14px;">📅 日期范围</label>
+      <select id="fbDlDateRange" class="form-control" onchange="_feedbackOnDlDateChange(this.value)">
+        <!-- 由 populateDateFilterSelect 动态填 -->
       </select>
       <div id="fbDlCountHint" style="font-size:11.5px; color:var(--text-tertiary); margin-top:4px;">将导出 ... 条反馈</div>
       
