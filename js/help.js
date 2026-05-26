@@ -10,6 +10,25 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260525y',
+    date: '2026-05-26',
+    type: 'feature',
+    title: '💬 反馈中心(闭环 Bug/需求工单系统)',
+    notes: [
+      '新增「💬 反馈」tab · 全员可见可提',
+      '3 类型:🐛 Bug / 💡 新功能 / 🔧 改进 · 4 紧急度',
+      '完整字段:类型 + 紧急度 + 模块 + 标题 + 描述 + 截图 + 复现步骤 + 预期/实际',
+      '支持 Ctrl+V 粘贴截图 / 拖拽 / 多文件上传',
+      '自动收集浏览器信息 · 用户角色 · app 版本',
+      '提交后所有员工实时可见 · 可点赞 · 可评论',
+      '🚀 老板专属「📤 导出给 Claude」一键复制所有待分析为结构化 JSON',
+      '🚀 老板专属「📥 导入 Claude 分析」把 AI 回复粘贴回来自动写入',
+      '7 状态流:待分析→Claude分析中→已确认→改造中→已修复(标版本号)',
+      '存储:跨部门 Supabase · system_feedback 表 · Realtime 同步',
+      'localStorage 兜底(若 table 未建)',
+    ],
+  },
+  {
     v: '20260525x',
     date: '2026-05-26',
     type: 'feature',
@@ -644,12 +663,28 @@ function renderBugSection() {
     <div class="help-intro">
       <h2 style="margin:0 0 10px 0;">🐛 Bug 反馈指南</h2>
       <div style="color:var(--text-secondary); font-size:13px;">
-        发现 bug 不丢人 · <b>提不清 bug 才是真的耽误事</b>。请按下面的模板提报。
+        发现 bug 不丢人 · <b>提不清 bug 才是真的耽误事</b>。
+      </div>
+    </div>
+    
+    <div class="help-section" style="background:linear-gradient(135deg, rgba(37,99,235,0.08), rgba(124,58,237,0.08)); padding:18px 20px; border-radius:10px; border:1px solid rgba(37,99,235,0.2);">
+      <div style="display:flex; gap:12px; align-items:center;">
+        <div style="font-size:42px;">💬</div>
+        <div style="flex:1;">
+          <div style="font-size:15px; font-weight:700; color:var(--text-primary); margin-bottom:4px;">✨ 推荐 · 在系统内直接提反馈</div>
+          <div style="font-size:13px; color:var(--text-secondary); line-height:1.6;">
+            点顶部「💬 反馈」tab → 填表单 → 截图 Ctrl+V 粘贴 → 提交 · 完事。
+            <br>老板会用 Claude 分析所有反馈 · 确认后立即修复 · 完成后你会看到状态变绿 ✅
+          </div>
+          <button class="btn primary" style="margin-top:10px;" onclick="closeHelpManual(); switchTab('feedback'); setTimeout(feedbackOpenNew, 300);">
+            💬 立刻打开反馈中心
+          </button>
+        </div>
       </div>
     </div>
     
     <div class="help-section help-bug-template">
-      <div class="help-section-title">📋 标准 Bug 报告模板</div>
+      <div class="help-section-title">📋 也可以用这个标准模板发到群里(如果反馈中心暂时打不开)</div>
       <div style="position:relative;">
         <button class="btn small" style="position:absolute; top:8px; right:8px; z-index:2;" onclick="copyBugTemplate(this)">📋 复制模板</button>
         <pre id="bugTemplateBox">${escapeHtml(BUG_REPORT_TEMPLATE)}</pre>
@@ -657,7 +692,7 @@ function renderBugSection() {
     </div>
     
     <div class="help-section">
-      <div class="help-section-title">📚 详细指引</div>
+      <div class="help-section-title">📚 详细指引(无论你用反馈中心还是群里发,这些都适用)</div>
       ${BUG_GUIDELINES.map(g => `
         <div class="help-bug-guide">
           <div class="help-bug-guide-title">${escapeHtml(g.title)}</div>
@@ -667,12 +702,15 @@ function renderBugSection() {
     </div>
     
     <div class="help-section help-contact">
-      <div class="help-section-title">📞 提交途径</div>
+      <div class="help-section-title">🔄 反馈闭环流程</div>
       <ol style="margin:0; padding-left:20px; font-size:13px; line-height:1.8;">
-        <li>截图 + 复现步骤 → 发到「跟单群」@主管</li>
-        <li>主管转 Claude AI 助手 → 当天或次日改完</li>
-        <li>改完后会在「📜 版本记录」tab 看到对应的 fix 条目</li>
-        <li>🟠 🔴 紧急的也可以直接 @ 老板</li>
+        <li><b>提交</b>:你在反馈中心填表 → 系统存到云端</li>
+        <li><b>导出</b>:老板点「📤 导出给 Claude」→ 复制结构化 JSON</li>
+        <li><b>分析</b>:粘贴给 Claude → Claude 分析每条根因/方案/工作量/风险</li>
+        <li><b>确认</b>:老板回 Claude "确认 #1 #3 #5,跳过 #2"</li>
+        <li><b>实施</b>:Claude 改代码 → 升版本号 → 给新文件</li>
+        <li><b>部署</b>:老板推到生产 → 在反馈中心点「✅ 已修复 in v20260526a」</li>
+        <li><b>通知</b>:你看到自己提的反馈状态变绿 ✅</li>
       </ol>
     </div>
   `;

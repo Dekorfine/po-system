@@ -247,6 +247,7 @@ function setupScreenshotHandlers() {
         missingModal: 'missing_orig',
         purchaseModal: 'purchase_orig',
         batchChaseModal: 'batch_chase',
+        feedbackNewModal: 'feedback_new',  // V5-W3-2026-05-26: 反馈中心
       };
       target = modalDefaults[visibleModal.id];
     }
@@ -269,6 +270,7 @@ function setupScreenshotHandlers() {
           after_orig: '售后描述',    after_fu: '售后跟进',
           missing_orig: '找灯描述',  missing_real: '找灯实物图',
           purchase_orig: '采购描述',  batch_chase: '批量催单',
+          feedback_new: '反馈截图',
         };
         const label = targetLabels[target] || target;
         toast(`📋 检测到剪贴板图片 · 上传到「${label}」...`, 'info', 2000);
@@ -417,6 +419,11 @@ function attachScreenshot(dataURL, target) {
     }, true);
     renderPurchaseModalContent();
     renderPurchases();
+  } else if (target === 'feedback_new') {
+    // V5-W3-2026-05-26: 反馈中心 · 新建反馈时的截图
+    if (typeof _feedbackAttachScreenshot === 'function') {
+      _feedbackAttachScreenshot(dataURL);
+    }
   }
 }
 

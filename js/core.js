@@ -2215,6 +2215,16 @@ function renderActiveTab() {
   else if (CURRENT_TAB === 'cross_dept') {
     if (typeof cdmOnTabActivate === 'function') cdmOnTabActivate();
   }
+  // V5-W3-2026-05-26: 反馈中心 tab
+  else if (CURRENT_TAB === 'feedback') {
+    if (typeof feedbackInit === 'function') {
+      feedbackInit().then(() => {
+        if (typeof feedbackRender === 'function') feedbackRender();
+      });
+    } else if (typeof feedbackRender === 'function') {
+      feedbackRender();
+    }
+  }
 }
 
 function updateBadges() {
@@ -2499,6 +2509,7 @@ const TAB_META = {
   finance:       { icon: '✓',  label: '财务收货',   badgeId: 'badgeFinance' },
   products:      { icon: '📚', label: '产品',       badgeId: 'badgeProducts' },
   cross_dept:    { icon: '📨', label: '跨部门',     badgeId: 'badgeCrossDept' },
+  feedback:      { icon: '💬', label: '反馈',       badgeId: 'badgeFeedback' },
   consolidation: { icon: '🧊', label: '合箱',       badgeId: null },
   analytics:     { icon: '📈', label: '数据',       badgeId: null },
   performance:   { icon: '📊', label: '绩效',       badgeId: 'badgePerformance' },
