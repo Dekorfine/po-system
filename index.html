@@ -20,30 +20,30 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525y"></script>
-<script src="js/utils.js?v=20260525y"></script>
+<script src="js/core.js?v=20260525z"></script>
+<script src="js/utils.js?v=20260525z"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525y"></script>
-<script src="js/issues.js?v=20260525y"></script>
-<script src="js/help.js?v=20260525y"></script>
-<script src="js/feedback.js?v=20260525y"></script>
+<script src="js/settings.js?v=20260525z"></script>
+<script src="js/issues.js?v=20260525z"></script>
+<script src="js/help.js?v=20260525z"></script>
+<script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525y"></script>
-<script src="js/missing.js?v=20260525y"></script>
-<script src="js/orders.js?v=20260525y"></script>
-<script src="js/shopify.js?v=20260525y"></script>
-<script src="js/po.js?v=20260525y"></script>
+<script src="js/aftersales.js?v=20260525z"></script>
+<script src="js/missing.js?v=20260525z"></script>
+<script src="js/orders.js?v=20260525z"></script>
+<script src="js/shopify.js?v=20260525z"></script>
+<script src="js/po.js?v=20260525z"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script src="js/cross-dept.js?v=20260525y"></script>
+<script src="js/cross-dept.js?v=20260525z"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525y"></script>
-<script src="js/meetings.js?v=20260525y"></script>
-<script src="js/greeting.js?v=20260525y"></script>
-<script src="js/search.js?v=20260525y"></script>
+<script src="js/translator.js?v=20260525z"></script>
+<script src="js/meetings.js?v=20260525z"></script>
+<script src="js/greeting.js?v=20260525z"></script>
+<script src="js/search.js?v=20260525z"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -5780,6 +5780,61 @@ body.has-side-tabs .section-block {
     <div class="feedback-modal-foot">
       <button class="btn ghost" onclick="feedbackCloseImport()">取消</button>
       <button class="btn primary" onclick="feedbackDoImport()">📥 导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 下载反馈对话框 (老板/运维) -->
+<div class="modal-bg" id="feedbackDownloadModal">
+  <div class="feedback-new-modal" style="max-width:640px;">
+    <div class="feedback-modal-head">
+      <h3 style="margin:0;">💾 下载反馈报告</h3>
+      <button class="modal-close" onclick="feedbackCloseDownloadDialog()">✕</button>
+    </div>
+    <div class="feedback-modal-body">
+      <div style="background:rgba(37,99,235,0.06); padding:10px 14px; border-left:3px solid var(--accent); border-radius:0 6px 6px 0; font-size:12.5px; margin-bottom:14px;">
+        💡 下载所有反馈到本地文件 · 给老板备份或离线给 Claude 批量处理。
+        <br>📄 <b>Markdown(推荐)</b>:文本格式 · 直接发给 Claude 分析。
+        <br>🌐 <b>HTML</b>:浏览器打开 · 视觉好看 · 含截图 · Ctrl+P 可另存为 PDF。
+        <br>📊 <b>JSON</b>:原始数据 · 给开发或备份用。
+      </div>
+      
+      <label class="fb-label">📁 导出范围</label>
+      <select id="fbDlScope" class="form-control" onchange="_feedbackUpdateDlPreview()">
+        <option value="all">📋 全部反馈</option>
+        <option value="pending">📥 仅待处理(pending + 分析中)</option>
+        <option value="urgent">🔴 仅紧急/高优先级</option>
+        <option value="with_screenshots">📷 仅含截图的</option>
+        <option value="last_week">📅 仅近 7 天</option>
+        <option value="mine">👤 仅我提的</option>
+      </select>
+      <div id="fbDlCountHint" style="font-size:11.5px; color:var(--text-tertiary); margin-top:4px;">将导出 ... 条反馈</div>
+      
+      <label class="fb-label" style="margin-top:14px;">📦 导出格式</label>
+      <select id="fbDlFormat" class="form-control">
+        <option value="markdown">📄 Markdown (.md) — 推荐 · 给 Claude 用最佳</option>
+        <option value="html">🌐 HTML (.html) — 浏览器打开 · 可视化 · 含图</option>
+        <option value="pdf_print">📕 PDF — 直接打开打印对话框 · 选「另存为 PDF」</option>
+        <option value="json">📊 JSON (.json) — 原始数据 · 给开发</option>
+      </select>
+      
+      <div style="margin-top:14px; display:flex; flex-direction:column; gap:8px;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px;">
+          <input type="checkbox" id="fbDlIncludeImages" checked>
+          <span>📷 包含截图(Markdown 用 URL · HTML/PDF 嵌入 base64 · JSON 用 URL)</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px;">
+          <input type="checkbox" id="fbDlIncludeResolved" onchange="_feedbackUpdateDlPreview()">
+          <span>✅ 包含已修复/已拒绝/重复的(默认不含)</span>
+        </label>
+      </div>
+    </div>
+    <div class="feedback-modal-foot">
+      <span style="flex:1; font-size:11.5px; color:var(--text-tertiary);">
+        💡 提示:Markdown 含图片 URL · 截图在 Supabase 公开 bucket 上 · Claude 可直接访问
+      </span>
+      <button class="btn ghost" onclick="feedbackCloseDownloadDialog()">取消</button>
+      <button class="btn primary" onclick="feedbackDoDownload()">💾 下载</button>
     </div>
   </div>
 </div>
