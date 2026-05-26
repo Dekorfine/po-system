@@ -20,12 +20,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260526e"></script>
+<script src="js/core.js?v=20260526h"></script>
 <script src="js/utils.js?v=20260525z"></script>
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260526e"></script>
-<script src="js/help.js?v=20260526f"></script>
+<script src="js/help.js?v=20260526h"></script>
 <script src="js/dateFilter.js?v=20260526e"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
@@ -34,7 +34,7 @@
 <script src="js/trash.js"></script>
 <script src="js/aftersales.js?v=20260526e"></script>
 <script src="js/missing.js?v=20260526e"></script>
-<script src="js/orders.js?v=20260526e"></script>
+<script src="js/orders.js?v=20260526g"></script>
 <script src="js/shopify.js?v=20260526e"></script>
 <script src="js/po.js?v=20260526f"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
@@ -259,9 +259,9 @@ body {
 }
 .record-row:hover { background: var(--bg-row-hover); }
 
-/* 催单表格 - V4：状态列从 100px→120px 容纳产品图，截图列 210px 容纳沟通图大图+缩略组合 */
+/* 催单表格 - V20260526g: 中间列加上限 700px,避免在宽屏下产生大片空白 */
 #ordersBody .record-row, .orders-header {
-  grid-template-columns: 44px 120px minmax(280px, 1.6fr) 210px 140px 130px;
+  grid-template-columns: 44px 120px minmax(280px, 700px) 210px 140px 130px;
 }
 #ordersBody .after-row { align-items: start; padding: 14px 18px; }
 #ordersBody .after-row > div { padding-top: 2px; }
@@ -341,9 +341,9 @@ body {
 .date-line.today { color: var(--warning); font-weight: 600; }
 .date-line.upcoming { color: var(--text-primary); }
 .date-line.empty { color: var(--text-tertiary); }
-/* 售后表格 */
+/* 售后表格 - V20260526g: 中间列加上限 700px */
 #aftersalesBody .record-row, .aftersales-header {
-  grid-template-columns: 44px 120px minmax(280px, 1.6fr) 210px 130px 130px;
+  grid-template-columns: 44px 120px minmax(280px, 700px) 210px 130px 130px;
 }
 #aftersalesBody .after-row { align-items: start; padding: 14px 18px; }
 #aftersalesBody .after-row > div { padding-top: 2px; }
@@ -1437,6 +1437,27 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .as-view-btn { color: var(--text-secondary); transition: all 0.15s; }
 .as-view-btn.active { background: var(--bg-card) !important; color: var(--accent) !important; font-weight: 600; }
 .as-view-btn:hover { color: var(--text-primary); }
+
+/* V20260526h: 设置模块 tab 切换样式 */
+.settings-tab-btn {
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.15s;
+}
+.settings-tab-btn:hover { color: var(--text-primary); }
+.settings-tab-btn.active {
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+.settings-pane { min-height: 280px; }
 
 /* ============ V5-W3-2026-05-26: 反馈中心 ============ */
 .feedback-page { padding: 4px 0; }
@@ -4351,23 +4372,31 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 body.has-side-tabs #mainApp { padding-left: 150px; }
 body.has-side-tabs.side-collapsed #mainApp { padding-left: 56px; }
 
-/* V20260526f: 加强侧栏与内容隔离 · 防止视觉溢出 */
-/* 1. 侧栏:加右边阴影分隔,确保 z-index 在顶 */
+/* V20260526g: 加更强的侧栏隔离 · 双重保险(padding + margin) */
 body.has-side-tabs .side-tab-bar {
-  z-index: 100;  /* 高于内容 */
-  box-shadow: 2px 0 8px rgba(0,0,0,0.06);  /* 右边阴影提供视觉分隔 */
+  z-index: 1000;  /* 最高 · 确保盖住任何溢出 */
+  box-shadow: 2px 0 12px rgba(0,0,0,0.08);  /* 阴影更明显 */
+  background: var(--bg-card);  /* 实色背景 · 阻止透视 */
 }
-/* 2. 主内容区:加 min-width: 0 防止内部 grid/flex 撑破容器 */
+/* 主内容区双层保险 · 防止内部 grid/flex 撑破 */
 body.has-side-tabs #mainApp {
   min-width: 0;
-  overflow-x: hidden;  /* 兜底:即使有元素溢出,也不会盖到侧栏 */
+  overflow-x: hidden;
+  position: relative;  /* 建立独立 stacking context */
+  z-index: 1;
 }
-/* 3. PO/销售单卡片:防止内部元素溢出导致整体被推宽 */
+/* tab-content 也加宽度限制 · 避免内部 grid 撑破 */
+body.has-side-tabs .tab-content {
+  min-width: 0;
+  max-width: 100%;
+}
+/* PO/销售单/催单 等卡片 */
 .po-card, .so-card { min-width: 0; max-width: 100%; overflow: hidden; }
 .po-card-body, .po-card-top, .po-card-actions,
 .so-card-body, .so-card-top, .so-card-actions { min-width: 0; }
-/* 4. tab-content 也加 min-width: 0 */
-.tab-content { min-width: 0; }
+/* V20260526g: 表格 records-card 也防溢出 */
+.records-card { min-width: 0; max-width: 100%; overflow-x: hidden; }
+.records-header, .record-row { min-width: 0; }
 
 /* V5-W3-2026-05-26 fix v2: 有侧栏时取消 max-width 限制,内容填满到屏幕右边 */
 body.has-side-tabs .header-top,
@@ -4376,6 +4405,7 @@ body.has-side-tabs .section-block {
   max-width: none !important;
   margin-left: 0 !important;
   margin-right: 0 !important;
+  min-width: 0;  /* V20260526g: 加 min-width: 0 */
 }
 /* 当 tab 被指定为 'side' 时,从顶栏隐藏 */
 .tab-nav .tab-item[data-zone="side"] { display: none; }
@@ -4867,17 +4897,22 @@ body.has-side-tabs .section-block {
       <select class="filter-select" id="oDateFilter" onchange="ordersOnDateChange(this.value)" style="min-width:160px;">
       </select>
       <button class="btn ghost small" id="oTodayChase" onclick="ordersFilterTodayChase()" title="今天到 nextFollow 日期的订单 · 今日需要联系的清单">⏰ 今日要催</button>
-      <button class="btn primary" onclick="addOrder()" style="margin-left: auto;" title="新增催单(可选:PO 派生 或 手动催单)">+ 新增催单</button>
+      <!-- V20260526g: 视角切换 · 列表/网格 -->
+      <div class="o-view-toggle" id="oViewToggle" style="display:inline-flex; gap:0; margin-left:8px; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
+        <button class="o-view-btn active" data-view="list" onclick="setOrdersViewMode('list')" title="列表视图(详细信息)" style="padding:6px 10px; font-size:12px; background:var(--bg-card); border:none; cursor:pointer; border-right:1px solid var(--border);">📋 列表</button>
+        <button class="o-view-btn" data-view="grid" onclick="setOrdersViewMode('grid')" title="网格视图(图墙 · 一眼识货)" style="padding:6px 10px; font-size:12px; background:transparent; border:none; cursor:pointer;">🖼 网格</button>
+      </div>
+      <button class="btn primary" onclick="addOrder()" style="margin-left: 8px;" title="新增催单(可选:PO 派生 或 手动催单)">+ 新增催单</button>
     </div>
-    <!-- V3：催单阈值 chip（按下单距今天数过滤未发货 PO，主管可在配置里自定义）-->
+    <!-- V3:催单阈值 chip(按下单距今天数过滤未发货 PO,主管可在配置里自定义)-->
     <div id="chaseThresholdChips" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding: 10px 14px; background: var(--bg-elevated); border-radius: 10px; border: 1px solid var(--border-subtle);"></div>
     <div class="records-card" id="ordersCard">
-      <div class="records-header orders-header">
+      <div class="records-header orders-header" id="ordersListHeader">
         <div>#</div><div>状态</div><div>订单 · 产品 · 催单历史</div>
         <div>截图</div><div>日期</div><div style="text-align: right;">操作</div>
       </div>
       <div id="ordersBody"></div>
-      <div class="add-row" onclick="addOrder()">+ 新增催单（可选 PO 派生 或 手动）</div>
+      <div class="add-row" onclick="addOrder()">+ 新增催单(可选 PO 派生 或 手动)</div>
     </div>
   </div>
 </div>
@@ -6940,59 +6975,120 @@ HOGO
 
 <!-- ========== Settings Modal ========== -->
 <div class="modal-bg" id="settingsModal">
-  <div class="modal" style="width: 600px;">
+  <div class="modal" style="width: 760px; max-width: 90vw;">
     <button class="modal-close" onclick="closeModal('settingsModal')">✕</button>
-    <h2>⚙ 系统配置</h2>
+    <h2 style="margin-bottom: 4px;">⚙ 系统设置</h2>
+    <p style="color: var(--text-tertiary); font-size: 12px; margin-bottom: 18px;">集中管理产品 · 网站 · 人员 · 系统配置</p>
     
-    <div class="form-group">
-      <label>📍 网站列表（订单/售后归属用）</label>
-      <div class="add-agent-input" style="margin-bottom: 8px;">
-        <input type="text" id="newSite" placeholder="新增网站简称（如：XX）" maxlength="10">
-        <button class="btn primary" onclick="addSiteConfig()">添加</button>
-      </div>
-      <div class="tag-list" id="settingsSites"></div>
-    </div>
-    
-    <div class="form-group">
-      <label>👥 跟单员名单 & 负责网站</label>
-      <div id="settingsAgentsList"></div>
+    <!-- V20260526h: 设置模块 tab 切换 -->
+    <div class="settings-tabs" style="display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:18px;">
+      <button class="settings-tab-btn active" data-tab="products" onclick="switchSettingsTab('products')">📦 产品维护</button>
+      <button class="settings-tab-btn" data-tab="sites" onclick="switchSettingsTab('sites')">🌐 网站维护</button>
+      <button class="settings-tab-btn" data-tab="people" onclick="switchSettingsTab('people')">👥 人员维护</button>
+      <button class="settings-tab-btn" data-tab="suppliers" onclick="switchSettingsTab('suppliers')">🏭 供应商</button>
+      <button class="settings-tab-btn" data-tab="advanced" onclick="switchSettingsTab('advanced')" id="settingsAdvancedTab" style="display:none;">⚙ 高级</button>
     </div>
     
-    <div class="form-group">
-      <label style="display: flex; justify-content: space-between; align-items: center;">
-        <span>🏭 供应商列表（自动联想用）<span id="suppliersCount" style="font-size: 11px; color: var(--text-tertiary); font-weight: normal; margin-left: 6px;"></span></span>
-        <button class="btn ghost sm" onclick="openSupplierImport()" style="padding: 4px 10px; font-size: 11px;">📋 批量导入</button>
-      </label>
-      <div class="add-agent-input" style="margin-bottom: 8px;">
-        <input type="text" id="newSupplier" placeholder="新增供应商" maxlength="30">
-        <button class="btn primary" onclick="addSupplierConfig()">添加</button>
+    <!-- TAB 1: 产品维护 -->
+    <div class="settings-pane active" data-pane="products">
+      <div style="padding: 20px; background: var(--bg-elevated); border-radius: 10px; text-align: center;">
+        <div style="font-size: 48px; margin-bottom: 10px;">📦</div>
+        <div style="font-size: 15px; font-weight: 600; margin-bottom: 8px;">产品维护</div>
+        <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.7;">
+          产品维护功能在独立的「产品」tab 中,有完整的列表、搜索、批量导入、双语字段等功能。<br>
+          点击下方按钮直接打开产品 tab 管理。
+        </div>
+        <button class="btn primary" onclick="closeModal('settingsModal'); switchTab('products');">→ 打开产品维护 tab</button>
       </div>
-      <div class="tag-list" id="settingsSuppliers" style="max-height: 200px; overflow-y: auto;"></div>
-    </div>
-
-    <!-- V3：催单阈值（仅主管可见）-->
-    <div class="form-group" id="settingsChaseThresholds" style="display: none;">
-      <label>⏰ 催单阈值（PO 派生催单使用 · 按下单距今天数提示）</label>
-      <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 8px;">
-        💡 在催单 tab 顶部会显示这些阈值的快速筛选 chip。比如「7 天」表示下单 ≥ 7 天还没发货的 PO。
+      <div style="margin-top: 14px; padding: 12px 14px; background: rgba(37,99,235,0.06); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 12px; color: var(--text-secondary); line-height: 1.7;">
+        💡 <b>快捷操作</b><br>
+        · 产品 tab → + 新增产品<br>
+        · 产品 tab → 📋 批量导入(Excel/CSV)<br>
+        · 产品 tab → 搜索 SKU/产品名/标签<br>
+        · 在任意 PO/订单卡片点击 SKU 都能跳到对应产品
       </div>
-      <div class="add-agent-input" style="margin-bottom: 8px;">
-        <input type="number" id="newChaseThreshold" placeholder="新增天数（如 5）" min="1" max="365">
-        <button class="btn primary" onclick="addChaseThreshold()">添加</button>
-      </div>
-      <div class="tag-list" id="chaseThresholdsTags"></div>
     </div>
     
-    <!-- 主管专属：模块化重启（危险操作区）-->
-    <div id="dangerZone" style="display: none; margin-top: 16px; padding: 14px; border: 1.5px dashed var(--danger, #dc2626); border-radius: 8px; background: rgba(220,38,38,0.03);">
-      <div style="font-size: 12px; font-weight: 600; color: var(--danger, #dc2626); margin-bottom: 6px;">⚠ 危险操作区（仅主管可见）</div>
-      <div style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.6;">
-        模块化重启 · 按模块清空测试数据。数据会进回收站，30 天后云端永久清除。删除前自动备份 JSON 到本地，可作存档。
+    <!-- TAB 2: 网站维护 -->
+    <div class="settings-pane" data-pane="sites" style="display:none;">
+      <div style="margin-bottom: 12px; padding: 10px 14px; background: rgba(37,99,235,0.06); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 12px; color: var(--text-secondary); line-height: 1.7;">
+        💡 维护跟单工作的网站列表 · 用于 PO/订单/售后的网站归属字段<br>
+        新增/删除会影响 SHOPS_PRESET · 仅限主管编辑
       </div>
-      <button class="btn" onclick="openResetPanel()" style="color: var(--danger, #dc2626); border-color: var(--danger, #dc2626); font-weight: 600;">📦 打开模块重启面板</button>
+      <div id="settingsSitesList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin-top: 12px;">
+        <!-- JS 渲染网站卡片 -->
+      </div>
+      <div style="margin-top: 14px; padding: 12px 14px; background: rgba(245,158,11,0.06); border-left: 3px solid var(--warning); border-radius: 6px; font-size: 12px; color: var(--text-secondary);">
+        ⚠ <b>网站修改需联系开发</b> · 涉及 SHOPS_PRESET 常量(cross-dept.js)<br>
+        新增网站请提交「💬 反馈中心」(类型:🎨 功能建议) · 我会在下个版本加上
+      </div>
     </div>
-
-    <div class="modal-actions">
+    
+    <!-- TAB 3: 人员维护 -->
+    <div class="settings-pane" data-pane="people" style="display:none;">
+      <div style="margin-bottom: 12px; padding: 10px 14px; background: rgba(37,99,235,0.06); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 12px; color: var(--text-secondary); line-height: 1.7;">
+        💡 维护团队成员 · 跟单员、店铺负责人、超时配置<br>
+        关联跨部门工单的「负责人自动建议」功能
+      </div>
+      <div style="display: grid; gap: 10px;">
+        <button class="btn" onclick="closeModal('settingsModal'); switchTab('cross-dept'); setTimeout(() => { if (typeof cdmOpenShopOwnersManager === 'function') cdmOpenShopOwnersManager(); }, 200);" style="padding: 14px 16px; text-align: left; display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <div style="font-weight: 600; font-size: 13px;">🌐 店铺负责人管理</div>
+            <div style="font-size: 11.5px; color: var(--text-tertiary); margin-top: 3px;">配置每个网站的美工/客服负责人 · 跨部门工单自动派单</div>
+          </div>
+          <span style="color: var(--accent); font-size: 16px;">→</span>
+        </button>
+        <button class="btn" onclick="closeModal('settingsModal'); switchTab('cross-dept'); setTimeout(() => { if (typeof cdmOpenTimeoutSettings === 'function') cdmOpenTimeoutSettings(); }, 200);" style="padding: 14px 16px; text-align: left; display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <div style="font-weight: 600; font-size: 13px;">⏰ 超时配置</div>
+            <div style="font-size: 11.5px; color: var(--text-tertiary); margin-top: 3px;">设置 urgent/high/normal/low 优先级的默认超时天数</div>
+          </div>
+          <span style="color: var(--accent); font-size: 16px;">→</span>
+        </button>
+      </div>
+      <div style="margin-top: 14px; padding: 12px 14px; background: rgba(245,158,11,0.06); border-left: 3px solid var(--warning); border-radius: 6px; font-size: 12px; color: var(--text-secondary);">
+        ⚠ <b>新增跟单员/账号</b> 由系统管理员在 Supabase 后台维护,本系统不支持自助注册
+      </div>
+    </div>
+    
+    <!-- TAB 4: 供应商 -->
+    <div class="settings-pane" data-pane="suppliers" style="display:none;">
+      <div style="margin-bottom: 12px; padding: 10px 14px; background: rgba(37,99,235,0.06); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 12px; color: var(--text-secondary); line-height: 1.7;">
+        💡 供应商列表用于 PO/催单/售后等模块的供应商联想<br>
+        共 <span id="suppliersCountInline" style="font-weight:600; color:var(--accent);">0</span> 个供应商
+      </div>
+      <div class="add-agent-input" style="display: flex; gap: 6px; margin-bottom: 12px;">
+        <input type="text" id="newSupplier" placeholder="新增供应商名称" maxlength="30" style="flex:1;">
+        <button class="btn primary" onclick="addSupplierConfig()">+ 添加</button>
+        <button class="btn ghost" onclick="closeModal('settingsModal'); if (typeof openSupplierImport === 'function') openSupplierImport();">📋 批量导入</button>
+      </div>
+      <div class="tag-list" id="settingsSuppliers" style="max-height: 320px; overflow-y: auto; padding: 8px; background: var(--bg-elevated); border-radius: 8px;"></div>
+    </div>
+    
+    <!-- TAB 5: 高级(主管专属) -->
+    <div class="settings-pane" data-pane="advanced" style="display:none;">
+      <div class="form-group" id="settingsChaseThresholds">
+        <label>⏰ 催单阈值(PO 派生催单使用 · 按下单距今天数提示)</label>
+        <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 8px;">
+          💡 在催单 tab 顶部会显示这些阈值的快速筛选 chip · 比如「7 天」表示下单 ≥ 7 天还没发货的 PO
+        </div>
+        <div class="add-agent-input" style="display: flex; gap: 6px; margin-bottom: 8px;">
+          <input type="number" id="newChaseThreshold" placeholder="新增天数(如 5)" min="1" max="365" style="flex:1;">
+          <button class="btn primary" onclick="if(typeof addChaseThreshold === 'function') addChaseThreshold();">+ 添加</button>
+        </div>
+        <div class="tag-list" id="chaseThresholdsTags"></div>
+      </div>
+      
+      <div style="margin-top: 16px; padding: 14px; border: 1.5px dashed var(--danger, #dc2626); border-radius: 8px; background: rgba(220,38,38,0.03);">
+        <div style="font-size: 12px; font-weight: 600; color: var(--danger, #dc2626); margin-bottom: 6px;">⚠ 危险操作区(仅主管可见)</div>
+        <div style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.6;">
+          模块化重启 · 按模块清空测试数据 · 数据会进回收站,30 天后云端永久清除 · 删除前自动备份 JSON 到本地
+        </div>
+        <button class="btn" onclick="if(typeof openResetPanel === 'function') openResetPanel();" style="color: var(--danger, #dc2626); border-color: var(--danger, #dc2626); font-weight: 600;">📦 打开模块重启面板</button>
+      </div>
+    </div>
+    
+    <div class="modal-actions" style="margin-top: 20px;">
       <button class="btn primary" onclick="closeModal('settingsModal')">完成</button>
     </div>
   </div>
