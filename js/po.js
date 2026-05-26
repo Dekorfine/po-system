@@ -2327,7 +2327,7 @@ async function masterUnbindSelf() {
 
 // ============ 采购单 tab ============
 let PO_LIST = [];
-let PO_FILTER = 'all';
+let PO_FILTER = 'active';  // V20260526c: 默认从 'all' 改为 'active' (店小秘式待办)
 let PO_SALES_ORDERS_MAP = {};
 let PO_SUPPLIER_FILTER = '';
 let PO_DATE_FILTER = null;  // {days, creator?} 时间范围筛选
@@ -2484,24 +2484,26 @@ function poStatsToggleTeam() {
 }
 
 function poRefreshCounts() {
-  const counts = { all: 0, producing: 0, ordered: 0, done: 0, cancelled: 0, pending: 0 };
+  // V20260526c 改造:加 "active" = 进行中(店小秘式"待办") · 排除已完成 + 已取消
+  const counts = { all: 0, active: 0, producing: 0, ordered: 0, done: 0, cancelled: 0, pending: 0 };
   PO_LIST.forEach(p => {
     if (p.status === 'cancelled') counts.cancelled++;
     else {
       counts.all++;  // "全部" 排除已取消
       if (p.status === 'received') counts.done++;
-      else if (p.status === 'pending_approval') counts.pending++;
-      else if (p.status === 'producing') counts.producing++;
-      else if (['sent', 'confirmed', 'arrived'].includes(p.status)) counts.ordered++;
+      else if (p.status === 'pending_approval') { counts.pending++; counts.active++; }
+      else if (p.status === 'producing') { counts.producing++; counts.active++; }
+      else if (['sent', 'confirmed', 'arrived'].includes(p.status)) { counts.ordered++; counts.active++; }
     }
   });
-  document.getElementById('poCntAll').textContent = counts.all;
-  document.getElementById('poCntProducing').textContent = counts.producing;
-  document.getElementById('poCntOrdered').textContent = counts.ordered;
-  document.getElementById('poCntDone').textContent = counts.done;
-  document.getElementById('poCntCancelled').textContent = counts.cancelled;
-  const pendingEl = document.getElementById('poCntPending');
-  if (pendingEl) pendingEl.textContent = counts.pending;
+  const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  setText('poCntAll', counts.all);
+  setText('poCntActive', counts.active);  // V20260526c 新加
+  setText('poCntProducing', counts.producing);
+  setText('poCntOrdered', counts.ordered);
+  setText('poCntDone', counts.done);
+  setText('poCntCancelled', counts.cancelled);
+  setText('poCntPending', counts.pending);
   if (typeof setBadge === 'function') setBadge('badgePo', IS_ADMIN && counts.pending > 0 ? counts.pending : (counts.producing + counts.ordered));
 }
 
@@ -2524,7 +2526,7 @@ function poFilterByPeriod(days) {
   const presetMap = { 1: 'today', 7: 'last_7', 30: 'last_30', 90: 'last_90', 365: 'last_365' };
   const preset = presetMap[days] || 'last_' + days;
   PO_DATE_FILTER = { preset, creator: CURRENT_AGENT, days };  // days 留着兜底
-  PO_FILTER = 'all';  // 切换到全部 tab（仍然排除已取消）
+  PO_FILTER = 'active';  // V20260526c: 业绩卡切换到待办 tab（仍然排除已取消）
   PO_PAGE = 1;
   // 同步 sub-tab UI
   document.querySelectorAll('.sub-tab-btn[data-pofilter]').forEach(b => b.classList.toggle('active', b.dataset.pofilter === 'all'));
@@ -2567,6 +2569,18 @@ function poClearDateFilter() {
   renderPoList();
 }
 
+// V20260526c: 一键清除所有筛选(空状态时给用户的逃生门)
+function poClearAllFilters() {
+  PO_DATE_FILTER = null;
+  PO_SUPPLIER_FILTER = '';
+  PO_SEARCH = '';
+  PO_FILTER = 'active';  // 默认到"未完成"
+  PO_PAGE = 1;
+  document.querySelectorAll('.sub-tab-btn[data-pofilter]').forEach(b => b.classList.toggle('active', b.dataset.pofilter === 'active'));
+  renderPoList();
+  toast('✓ 已清除所有筛选');
+}
+
 // V4：搜索（带 200ms 防抖，避免每输入一字符就重渲染）
 let _poSearchTimer = null;
 function poSetSearch(val) {
@@ -2600,7 +2614,9 @@ function poGoPage(p) {
 
 function renderPoList() {
   let list = PO_LIST;
-  if (PO_FILTER === 'pending') list = list.filter(p => p.status === 'pending_approval');
+  // V20260526c: 加 "active" 状态 = 进行中(店小秘式"待办"· 排除已完成 + 已取消)
+  if (PO_FILTER === 'active') list = list.filter(p => !['received', 'cancelled'].includes(p.status));
+  else if (PO_FILTER === 'pending') list = list.filter(p => p.status === 'pending_approval');
   else if (PO_FILTER === 'producing') list = list.filter(p => p.status === 'producing');
   else if (PO_FILTER === 'ordered') list = list.filter(p => ['sent', 'confirmed', 'arrived'].includes(p.status));
   else if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
@@ -2649,10 +2665,7 @@ function renderPoList() {
   }
 
   const body = document.getElementById('poListBody');
-  if (list.length === 0) {
-    body.innerHTML = '<div style="padding:32px; text-align:center; color:var(--text-tertiary);">无采购单</div>';
-    return;
-  }
+  // V20260526c: 空状态先不 return · 等下面把筛选栏建好再渲染
 
   // 分页
   const totalPages = Math.max(1, Math.ceil(list.length / PO_PAGE_SIZE));
@@ -2699,7 +2712,22 @@ function renderPoList() {
     </div>
   `;
 
-  const cardsHtml = pagedList.map(p => {
+  // V20260526c: 卡片列表 · 空时显示友好提示(但筛选栏仍在,用户能切日期)
+  let cardsHtml;
+  if (list.length === 0) {
+    const filterActive = (PO_DATE_FILTER) || PO_SUPPLIER_FILTER || PO_SEARCH;
+    cardsHtml = `
+      <div style="padding:48px 24px; text-align:center; color:var(--text-tertiary);">
+        <div style="font-size:42px; opacity:0.4; margin-bottom:8px;">📭</div>
+        <div style="font-size:14px; color:var(--text-secondary); font-weight:600;">${filterActive ? '当前筛选下没有采购单' : '还没有采购单'}</div>
+        ${filterActive ? `
+          <div style="font-size:12px; margin-top:6px;">试试切换日期范围 / 清除筛选 / 选其他状态</div>
+          <button class="btn small primary" style="margin-top:12px;" onclick="poClearAllFilters()">🔄 清除全部筛选</button>
+        ` : '<div style="font-size:12px; margin-top:6px;">点右上「+ 新建采购单」开始创建</div>'}
+      </div>
+    `;
+  } else {
+    cardsHtml = pagedList.map(p => {
     const items = p.line_items || [];
     const created = p.created_at ? new Date(p.created_at).toISOString().slice(0,10) : '';
     const isCancelled = p.status === 'cancelled';
@@ -2794,6 +2822,7 @@ function renderPoList() {
         </div>
       </div>`;
   }).join('');
+  }  // V20260526c: 关闭 else 分支
 
   // 分页 footer
   let pagerHtml = '';
