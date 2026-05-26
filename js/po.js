@@ -3194,6 +3194,13 @@ function financeOnDateChange(preset) {
 }
 
 function renderFinanceList() {
+  // V20260526o: 关键修复 · 先填充日期 select(不管有没有待对账 PO)
+  // 否则 waiting.length === 0 时早 return,select 永远是空的黑色框
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateEl = document.getElementById('financeDateFilter');
+    if (dateEl) populateDateFilterSelect(dateEl, _financeDatePreset || 'all');
+  }
+  
   // 待财务收货的 PO (status = 'arrived')
   let waiting = PO_LIST.filter(p => p.status === 'arrived');
   // V20260526e: 日期筛选(基于 PO 创建日期)
@@ -3309,11 +3316,6 @@ function renderFinanceList() {
         </div>`;
     }).join('')}
   `;
-  // V20260526e: 填充财务日期筛选下拉
-  if (typeof populateDateFilterSelect === 'function') {
-    const dateEl = document.getElementById('financeDateFilter');
-    if (dateEl) populateDateFilterSelect(dateEl, _financeDatePreset || 'all');
-  }
 }
 
 // 点采购单里的销售单号跳转到销售单 tab

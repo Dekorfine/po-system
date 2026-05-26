@@ -178,6 +178,12 @@ function renderAftersales() {
   // V5: 渲染阈值 chip
   renderAfterThresholdChips();
   
+  // V20260526o: 关键修复 · 先填充日期 select(避免空列表时早 return 跳过)
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateEl = document.getElementById('asDateFilter');
+    if (dateEl) populateDateFilterSelect(dateEl, _aftersalesDatePreset || 'all');
+  }
+  
   const body = document.getElementById('aftersalesBody');
   const q = (document.getElementById('asSearch').value || '').trim().toLowerCase();
   const fs = document.getElementById('asFilterStatus').value;

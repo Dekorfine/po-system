@@ -319,6 +319,11 @@ function issuesOnDateChange(preset) {
 // ============================================================
 function renderIssues() {
   const container = document.getElementById('issuesContainer');
+  // V20260526o: 关键修复 · 先填充日期 select(避免空列表时早 return 跳过)
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateEl = document.getElementById('isDateFilter');
+    if (dateEl) populateDateFilterSelect(dateEl, _issuesDatePreset || 'all');
+  }
   const q = (document.getElementById('isSearch').value || '').trim().toLowerCase();
   const fs = document.getElementById('isFilterStatus').value;
   const fType = document.getElementById('isFilterType').value;

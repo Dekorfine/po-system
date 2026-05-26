@@ -157,6 +157,12 @@ function renderMissing() {
   // V5: 渲染阈值 chip
   renderMissingThresholdChips();
   
+  // V20260526o: 关键修复 · 先填充日期 select(避免空列表时早 return 跳过)
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateEl = document.getElementById('mDateFilter');
+    if (dateEl) populateDateFilterSelect(dateEl, _missingDatePreset || 'all');
+  }
+  
   const body = document.getElementById('missingBody');
   const q = (document.getElementById('mSearch').value || '').trim().toLowerCase();
   const fs = document.getElementById('mFilterStatus').value;

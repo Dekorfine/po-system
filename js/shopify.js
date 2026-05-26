@@ -1127,6 +1127,13 @@ function shopifyOnDateChange(preset) {
 function renderShopifyOrders() {
   const body = document.getElementById('salesOrdersBody');
   if (!body) return;
+  
+  // V20260526o: 关键修复 · 先填充日期 select(避免空状态时早 return 跳过)
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateEl = document.getElementById('salesDateFilter');
+    if (dateEl) populateDateFilterSelect(dateEl, (typeof SHOPIFY_DATE_PRESET !== 'undefined') ? SHOPIFY_DATE_PRESET : 'all');
+  }
+  
   const filter = SHOPIFY._currentFilter;
   const all = SHOPIFY._orders;
   let orders = filter === 'all'
