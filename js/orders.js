@@ -277,7 +277,15 @@ function _renderOrderCard(o, i) {
   const orderScreenshots = o.screenshots || [];
   const allImages = [...productImages, ...orderScreenshots, ...fuScreenshots];
   
-  // 多图布局
+  // V20260526o: 多图布局 · 性能优化(lazy + async + 占位 · 解决滚动闪烁)
+  // 优化点:
+  // 1. loading="lazy" 让视口外图片不加载 → 减少同时请求数
+  // 2. decoding="async" 异步解码 → 不阻塞滚动
+  // 3. img 加 background 占位 → 加载时不留白
+  // 4. onerror 兜底 → 失败显示占位符不破布局
+  const _imgAttrs = 'loading="lazy" decoding="async" onerror="this.style.opacity=0.3;this.alt=\'❌\'"';
+  const _imgStyle = 'background:var(--bg-elevated);';
+  
   let coverHTML = '';
   let coverCls = '';
   const n = allImages.length;
@@ -286,24 +294,24 @@ function _renderOrderCard(o, i) {
     coverHTML = '<div class="no-image">📋</div><div class="no-image-hint">无图</div>';
   } else if (n === 1) {
     coverCls = 'cnt-1';
-    coverHTML = `<img src="${allImages[0]}" alt="订单图">`;
+    coverHTML = `<img src="${allImages[0]}" alt="订单图" ${_imgAttrs} style="${_imgStyle}">`;
   } else if (n === 2) {
     coverCls = 'cnt-2 multi';
-    coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+    coverHTML = allImages.map(s => `<img src="${s}" ${_imgAttrs} style="${_imgStyle}">`).join('');
   } else if (n === 3) {
     coverCls = 'cnt-3 multi';
-    coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+    coverHTML = allImages.map(s => `<img src="${s}" ${_imgAttrs} style="${_imgStyle}">`).join('');
   } else if (n === 4) {
     coverCls = 'cnt-4 multi';
-    coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+    coverHTML = allImages.map(s => `<img src="${s}" ${_imgAttrs} style="${_imgStyle}">`).join('');
   } else {
     coverCls = 'cnt-many multi';
     const max = 9;
     if (n <= max) {
-      coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+      coverHTML = allImages.map(s => `<img src="${s}" ${_imgAttrs} style="${_imgStyle}">`).join('');
     } else {
-      coverHTML = allImages.slice(0, max - 1).map(s => `<img src="${s}">`).join('');
-      coverHTML += `<div class="more-overlay"><img src="${allImages[max - 1]}"><span>+${n - (max - 1)}</span></div>`;
+      coverHTML = allImages.slice(0, max - 1).map(s => `<img src="${s}" ${_imgAttrs} style="${_imgStyle}">`).join('');
+      coverHTML += `<div class="more-overlay"><img src="${allImages[max - 1]}" ${_imgAttrs} style="${_imgStyle}"><span>+${n - (max - 1)}</span></div>`;
     }
   }
   
