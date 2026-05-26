@@ -20,19 +20,19 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525z"></script>
+<script src="js/core.js?v=20260526d"></script>
 <script src="js/utils.js?v=20260525z"></script>
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260525z"></script>
-<script src="js/help.js?v=20260526c"></script>
+<script src="js/help.js?v=20260526d"></script>
 <script src="js/dateFilter.js?v=20260526b"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525z"></script>
+<script src="js/aftersales.js?v=20260526d"></script>
 <script src="js/missing.js?v=20260525z"></script>
 <script src="js/orders.js?v=20260525z"></script>
 <script src="js/shopify.js?v=20260525z"></script>
@@ -1281,6 +1281,162 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   border-radius: 4px;
   border: 1px solid var(--border-subtle);
 }
+
+/* ============ V20260526d: 售后网格视图(图墙 · 一眼识货)============ */
+.as-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+.as-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+.as-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+.as-card.urgent {
+  border-color: #dc2626;
+  border-width: 2px;
+}
+.as-card.urgent::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(220,38,38,0.2);
+}
+.as-card.done {
+  opacity: 0.65;
+  background: var(--bg-elevated);
+}
+.as-card .cover {
+  position: relative;
+  aspect-ratio: 1.4;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+.as-card .cover.cnt-0 {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: var(--text-tertiary);
+}
+.as-card .cover .no-image { font-size: 42px; opacity: 0.4; }
+.as-card .cover .no-image-hint { font-size: 11px; margin-top: 4px; }
+.as-card .cover.cnt-1 img { width: 100%; height: 100%; object-fit: cover; }
+.as-card .cover.multi { display: grid; gap: 2px; }
+.as-card .cover.cnt-2 { grid-template-columns: 1fr 1fr; }
+.as-card .cover.cnt-2 img { width: 100%; height: 100%; object-fit: cover; }
+.as-card .cover.cnt-3 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.as-card .cover.cnt-3 > img:first-child { grid-row: span 2; }
+.as-card .cover.cnt-3 img { width: 100%; height: 100%; object-fit: cover; }
+.as-card .cover.cnt-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.as-card .cover.cnt-4 img { width: 100%; height: 100%; object-fit: cover; }
+.as-card .cover.cnt-many { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; }
+.as-card .cover.cnt-many img,
+.as-card .cover.cnt-many .more-overlay { width: 100%; height: 100%; object-fit: cover; }
+.as-card .cover .more-overlay {
+  position: relative;
+  display: block;
+  width: 100%; height: 100%;
+}
+.as-card .cover .more-overlay img { width: 100%; height: 100%; object-fit: cover; }
+.as-card .cover .more-overlay span {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.55);
+  color: white; font-weight: 700; font-size: 16px;
+}
+.as-card .status-badge {
+  position: absolute; top: 8px; right: 8px;
+  padding: 3px 9px;
+  border-radius: 11px;
+  font-size: 11px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.as-card .urgent-badge {
+  position: absolute; top: 8px; left: 8px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(220,38,38,0.95);
+  color: white;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.as-card .comments-badge,
+.as-card .photo-count {
+  position: absolute; bottom: 8px;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: rgba(0,0,0,0.65);
+  color: white;
+  font-size: 10.5px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+}
+.as-card .comments-badge { left: 8px; }
+.as-card .photo-count { right: 8px; }
+.as-card .body {
+  padding: 10px 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.as-card .order-no {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  letter-spacing: -0.2px;
+}
+.as-card .product {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.as-card .reason {
+  font-size: 11.5px;
+  color: #dc2626;
+  font-weight: 600;
+}
+.as-card .detail {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+.as-card .meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-subtle);
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  flex-wrap: wrap;
+}
+.as-card .meta span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 视角切换按钮高亮 */
+.as-view-btn { color: var(--text-secondary); transition: all 0.15s; }
+.as-view-btn.active { background: var(--bg-card) !important; color: var(--accent) !important; font-weight: 600; }
+.as-view-btn:hover { color: var(--text-primary); }
 
 /* ============ V5-W3-2026-05-26: 反馈中心 ============ */
 .feedback-page { padding: 4px 0; }
@@ -4758,11 +4914,16 @@ body.has-side-tabs .section-block {
       <select class="filter-select" id="asFilterSite" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">📍 全部网站</option></select>
       <select class="filter-select" id="asFilterSupplier" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">全部供应商</option></select>
       <select class="filter-select" id="asFilterReason" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">全部原因</option></select>
-      <button class="btn primary" onclick="addAftersales()" style="margin-left: auto;">+ 新增售后</button>
+      <!-- V20260526d: 视角切换 · 默认列表,可切网格 -->
+      <div class="as-view-toggle" id="asViewToggle" style="display:inline-flex; gap:0; margin-left:8px; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
+        <button class="as-view-btn active" data-view="list" onclick="setAftersalesViewMode('list')" title="列表视图(详细信息)" style="padding:6px 10px; font-size:12px; background:var(--bg-card); border:none; cursor:pointer; border-right:1px solid var(--border);">📋 列表</button>
+        <button class="as-view-btn" data-view="grid" onclick="setAftersalesViewMode('grid')" title="网格视图(图墙 · 一眼识货)" style="padding:6px 10px; font-size:12px; background:transparent; border:none; cursor:pointer;">🖼 网格</button>
+      </div>
+      <button class="btn primary" onclick="addAftersales()" style="margin-left: 8px;">+ 新增售后</button>
     </div>
     <div class="records-card">
       <div class="threshold-chips-bar" id="afterThresholdChips" style="display:flex; flex-wrap:wrap; gap:6px; padding:10px 14px; border-bottom:1px solid var(--border); background:var(--bg-elevated); align-items:center;"></div>
-      <div class="records-header aftersales-header">
+      <div class="records-header aftersales-header" id="aftersalesListHeader">
         <div>#</div><div>状态</div><div>订单 · 产品 · 原因</div>
         <div>截图</div><div>日期</div><div style="text-align: right;">操作</div>
       </div>
