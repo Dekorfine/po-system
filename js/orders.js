@@ -235,6 +235,105 @@ function ordersFilterTodayChase() {
   }
 }
 
+// V20260526g: 催单视角切换 · 'list'(详细行) / 'grid'(图墙卡片)
+let _ordersViewMode = (localStorage.getItem('orders_view_mode') || 'list');
+
+function setOrdersViewMode(mode) {
+  if (!['list', 'grid'].includes(mode)) return;
+  _ordersViewMode = mode;
+  localStorage.setItem('orders_view_mode', mode);
+  document.querySelectorAll('#oViewToggle .o-view-btn').forEach(b => {
+    const active = b.dataset.view === mode;
+    b.classList.toggle('active', active);
+    b.style.background = active ? 'var(--bg-card)' : 'transparent';
+    b.style.color = active ? 'var(--accent)' : 'var(--text-secondary)';
+    b.style.fontWeight = active ? '600' : '400';
+  });
+  // 网格模式隐藏表头
+  const header = document.getElementById('ordersListHeader');
+  if (header) header.style.display = (mode === 'list') ? '' : 'none';
+  renderOrders();
+}
+
+// V20260526g: 网格卡片渲染 · 借鉴售后/找灯
+function _renderOrderCard(o, i) {
+  const status = o.status || 'pending';
+  const eff = (typeof getOrderEffStatus === 'function') ? getOrderEffStatus(o) : status;
+  const statusMeta = {
+    pending: { label: '待下采购', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
+    producing: { label: '生产中', color: '#dc2626', bg: 'rgba(220,38,38,0.15)' },
+    shipped: { label: '已发货', color: '#2563eb', bg: 'rgba(37,99,235,0.15)' },
+    arrived: { label: '已到货', color: '#16a34a', bg: 'rgba(22,163,74,0.15)' },
+    cancelled: { label: '已取消', color: '#9ca3af', bg: 'rgba(156,163,175,0.15)' },
+    overdue: { label: '已逾期', color: '#dc2626', bg: 'rgba(220,38,38,0.2)' },
+  }[eff] || { label: eff, color: '#6b7280', bg: 'rgba(107,114,128,0.15)' };
+  const isDone = ['arrived', 'cancelled'].includes(status);
+  const days = (typeof chaseDaysSince === 'function') ? chaseDaysSince(o) : 0;
+  const urgent = !isDone && (eff === 'overdue' || days >= 14);
+  
+  // 收集图片(产品图 + 沟通截图)
+  const productImages = (typeof _getRelatedOrderImages === 'function') ? _getRelatedOrderImages(o.orderNo) : [];
+  const fuScreenshots = (o.followups || []).flatMap(f => f.screenshots || []);
+  const orderScreenshots = o.screenshots || [];
+  const allImages = [...productImages, ...orderScreenshots, ...fuScreenshots];
+  
+  // 多图布局
+  let coverHTML = '';
+  let coverCls = '';
+  const n = allImages.length;
+  if (n === 0) {
+    coverCls = 'cnt-0';
+    coverHTML = '<div class="no-image">📋</div><div class="no-image-hint">无图</div>';
+  } else if (n === 1) {
+    coverCls = 'cnt-1';
+    coverHTML = `<img src="${allImages[0]}" alt="订单图">`;
+  } else if (n === 2) {
+    coverCls = 'cnt-2 multi';
+    coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+  } else if (n === 3) {
+    coverCls = 'cnt-3 multi';
+    coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+  } else if (n === 4) {
+    coverCls = 'cnt-4 multi';
+    coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+  } else {
+    coverCls = 'cnt-many multi';
+    const max = 9;
+    if (n <= max) {
+      coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+    } else {
+      coverHTML = allImages.slice(0, max - 1).map(s => `<img src="${s}">`).join('');
+      coverHTML += `<div class="more-overlay"><img src="${allImages[max - 1]}"><span>+${n - (max - 1)}</span></div>`;
+    }
+  }
+  
+  const fuCount = (o.followups || []).length;
+  const lastFu = fuCount > 0 ? o.followups[fuCount - 1] : null;
+  
+  return `
+    <div class="as-card ${urgent ? 'urgent' : ''} ${isDone ? 'done' : ''}" onclick="openOrder('${o._id}')">
+      <div class="cover ${coverCls}">
+        ${coverHTML}
+        <span class="status-badge" style="background:${statusMeta.bg}; color:${statusMeta.color};">${statusMeta.label}</span>
+        ${urgent ? `<span class="urgent-badge">🔥 ${days}天</span>` : ''}
+        ${fuCount > 0 ? `<span class="comments-badge">📞 ${fuCount}</span>` : ''}
+        ${n > 0 ? `<span class="photo-count">📷 ${n}</span>` : ''}
+      </div>
+      <div class="body">
+        <div class="order-no">${escapeHtml(o.orderNo || '(无 PO 号)')}</div>
+        ${o.product ? `<div class="product">${escapeHtml(o.product)}</div>` : ''}
+        ${o.supplier ? `<div class="reason" style="color:#0891b2;">🏭 ${escapeHtml(o.supplier)}</div>` : ''}
+        ${lastFu ? `<div class="detail">最近沟通(${lastFu.date}): ${escapeHtml((lastFu.note || '').slice(0, 50))}${(lastFu.note || '').length > 50 ? '...' : ''}</div>` : '<div class="detail" style="color:var(--text-tertiary);">未沟通</div>'}
+        <div class="meta">
+          ${o.site ? `<span class="site">🌐 ${escapeHtml(o.site)}</span>` : ''}
+          ${o.promisedDate ? `<span class="date">📅 承诺 ${escapeHtml(o.promisedDate)}</span>` : ''}
+          ${o.nextFollow ? `<span class="date" style="color:#dc2626;">⏰ 下次 ${escapeHtml(o.nextFollow)}</span>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderOrders() {
   const body = document.getElementById('ordersBody');
   const card = document.getElementById('ordersCard');
@@ -409,8 +508,15 @@ function renderOrders() {
     onSizeChange: 'setOrdersPageSize(__SIZE__)',
   });
   
+  // V20260526g: 根据 view mode 切换渲染函数
+  const renderFn = (_ordersViewMode === 'grid') ? _renderOrderCard : renderOrderRow;
+  const itemsHtml = pageItems.map((o, i) => renderFn(o, startIdx + i)).join('');
+  const wrappedHtml = (_ordersViewMode === 'grid')
+    ? `<div class="as-grid">${itemsHtml}</div>`
+    : itemsHtml;
+  
   body.innerHTML = (list.length > _ordersPage.size ? paginationHtml : '') + 
-                   pageItems.map((o, i) => renderOrderRow(o, startIdx + i)).join('') +
+                   wrappedHtml +
                    (list.length > _ordersPage.size ? paginationHtml : '');
   // V20260526e: 填充日期筛选下拉
   if (typeof populateDateFilterSelect === 'function') {

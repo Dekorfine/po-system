@@ -2176,6 +2176,10 @@ function renderActiveTab() {
         renderOrders(); refreshOrdersFb(); renderUrgentBanner(); updateOrderStats();
       }).catch(e => console.warn('PO 派生催单加载失败:', e));
     }
+    // V20260526g: 应用保存的视角模式
+    if (typeof setOrdersViewMode === 'function' && typeof _ordersViewMode !== 'undefined') {
+      setTimeout(() => setOrdersViewMode(_ordersViewMode), 50);
+    }
   }
   else if (CURRENT_TAB === 'aftersales') { 
     renderAftersales(); refreshAsFb(); updateAfterStats(); renderAfterReport();

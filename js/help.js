@@ -10,6 +10,22 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260526g',
+    date: '2026-05-26',
+    type: 'fix',
+    title: '🐛 催单视角切换 + 修中间空白 + 强化侧栏隔离',
+    notes: [
+      '✨ 催单加「📋 列表 / 🖼 网格」视角切换 · 类似售后',
+      '🐛 修催单中间大片空白:grid 中间列从 `minmax(280, 1.6fr)` 改为 `minmax(280, 700px)` · 不再无限撑',
+      '🐛 同时修售后中间空白(同样改 grid)',
+      '✨ 网格卡片显示:产品图(最多9张)/订单号/产品/供应商/最近沟通/承诺日/下次跟进日',
+      '🚨 紧急/逾期(≥14天)卡片红色边框 + 🔥X天 角标',
+      '🔒 强化侧栏隔离:z-index 升到 1000 + box-shadow 加深 + records-card overflow-x:hidden',
+      '🔒 mainApp 加 position:relative 建立独立 stacking context · 防止内部元素溢出到侧栏',
+      '🔒 records-card / .records-header / .record-row 都加 min-width:0',
+    ],
+  },
+  {
     v: '20260526f',
     date: '2026-05-26',
     type: 'fix',
