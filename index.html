@@ -25,7 +25,7 @@
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260525z"></script>
-<script src="js/help.js?v=20260526b"></script>
+<script src="js/help.js?v=20260526c"></script>
 <script src="js/dateFilter.js?v=20260526b"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
@@ -36,7 +36,7 @@
 <script src="js/missing.js?v=20260525z"></script>
 <script src="js/orders.js?v=20260525z"></script>
 <script src="js/shopify.js?v=20260525z"></script>
-<script src="js/po.js?v=20260526b"></script>
+<script src="js/po.js?v=20260526c"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script src="js/cross-dept.js?v=20260525z"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
@@ -5426,12 +5426,13 @@ body.has-side-tabs .section-block {
       </div>
       <div id="poStatsContainer" style="margin-top: 12px;"></div>
       <div class="po-subtabs" style="margin-top: 12px;">
-        <button class="sub-tab-btn active" data-pofilter="all" onclick="poShowFilter('all')">📋 全部 <span class="cnt" id="poCntAll">0</span></button>
+        <button class="sub-tab-btn active" data-pofilter="active" onclick="poShowFilter('active')" title="店小秘式『待办』· 等你跟进的:待审批 + 待发供应商 + 已下单(不含已完成/已取消)">🎯 待办 <span class="cnt" id="poCntActive">0</span></button>
         <button class="sub-tab-btn" data-pofilter="pending" onclick="poShowFilter('pending')">⏳ 待审批 <span class="cnt" id="poCntPending">0</span></button>
         <button class="sub-tab-btn" data-pofilter="producing" onclick="poShowFilter('producing')">📝 待发供应商 <span class="cnt" id="poCntProducing">0</span></button>
         <button class="sub-tab-btn" data-pofilter="ordered" onclick="poShowFilter('ordered')">📤 已下单 <span class="cnt" id="poCntOrdered">0</span></button>
         <button class="sub-tab-btn" data-pofilter="done" onclick="poShowFilter('done')">✅ 已完成 <span class="cnt" id="poCntDone">0</span></button>
         <button class="sub-tab-btn" data-pofilter="cancelled" onclick="poShowFilter('cancelled')">⊘ 已取消 <span class="cnt" id="poCntCancelled">0</span></button>
+        <button class="sub-tab-btn" data-pofilter="all" onclick="poShowFilter('all')" title="所有非取消单(含已完成)">📋 全部 <span class="cnt" id="poCntAll">0</span></button>
       </div>
       <div id="poListBody" style="margin-top: 12px;"></div>
     </div>
