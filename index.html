@@ -7141,5 +7141,71 @@ HOGO
 </div>
 
 </div><!-- /#mainApp -->
+
+<!-- V20260526h: 关键修复 · 内联 sidebar padding 同步脚本(独立于 core.js) -->
+<!-- 这个脚本直接定义在 HTML 里,不管 core.js 加载什么版本都生效 -->
+<script>
+(function() {
+  'use strict';
+  // 强制同步 mainApp padding 为 sidebar 实际宽度
+  function _inlineSyncSidebarPadding() {
+    var sb = document.getElementById('sideTabBar');
+    var main = document.getElementById('mainApp');
+    if (!main) return;
+    if (!sb || sb.style.display === 'none' || !document.body.classList.contains('has-side-tabs')) {
+      main.style.paddingLeft = '0';
+      return;
+    }
+    var sbWidth = sb.offsetWidth;
+    if (!sbWidth) sbWidth = sb.classList.contains('collapsed') ? 56 : 150;
+    main.style.paddingLeft = (sbWidth + 4) + 'px';
+  }
+  
+  // 全局暴露(覆盖 core.js 旧版可能的函数)
+  window.syncMainAppPadding = _inlineSyncSidebarPadding;
+  window._inlineSyncSidebarPadding = _inlineSyncSidebarPadding;
+  
+  // 1. 每 300ms 自动同步一次(兜底 · 不管什么时候侧栏变化都能跟上)
+  setInterval(_inlineSyncSidebarPadding, 300);
+  
+  // 2. DOMContentLoaded 后多次同步(应对异步渲染)
+  function _initialSyncBurst() {
+    [50, 200, 500, 1000, 2000].forEach(function(ms) {
+      setTimeout(_inlineSyncSidebarPadding, ms);
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _initialSyncBurst);
+  } else {
+    _initialSyncBurst();
+  }
+  
+  // 3. window resize 时同步
+  window.addEventListener('resize', _inlineSyncSidebarPadding);
+  
+  // 4. 监听 body class 变化(sidebar collapse/expand 触发)
+  if (window.MutationObserver) {
+    var observer = new MutationObserver(function(muts) {
+      for (var i = 0; i < muts.length; i++) {
+        if (muts[i].attributeName === 'class') {
+          setTimeout(_inlineSyncSidebarPadding, 50);  // 等 transition
+          setTimeout(_inlineSyncSidebarPadding, 250);
+          break;
+        }
+      }
+    });
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    
+    // 也监听 sidebar 本身的 class 变化(.collapsed 切换)
+    setTimeout(function() {
+      var sb = document.getElementById('sideTabBar');
+      if (sb) observer.observe(sb, { attributes: true, attributeFilter: ['class', 'style'] });
+    }, 1000);
+  }
+  
+  console.log('[侧栏修复 V20260526h] 内联同步脚本已加载');
+})();
+</script>
+
 </body>
 </html>
