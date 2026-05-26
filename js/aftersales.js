@@ -13,6 +13,27 @@ let _aftersalesQuickMode = '';
 let _afterThresholdFilter = 0;   // 0=不限,>0=显示发起≥N天的
 let _onlyUnhandled = false;       // 仅显示无任何 followups 的(没人跟进的)
 
+// V20260526d: 视角切换 · 'list'(详细信息行) / 'grid'(图墙卡片 · 一眼识货)
+let _aftersalesViewMode = (localStorage.getItem('aftersales_view_mode') || 'list');
+
+function setAftersalesViewMode(mode) {
+  if (!['list', 'grid'].includes(mode)) return;
+  _aftersalesViewMode = mode;
+  localStorage.setItem('aftersales_view_mode', mode);
+  // 切按钮 active 态
+  document.querySelectorAll('#asViewToggle .as-view-btn').forEach(b => {
+    const active = b.dataset.view === mode;
+    b.classList.toggle('active', active);
+    b.style.background = active ? 'var(--bg-card)' : 'transparent';
+    b.style.color = active ? 'var(--accent)' : 'var(--text-secondary)';
+    b.style.fontWeight = active ? '600' : '400';
+  });
+  // 网格模式隐藏表头(列表模式才显示)
+  const header = document.getElementById('aftersalesListHeader');
+  if (header) header.style.display = (mode === 'list') ? '' : 'none';
+  renderAftersales();
+}
+
 // 计算售后发起距今天数
 function afterDaysSince(a) {
   if (!a.createdDate) return 0;
@@ -225,13 +246,17 @@ function renderAftersales() {
   });
   
   // 渲染:顶部分页 + 卡片 + 底部分页(只在数据超过单页时显示分页)
-  const renderRows = pageItems.map((a, i) => {
-    // 还是用原本的渲染函数 - 把 i 替换成 startIdx + i 即可保持行号连续
-    return _renderAftersaleRow(a, startIdx + i);
-  }).join('');
+  // V20260526d: 根据 view mode 选择渲染函数
+  const renderFn = (_aftersalesViewMode === 'grid') ? _renderAftersaleCard : _renderAftersaleRow;
+  const itemsHtml = pageItems.map((a, i) => renderFn(a, startIdx + i)).join('');
+  
+  // 网格模式包裹在 .as-grid 容器里(CSS 控制布局)
+  const wrappedHtml = (_aftersalesViewMode === 'grid')
+    ? `<div class="as-grid">${itemsHtml}</div>`
+    : itemsHtml;
   
   body.innerHTML = (list.length > _aftersalesPage.size ? paginationHtml : '') + 
-                   renderRows +
+                   wrappedHtml +
                    (list.length > _aftersalesPage.size ? paginationHtml : '');
 }
 
@@ -253,6 +278,90 @@ function setAftersalesPageSize(newSize) {
   _aftersalesPage.current = 1;
   localStorage.setItem('aftersales_page_size', String(size));
   renderAftersales();
+}
+
+// ============================================================
+// V20260526d: 网格卡片渲染 · 类似找灯卡片(图墙 · 一眼识货)
+// ============================================================
+function _renderAftersaleCard(a, i) {
+  // 收集所有图片 · 优先用客户截图(沟通图)展示
+  const manualScreenshots = [...(a.screenshots || []), ...((a.followups || []).flatMap(f => f.screenshots || []))];
+  let productImages = (typeof _getRelatedOrderImages === 'function') ? _getRelatedOrderImages(a.orderNo) : [];
+  const allImages = manualScreenshots.length > 0 ? manualScreenshots : productImages;
+  
+  // 状态信息
+  const status = a.status || 'pending';
+  const statusMeta = {
+    pending: { label: '待处理', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
+    contacting: { label: '沟通中', color: '#2563eb', bg: 'rgba(37,99,235,0.15)' },
+    repairing: { label: '返修中', color: '#dc2626', bg: 'rgba(220,38,38,0.15)' },
+    resolved: { label: '已解决', color: '#16a34a', bg: 'rgba(22,163,74,0.15)' },
+    cancelled: { label: '已取消', color: '#9ca3af', bg: 'rgba(156,163,175,0.15)' },
+  }[status] || { label: status, color: '#6b7280', bg: 'rgba(107,114,128,0.15)' };
+  
+  const isDone = ['resolved', 'cancelled'].includes(status);
+  const days = afterDaysSince(a);
+  const urgent = !isDone && days >= 7;
+  
+  // 多图布局(借鉴找灯)
+  let coverHTML = '';
+  let coverCls = '';
+  const n = allImages.length;
+  if (n === 0) {
+    coverCls = 'cnt-0';
+    coverHTML = '<div class="no-image">🔧</div><div class="no-image-hint">无截图</div>';
+  } else if (n === 1) {
+    coverCls = 'cnt-1';
+    coverHTML = `<img src="${allImages[0]}" alt="售后图">`;
+  } else if (n === 2) {
+    coverCls = 'cnt-2 multi';
+    coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+  } else if (n === 3) {
+    coverCls = 'cnt-3 multi';
+    coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+  } else if (n === 4) {
+    coverCls = 'cnt-4 multi';
+    coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+  } else {
+    coverCls = 'cnt-many multi';
+    const max = 9;
+    if (n <= max) {
+      coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+    } else {
+      coverHTML = allImages.slice(0, max - 1).map(s => `<img src="${s}">`).join('');
+      const remaining = n - (max - 1);
+      coverHTML += `<div class="more-overlay"><img src="${allImages[max - 1]}"><span>+${remaining}</span></div>`;
+    }
+  }
+  
+  const reason = (a.reason || '').split('·')[0] || a.reason || '';
+  const reasonDetail = (a.reasonDetail || '').trim();
+  const fuCount = (a.followups || []).length;
+  const supplier = a.supplier || '';
+  const product = a.product || a.productName || '';
+  
+  return `
+    <div class="as-card ${urgent ? 'urgent' : ''} ${isDone ? 'done' : ''}" onclick="openAftersales('${a._id}')">
+      <div class="cover ${coverCls}">
+        ${coverHTML}
+        <span class="status-badge" style="background:${statusMeta.bg}; color:${statusMeta.color};">${statusMeta.label}</span>
+        ${urgent ? `<span class="urgent-badge">🔥 ${days}天</span>` : ''}
+        ${fuCount > 0 ? `<span class="comments-badge">💬 ${fuCount}</span>` : ''}
+        ${n > 0 ? `<span class="photo-count">📷 ${n}</span>` : ''}
+      </div>
+      <div class="body">
+        <div class="order-no">${escapeHtml(a.orderNo || '(无订单号)')}</div>
+        ${product ? `<div class="product">${escapeHtml(product)}</div>` : ''}
+        ${reason ? `<div class="reason">⚠ ${escapeHtml(reason)}</div>` : ''}
+        ${reasonDetail ? `<div class="detail">${escapeHtml(reasonDetail.slice(0, 60))}${reasonDetail.length > 60 ? '...' : ''}</div>` : ''}
+        <div class="meta">
+          ${supplier ? `<span class="supplier">🏭 ${escapeHtml(supplier)}</span>` : ''}
+          ${a.site ? `<span class="site">🌐 ${escapeHtml(a.site)}</span>` : ''}
+          <span class="date">📅 ${escapeHtml(a.createdDate || '')}</span>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 // V4-2026-05-24: 把原本 list.map 里那段长行渲染逻辑抽成函数,供分页调用

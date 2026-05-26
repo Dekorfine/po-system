@@ -2177,7 +2177,13 @@ function renderActiveTab() {
       }).catch(e => console.warn('PO 派生催单加载失败:', e));
     }
   }
-  else if (CURRENT_TAB === 'aftersales') { renderAftersales(); refreshAsFb(); updateAfterStats(); renderAfterReport(); }
+  else if (CURRENT_TAB === 'aftersales') { 
+    renderAftersales(); refreshAsFb(); updateAfterStats(); renderAfterReport();
+    // V20260526d: 应用保存的视角模式 + 按钮高亮
+    if (typeof setAftersalesViewMode === 'function' && typeof _aftersalesViewMode !== 'undefined') {
+      setTimeout(() => setAftersalesViewMode(_aftersalesViewMode), 50);
+    }
+  }
   else if (CURRENT_TAB === 'issues') { 
     renderIssues(); 
     updateIssueStats(); 
