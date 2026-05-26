@@ -3681,25 +3681,33 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .so-order-no:hover { color: var(--accent); }
 .so-order-no .ext { font-size: 10px; opacity: 0.6; }
 
-/* V5-2026-05-24: 重设计销售单卡片布局 - 双行式紧凑 + 信息密度高 */
+/* V20260526i: 销售单卡片店小秘风格 · flex 紧凑布局,左右紧贴中间不留白 */
 .so-card-body {
-  display: grid;
-  /* 产品占 65%,右侧"客户+金额"竖排 35% */
-  grid-template-columns: 1fr 220px;
-  gap: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
   padding: 12px 14px;
 }
-/* 右侧客户+金额合并成一个块,竖排 */
+/* 产品列:有上限 720px · 中等屏自动撑满,大屏不会无限拉伸 */
+.so-products {
+  flex: 1;
+  min-width: 0;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* 右侧客户+金额块:紧贴产品列右侧,不被推到屏幕远端 */
 .so-card-side {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding-left: 14px;
   border-left: 1px dashed var(--border-subtle);
+  width: 220px;
+  flex-shrink: 0;
   min-width: 0;
 }
-
-.so-products { display: flex; flex-direction: column; gap: 8px; }
 /* V5-W3-2026-05-25 终极版:店小秘式紧凑 flex 布局
    旧:grid 90px 1fr auto → info 列拉伸,中间留白
    新:flex 紧贴左对齐 → 内容自然宽度,右侧空间留给视觉呼吸 */
@@ -4065,10 +4073,33 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .po-card:hover { border-color: var(--accent); }
 .po-card.cancelled { opacity: 0.55; }
+/* V20260526i: PO 卡片顶部行店小秘风格 · flex 紧贴 · 不留中间空白 */
 .po-card-top {
-  display: grid; grid-template-columns: 1fr 200px 180px;
-  gap: 12px; padding: 10px 14px; background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border-subtle); align-items: center; font-size: 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+.po-card-top > div:first-child { 
+  flex: 1; 
+  min-width: 280px; 
+  max-width: 660px;
+}
+.po-card-top > div:nth-child(2) {
+  /* 供应商列 · 200px 但允许收缩到 140px */
+  flex-shrink: 0;
+  min-width: 140px;
+  max-width: 240px;
+}
+.po-card-top > div:nth-child(3) {
+  /* 金额列 · 固定 180px 右对齐 */
+  flex-shrink: 0;
+  width: 160px;
+  text-align: right;
 }
 .po-card-top .po-no {
   font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; color: var(--text-primary);
@@ -4397,6 +4428,12 @@ body.has-side-tabs .tab-content {
 /* V20260526g: 表格 records-card 也防溢出 */
 .records-card { min-width: 0; max-width: 100%; overflow-x: hidden; }
 .records-header, .record-row { min-width: 0; }
+/* V20260526i: 大屏上卡片最大宽度 1400px · 左对齐,避免超宽屏无限拉伸(店小秘式) */
+@media (min-width: 1600px) {
+  #poListBody, #salesOrdersBody {
+    max-width: 1400px;
+  }
+}
 
 /* V5-W3-2026-05-26 fix v2: 有侧栏时取消 max-width 限制,内容填满到屏幕右边 */
 body.has-side-tabs .header-top,
