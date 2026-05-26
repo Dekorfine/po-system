@@ -114,6 +114,10 @@ function getDateRange(preset, opt = {}) {
     const start = new Date(today); start.setDate(today.getDate() - 89);
     return { start, end: todayEnd, label: `近 90 天` };
   }
+  if (preset === 'last_365') {
+    const start = new Date(today); start.setDate(today.getDate() - 364);
+    return { start, end: todayEnd, label: `近 1 年` };
+  }
   
   // 年度:Y2026
   const yMatch = preset.match(/^Y(\d{4})$/);
@@ -213,6 +217,7 @@ function populateDateFilterSelect(selectEl, currentValue, options = {}) {
   html += `<option value="last_7">⏱ 近 7 天</option>`;
   html += `<option value="last_30">⏱ 近 30 天</option>`;
   html += `<option value="last_90">⏱ 近 90 天</option>`;
+  html += `<option value="last_365">⏱ 近 1 年</option>`;
   html += `</optgroup>`;
   
   // 按年度(最近 N 年)

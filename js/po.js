@@ -2520,7 +2520,10 @@ function poChangeSupplierFilter(val) {
 
 // 点击业绩卡片：按时间 + 当前用户筛选 PO
 function poFilterByPeriod(days) {
-  PO_DATE_FILTER = { days, creator: CURRENT_AGENT };
+  // V20260526a: 用 preset string 而非 days
+  const presetMap = { 1: 'today', 7: 'last_7', 30: 'last_30', 90: 'last_90', 365: 'last_365' };
+  const preset = presetMap[days] || 'last_' + days;
+  PO_DATE_FILTER = { preset, creator: CURRENT_AGENT, days };  // days 留着兜底
   PO_FILTER = 'all';  // 切换到全部 tab（仍然排除已取消）
   PO_PAGE = 1;
   // 同步 sub-tab UI
@@ -2530,7 +2533,33 @@ function poFilterByPeriod(days) {
     const el = document.getElementById('poListBody');
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 100);
-  toast(`✓ 已筛选：${days === 1 ? '今天' : '近 ' + days + ' 天'} · ${CURRENT_AGENT}`);
+  toast(`✓ 已筛选:${days === 1 ? '今天' : '近 ' + days + ' 天'} · ${CURRENT_AGENT}`);
+}
+
+// V20260526a: 给通用日期筛选下拉用的入口
+function poSetDatePreset(preset) {
+  if (preset === 'custom_open') {
+    if (typeof openCustomDateRange === 'function') {
+      openCustomDateRange(null, null, (customPreset) => {
+        PO_DATE_FILTER = { preset: customPreset };  // 不带 creator
+        PO_PAGE = 1;
+        renderPoList();
+        toast(`✓ 已筛选自定义日期范围`);
+      });
+    }
+    return;
+  }
+  if (!preset || preset === 'all') {
+    PO_DATE_FILTER = null;
+  } else {
+    PO_DATE_FILTER = { preset };  // 不带 creator(下拉是全员视角)
+  }
+  PO_PAGE = 1;
+  renderPoList();
+  if (preset && preset !== 'all' && typeof getDateRange === 'function') {
+    const r = getDateRange(preset);
+    toast(`✓ 已筛选:${r.label}`);
+  }
 }
 
 function poClearDateFilter() {
@@ -2581,12 +2610,19 @@ function renderPoList() {
   // 供应商筛选
   if (PO_SUPPLIER_FILTER) list = list.filter(p => (p.supplier || '') === PO_SUPPLIER_FILTER);
 
-  // 日期筛选（点击业绩卡片）
+  // 日期筛选（点击业绩卡片 或 日期下拉)
+  // V20260526a: 重构 PO_DATE_FILTER 用 preset string + 可选 creator
   if (PO_DATE_FILTER) {
-    const cutoff = PO_DATE_FILTER.days === 1
-      ? new Date(new Date().setHours(0, 0, 0, 0)).toISOString()
-      : new Date(Date.now() - PO_DATE_FILTER.days * 86400000).toISOString();
-    list = list.filter(p => (p.created_at || '') >= cutoff);
+    // 新格式:{ preset, creator? }
+    if (PO_DATE_FILTER.preset && typeof isDateInRange === 'function') {
+      list = list.filter(p => isDateInRange(p.created_at, PO_DATE_FILTER.preset));
+    } else if (PO_DATE_FILTER.days) {
+      // 旧格式兼容
+      const cutoff = PO_DATE_FILTER.days === 1
+        ? new Date(new Date().setHours(0, 0, 0, 0)).toISOString()
+        : new Date(Date.now() - PO_DATE_FILTER.days * 86400000).toISOString();
+      list = list.filter(p => (p.created_at || '') >= cutoff);
+    }
     if (PO_DATE_FILTER.creator) list = list.filter(p => p.creator_name === PO_DATE_FILTER.creator);
   }
 
@@ -2628,7 +2664,7 @@ function renderPoList() {
   const allSuppliers = [...new Set(PO_LIST.filter(p => p.status !== 'cancelled').map(p => p.supplier).filter(Boolean))].sort();
   const supplierFilterHtml = `
     <div style="display:flex; gap:10px; align-items:center; padding:10px 0; flex-wrap:wrap;">
-      <!-- V4：多维搜索框 -->
+      <!-- V4:多维搜索框 -->
       <div style="position:relative; flex:1; min-width:240px; max-width:380px;">
         <input type="text" id="poSearchInput" placeholder="🔍 PO 编号 / 供应商 / SKU / 产品名 / 备注..." 
                value="${escapeHtml(PO_SEARCH)}" 
@@ -2636,22 +2672,27 @@ function renderPoList() {
                style="width:100%; padding:7px 32px 7px 12px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary);">
         ${PO_SEARCH ? `<span onclick="poClearSearch()" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); cursor:pointer; color:var(--text-tertiary); font-size:14px; padding:2px 6px;" title="清除搜索">✕</span>` : ''}
       </div>
-      ${PO_DATE_FILTER ? `
-        <span style="display:inline-flex; align-items:center; gap:4px; padding: 4px 10px; background: var(--accent-soft, #eff6ff); border: 1px solid var(--accent); border-radius: 14px; font-size: 12px; color: var(--accent); font-weight: 600;">
-          📅 ${PO_DATE_FILTER.days === 1 ? '今天' : '近' + PO_DATE_FILTER.days + '天'}${PO_DATE_FILTER.creator ? ' · ' + escapeHtml(PO_DATE_FILTER.creator) : ''}
-          <span onclick="poClearDateFilter()" style="cursor:pointer; margin-left:4px; padding: 0 4px;" title="清除日期筛选">✕</span>
-        </span>
-      ` : ''}
       <select onchange="poChangeSupplierFilter(this.value)" style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); min-width:200px;">
         <option value="">— 全部供应商 (${allSuppliers.length}) —</option>
         ${allSuppliers.map(s => `<option value="${escapeHtml(s)}" ${PO_SUPPLIER_FILTER === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
       </select>
+      <!-- V20260526a: 通用日期筛选下拉 -->
+      <select id="poDateFilterSelect" onchange="poSetDatePreset(this.value)" 
+              style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); min-width:160px;">
+        <!-- 由 populateDateFilterSelect 动态填充 -->
+      </select>
+      ${PO_DATE_FILTER && PO_DATE_FILTER.preset ? `
+        <span style="display:inline-flex; align-items:center; gap:4px; padding: 4px 10px; background: var(--accent-soft, #eff6ff); border: 1px solid var(--accent); border-radius: 14px; font-size: 12px; color: var(--accent); font-weight: 600;">
+          📅 ${escapeHtml((typeof getDateRange === 'function' ? getDateRange(PO_DATE_FILTER.preset).label : PO_DATE_FILTER.preset))}${PO_DATE_FILTER.creator ? ' · ' + escapeHtml(PO_DATE_FILTER.creator) : ''}
+          <span onclick="poClearDateFilter()" style="cursor:pointer; margin-left:4px; padding: 0 4px;" title="清除日期筛选">✕</span>
+        </span>
+      ` : ''}
       ${(PO_SEARCH || PO_SUPPLIER_FILTER) ? `
         <span style="font-size:12px; color:var(--text-secondary);">
           ${PO_SUPPLIER_FILTER ? `筛选 <b>${escapeHtml(PO_SUPPLIER_FILTER)}</b>` : ''}${PO_SUPPLIER_FILTER && PO_SEARCH ? ' · ' : ''}${PO_SEARCH ? `搜 "<b>${escapeHtml(PO_SEARCH)}</b>"` : ''}：<b style="color:var(--accent);">${list.length}</b> 张
         </span>
         ${PO_SUPPLIER_FILTER ? `
-          <button class="btn small" onclick="poExportSupplier()" title="导出该供应商的对单表（用于催单/对账）">📤 对单表</button>
+          <button class="btn small" onclick="poExportSupplier()" title="导出该供应商的对单表(用于催单/对账)">📤 对单表</button>
           <button class="btn small primary" onclick="poBatchExportOpenDialog()" title="把所有 PO 打包成一个 PDF/Word 发给供应商">📑 批量导出 PO</button>
         ` : ''}
       ` : ''}
@@ -2779,6 +2820,15 @@ function renderPoList() {
   }
 
   body.innerHTML = supplierFilterHtml + cardsHtml + pagerHtml;
+  
+  // V20260526a: 填充通用日期筛选下拉
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateSelect = document.getElementById('poDateFilterSelect');
+    if (dateSelect) {
+      const currentPreset = (PO_DATE_FILTER && PO_DATE_FILTER.preset) ? PO_DATE_FILTER.preset : 'all';
+      populateDateFilterSelect(dateSelect, currentPreset);
+    }
+  }
 }
 
 // 导出当前筛选的供应商所有 PO（生成对单表，新窗口打开，可打印 PDF / 复制到 Excel）
