@@ -20,25 +20,25 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260526d"></script>
+<script src="js/core.js?v=20260526e"></script>
 <script src="js/utils.js?v=20260525z"></script>
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
-<script src="js/issues.js?v=20260525z"></script>
-<script src="js/help.js?v=20260526d"></script>
-<script src="js/dateFilter.js?v=20260526b"></script>
+<script src="js/issues.js?v=20260526e"></script>
+<script src="js/help.js?v=20260526e"></script>
+<script src="js/dateFilter.js?v=20260526e"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260526d"></script>
-<script src="js/missing.js?v=20260525z"></script>
-<script src="js/orders.js?v=20260525z"></script>
-<script src="js/shopify.js?v=20260525z"></script>
-<script src="js/po.js?v=20260526c"></script>
+<script src="js/aftersales.js?v=20260526e"></script>
+<script src="js/missing.js?v=20260526e"></script>
+<script src="js/orders.js?v=20260526e"></script>
+<script src="js/shopify.js?v=20260526e"></script>
+<script src="js/po.js?v=20260526e"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script src="js/cross-dept.js?v=20260525z"></script>
+<script src="js/cross-dept.js?v=20260526e"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
 <script src="js/translator.js?v=20260525z"></script>
@@ -4839,12 +4839,16 @@ body.has-side-tabs .section-block {
       <select class="filter-select" id="oFilterSite" onchange="_ordersQuickMode='';renderOrders()"><option value="">📍 全部网站</option></select>
       <select class="filter-select" id="oFilterSupplier" onchange="_ordersQuickMode='';renderOrders()"><option value="">全部供应商</option></select>
       <select class="filter-select" id="oSortBy" onchange="_ordersQuickMode='';renderOrders()">
-        <option value="urgency">智能排序（催单优先）</option>
-        <option value="supplier_grouped">🏭 按供应商分组（可批量催）</option>
+        <option value="urgency">智能排序(催单优先)</option>
+        <option value="supplier_grouped">🏭 按供应商分组(可批量催)</option>
         <option value="promised_asc">按承诺日 ↑</option>
         <option value="order_date_desc">最新下单 ↓</option>
       </select>
-      <button class="btn primary" onclick="addOrder()" style="margin-left: auto;" title="新增催单（可选：PO 派生 或 手动催单）">+ 新增催单</button>
+      <!-- V20260526e: 日期筛选 + 今日要催快捷 -->
+      <select class="filter-select" id="oDateFilter" onchange="ordersOnDateChange(this.value)" style="min-width:160px;">
+      </select>
+      <button class="btn ghost small" id="oTodayChase" onclick="ordersFilterTodayChase()" title="今天到 nextFollow 日期的订单 · 今日需要联系的清单">⏰ 今日要催</button>
+      <button class="btn primary" onclick="addOrder()" style="margin-left: auto;" title="新增催单(可选:PO 派生 或 手动催单)">+ 新增催单</button>
     </div>
     <!-- V3：催单阈值 chip（按下单距今天数过滤未发货 PO，主管可在配置里自定义）-->
     <div id="chaseThresholdChips" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding: 10px 14px; background: var(--bg-elevated); border-radius: 10px; border: 1px solid var(--border-subtle);"></div>
@@ -4914,6 +4918,9 @@ body.has-side-tabs .section-block {
       <select class="filter-select" id="asFilterSite" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">📍 全部网站</option></select>
       <select class="filter-select" id="asFilterSupplier" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">全部供应商</option></select>
       <select class="filter-select" id="asFilterReason" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">全部原因</option></select>
+      <!-- V20260526e: 日期筛选 -->
+      <select class="filter-select" id="asDateFilter" onchange="aftersalesOnDateChange(this.value)" style="min-width:160px;">
+      </select>
       <!-- V20260526d: 视角切换 · 默认列表,可切网格 -->
       <div class="as-view-toggle" id="asViewToggle" style="display:inline-flex; gap:0; margin-left:8px; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
         <button class="as-view-btn active" data-view="list" onclick="setAftersalesViewMode('list')" title="列表视图(详细信息)" style="padding:6px 10px; font-size:12px; background:var(--bg-card); border:none; cursor:pointer; border-right:1px solid var(--border);">📋 列表</button>
@@ -4965,6 +4972,9 @@ body.has-side-tabs .section-block {
         <option value="grouped">按供应商分组（默认）</option>
         <option value="list">列表视图</option>
       </select>
+      <!-- V20260526e: 日期筛选 -->
+      <select class="filter-select" id="isDateFilter" onchange="issuesOnDateChange(this.value)" style="min-width:160px;">
+      </select>
       <button class="btn primary" onclick="addIssue()" style="margin-left: auto;">+ 新增问题</button>
     </div>
     <div id="issuesContainer">
@@ -5000,7 +5010,10 @@ body.has-side-tabs .section-block {
         <option value="manual">📝 手动发起</option>
         <option value="purchase">🛒 采购需求</option>
       </select>
-      <button class="btn" onclick="exportMissingCollage()" title="把所有搜寻中的图片拼成一张大图，发给供应商"><span style="font-size:14px;">📸</span> 截图打包</button>
+      <!-- V20260526e: 日期筛选 -->
+      <select class="filter-select" id="mDateFilter" onchange="missingOnDateChange(this.value)" style="min-width:160px;">
+      </select>
+      <button class="btn" onclick="exportMissingCollage()" title="把所有搜寻中的图片拼成一张大图,发给供应商"><span style="font-size:14px;">📸</span> 截图打包</button>
       <button class="btn primary" onclick="addMissing()" style="margin-left: auto;">+ 发布找灯任务</button>
     </div>
     <!-- V5: 阈值 chip 栏 (运行时由 JS 渲染) -->
@@ -5051,6 +5064,9 @@ body.has-side-tabs .section-block {
         <option value="拼多多">🍃 拼多多</option>
         <option value="天猫">🎁 天猫</option>
         <option value="其他">📌 其他</option>
+      </select>
+      <!-- V20260526e: 日期筛选 -->
+      <select class="filter-select" id="pDateFilter" onchange="purchasesOnDateChange(this.value)" style="min-width:160px;">
       </select>
       <button class="btn primary" onclick="addPurchase()" style="margin-left: auto;">+ 新增采购</button>
     </div>
@@ -5274,11 +5290,16 @@ body.has-side-tabs .section-block {
       </div>
 
       <div class="sales-subtabs" id="salesSubtabs" style="margin-top: 14px;">
-        <button class="sub-tab-btn active" data-filter="all" onclick="shopifyShowFilter('all')" title="待办：待审核 + 待处理（不含已完成/已取消）">📋 全部 <span class="cnt" id="cntAll">0</span></button>
+        <button class="sub-tab-btn active" data-filter="all" onclick="shopifyShowFilter('all')" title="店小秘式待办:待审核 + 待处理(不含已完成/已取消)">🎯 待办 <span class="cnt" id="cntAll">0</span></button>
         <button class="sub-tab-btn" data-filter="pending" onclick="shopifyShowFilter('pending')">🔵 待审核 <span class="cnt" id="cntPending">0</span></button>
         <button class="sub-tab-btn" data-filter="processing" onclick="shopifyShowFilter('processing')">🟡 待处理 <span class="cnt" id="cntProcessing">0</span></button>
-        <button class="sub-tab-btn" data-filter="done" onclick="shopifyShowFilter('done')" title="所有产品都已开 PO 的订单（自动归档）">✅ 已完成 <span class="cnt" id="cntDone">0</span></button>
+        <button class="sub-tab-btn" data-filter="done" onclick="shopifyShowFilter('done')" title="所有产品都已开 PO 的订单(自动归档)">✅ 已完成 <span class="cnt" id="cntDone">0</span></button>
         <button class="sub-tab-btn" data-filter="cancelled" onclick="shopifyShowFilter('cancelled')">⊘ 已取消 <span class="cnt" id="cntCancelled">0</span></button>
+        <!-- V20260526e: 日期筛选下拉 -->
+        <select id="shopifyDateFilter" onchange="shopifyOnDateChange(this.value)" 
+                style="margin-left:auto; padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); min-width:160px;">
+        </select>
+      </div>
       </div>
 
       <!-- ============ 搜索 + 排序 + 国家筛选 ============ -->
@@ -5614,6 +5635,12 @@ body.has-side-tabs .section-block {
       <div style="margin-top: 14px; padding: 10px 14px; background: rgba(37,99,235,0.06); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 12px; line-height: 1.7;">
         <b style="color: var(--accent);">📌 业务流程：</b>
         跟单推进 PO 到 <code style="background:rgba(0,0,0,0.05);padding:1px 4px;border-radius:3px;">已到货</code> 状态后 → 进入本 tab → 财务核对产品和金额 → 点 <code style="background:rgba(0,0,0,0.05);padding:1px 4px;border-radius:3px;">✓ 完成入库</code> → 自动追加备注到 Shopify 订单后台（保留客户原备注）
+      </div>
+      <!-- V20260526e: 财务日期筛选 -->
+      <div style="margin-top: 12px; display:flex; gap:10px; align-items:center;">
+        <label style="font-size:12px; color:var(--text-secondary);">📅 按收货日期筛选:</label>
+        <select id="financeDateFilter" onchange="financeOnDateChange(this.value)" style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); min-width:180px;">
+        </select>
       </div>
       <div id="financeListBody" style="margin-top: 14px;"></div>
     </div>
@@ -6202,6 +6229,9 @@ body.has-side-tabs .section-block {
           <option value="design">🎨 美工</option>
           <option value="cs">💬 客服</option>
         </select>
+        <!-- V20260526e: 日期筛选 -->
+        <select id="cdmDateFilter" onchange="cdmOnDateChange(this.value)" style="min-width:160px;">
+        </select>
         <button class="btn small" onclick="cdmResetFilters()" title="清除所有筛选">⊘ 清除</button>
       </div>
     </div>
@@ -6235,6 +6265,14 @@ body.has-side-tabs .section-block {
       <button class="perf-view-btn" data-view="daily" onclick="switchPerfView('daily')" style="padding: 8px 16px; border: none; background: transparent; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-secondary);">📋 日报</button>
       <button class="perf-view-btn" data-view="monthly" onclick="switchPerfView('monthly')" style="padding: 8px 16px; border: none; background: transparent; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-secondary);">📅 月度回顾</button>
       <button class="perf-view-btn" data-view="yearly" onclick="switchPerfView('yearly')" style="padding: 8px 16px; border: none; background: transparent; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-secondary);">📆 年度汇总</button>
+    </div>
+    
+    <!-- V20260526e: 通用日期筛选(支持本月/上月/2026年6月/6月第2周等)-->
+    <div style="margin-top: 12px; display:flex; gap:10px; align-items:center; padding:10px 14px; background:rgba(124,58,237,0.04); border-left:3px solid var(--purple); border-radius:0 6px 6px 0;">
+      <span style="font-size:12px; color:var(--text-secondary);">📅 选择统计时段:</span>
+      <select id="perfDateFilter" onchange="perfOnDateChange(this.value)" style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); min-width:200px;">
+      </select>
+      <span style="font-size:11.5px; color:var(--text-tertiary);">例如:2026年6月第2周</span>
     </div>
     
     <!-- 视图 1：个人绩效（默认）-->
