@@ -49,11 +49,54 @@ const CDM_REL_TYPES = {
   order: '📦 订单', product: '🏷 产品', review: '⭐ 评论', sales_log: '📊 销售记录', customer: '👤 客户',
 };
 const CDM_OWNER_ROLES = {
-  primary:  { label: '主负责', color: '#2563eb' },
-  backup:   { label: '备援',   color: '#0891b2' },
-  manager:  { label: '经理',   color: '#7c3aed' },
-  designer: { label: '设计师', color: '#ea580c' },
+  // 通用
+  primary:   { label: '主负责',   color: '#2563eb', icon: '⭐' },
+  backup:    { label: '备援',     color: '#0891b2', icon: '🛟' },
+  manager:   { label: '经理',     color: '#7c3aed', icon: '👔' },
+  // V20260526m: 跟单部门专属 6 角色(对齐项目文档规范)
+  finance:   { label: '财务对接', color: '#16a34a', icon: '💰', dept: 'po' },
+  warehouse: { label: '仓库对接', color: '#ca8a04', icon: '📦', dept: 'po' },
+  shipping:  { label: '物流对接', color: '#dc2626', icon: '🚚', dept: 'po' },
+  // 美工部门角色(保留兼容)
+  designer:  { label: '设计师',   color: '#ea580c', icon: '🎨', dept: 'design' },
+  uploader:  { label: '视频上传', color: '#db2777', icon: '📹', dept: 'design' },
+  // 客服部门角色
+  night:     { label: '夜班',     color: '#475569', icon: '🌙', dept: 'cs' },
+  escalation:{ label: '升级处理', color: '#dc2626', icon: '⚠', dept: 'cs' },
 };
+
+// V20260526m: 跟单部门派单 fallback 顺序(按文档定义)
+const CDM_PO_FALLBACK = {
+  primary:   ['primary', 'backup', 'manager'],
+  finance:   ['finance', 'primary', 'backup'],
+  warehouse: ['warehouse', 'primary', 'backup'],
+  shipping:  ['shipping', 'primary', 'backup'],
+  backup:    ['backup', 'primary', 'manager'],
+  manager:   ['manager', 'primary'],
+};
+
+// 通用 findOwnerForShop · 按角色优先级 fallback 找负责人
+function findOwnerForShop(shopName, primaryRole, fallbackRoles, system) {
+  if (!Array.isArray(SHOP_OWNERS) || !shopName) return null;
+  const sys = system || 'po';
+  const candidates = SHOP_OWNERS.filter(o => o.shopName === shopName && o.system === sys);
+  if (candidates.length === 0) return null;
+  const allRoles = [primaryRole, ...(fallbackRoles || [])];
+  for (let i = 0; i < allRoles.length; i++) {
+    const found = candidates.find(c => c.role === allRoles[i]);
+    if (found) return found;
+  }
+  return null;
+}
+
+// 跟单部门便捷封装 · 按文档规范的 fallback 链
+function findPoOwnerForShop(shopName, role) {
+  const chain = CDM_PO_FALLBACK[role] || [role, 'primary', 'backup'];
+  return findOwnerForShop(shopName, chain[0], chain.slice(1), 'po');
+}
+
+window.findOwnerForShop = findOwnerForShop;
+window.findPoOwnerForShop = findPoOwnerForShop;
 
 // V22-CY: 内置 13 个网站预设(避免员工拼写不一致导致自动派单失效)
 const SHOPS_PRESET = [
@@ -1101,51 +1144,112 @@ function cdmRenderShopOwnersList() {
   const body = document.getElementById('cdmShopOwnersBody');
   if (!body) return;
   const users = _cdmGetUsers();
-  const userOpts = users.map(u => `<option value="${u.id}|${escapeHtml(u.shortName || u.name)}">${escapeHtml(u.name)}</option>`).join('');
-  const roleOpts = Object.entries(CDM_OWNER_ROLES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
   // 按 shop_name 分组
   const grouped = {};
   SHOP_OWNERS.forEach(o => { if (!grouped[o.shopName]) grouped[o.shopName] = []; grouped[o.shopName].push(o); });
   const shopNames = Object.keys(grouped).sort();
-
+  
+  // V20260526m: 跟单部门可用角色(过滤出 dept='po' 或通用的 · 通用角色没 dept 字段)
+  const poRoles = Object.entries(CDM_OWNER_ROLES).filter(([k, v]) => !v.dept || v.dept === 'po');
+  
   body.innerHTML = `
     <div style="background:rgba(37,99,235,0.06); padding:12px 14px; border-radius:8px; margin-bottom:14px; font-size:12.5px; color:var(--text-secondary); border-left:3px solid var(--accent);">
       💡 维护本部门(<b style="color:#2563eb;">📋 跟单</b>)员工与网站的负责关系 · 三方共享 · 只能编辑本部门记录
     </div>
-    <div style="background:var(--bg-elevated); padding:12px 14px; border-radius:8px; margin-bottom:18px;">
-      <div style="font-weight:600; font-size:13px; margin-bottom:8px; color:var(--text-primary);">➕ 新增负责人 <span style="font-size:11px; color:var(--text-tertiary); font-weight:400;">· 网站从预设列表选(避免拼写不一致)</span></div>
-      <div style="display:grid; grid-template-columns: 2fr 2fr 1fr 2fr auto; gap:8px; align-items:center;">
-        <select id="cdmOwnerShopName" onchange="cdmOnOwnerShopChange()" style="padding:7px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
-          <option value="">— 选择网站 —</option>
-          <optgroup label="📦 独立站">
-            ${SHOPS_PRESET.filter(s => s.category === '独立站').map(s => `<option value="${escapeHtml(s.label)}">${escapeHtml(s.label)}</option>`).join('')}
-          </optgroup>
-          <optgroup label="🛒 平台">
-            ${SHOPS_PRESET.filter(s => s.category === '平台').map(s => `<option value="${escapeHtml(s.label)}">${escapeHtml(s.label)}</option>`).join('')}
-          </optgroup>
-          <optgroup label="🏢 实体公司">
-            ${SHOPS_PRESET.filter(s => s.category === '实体公司').map(s => `<option value="${escapeHtml(s.label)}">${escapeHtml(s.label)}</option>`).join('')}
-          </optgroup>
-          <option value="__other__">📝 其他(手填)</option>
-        </select>
-        <select id="cdmOwnerUser" style="padding:7px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
-          <option value="">-- 选员工 --</option>${userOpts}
-        </select>
-        <select id="cdmOwnerRole" style="padding:7px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
-          ${roleOpts}
-        </select>
-        <input id="cdmOwnerNotes" placeholder="备注(可选)" style="padding:7px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
-        <button class="btn primary" onclick="cdmSaveOwnerFromForm()">+ 添加</button>
+    
+    <!-- V20260526m: N × M 矩阵批量添加 UI -->
+    <div style="background:var(--bg-elevated); padding:14px 16px; border-radius:8px; margin-bottom:18px; border:1px solid var(--border-subtle);">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <div style="font-weight:600; font-size:13.5px; color:var(--text-primary);">➕ 批量添加(矩阵式)<span style="font-size:11px; color:var(--text-tertiary); font-weight:400; margin-left:8px;">· 一次勾 N 网站 × M 人 = N×M 条记录</span></div>
+        <button class="btn small ghost" onclick="cdmToggleSingleMode()" id="cdmSingleModeBtn" title="切换到单条添加模式">⇋ 单条模式</button>
       </div>
-      <div id="cdmOwnerCustomShopWrap" style="display:none; margin-top:8px;">
-        <input id="cdmOwnerCustomShopName" placeholder="输入网站名(选了「其他」时必填)" style="width:100%; padding:7px 10px; font-size:12.5px; border:1px solid #ea580c; border-radius:5px; background:rgba(234,88,12,0.05);">
-        <div style="font-size:10.5px; color:var(--text-tertiary); margin-top:2px;">⚠ 自由填写的网站名会被独立看待 · 拼写不一致会导致系统当成不同网站</div>
+      
+      <!-- 矩阵模式(默认) -->
+      <div id="cdmMatrixForm">
+        <!-- 步骤 1: 选网站(多选) -->
+        <div style="margin-bottom:14px;">
+          <div style="font-weight:600; font-size:12px; color:var(--text-secondary); margin-bottom:6px;">① 选网站 <span id="cdmMatrixShopCount" style="color:var(--accent); font-weight:700;">0</span> 个</div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:6px;">
+            ${SHOPS_PRESET.filter(s => s.id !== 'other').map(s => `
+              <label style="display:flex; align-items:center; gap:6px; padding:6px 9px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:5px; cursor:pointer; font-size:12px;" 
+                     onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border-subtle)'">
+                <input type="checkbox" class="cdm-matrix-shop" value="${escapeHtml(s.label)}" onchange="cdmUpdateMatrixCount()" style="cursor:pointer;">
+                <span>${escapeHtml(s.label)}</span>
+              </label>
+            `).join('')}
+            <label style="display:flex; align-items:center; gap:6px; padding:6px 9px; background:rgba(234,88,12,0.05); border:1px dashed #ea580c; border-radius:5px; cursor:pointer; font-size:12px;">
+              <input type="checkbox" class="cdm-matrix-shop-other" onchange="cdmToggleMatrixOther(this)" style="cursor:pointer;">
+              <span style="color:#ea580c;">📝 其他(手填)</span>
+            </label>
+          </div>
+          <input id="cdmMatrixCustomShop" placeholder="多个手填网站用逗号分隔(例:Test1, Test2)" style="display:none; width:100%; margin-top:6px; padding:6px 10px; font-size:12px; border:1px solid #ea580c; border-radius:5px; background:rgba(234,88,12,0.04);">
+        </div>
+        
+        <!-- 步骤 2: 选员工(多选) -->
+        <div style="margin-bottom:14px;">
+          <div style="font-weight:600; font-size:12px; color:var(--text-secondary); margin-bottom:6px;">② 选员工 <span id="cdmMatrixUserCount" style="color:var(--accent); font-weight:700;">0</span> 个</div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:6px; max-height:180px; overflow-y:auto; padding:4px;">
+            ${users.map(u => `
+              <label style="display:flex; align-items:center; gap:6px; padding:6px 9px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:5px; cursor:pointer; font-size:12px;"
+                     onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border-subtle)'">
+                <input type="checkbox" class="cdm-matrix-user" value="${u.id}|${escapeHtml(u.shortName || u.name)}" onchange="cdmUpdateMatrixCount()" style="cursor:pointer;">
+                <span>${escapeHtml(u.name)}</span>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+        
+        <!-- 步骤 3: 选角色(单选 · 一批次只能一种角色) -->
+        <div style="margin-bottom:14px;">
+          <div style="font-weight:600; font-size:12px; color:var(--text-secondary); margin-bottom:6px;">③ 选角色 <span style="font-size:11px; font-weight:400; color:var(--text-tertiary);">· 一次批量只能一种角色</span></div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px;">
+            ${poRoles.map(([k, v], i) => `
+              <label style="display:flex; align-items:center; gap:5px; padding:6px 12px; background:var(--bg-card); border:1.5px solid var(--border-subtle); border-radius:6px; cursor:pointer; font-size:12.5px;"
+                     onmouseover="this.style.borderColor='${v.color}'" onmouseout="this.style.borderColor=this.querySelector('input').checked ? '${v.color}' : 'var(--border-subtle)'">
+                <input type="radio" name="cdmMatrixRole" value="${k}" ${i === 0 ? 'checked' : ''} style="cursor:pointer;" onchange="this.closest('label').style.borderColor='${v.color}'; document.querySelectorAll('input[name=cdmMatrixRole]').forEach(r => { if (!r.checked) r.closest('label').style.borderColor='var(--border-subtle)'; });">
+                <span>${v.icon || ''} <span style="color:${v.color}; font-weight:600;">${v.label}</span></span>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+        
+        <!-- 步骤 4: 备注 + 保存 -->
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input id="cdmMatrixNotes" placeholder="备注(可选 · 对所有批量记录生效)" style="flex:1; padding:8px 12px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
+          <button class="btn primary" onclick="cdmSaveMatrix()" id="cdmMatrixSaveBtn" style="padding:8px 16px; font-size:13px;">✓ 添加 <span id="cdmMatrixSavePreview">0</span> 条</button>
+        </div>
+      </div>
+      
+      <!-- 单条模式(隐藏 · 切换显示) -->
+      <div id="cdmSingleForm" style="display:none;">
+        <div style="display:grid; grid-template-columns: 2fr 2fr 1fr 2fr auto; gap:8px; align-items:center;">
+          <select id="cdmOwnerShopName" onchange="cdmOnOwnerShopChange()" style="padding:7px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
+            <option value="">— 选择网站 —</option>
+            ${SHOPS_PRESET.filter(s => s.id !== 'other').map(s => `<option value="${escapeHtml(s.label)}">${escapeHtml(s.label)}</option>`).join('')}
+            <option value="__other__">📝 其他(手填)</option>
+          </select>
+          <select id="cdmOwnerUser" style="padding:7px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
+            <option value="">-- 选员工 --</option>${users.map(u => `<option value="${u.id}|${escapeHtml(u.shortName || u.name)}">${escapeHtml(u.name)}</option>`).join('')}
+          </select>
+          <select id="cdmOwnerRole" style="padding:7px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
+            ${poRoles.map(([k, v]) => `<option value="${k}">${v.icon || ''} ${v.label}</option>`).join('')}
+          </select>
+          <input id="cdmOwnerNotes" placeholder="备注(可选)" style="padding:7px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card);">
+          <button class="btn primary" onclick="cdmSaveOwnerFromForm()">+ 添加</button>
+        </div>
+        <div id="cdmOwnerCustomShopWrap" style="display:none; margin-top:8px;">
+          <input id="cdmOwnerCustomShopName" placeholder="输入网站名(选了「其他」时必填)" style="width:100%; padding:7px 10px; font-size:12.5px; border:1px solid #ea580c; border-radius:5px; background:rgba(234,88,12,0.05);">
+        </div>
       </div>
     </div>
-    <div style="font-weight:600; font-size:13px; margin-bottom:8px; color:var(--text-primary);">现有负责人 (按网站分组)</div>
+    
+    <div style="font-weight:600; font-size:13px; margin-bottom:8px; color:var(--text-primary);">现有负责人 (按网站分组 · ${SHOP_OWNERS.length} 条记录)</div>
     ${shopNames.length === 0 ? '<div style="text-align:center; padding:40px 20px; color:var(--text-tertiary); font-size:13px;">还没有任何记录 · 用上面的表单添加</div>' : shopNames.map(shop => `
       <div style="border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:10px; overflow:hidden;">
-        <div style="background:var(--bg-elevated); padding:8px 12px; font-weight:600; font-size:13px;">🌐 ${escapeHtml(shop)}</div>
+        <div style="background:var(--bg-elevated); padding:8px 12px; font-weight:600; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
+          <span>🌐 ${escapeHtml(shop)}</span>
+          <span style="font-size:11px; color:var(--text-tertiary); font-weight:400;">${grouped[shop].length} 人</span>
+        </div>
         <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
           <thead>
             <tr style="background:var(--bg-card);">
@@ -1164,7 +1268,7 @@ function cdmRenderShopOwnersList() {
               return `<tr style="border-top:1px solid var(--border-subtle);">
                 <td style="padding:7px 12px;"><span style="color:${sys.color}; font-weight:500;">${sys.label}</span></td>
                 <td style="padding:7px;">${escapeHtml(o.userName || o.userId || '')}</td>
-                <td style="padding:7px;"><span style="background:rgba(0,0,0,0.04); color:${role.color}; padding:1px 7px; border-radius:3px; font-size:11px; font-weight:500;">${role.label}</span></td>
+                <td style="padding:7px;"><span style="background:rgba(0,0,0,0.04); color:${role.color}; padding:1px 7px; border-radius:3px; font-size:11px; font-weight:500;">${role.icon || ''} ${role.label}</span></td>
                 <td style="padding:7px; color:var(--text-tertiary); font-size:11.5px;">${escapeHtml(o.notes || '—')}</td>
                 <td style="padding:7px; text-align:right;">${isMine ? `<button class="btn small" onclick="cdmDeleteOwner('${o.id}')" style="color:var(--danger);">✕</button>` : `<span style="color:var(--text-tertiary); font-size:11px;">(其他部门)</span>`}</td>
               </tr>`;
@@ -1175,6 +1279,127 @@ function cdmRenderShopOwnersList() {
     `).join('')}
   `;
 }
+
+// V20260526m: 矩阵模式相关函数
+function cdmToggleSingleMode() {
+  const matrix = document.getElementById('cdmMatrixForm');
+  const single = document.getElementById('cdmSingleForm');
+  const btn = document.getElementById('cdmSingleModeBtn');
+  if (!matrix || !single || !btn) return;
+  const isMatrix = matrix.style.display !== 'none';
+  matrix.style.display = isMatrix ? 'none' : '';
+  single.style.display = isMatrix ? '' : 'none';
+  btn.textContent = isMatrix ? '⇋ 矩阵模式' : '⇋ 单条模式';
+  btn.title = isMatrix ? '切换回矩阵批量添加' : '切换到单条精细添加';
+}
+
+function cdmToggleMatrixOther(cb) {
+  const input = document.getElementById('cdmMatrixCustomShop');
+  if (!input) return;
+  input.style.display = cb.checked ? '' : 'none';
+  cdmUpdateMatrixCount();
+}
+
+function cdmUpdateMatrixCount() {
+  const shops = document.querySelectorAll('.cdm-matrix-shop:checked').length;
+  const otherCb = document.querySelector('.cdm-matrix-shop-other');
+  const otherInput = document.getElementById('cdmMatrixCustomShop');
+  let otherCount = 0;
+  if (otherCb && otherCb.checked && otherInput && otherInput.value.trim()) {
+    otherCount = otherInput.value.split(',').map(s => s.trim()).filter(Boolean).length;
+  }
+  const totalShops = shops + otherCount;
+  const users = document.querySelectorAll('.cdm-matrix-user:checked').length;
+  const sc = document.getElementById('cdmMatrixShopCount');
+  const uc = document.getElementById('cdmMatrixUserCount');
+  const preview = document.getElementById('cdmMatrixSavePreview');
+  if (sc) sc.textContent = totalShops;
+  if (uc) uc.textContent = users;
+  if (preview) preview.textContent = totalShops * users;
+}
+
+async function cdmSaveMatrix() {
+  // 收集网站
+  const shops = [];
+  document.querySelectorAll('.cdm-matrix-shop:checked').forEach(cb => shops.push(cb.value));
+  const otherCb = document.querySelector('.cdm-matrix-shop-other');
+  if (otherCb && otherCb.checked) {
+    const input = document.getElementById('cdmMatrixCustomShop');
+    if (input && input.value.trim()) {
+      input.value.split(',').map(s => s.trim()).filter(Boolean).forEach(s => shops.push(s));
+    }
+  }
+  // 收集员工
+  const users = [];
+  document.querySelectorAll('.cdm-matrix-user:checked').forEach(cb => {
+    const [id, name] = cb.value.split('|');
+    users.push({ id, name });
+  });
+  // 角色
+  const roleEl = document.querySelector('input[name="cdmMatrixRole"]:checked');
+  const role = roleEl ? roleEl.value : 'primary';
+  const notes = document.getElementById('cdmMatrixNotes').value.trim() || null;
+  
+  if (shops.length === 0) { toast('请至少选 1 个网站', 'err'); return; }
+  if (users.length === 0) { toast('请至少选 1 个员工', 'err'); return; }
+  
+  // 生成 N × M 矩阵 · 去重
+  const existingKeys = new Set(
+    SHOP_OWNERS.filter(o => o.system === 'po').map(o => `${o.shopName}|${o.role}|${o.userId}`)
+  );
+  const rows = [];
+  let skipped = 0;
+  for (const shop of shops) {
+    for (const user of users) {
+      const key = `${shop}|${role}|${user.id}`;
+      if (existingKeys.has(key)) { skipped++; continue; }
+      rows.push({
+        id: crypto.randomUUID(),
+        shop_name: shop,
+        system: 'po',
+        user_id: user.id,
+        user_name: user.name,
+        role: role,
+        notes: notes,
+        created_at_ms: Date.now(),
+        updated_at: new Date().toISOString(),
+      });
+    }
+  }
+  
+  if (rows.length === 0) {
+    toast(`所有 ${shops.length * users.length} 条记录都已存在 · 跳过`, 'warn');
+    return;
+  }
+  
+  try {
+    const btn = document.getElementById('cdmMatrixSaveBtn');
+    if (btn) btn.disabled = true;
+    const { error } = await cdmClient.from('shop_owners').upsert(rows);
+    if (error) throw error;
+    toast(`✓ 已添加 ${rows.length} 条${skipped > 0 ? ` · 跳过 ${skipped} 条重复` : ''}`);
+    // 清空表单
+    document.querySelectorAll('.cdm-matrix-shop:checked, .cdm-matrix-user:checked, .cdm-matrix-shop-other:checked').forEach(cb => cb.checked = false);
+    const cs = document.getElementById('cdmMatrixCustomShop');
+    if (cs) { cs.value = ''; cs.style.display = 'none'; }
+    document.getElementById('cdmMatrixNotes').value = '';
+    cdmUpdateMatrixCount();
+    await cdmLoadShopOwners();
+    cdmRenderShopOwnersList();
+    cdmRenderAdminButtons();
+  } catch (e) { 
+    console.error('[CDM] 批量保存失败:', e); 
+    toast('保存失败:' + (e.message || e), 'err'); 
+  } finally {
+    const btn = document.getElementById('cdmMatrixSaveBtn');
+    if (btn) btn.disabled = false;
+  }
+}
+
+window.cdmToggleSingleMode = cdmToggleSingleMode;
+window.cdmToggleMatrixOther = cdmToggleMatrixOther;
+window.cdmUpdateMatrixCount = cdmUpdateMatrixCount;
+window.cdmSaveMatrix = cdmSaveMatrix;
 
 // V22-CY: 切换网站下拉显示/隐藏"其他"手填输入框
 function cdmOnOwnerShopChange() {
