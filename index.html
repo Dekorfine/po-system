@@ -25,7 +25,7 @@
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260526e"></script>
-<script src="js/help.js?v=20260526e"></script>
+<script src="js/help.js?v=20260526f"></script>
 <script src="js/dateFilter.js?v=20260526e"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
@@ -36,7 +36,7 @@
 <script src="js/missing.js?v=20260526e"></script>
 <script src="js/orders.js?v=20260526e"></script>
 <script src="js/shopify.js?v=20260526e"></script>
-<script src="js/po.js?v=20260526e"></script>
+<script src="js/po.js?v=20260526f"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script src="js/cross-dept.js?v=20260526e"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
@@ -4350,6 +4350,25 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 /* 当 sidebar 显示时,主内容区往右挪 */
 body.has-side-tabs #mainApp { padding-left: 150px; }
 body.has-side-tabs.side-collapsed #mainApp { padding-left: 56px; }
+
+/* V20260526f: 加强侧栏与内容隔离 · 防止视觉溢出 */
+/* 1. 侧栏:加右边阴影分隔,确保 z-index 在顶 */
+body.has-side-tabs .side-tab-bar {
+  z-index: 100;  /* 高于内容 */
+  box-shadow: 2px 0 8px rgba(0,0,0,0.06);  /* 右边阴影提供视觉分隔 */
+}
+/* 2. 主内容区:加 min-width: 0 防止内部 grid/flex 撑破容器 */
+body.has-side-tabs #mainApp {
+  min-width: 0;
+  overflow-x: hidden;  /* 兜底:即使有元素溢出,也不会盖到侧栏 */
+}
+/* 3. PO/销售单卡片:防止内部元素溢出导致整体被推宽 */
+.po-card, .so-card { min-width: 0; max-width: 100%; overflow: hidden; }
+.po-card-body, .po-card-top, .po-card-actions,
+.so-card-body, .so-card-top, .so-card-actions { min-width: 0; }
+/* 4. tab-content 也加 min-width: 0 */
+.tab-content { min-width: 0; }
+
 /* V5-W3-2026-05-26 fix v2: 有侧栏时取消 max-width 限制,内容填满到屏幕右边 */
 body.has-side-tabs .header-top,
 body.has-side-tabs .tab-nav,
