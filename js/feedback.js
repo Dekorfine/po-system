@@ -28,7 +28,7 @@ const FEEDBACK_STATUSES = {
 
 let FEEDBACK_ITEMS = [];
 let _feedbackRealtimeSub = null;
-let _feedbackFilters = { type: '', status: '', severity: '', module: '', mine: false };
+let _feedbackFilters = { type: '', status: '', severity: '', module: '', mine: false, dateRange: 'all', searchText: '' };
 let _feedbackCurrentDetailId = null;
 
 // ============================================================
@@ -173,6 +173,9 @@ function feedbackRender() {
           <option value="">所有紧急度</option>
           ${Object.entries(FEEDBACK_SEVERITIES).map(([k, v]) => `<option value="${k}" ${_feedbackFilters.severity === k ? 'selected' : ''}>${v.icon} ${v.label}</option>`).join('')}
         </select>
+        <select id="fbFilterDate" onchange="feedbackOnDateChange(this.value)" style="min-width:160px;">
+          <!-- 由 populateDateFilterSelect 动态填 -->
+        </select>
         <input type="text" id="fbSearch" placeholder="搜索标题/描述..." oninput="feedbackSetSearchText(this.value)" style="flex:1; min-width:140px;">
         <button class="btn ghost small" onclick="feedbackClearFilters()">清除筛选</button>
       </div>
@@ -188,6 +191,9 @@ function feedbackRender() {
       </div>
     </div>
   `;
+  
+  // V20260525a1: 异步填充日期筛选下拉(等 DOM 就绪)
+  setTimeout(_feedbackPostRender, 0);
 }
 
 function _feedbackRenderCard(f, me) {
@@ -233,6 +239,10 @@ function feedbackGetFiltered() {
   if (_feedbackFilters.severity) list = list.filter(f => f.severity === _feedbackFilters.severity);
   if (_feedbackFilters.module) list = list.filter(f => f.module === _feedbackFilters.module);
   if (_feedbackFilters.mine) list = list.filter(f => f.reporter_id === me.id);
+  // V20260525a1: 日期范围筛选
+  if (_feedbackFilters.dateRange && _feedbackFilters.dateRange !== 'all' && typeof isDateInRange === 'function') {
+    list = list.filter(f => isDateInRange(f.created_at, _feedbackFilters.dateRange));
+  }
   if (_feedbackFilters.searchText) {
     const q = _feedbackFilters.searchText.toLowerCase();
     list = list.filter(f => 
@@ -249,8 +259,35 @@ function feedbackSetFilter(key, value) {
 }
 function feedbackSetSearchText(v) { _feedbackFilters.searchText = v; feedbackRender(); }
 function feedbackClearFilters() {
-  _feedbackFilters = { type: '', status: '', severity: '', module: '', mine: false, searchText: '' };
+  _feedbackFilters = { type: '', status: '', severity: '', module: '', mine: false, dateRange: 'all', searchText: '' };
   feedbackRender();
+}
+
+// V20260525a1: 日期筛选 onChange (含 custom_open 处理)
+function feedbackOnDateChange(value) {
+  if (value === 'custom_open') {
+    // 不直接设置 · 等用户从对话框选完
+    if (typeof openCustomDateRange === 'function') {
+      openCustomDateRange(null, null, (customPreset) => {
+        _feedbackFilters.dateRange = customPreset;
+        feedbackRender();
+      });
+    }
+    // 重置 select 显示
+    const el = document.getElementById('fbFilterDate');
+    if (el) el.value = _feedbackFilters.dateRange;
+    return;
+  }
+  _feedbackFilters.dateRange = value;
+  feedbackRender();
+}
+
+// 渲染完主列表后填充日期下拉
+function _feedbackPostRender() {
+  const el = document.getElementById('fbFilterDate');
+  if (el && typeof populateDateFilterSelect === 'function') {
+    populateDateFilterSelect(el, _feedbackFilters.dateRange);
+  }
 }
 
 // ============================================================
@@ -790,11 +827,15 @@ async function feedbackDoImport() {
 function feedbackOpenDownloadDialog() {
   const modal = document.getElementById('feedbackDownloadModal');
   if (!modal) { toast('下载 modal 未加载', 'err'); return; }
-  // 默认选项
   document.getElementById('fbDlScope').value = 'all';
   document.getElementById('fbDlFormat').value = 'markdown';
   document.getElementById('fbDlIncludeImages').checked = true;
   document.getElementById('fbDlIncludeResolved').checked = false;
+  // V20260525a1: 初始化日期下拉
+  const dateEl = document.getElementById('fbDlDateRange');
+  if (dateEl && typeof populateDateFilterSelect === 'function') {
+    populateDateFilterSelect(dateEl, 'all');
+  }
   _feedbackUpdateDlPreview();
   modal.classList.add('show');
 }
@@ -803,15 +844,36 @@ function feedbackCloseDownloadDialog() {
   document.getElementById('feedbackDownloadModal')?.classList.remove('show');
 }
 
-function _feedbackUpdateDlPreview() {
-  const scope = document.getElementById('fbDlScope').value;
-  const includeResolved = document.getElementById('fbDlIncludeResolved').checked;
-  const items = _feedbackGetDownloadItems(scope, includeResolved);
-  document.getElementById('fbDlCountHint').textContent = `将导出 ${items.length} 条反馈`;
+// V20260525a1: 日期下拉 onChange (含 custom)
+function _feedbackOnDlDateChange(value) {
+  if (value === 'custom_open') {
+    if (typeof openCustomDateRange === 'function') {
+      openCustomDateRange(null, null, (customPreset) => {
+        const el = document.getElementById('fbDlDateRange');
+        populateDateFilterSelect(el, customPreset);
+        _feedbackUpdateDlPreview();
+      });
+    }
+    return;
+  }
+  _feedbackUpdateDlPreview();
 }
 
-function _feedbackGetDownloadItems(scope, includeResolved) {
+function _feedbackUpdateDlPreview() {
+  const scope = document.getElementById('fbDlScope')?.value || 'all';
+  const dateRange = document.getElementById('fbDlDateRange')?.value || 'all';
+  const includeResolved = document.getElementById('fbDlIncludeResolved')?.checked || false;
+  const items = _feedbackGetDownloadItems(scope, includeResolved, dateRange);
+  const dateLabel = (typeof getDateRange === 'function') ? getDateRange(dateRange).label : '';
+  const el = document.getElementById('fbDlCountHint');
+  if (el) {
+    el.innerHTML = `将导出 <b style="color:var(--accent);">${items.length}</b> 条反馈${dateLabel && dateLabel !== '所有时间' ? ` · 时间范围:${escapeHtml(dateLabel)}` : ''}`;
+  }
+}
+
+function _feedbackGetDownloadItems(scope, includeResolved, dateRange) {
   let items = [...FEEDBACK_ITEMS];
+  // 业务范围
   if (scope === 'pending') {
     items = items.filter(f => f.status === 'pending' || f.status === 'analyzing');
   } else if (scope === 'urgent') {
@@ -821,9 +883,10 @@ function _feedbackGetDownloadItems(scope, includeResolved) {
   } else if (scope === 'mine') {
     const me = _feedbackGetCurrentUser();
     items = items.filter(f => f.reporter_id === me.id);
-  } else if (scope === 'last_week') {
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    items = items.filter(f => new Date(f.created_at).getTime() > weekAgo);
+  }
+  // V20260525a1: 日期范围筛选(独立维度)
+  if (dateRange && dateRange !== 'all' && typeof isDateInRange === 'function') {
+    items = items.filter(f => isDateInRange(f.created_at, dateRange));
   }
   // 是否含已修复的
   if (!includeResolved) {
@@ -835,15 +898,21 @@ function _feedbackGetDownloadItems(scope, includeResolved) {
 async function feedbackDoDownload() {
   const scope = document.getElementById('fbDlScope').value;
   const format = document.getElementById('fbDlFormat').value;
+  const dateRange = document.getElementById('fbDlDateRange').value;
   const includeImages = document.getElementById('fbDlIncludeImages').checked;
   const includeResolved = document.getElementById('fbDlIncludeResolved').checked;
   
-  const items = _feedbackGetDownloadItems(scope, includeResolved);
+  const items = _feedbackGetDownloadItems(scope, includeResolved, dateRange);
   if (items.length === 0) { toast('没有符合条件的反馈', 'info'); return; }
   
   const dateStr = new Date().toISOString().slice(0, 10);
-  const scopeLabels = { all: '全部', pending: '待处理', urgent: '紧急', with_screenshots: '含截图', mine: '我提的', last_week: '近7天' };
-  const scopeLabel = scopeLabels[scope] || scope;
+  const scopeLabels = { all: '全部', pending: '待处理', urgent: '紧急', with_screenshots: '含截图', mine: '我提的' };
+  let scopeLabel = scopeLabels[scope] || scope;
+  // V20260525a1: 文件名带日期范围
+  if (dateRange && dateRange !== 'all' && typeof getDateRange === 'function') {
+    const r = getDateRange(dateRange);
+    if (r.label) scopeLabel += '_' + r.label.replace(/[\(\)~]/g, '_').replace(/\s+/g, '').slice(0, 40);
+  }
   
   if (format === 'markdown') {
     const md = _feedbackGenerateMarkdown(items, includeImages);
@@ -1301,6 +1370,8 @@ window.feedbackOpenDownloadDialog = feedbackOpenDownloadDialog;
 window.feedbackCloseDownloadDialog = feedbackCloseDownloadDialog;
 window.feedbackDoDownload = feedbackDoDownload;
 window._feedbackUpdateDlPreview = _feedbackUpdateDlPreview;
+window._feedbackOnDlDateChange = _feedbackOnDlDateChange;
+window.feedbackOnDateChange = feedbackOnDateChange;
 window.feedbackSetFilter = feedbackSetFilter;
 window.feedbackSetSearchText = feedbackSetSearchText;
 window.feedbackClearFilters = feedbackClearFilters;
