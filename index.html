@@ -20,28 +20,29 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525w"></script>
-<script src="js/utils.js?v=20260525w"></script>
+<script src="js/core.js?v=20260525x"></script>
+<script src="js/utils.js?v=20260525x"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525w"></script>
-<script src="js/issues.js?v=20260525w"></script>
+<script src="js/settings.js?v=20260525x"></script>
+<script src="js/issues.js?v=20260525x"></script>
+<script src="js/help.js?v=20260525x"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525w"></script>
-<script src="js/missing.js?v=20260525w"></script>
-<script src="js/orders.js?v=20260525w"></script>
-<script src="js/shopify.js?v=20260525w"></script>
-<script src="js/po.js?v=20260525w"></script>
+<script src="js/aftersales.js?v=20260525x"></script>
+<script src="js/missing.js?v=20260525x"></script>
+<script src="js/orders.js?v=20260525x"></script>
+<script src="js/shopify.js?v=20260525x"></script>
+<script src="js/po.js?v=20260525x"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script src="js/cross-dept.js?v=20260525w"></script>
+<script src="js/cross-dept.js?v=20260525x"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525w"></script>
-<script src="js/meetings.js?v=20260525w"></script>
-<script src="js/greeting.js?v=20260525w"></script>
-<script src="js/search.js?v=20260525w"></script>
+<script src="js/translator.js?v=20260525x"></script>
+<script src="js/meetings.js?v=20260525x"></script>
+<script src="js/greeting.js?v=20260525x"></script>
+<script src="js/search.js?v=20260525x"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -938,6 +939,347 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .ism-photo-tile:hover .rm { opacity: 1; }
 .drop-zone-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+
+/* ============ V5-W3-2026-05-26: 使用手册 / 版本日志 / Bug / 路线图 ============ */
+.help-manual-modal {
+  background: var(--bg-card);
+  border-radius: 12px;
+  width: 90vw;
+  max-width: 980px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  overflow: hidden;
+}
+.help-manual-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: linear-gradient(to bottom, var(--bg-elevated), var(--bg-card));
+}
+.help-tab-bar {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+.help-tab-item {
+  padding: 11px 18px;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  user-select: none;
+  font-weight: 500;
+}
+.help-tab-item:hover { color: var(--text-primary); background: rgba(37,99,235,0.04); }
+.help-tab-item.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.help-manual-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px 30px;
+}
+.help-manual-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+.help-intro {
+  padding: 14px 16px;
+  background: rgba(37,99,235,0.04);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+.help-section { margin: 20px 0; }
+.help-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.help-section-content {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border-radius: 6px;
+}
+.help-feature-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+.help-feature-list li {
+  padding: 5px 0 5px 22px;
+  position: relative;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.help-feature-list li::before {
+  content: '▸';
+  position: absolute;
+  left: 4px;
+  color: var(--accent);
+  font-weight: 700;
+}
+.help-tips { background: rgba(234,88,12,0.05); border-left: 3px solid #ea580c; padding: 8px 12px; border-radius: 0 6px 6px 0; }
+.help-tips .help-section-title { border-bottom: none; padding-bottom: 0; color: #c2410c; }
+
+/* 模块卡片 */
+.help-module-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+.help-module-header {
+  padding: 14px 16px;
+  cursor: pointer;
+  background: var(--bg-elevated);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+.help-module-header:hover { background: rgba(37,99,235,0.04); }
+.help-module-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.help-module-icon { font-size: 18px; }
+.help-module-tab-tag {
+  font-size: 10.5px;
+  background: var(--bg-card);
+  color: var(--text-tertiary);
+  padding: 2px 7px;
+  border-radius: 9px;
+  font-family: monospace;
+  font-weight: 500;
+}
+.help-module-purpose {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  grid-column: 1;
+}
+.help-expand-arrow {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  transition: transform 0.2s;
+  grid-row: 1;
+  grid-column: 2;
+}
+.help-module-card.expanded .help-expand-arrow { transform: rotate(180deg); }
+.help-module-body { display: none; padding: 14px 16px; background: var(--bg-card); }
+.help-module-card.expanded .help-module-body { display: block; }
+
+/* 版本时间线 */
+.help-version-timeline { position: relative; padding-left: 24px; }
+.help-version-timeline::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+.help-version-item { position: relative; margin-bottom: 18px; }
+.help-version-marker {
+  position: absolute;
+  left: -22px;
+  top: 4px;
+  width: 12px; height: 12px;
+  background: var(--accent);
+  border-radius: 50%;
+  border: 3px solid var(--bg-card);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.help-version-item.latest .help-version-marker {
+  background: #16a34a;
+  box-shadow: 0 0 0 2px #16a34a, 0 0 12px rgba(22,163,74,0.4);
+}
+.help-version-content {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.help-version-item.latest .help-version-content {
+  border-color: #16a34a;
+  background: rgba(22,163,74,0.04);
+}
+.help-version-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.help-version-num {
+  font-family: monospace;
+  font-size: 12.5px;
+  font-weight: 700;
+  background: var(--bg-card);
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--accent);
+}
+.help-version-date { font-size: 11.5px; color: var(--text-tertiary); }
+.help-version-type {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.help-version-feature { background: rgba(124,58,237,0.1); color: #7c3aed; }
+.help-version-fix { background: rgba(234,88,12,0.1); color: #c2410c; }
+.help-version-improve { background: rgba(37,99,235,0.1); color: var(--accent); }
+.help-version-current {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #16a34a;
+  color: white;
+  font-weight: 600;
+}
+.help-version-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 4px 0 6px;
+}
+.help-version-notes {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.help-version-notes li { margin: 2px 0; }
+
+/* Bug 反馈 */
+.help-bug-template pre {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+.help-bug-guide {
+  background: var(--bg-elevated);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  border-left: 3px solid var(--accent);
+}
+.help-bug-guide-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+.help-bug-guide-body {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  font-family: monospace;
+  background: var(--bg-card);
+  padding: 8px 10px;
+  border-radius: 4px;
+}
+.help-contact { background: rgba(34,197,94,0.05); border-left: 3px solid #22c55e; padding: 12px 16px; border-radius: 0 6px 6px 0; }
+
+/* 路线图 */
+.help-advantage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.help-advantage-card {
+  background: var(--bg-elevated);
+  border-radius: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+}
+.help-advantage-icon { font-size: 22px; }
+.help-advantage-title { font-size: 13px; font-weight: 700; margin: 4px 0 4px; color: var(--text-primary); }
+.help-advantage-desc { font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; }
+
+.help-solved-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 6px;
+}
+.help-solved-item {
+  background: rgba(34,197,94,0.06);
+  border-left: 3px solid #22c55e;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  border-radius: 4px;
+}
+
+.help-upcoming-card {
+  background: var(--bg-elevated);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  border-left: 3px solid #7c3aed;
+}
+.help-upcoming-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.help-upcoming-icon { font-size: 18px; }
+.help-upcoming-name { font-size: 13.5px; font-weight: 700; flex: 1; }
+.help-upcoming-eta {
+  font-size: 11px;
+  background: rgba(124,58,237,0.1);
+  color: #7c3aed;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.help-upcoming-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+
+.help-claude-can { background: rgba(37,99,235,0.04); border-left: 3px solid var(--accent); padding: 14px 16px; border-radius: 0 6px 6px 0; }
+.help-claude-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px;
+}
+.help-claude-item {
+  background: var(--bg-card);
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+}
+
 .drop-zone-thumb { position: relative; }
 .drop-zone-thumb img { width: 64px; height: 64px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; }
 .drop-zone-thumb .rm { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--danger); color: white; border: none; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; }
@@ -4054,6 +4396,7 @@ body.has-side-tabs .section-block {
       </span>
       <button class="btn ghost" onclick="openTrash()" title="回收站">🗑</button>
       <button class="btn ghost" onclick="openTabLayoutModal()" title="自定义工作台布局(选哪些 tab 放顶部/哪些放侧栏)">📐</button>
+      <button class="btn ghost" onclick="openHelpManual()" title="使用手册 · 版本记录 · Bug 反馈 · 路线图" style="font-size:15px;">📖</button>
       <button class="btn ghost" onclick="openSettings()">⚙</button>
       <button class="btn ghost" onclick="exportCurrentTab()">⬇ Excel</button>
     </div>
@@ -5092,6 +5435,30 @@ body.has-side-tabs .section-block {
         <button class="btn" onclick="cdmCloseTimeoutSettings()">取消</button>
         <button class="btn primary" onclick="cdmSaveTimeoutConfig()">✓ 保存</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ V5-W3-2026-05-26: 使用手册 / 版本日志 / Bug 反馈 / 路线图 Modal ============ -->
+<div class="modal-bg" id="helpManualModal">
+  <div class="help-manual-modal">
+    <div class="help-manual-header">
+      <h3 style="margin:0; display:flex; align-items:center; gap:8px;">
+        📖 跟单工作台 · 用户中心
+      </h3>
+      <button class="modal-close" onclick="closeHelpManual()">✕</button>
+    </div>
+    <div class="help-tab-bar" id="helpTabBar">
+      <!-- 由 renderHelpContent() 动态填 -->
+    </div>
+    <div class="help-manual-body" id="helpManualBody">
+      <!-- 由 renderHelpContent() 动态填 -->
+    </div>
+    <div class="help-manual-footer">
+      <span style="font-size:11.5px; color:var(--text-tertiary);">
+        由 <b>Anthropic Claude</b> 共建 · 版本 <span id="helpFooterVersion">20260525x</span> · <a href="javascript:void(0)" onclick="helpSwitchTab('bug')" style="color:var(--accent);">提 Bug</a>
+      </span>
+      <button class="btn primary" onclick="closeHelpManual()">关闭</button>
     </div>
   </div>
 </div>
