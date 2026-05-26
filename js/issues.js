@@ -296,6 +296,24 @@ function scanOverdueIssues() {
 
 let _issuesQuickMode = '';
 
+// V20260526e: 问题日期筛选
+let _issuesDatePreset = 'all';
+function issuesOnDateChange(preset) {
+  if (preset === 'custom_open') {
+    if (typeof openCustomDateRange === 'function') {
+      openCustomDateRange(null, null, customPreset => {
+        _issuesDatePreset = customPreset;
+        const el = document.getElementById('isDateFilter');
+        if (el && typeof populateDateFilterSelect === 'function') populateDateFilterSelect(el, customPreset);
+        renderIssues();
+      });
+    }
+    return;
+  }
+  _issuesDatePreset = preset || 'all';
+  renderIssues();
+}
+
 // ============================================================
 // 列表渲染
 // ============================================================
@@ -321,6 +339,11 @@ function renderIssues() {
     if (fs === 'all') return true;
     return it.status === fs;
   });
+
+  // V20260526e: 日期筛选
+  if (_issuesDatePreset && _issuesDatePreset !== 'all' && typeof isDateInRange === 'function') {
+    list = list.filter(it => isDateInRange(it.createdDate || it.created_at, _issuesDatePreset));
+  }
 
   if (_issuesQuickMode === 'stuck') {
     list = list.filter(it =>
@@ -368,6 +391,11 @@ function renderIssues() {
         <div class="add-row" onclick="addIssue()">+ 新增问题</div>
       </div>
     `;
+  }
+  // V20260526e: 填充日期筛选下拉
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateEl = document.getElementById('isDateFilter');
+    if (dateEl) populateDateFilterSelect(dateEl, _issuesDatePreset || 'all');
   }
 }
 

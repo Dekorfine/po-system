@@ -16,6 +16,24 @@ let _onlyUnhandled = false;       // 仅显示无任何 followups 的(没人跟�
 // V20260526d: 视角切换 · 'list'(详细信息行) / 'grid'(图墙卡片 · 一眼识货)
 let _aftersalesViewMode = (localStorage.getItem('aftersales_view_mode') || 'list');
 
+// V20260526e: 售后日期筛选
+let _aftersalesDatePreset = 'all';
+function aftersalesOnDateChange(preset) {
+  if (preset === 'custom_open') {
+    if (typeof openCustomDateRange === 'function') {
+      openCustomDateRange(null, null, customPreset => {
+        _aftersalesDatePreset = customPreset;
+        const el = document.getElementById('asDateFilter');
+        if (el && typeof populateDateFilterSelect === 'function') populateDateFilterSelect(el, customPreset);
+        renderAftersales();
+      });
+    }
+    return;
+  }
+  _aftersalesDatePreset = preset || 'all';
+  renderAftersales();
+}
+
 function setAftersalesViewMode(mode) {
   if (!['list', 'grid'].includes(mode)) return;
   _aftersalesViewMode = mode;
@@ -188,6 +206,11 @@ function renderAftersales() {
     return a.status === fs;
   });
 
+  // V20260526e: 日期筛选
+  if (_aftersalesDatePreset && _aftersalesDatePreset !== 'all' && typeof isDateInRange === 'function') {
+    list = list.filter(a => isDateInRange(a.createdDate || a.created_at, _aftersalesDatePreset));
+  }
+
   // V3：快速筛选模式叠加（来自统计卡片点击）
   if (_aftersalesQuickMode === 'thismonth') {
     const thisMonth = new Date().toISOString().slice(0, 7);
@@ -258,6 +281,11 @@ function renderAftersales() {
   body.innerHTML = (list.length > _aftersalesPage.size ? paginationHtml : '') + 
                    wrappedHtml +
                    (list.length > _aftersalesPage.size ? paginationHtml : '');
+  // V20260526e: 填充日期筛选下拉
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateEl = document.getElementById('asDateFilter');
+    if (dateEl) populateDateFilterSelect(dateEl, _aftersalesDatePreset || 'all');
+  }
 }
 
 // V4-2026-05-24: 售后分页控制

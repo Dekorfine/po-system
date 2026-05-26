@@ -77,7 +77,7 @@ let CDM_MESSAGES = [];
 let SHOP_OWNERS = [];
 let CDM_TIMEOUT_CONFIG = {};
 let CDM_CURRENT_TAB = 'inbox';  // inbox / assigned-to-me / overdue / sent
-let CDM_FILTERS = { search: '', status: '', priority: '', category: '', system: '', timeRange: 'all' };
+let CDM_FILTERS = { search: '', status: '', priority: '', category: '', system: '', timeRange: 'all', datePreset: 'all' };
 let CDM_PAGE = 1;
 let CDM_PAGE_SIZE = 50;
 let CDM_REALTIME_CHANNEL = null;
@@ -352,6 +352,10 @@ function cdmGetFiltered() {
     const cutoff = Date.now() - days * 86400000;
     list = list.filter(m => (m.created_at_ms || 0) >= cutoff);
   }
+  // V20260526e: 通用日期 preset 筛选
+  if (CDM_FILTERS.datePreset && CDM_FILTERS.datePreset !== 'all' && typeof isDateInRange === 'function') {
+    list = list.filter(m => isDateInRange(m.created_at_ms || m.created_at, CDM_FILTERS.datePreset));
+  }
 
   // 排序: 超时 > 优先级 > 时间(新)
   const priRank = { urgent: 4, high: 3, normal: 2, low: 1 };
@@ -400,10 +404,20 @@ function cdmRender() {
       ${CDM_CURRENT_TAB === 'sent' ? '<div style="margin-top:8px; font-size:12px;">点右上「✏ 新建消息」给美工或客服发消息</div>' : ''}
     </div>`;
     cdmRenderPagination(0, 1, 1);
+    // V20260526e: 填充日期筛选下拉(空状态也要)
+    if (typeof populateDateFilterSelect === 'function') {
+      const dateEl = document.getElementById('cdmDateFilter');
+      if (dateEl) populateDateFilterSelect(dateEl, CDM_FILTERS.datePreset || 'all');
+    }
     return;
   }
   container.innerHTML = pageList.map(m => cdmRenderCard(m)).join('');
   cdmRenderPagination(total, CDM_PAGE, totalPages);
+  // V20260526e: 填充日期筛选下拉
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateEl = document.getElementById('cdmDateFilter');
+    if (dateEl) populateDateFilterSelect(dateEl, CDM_FILTERS.datePreset || 'all');
+  }
 }
 
 function cdmRenderTabCounts() {
@@ -579,8 +593,26 @@ function cdmSwitchTab(tab) {
   cdmRender();
 }
 function cdmSetFilter(key, val) { CDM_FILTERS[key] = val; CDM_PAGE = 1; cdmRender(); }
+
+// V20260526e: 跨部门日期筛选(支持 custom_open)
+function cdmOnDateChange(preset) {
+  if (preset === 'custom_open') {
+    if (typeof openCustomDateRange === 'function') {
+      openCustomDateRange(null, null, customPreset => {
+        CDM_FILTERS.datePreset = customPreset;
+        const el = document.getElementById('cdmDateFilter');
+        if (el && typeof populateDateFilterSelect === 'function') populateDateFilterSelect(el, customPreset);
+        cdmRender();
+      });
+    }
+    return;
+  }
+  CDM_FILTERS.datePreset = preset || 'all';
+  CDM_PAGE = 1;
+  cdmRender();
+}
 function cdmResetFilters() {
-  CDM_FILTERS = { search: '', status: '', priority: '', category: '', system: '', timeRange: 'all' };
+  CDM_FILTERS = { search: '', status: '', priority: '', category: '', system: '', timeRange: 'all', datePreset: 'all' };
   CDM_PAGE = 1;
   ['cdmSearchInput','cdmFilterStatus','cdmFilterPriority','cdmFilterCategory','cdmFilterSystem'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   document.querySelectorAll('.cdm-time-chip').forEach(c => c.classList.remove('active'));

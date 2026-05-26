@@ -202,6 +202,39 @@ function toggleOnlyPoSource() {
 
 // MODULE 1: 催单
 // ============================================================
+// V20260526e: 催单日期筛选 + 今日要催
+let _ordersDatePreset = 'all';
+let _ordersTodayChase = false;
+
+function ordersOnDateChange(preset) {
+  if (preset === 'custom_open') {
+    if (typeof openCustomDateRange === 'function') {
+      openCustomDateRange(null, null, customPreset => {
+        _ordersDatePreset = customPreset;
+        const el = document.getElementById('oDateFilter');
+        if (el && typeof populateDateFilterSelect === 'function') populateDateFilterSelect(el, customPreset);
+        renderOrders();
+      });
+    }
+    return;
+  }
+  _ordersDatePreset = preset || 'all';
+  renderOrders();
+}
+
+function ordersFilterTodayChase() {
+  _ordersTodayChase = !_ordersTodayChase;
+  const btn = document.getElementById('oTodayChase');
+  if (btn) {
+    btn.classList.toggle('primary', _ordersTodayChase);
+    btn.classList.toggle('ghost', !_ordersTodayChase);
+  }
+  renderOrders();
+  if (_ordersTodayChase && typeof toast === 'function') {
+    toast('✓ 已切换到「今日要催」· 显示今天 nextFollow 到期的订单');
+  }
+}
+
 function renderOrders() {
   const body = document.getElementById('ordersBody');
   const card = document.getElementById('ordersCard');
@@ -233,6 +266,16 @@ function renderOrders() {
     if (fStatus === 'all') return true;
     return o.status === fStatus;
   });
+
+  // V20260526e: 日期筛选(基于 orderDate / createdDate)
+  if (_ordersDatePreset && _ordersDatePreset !== 'all' && typeof isDateInRange === 'function') {
+    list = list.filter(o => isDateInRange(o.orderDate || o.createdDate || o.created_at, _ordersDatePreset));
+  }
+  // V20260526e: "今日要催"快捷 — 今天到 nextFollow 的(含已过的未做)
+  if (_ordersTodayChase) {
+    const today = new Date().toISOString().slice(0, 10);
+    list = list.filter(o => o.nextFollow && o.nextFollow <= today && !['arrived', 'cancelled'].includes(o.status));
+  }
 
   // V3 快速筛选模式叠加（来自统计卡片点击）
   if (_ordersQuickMode === 'thismonth_arrived') {
@@ -369,6 +412,11 @@ function renderOrders() {
   body.innerHTML = (list.length > _ordersPage.size ? paginationHtml : '') + 
                    pageItems.map((o, i) => renderOrderRow(o, startIdx + i)).join('') +
                    (list.length > _ordersPage.size ? paginationHtml : '');
+  // V20260526e: 填充日期筛选下拉
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateEl = document.getElementById('oDateFilter');
+    if (dateEl) populateDateFilterSelect(dateEl, _ordersDatePreset || 'all');
+  }
 }
 
 // V4-2026-05-24: 催单分页控制函数

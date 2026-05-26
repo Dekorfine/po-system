@@ -2193,7 +2193,11 @@ function renderActiveTab() {
     }
   }
   else if (CURRENT_TAB === 'missing') { renderMissing(); updateMissingStats(); }
-  else if (CURRENT_TAB === 'purchases') { renderPurchases(); updatePurchaseStats(); }
+  else if (CURRENT_TAB === 'purchases') { 
+    if (typeof renderPurchases === 'function') renderPurchases(); 
+    if (typeof updatePurchaseStats === 'function') updatePurchaseStats();
+    setTimeout(_populatePurchasesDateFilter, 50);  // V20260526e
+  }
   else if (CURRENT_TAB === 'sales') { 
     // V4 修复：之前 renderShopify 函数不存在导致 sales tab 切换时不会自动渲染
     // 现在切到 sales tab 自动从本地 DB 加载缓存数据（60 秒缓存内不重复拉）
@@ -2213,7 +2217,10 @@ function renderActiveTab() {
   else if (CURRENT_TAB === 'finance') { if (typeof renderFinance === 'function') renderFinance(); }
   else if (CURRENT_TAB === 'products') { if (typeof renderProducts === 'function') renderProducts(); }
   else if (CURRENT_TAB === 'analytics') { renderAnalytics(); }
-  else if (CURRENT_TAB === 'performance') { renderPerformance(); }
+  else if (CURRENT_TAB === 'performance') { 
+    if (typeof renderPerformance === 'function') renderPerformance();
+    setTimeout(_populatePerfDateFilter, 50);  // V20260526e
+  }
   else if (CURRENT_TAB === 'meetings') { 
     if (typeof renderMeetings === 'function') renderMeetings();
   }
@@ -2715,6 +2722,65 @@ function resetTabLayout() {
   applyTabLayout();
   if (typeof toast === 'function') toast('✓ 已恢复默认布局');
 }
+
+// V20260526e: 通用日期筛选 stub(给暂未实现的 renderPerformance / renderPurchases 用 · 函数实现后能直接配合)
+let _perfDatePreset = 'all';
+function perfOnDateChange(preset) {
+  if (preset === 'custom_open') {
+    if (typeof openCustomDateRange === 'function') {
+      openCustomDateRange(null, null, customPreset => {
+        _perfDatePreset = customPreset;
+        const el = document.getElementById('perfDateFilter');
+        if (el && typeof populateDateFilterSelect === 'function') populateDateFilterSelect(el, customPreset);
+        if (typeof renderPerformance === 'function') renderPerformance();
+        if (typeof toast === 'function' && typeof getDateRange === 'function') {
+          toast(`✓ 已切到:${getDateRange(customPreset).label}`);
+        }
+      });
+    }
+    return;
+  }
+  _perfDatePreset = preset || 'all';
+  if (typeof renderPerformance === 'function') renderPerformance();
+  if (preset !== 'all' && typeof toast === 'function' && typeof getDateRange === 'function') {
+    toast(`✓ 已切到:${getDateRange(preset).label}`);
+  }
+}
+
+let _purchasesDatePreset = 'all';
+function purchasesOnDateChange(preset) {
+  if (preset === 'custom_open') {
+    if (typeof openCustomDateRange === 'function') {
+      openCustomDateRange(null, null, customPreset => {
+        _purchasesDatePreset = customPreset;
+        const el = document.getElementById('pDateFilter');
+        if (el && typeof populateDateFilterSelect === 'function') populateDateFilterSelect(el, customPreset);
+        if (typeof renderPurchases === 'function') renderPurchases();
+      });
+    }
+    return;
+  }
+  _purchasesDatePreset = preset || 'all';
+  if (typeof renderPurchases === 'function') renderPurchases();
+}
+
+// 进入这两个 tab 时填充下拉
+function _populatePerfDateFilter() {
+  if (typeof populateDateFilterSelect === 'function') {
+    const el = document.getElementById('perfDateFilter');
+    if (el) populateDateFilterSelect(el, _perfDatePreset || 'all');
+  }
+}
+function _populatePurchasesDateFilter() {
+  if (typeof populateDateFilterSelect === 'function') {
+    const el = document.getElementById('pDateFilter');
+    if (el) populateDateFilterSelect(el, _purchasesDatePreset || 'all');
+  }
+}
+
+// 暴露
+window.perfOnDateChange = perfOnDateChange;
+window.purchasesOnDateChange = purchasesOnDateChange;
 
 // 登录后(等 mainApp 显示后)应用一次布局
 window.addEventListener('DOMContentLoaded', () => {

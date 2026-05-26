@@ -1105,6 +1105,25 @@ function shopifyShowFilter(f) {
   renderShopifyOrders();
 }
 
+// V20260526e: 销售单日期筛选
+let SHOPIFY_DATE_PRESET = 'all';
+function shopifyOnDateChange(preset) {
+  if (preset === 'custom_open') {
+    if (typeof openCustomDateRange === 'function') {
+      openCustomDateRange(null, null, customPreset => {
+        SHOPIFY_DATE_PRESET = customPreset;
+        const el = document.getElementById('shopifyDateFilter');
+        if (el && typeof populateDateFilterSelect === 'function') populateDateFilterSelect(el, customPreset);
+        renderShopifyOrders();
+      });
+    }
+    return;
+  }
+  SHOPIFY_DATE_PRESET = preset || 'all';
+  SHOPIFY_PAGE = 1;
+  renderShopifyOrders();
+}
+
 function renderShopifyOrders() {
   const body = document.getElementById('salesOrdersBody');
   if (!body) return;
@@ -1122,6 +1141,11 @@ function renderShopifyOrders() {
   // 应用店铺筛选
   if (SHOPIFY_SEARCH.shops.size > 0) {
     orders = orders.filter(o => SHOPIFY_SEARCH.shops.has(o.shop_domain || ''));
+  }
+
+  // V20260526e: 应用日期筛选(基于 shopify_created_at)
+  if (typeof SHOPIFY_DATE_PRESET !== 'undefined' && SHOPIFY_DATE_PRESET && SHOPIFY_DATE_PRESET !== 'all' && typeof isDateInRange === 'function') {
+    orders = orders.filter(o => isDateInRange(o.shopify_created_at || o.created_at, SHOPIFY_DATE_PRESET));
   }
 
   // 应用搜索过滤
@@ -1418,6 +1442,11 @@ function renderShopifyOrders() {
     pagerHtml = `<div style="text-align:center; padding:10px; font-size:11px; color:var(--text-tertiary);">共 ${orders.length} 条</div>`;
   }
   body.innerHTML = cardsHtml + pagerHtml;
+  // V20260526e: 填充日期筛选下拉
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateEl = document.getElementById('shopifyDateFilter');
+    if (dateEl) populateDateFilterSelect(dateEl, (typeof SHOPIFY_DATE_PRESET !== 'undefined') ? SHOPIFY_DATE_PRESET : 'all');
+  }
   // 渲染完更新批量 UI
   shopifyUpdateBatchUI();
   // 全选 checkbox 同步状态

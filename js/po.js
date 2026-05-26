@@ -3175,10 +3175,32 @@ async function renderFinance() {
   }
 }
 
+// V20260526e: 财务日期筛选
+let _financeDatePreset = 'all';
+function financeOnDateChange(preset) {
+  if (preset === 'custom_open') {
+    if (typeof openCustomDateRange === 'function') {
+      openCustomDateRange(null, null, customPreset => {
+        _financeDatePreset = customPreset;
+        const el = document.getElementById('financeDateFilter');
+        if (el && typeof populateDateFilterSelect === 'function') populateDateFilterSelect(el, customPreset);
+        renderFinanceList();
+      });
+    }
+    return;
+  }
+  _financeDatePreset = preset || 'all';
+  renderFinanceList();
+}
+
 function renderFinanceList() {
-  // 待财务收货的 PO（status = 'arrived'）
-  const waiting = PO_LIST.filter(p => p.status === 'arrived');
-  // 本月已收货（status = 'received'）
+  // 待财务收货的 PO (status = 'arrived')
+  let waiting = PO_LIST.filter(p => p.status === 'arrived');
+  // V20260526e: 日期筛选(基于 PO 创建日期)
+  if (_financeDatePreset && _financeDatePreset !== 'all' && typeof isDateInRange === 'function') {
+    waiting = waiting.filter(p => isDateInRange(p.created_at, _financeDatePreset));
+  }
+  // 本月已收货 (status = 'received')
   const today = new Date();
   const thisMonth = today.toISOString().slice(0, 7);  // YYYY-MM
   const doneThisMonth = PO_LIST.filter(p => p.status === 'received' && (p.updated_at || p.created_at || '').startsWith(thisMonth));
@@ -3287,6 +3309,11 @@ function renderFinanceList() {
         </div>`;
     }).join('')}
   `;
+  // V20260526e: 填充财务日期筛选下拉
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateEl = document.getElementById('financeDateFilter');
+    if (dateEl) populateDateFilterSelect(dateEl, _financeDatePreset || 'all');
+  }
 }
 
 // 点采购单里的销售单号跳转到销售单 tab

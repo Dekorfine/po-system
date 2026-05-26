@@ -135,6 +135,24 @@ async function openCustomMissingThresholdInput() {
 // ============================================================
 // MODULE 4: 找灯（共享）
 // ============================================================
+// V20260526e: 找灯日期筛选
+let _missingDatePreset = 'all';
+function missingOnDateChange(preset) {
+  if (preset === 'custom_open') {
+    if (typeof openCustomDateRange === 'function') {
+      openCustomDateRange(null, null, customPreset => {
+        _missingDatePreset = customPreset;
+        const el = document.getElementById('mDateFilter');
+        if (el && typeof populateDateFilterSelect === 'function') populateDateFilterSelect(el, customPreset);
+        renderMissing();
+      });
+    }
+    return;
+  }
+  _missingDatePreset = preset || 'all';
+  renderMissing();
+}
+
 function renderMissing() {
   // V5: 渲染阈值 chip
   renderMissingThresholdChips();
@@ -158,9 +176,14 @@ function renderMissing() {
     }
     if (fSource && (m.source || 'manual') !== fSource) return false;
     if (fs === 'all') return true;
-    if (fs === 'active') return ['searching', 'found'].includes(m.status);  // 包含已找到（但会被折叠）
+    if (fs === 'active') return ['searching', 'found'].includes(m.status);  // 包含已找到(但会被折叠)
     return m.status === fs;
   });
+
+  // V20260526e: 日期筛选
+  if (_missingDatePreset && _missingDatePreset !== 'all' && typeof isDateInRange === 'function') {
+    list = list.filter(m => isDateInRange(m.createdAt || m.createdDate || m.created_at, _missingDatePreset));
+  }
 
   // V3 快速筛选模式叠加（来自统计卡片点击）
   if (_missingQuickMode === 'thismonth') {
@@ -194,8 +217,13 @@ function renderMissing() {
     }
     body.innerHTML = html;
   } else {
-    // 单一状态：直接显示一个区块（无折叠头部）
+    // 单一状态:直接显示一个区块(无折叠头部)
     body.innerHTML = `<div class="missing-group"><div class="missing-grid-wrap" style="border-radius: 10px; border-top: 1px solid var(--border);"><div class="missing-grid">${list.map(renderMissingCard).join('')}</div></div></div>`;
+  }
+  // V20260526e: 填充日期筛选下拉
+  if (typeof populateDateFilterSelect === 'function') {
+    const dateEl = document.getElementById('mDateFilter');
+    if (dateEl) populateDateFilterSelect(dateEl, _missingDatePreset || 'all');
   }
 }
 
