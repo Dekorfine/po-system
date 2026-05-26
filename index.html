@@ -20,29 +20,30 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260525x"></script>
-<script src="js/utils.js?v=20260525x"></script>
+<script src="js/core.js?v=20260525y"></script>
+<script src="js/utils.js?v=20260525y"></script>
 <script src="js/reset-system.js"></script>
-<script src="js/settings.js?v=20260525x"></script>
-<script src="js/issues.js?v=20260525x"></script>
-<script src="js/help.js?v=20260525x"></script>
+<script src="js/settings.js?v=20260525y"></script>
+<script src="js/issues.js?v=20260525y"></script>
+<script src="js/help.js?v=20260525y"></script>
+<script src="js/feedback.js?v=20260525y"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260525x"></script>
-<script src="js/missing.js?v=20260525x"></script>
-<script src="js/orders.js?v=20260525x"></script>
-<script src="js/shopify.js?v=20260525x"></script>
-<script src="js/po.js?v=20260525x"></script>
+<script src="js/aftersales.js?v=20260525y"></script>
+<script src="js/missing.js?v=20260525y"></script>
+<script src="js/orders.js?v=20260525y"></script>
+<script src="js/shopify.js?v=20260525y"></script>
+<script src="js/po.js?v=20260525y"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script src="js/cross-dept.js?v=20260525x"></script>
+<script src="js/cross-dept.js?v=20260525y"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
-<script src="js/translator.js?v=20260525x"></script>
-<script src="js/meetings.js?v=20260525x"></script>
-<script src="js/greeting.js?v=20260525x"></script>
-<script src="js/search.js?v=20260525x"></script>
+<script src="js/translator.js?v=20260525y"></script>
+<script src="js/meetings.js?v=20260525y"></script>
+<script src="js/greeting.js?v=20260525y"></script>
+<script src="js/search.js?v=20260525y"></script>
 <script src="js/init.js"></script>
 
 <style>
@@ -1278,6 +1279,215 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   font-size: 12px;
   border-radius: 4px;
   border: 1px solid var(--border-subtle);
+}
+
+/* ============ V5-W3-2026-05-26: 反馈中心 ============ */
+.feedback-page { padding: 4px 0; }
+.feedback-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.feedback-actions { display: flex; gap: 8px; }
+.feedback-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.feedback-stat-card {
+  background: var(--bg-card);
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.feedback-stat-card:hover { background: var(--bg-elevated); transform: translateY(-1px); }
+.feedback-stat-card .num { font-size: 22px; font-weight: 700; color: var(--text-primary); }
+.feedback-stat-card .label { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; }
+.feedback-stat-card.pending { border-left: 3px solid #6b7280; }
+.feedback-stat-card.analyzing { border-left: 3px solid #7c3aed; }
+.feedback-stat-card.approved { border-left: 3px solid #0891b2; }
+.feedback-stat-card.resolved { border-left: 3px solid #16a34a; }
+.feedback-stat-card.mine { border-left: 3px solid var(--accent); }
+
+.feedback-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.feedback-filters select,
+.feedback-filters input {
+  padding: 6px 10px;
+  font-size: 12.5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-card);
+}
+
+.feedback-list { display: flex; flex-direction: column; gap: 8px; }
+.feedback-empty { padding: 60px; text-align: center; }
+.feedback-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.feedback-card:hover { background: var(--bg-elevated); border-color: var(--border); transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+.feedback-card-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+.fb-type-icon { padding: 2px 9px; border-radius: 10px; font-weight: 600; font-size: 11px; }
+.fb-sev { font-size: 14px; }
+.fb-sev-label { padding: 2px 9px; border-radius: 10px; font-weight: 600; font-size: 11px; }
+.fb-status { padding: 2px 9px; border-radius: 10px; font-weight: 600; font-size: 11px; }
+.fb-status-label { padding: 3px 10px; border-radius: 12px; font-weight: 600; font-size: 12px; }
+.fb-ai-flag { padding: 2px 8px; border-radius: 10px; background: rgba(124,58,237,0.1); color: #7c3aed; font-weight: 600; font-size: 11px; }
+.fb-module { padding: 2px 8px; border-radius: 10px; background: var(--bg-elevated); font-size: 10.5px; color: var(--text-secondary); }
+.fb-date { font-size: 11px; color: var(--text-tertiary); }
+.feedback-card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.feedback-card-desc { font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 6px; }
+.feedback-card-foot {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.fb-reporter, .fb-attach, .fb-comm { font-size: 11px; }
+.fb-upvote {
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  padding: 2px 9px;
+  border-radius: 11px;
+  cursor: pointer;
+  font-size: 11px;
+  margin-left: auto;
+}
+.fb-upvote.active { background: rgba(37,99,235,0.1); color: var(--accent); border-color: var(--accent); }
+.fb-upvote:hover { background: var(--bg-elevated); }
+.fb-fixed-ver { padding: 2px 8px; border-radius: 10px; background: rgba(22,163,74,0.1); color: #16a34a; font-weight: 600; font-size: 10.5px; font-family: monospace; }
+
+/* 反馈 Modals */
+.feedback-new-modal, .feedback-detail-modal {
+  background: var(--bg-card);
+  border-radius: 12px;
+  width: 90vw;
+  max-width: 860px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.feedback-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.feedback-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+.feedback-modal-foot {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  align-items: center;
+}
+.fb-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; margin-top: 8px; }
+
+/* 截图区 */
+.fb-screenshots-area {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 6px;
+  padding: 8px;
+  min-height: 70px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+}
+.fb-screenshots-area.dragging { background: rgba(37,99,235,0.08); border-color: var(--accent); border-style: solid; }
+.fb-thumb-empty {
+  grid-column: 1/-1;
+  padding: 16px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+.fb-thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.fb-thumb img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
+.fb-thumb .rm {
+  position: absolute;
+  top: 2px; right: 2px;
+  width: 20px; height: 20px;
+  border: none;
+  background: rgba(220,38,38,0.9);
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+}
+.fb-thumb:hover .rm { opacity: 1; }
+
+/* 详情区 */
+.fb-detail-head { margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); }
+.fb-detail-section { margin: 14px 0; }
+.fb-section-title { font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+.fb-text-content { font-size: 13px; line-height: 1.65; color: var(--text-secondary); padding: 8px 12px; background: var(--bg-elevated); border-radius: 6px; }
+.fb-screenshots-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.fb-screenshot { width: 100%; aspect-ratio: 1; object-fit: cover; cursor: zoom-in; border-radius: 6px; border: 1px solid var(--border-subtle); }
+.fb-ai-section { background: rgba(124,58,237,0.04); border-left: 3px solid #7c3aed; padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 13px; }
+.fb-ai-section code { background: rgba(124,58,237,0.1); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+.fb-comment {
+  background: var(--bg-elevated);
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin: 4px 0;
+  border-left: 2px solid var(--border);
+}
+.fb-comment-head { display: flex; gap: 8px; align-items: center; font-size: 12px; margin-bottom: 4px; }
+.fb-comment-time { font-size: 11px; color: var(--text-tertiary); }
+.fb-comment-body { font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; }
+.fb-comment-input { display: flex; gap: 6px; margin-top: 8px; }
+.fb-comment-input textarea { flex: 1; padding: 6px 10px; font-size: 12.5px; border: 1px solid var(--border); border-radius: 4px; resize: vertical; }
+.fb-detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .drop-zone-thumb { position: relative; }
@@ -4415,6 +4625,7 @@ body.has-side-tabs .section-block {
     <div class="tab-item" data-tab="finance" onclick="switchTab('finance')">✓ 财务收货 <span class="badge zero" id="badgeFinance">0</span><a href="?tab=finance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="products" onclick="switchTab('products')">📚 产品 <span class="badge zero" id="badgeProducts">0</span><a href="?tab=products" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="cross_dept" onclick="switchTab('cross_dept')">📨 跨部门 <span class="badge zero" id="badgeCrossDept">0</span><a href="?tab=cross_dept" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="feedback" onclick="switchTab('feedback')">💬 反馈 <span class="badge zero" id="badgeFeedback">0</span><a href="?tab=feedback" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="consolidation" onclick="switchTab('consolidation')">🧊 合箱<a href="?tab=consolidation" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="analytics" onclick="switchTab('analytics')" id="tabAnalytics" style="display:none;">📈 数据<a href="?tab=analytics" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="performance" onclick="switchTab('performance')">📊 绩效 <span class="badge zero" id="badgePerformance">0</span><a href="?tab=performance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
@@ -5439,6 +5650,140 @@ body.has-side-tabs .section-block {
   </div>
 </div>
 
+<!-- ============ V5-W3-2026-05-26: 反馈中心 Modals ============ -->
+<!-- 新建反馈 -->
+<div class="modal-bg" id="feedbackNewModal">
+  <div class="feedback-new-modal">
+    <div class="feedback-modal-head">
+      <h3 style="margin:0;">💬 提交反馈</h3>
+      <button class="modal-close" onclick="feedbackCloseNew()">✕</button>
+    </div>
+    <div class="feedback-modal-body">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:12px;">
+        <div>
+          <label class="fb-label">类型 *</label>
+          <select id="fbnType" class="form-control">
+            <option value="bug">🐛 Bug(系统出错)</option>
+            <option value="feature">💡 新功能(我想要)</option>
+            <option value="improvement">🔧 改进(能用但难用)</option>
+          </select>
+        </div>
+        <div>
+          <label class="fb-label">紧急度</label>
+          <select id="fbnSeverity" class="form-control">
+            <option value="low">🟢 低 · 优化建议</option>
+            <option value="normal" selected>🟡 中 · 体验问题</option>
+            <option value="high">🟠 高 · 影响主业务</option>
+            <option value="urgent">🔴 紧急 · 卡死无法工作</option>
+          </select>
+        </div>
+        <div>
+          <label class="fb-label">所属模块</label>
+          <select id="fbnModule" class="form-control">
+            <option value="">— 选模块 —</option>
+            <option value="sales">📥 销售单</option>
+            <option value="po">📦 采购单</option>
+            <option value="orders">📋 催单</option>
+            <option value="missing">🔍 找灯</option>
+            <option value="purchases">🛒 线上采购</option>
+            <option value="aftersales">🔧 售后</option>
+            <option value="issues">⚠ 供应商问题</option>
+            <option value="finance">✓ 财务收货</option>
+            <option value="products">📚 产品</option>
+            <option value="cross_dept">📨 跨部门</option>
+            <option value="performance">📊 绩效</option>
+            <option value="other">🌐 其他/全局</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="fb-label">标题 * <span style="font-weight:400; color:var(--text-tertiary);">一句话说清问题</span></label>
+      <input id="fbnTitle" class="form-control" placeholder="例:跟单·沟通区粘贴图片没反应">
+
+      <label class="fb-label" style="margin-top:12px;">详细描述 <span style="font-weight:400; color:var(--text-tertiary);">可 Ctrl+V 粘贴图片</span></label>
+      <textarea id="fbnDescription" class="form-control" rows="4" data-paste-target="feedback_new"
+        placeholder="详细说明:做了什么?看到了什么?对哪里不满意?能粘贴截图..."></textarea>
+
+      <!-- 截图区 -->
+      <div style="margin-top:12px;">
+        <label class="fb-label">📷 截图(强烈建议)
+          <button type="button" class="btn small" onclick="document.getElementById('fbnFileInput').click()" style="margin-left:8px;">+ 上传图片</button>
+          <input type="file" id="fbnFileInput" accept="image/*" multiple style="display:none;" onchange="_feedbackOnNewFiles(this.files)">
+        </label>
+        <div id="fbnScreenshots" class="fb-screenshots-area"
+             ondrop="_feedbackOnNewDrop(event)" ondragover="event.preventDefault(); this.classList.add('dragging');" ondragleave="this.classList.remove('dragging');">
+        </div>
+      </div>
+
+      <details style="margin-top:12px;">
+        <summary style="cursor:pointer; font-size:12.5px; color:var(--text-secondary); font-weight:600;">📋 高级:复现步骤 / 预期 vs 实际(可选)</summary>
+        <div style="padding:10px 0;">
+          <label class="fb-label">🔄 复现步骤</label>
+          <textarea id="fbnReproSteps" class="form-control" rows="3" placeholder="1. 打开 xxx&#10;2. 点击 xxx&#10;3. 输入 xxx&#10;4. 屏幕显示..."></textarea>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
+            <div>
+              <label class="fb-label">✓ 预期</label>
+              <textarea id="fbnExpected" class="form-control" rows="2" placeholder="我期望发生什么"></textarea>
+            </div>
+            <div>
+              <label class="fb-label">✗ 实际</label>
+              <textarea id="fbnActual" class="form-control" rows="2" placeholder="实际发生了什么"></textarea>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+    <div class="feedback-modal-foot">
+      <span style="flex:1; font-size:11.5px; color:var(--text-tertiary);">📤 提交后老板会用 Claude 分析 · 确认后立即修复</span>
+      <button class="btn ghost" onclick="feedbackCloseNew()">取消</button>
+      <button class="btn primary" onclick="feedbackSubmitNew()">📤 提交反馈</button>
+    </div>
+  </div>
+</div>
+
+<!-- 反馈详情 -->
+<div class="modal-bg" id="feedbackDetailModal">
+  <div class="feedback-detail-modal">
+    <div class="feedback-modal-head">
+      <h3 style="margin:0;">📋 反馈详情</h3>
+      <button class="modal-close" onclick="feedbackCloseDetail()">✕</button>
+    </div>
+    <div class="feedback-modal-body" id="feedbackDetailBody"></div>
+  </div>
+</div>
+
+<!-- 导入 Claude 分析 (老板) -->
+<div class="modal-bg" id="feedbackImportModal">
+  <div class="feedback-new-modal" style="max-width:760px;">
+    <div class="feedback-modal-head">
+      <h3 style="margin:0;">📥 导入 Claude 分析结果</h3>
+      <button class="modal-close" onclick="feedbackCloseImport()">✕</button>
+    </div>
+    <div class="feedback-modal-body">
+      <div style="background:rgba(37,99,235,0.06); padding:10px 14px; border-left:3px solid var(--accent); border-radius:0 6px 6px 0; font-size:12.5px; margin-bottom:12px;">
+        💡 把 Claude 返回的 JSON 分析结果粘贴到下方文本框 · 系统会自动写入对应反馈的 AI 分析字段。
+        <br>
+        Claude 返回格式应该是:<code>[{id, root_cause, proposed_fix, files_affected, estimated_hours, risk}, ...]</code>
+      </div>
+      <textarea id="fbImportText" class="form-control" rows="12" placeholder='[
+  {
+    "id": "uuid-of-feedback-1",
+    "root_cause": "...",
+    "proposed_fix": "...",
+    "files_affected": ["utils.js", "issues.js"],
+    "estimated_hours": 2,
+    "risk": "..."
+  }
+]' style="font-family:monospace; font-size:12px;"></textarea>
+    </div>
+    <div class="feedback-modal-foot">
+      <button class="btn ghost" onclick="feedbackCloseImport()">取消</button>
+      <button class="btn primary" onclick="feedbackDoImport()">📥 导入</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ V5-W3-2026-05-26: 使用手册 / 版本日志 / Bug 反馈 / 路线图 Modal ============ -->
 <div class="modal-bg" id="helpManualModal">
   <div class="help-manual-modal">
@@ -5610,6 +5955,11 @@ body.has-side-tabs .section-block {
     <!-- 下分页 -->
     <div id="cdmPaginationBottom"></div>
   </div>
+</div>
+
+<!-- ============ V5-W3-2026-05-26: 反馈中心 (feedback) ============ -->
+<div class="tab-content" data-tab="feedback">
+  <!-- 由 feedback.js 的 feedbackRender() 动态填充 -->
 </div>
 
 <!-- ============ TAB 6: 绩效统计 ============ -->
