@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260526f',
+    date: '2026-05-26',
+    type: 'fix',
+    title: '🐛 修 PO 卡片中间留白 + 侧栏遮挡问题',
+    notes: [
+      '修 PO 卡片中间大片空白:`grid 1fr 200px` 改为 `flex + max-width 780px + 右列 180px`',
+      '内容紧凑后,产品信息和供应商信息间距合理',
+      '修侧栏展开时挡住 PO/销售单内容:加 z-index:100 + 右侧阴影 + overflow-x:hidden 兜底',
+      'PO/销售单卡片加 min-width:0 + max-width:100% + overflow:hidden 防止内部溢出',
+      'tab-content 加 min-width:0 防止 flex/grid 撑破容器',
+    ],
+  },
+  {
     v: '20260526e',
     date: '2026-05-26',
     type: 'feature',

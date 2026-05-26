@@ -2762,8 +2762,8 @@ function renderPoList() {
         </div>
         ${isPending ? `<div style="background:rgba(180,83,9,0.08); padding:8px 14px; border-bottom:1px solid var(--border-subtle); font-size:12px;"><b style="color:var(--warning);">⚠️ 待主管审批：</b><span style="color:var(--text-secondary);">${approvalReasons.join('；') || '触发审批阈值'}</span></div>` : ''}
         ${isRejected && p.approval_note ? `<div style="background:rgba(185,28,28,0.08); padding:8px 14px; border-bottom:1px solid var(--border-subtle); font-size:12px;"><b style="color:var(--danger);">❌ 驳回原因：</b><span style="color:var(--text-primary);">${escapeHtml(p.approval_note)}</span>${p.approved_by ? ` <span style="color:var(--text-tertiary);">· 由 ${escapeHtml(p.approved_by)} 驳回</span>` : ''}</div>` : ''}
-        <div class="po-card-body" style="display: grid; grid-template-columns: 1fr 200px; gap: 12px; font-size: 12px;">
-          <div>
+        <div class="po-card-body" style="display: flex; align-items: flex-start; gap: 24px; font-size: 12px; padding: 10px 14px;">
+          <div style="flex: 1; min-width: 0; max-width: 780px;">
             ${items.slice(0,3).map(li => {
               const skuStr = li.sku || '';
               const titleStr = li.title_cn || li.title_en || '';
@@ -2792,15 +2792,15 @@ function renderPoList() {
             ${p.box_note ? `<div style="color:var(--text-secondary); margin-top:6px;">📦 <b>纸箱:</b> ${escapeHtml(p.box_note)}</div>` : ''}
             ${p.note ? `<div style="color:var(--text-secondary); margin-top:4px; padding:6px 8px; background:rgba(245,158,11,0.06); border-left:2px solid var(--warning); border-radius:3px; white-space:pre-wrap;">📝 <b>其他:</b> ${escapeHtml(p.note)}</div>` : ''}
           </div>
-          <div style="font-size: 11px; color: var(--text-tertiary);">
-            <div>开单：${created}</div>
-            <div>下单日期：${escapeHtml(p.promised_date || '—')}</div>
+          <div style="font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; width: 180px;">
+            <div>开单:${created}</div>
+            <div>下单日期:${escapeHtml(p.promised_date || '—')}</div>
             <div style="margin-top: 4px;">
               <span style="display:inline-block; padding:2px 8px; border-radius:4px; background:${statusInfo.bg}; color:${statusInfo.color}; font-size:11px; font-weight:500;">
                 ${statusInfo.label}
               </span>
             </div>
-            <div>跟单：${escapeHtml(p.creator_name || '')}</div>
+            <div>跟单:${escapeHtml(p.creator_name || '')}</div>
             ${p.approved_by && !isRejected ? `<div style="color:var(--success); font-size:11px;">✓ 由 ${escapeHtml(p.approved_by)} 批准</div>` : ''}
           </div>
         </div>
