@@ -34,7 +34,7 @@
 <script src="js/trash.js"></script>
 <script src="js/aftersales.js?v=20260526e"></script>
 <script src="js/missing.js?v=20260526e"></script>
-<script src="js/orders.js?v=20260526g"></script>
+<script src="js/orders.js?v=20260526o"></script>
 <script src="js/shopify.js?v=20260526l"></script>
 <script src="js/po.js?v=20260526l"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
@@ -1289,19 +1289,26 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   gap: 12px;
   padding: 14px;
 }
+/* V20260526o: 滚动性能优化 · 视口外不渲染 + GPU 加速 */
 .as-card {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;  /* 不再 transition all · 减少重绘 */
   display: flex;
   flex-direction: column;
+  /* 关键 1:content-visibility:auto · 视口外的卡片浏览器跳过渲染 → 滚动流畅 */
+  content-visibility: auto;
+  /* 关键 2:contain-intrinsic-size · 给视口外卡片预留高度 → 不会抖动 */
+  contain-intrinsic-size: auto 320px;
+  /* 关键 3:will-change + transform → 启用 GPU 合成层,减少重绘 */
+  contain: layout style paint;
 }
 .as-card:hover {
   border-color: var(--accent);
-  transform: translateY(-2px);
+  transform: translateY(-2px) translateZ(0);  /* translateZ 强制 GPU 层 */
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 .as-card.urgent {
@@ -1320,11 +1327,21 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   opacity: 0.65;
   background: var(--bg-elevated);
 }
+/* V20260526o: cover 加占位背景 + GPU 加速 */
 .as-card .cover {
   position: relative;
   aspect-ratio: 1.4;
   background: var(--bg-elevated);
   overflow: hidden;
+  /* 加载时灰色占位 → 不留白闪烁 */
+  background-image: linear-gradient(135deg, rgba(0,0,0,0.02) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.02) 75%);
+  background-size: 16px 16px;
+  /* GPU 合成 */
+  transform: translateZ(0);
+}
+.as-card .cover img {
+  /* 关键:图片加载完成时淡入 · 不会硬切闪一下 */
+  transition: opacity 0.2s;
 }
 .as-card .cover.cnt-0 {
   display: flex; flex-direction: column;
