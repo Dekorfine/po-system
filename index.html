@@ -4473,6 +4473,29 @@ body.has-side-tabs .section-block {
 /* 当 tab 被指定为 'side' 时,从顶栏隐藏 */
 .tab-nav .tab-item[data-zone="side"] { display: none; }
 
+/* V20260526n: 关键修复 · 让 PO 容器跟销售单一样响应 sidebar(PO 多了一层 .fb-card 包装,需要单独保护) */
+.tab-content[data-tab="po"] .fb-card,
+.tab-content[data-tab="po"] #poListBody {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+.tab-content[data-tab="po"] .po-card {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+/* PO 卡片内部所有 grid/flex 也要限制 */
+.tab-content[data-tab="po"] .po-card-top,
+.tab-content[data-tab="po"] .po-card-body,
+.tab-content[data-tab="po"] .po-card-actions {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
 /* 侧栏底部固定按钮(永远显示) */
 .side-tab-bottom {
   margin-top: auto;
@@ -7278,6 +7301,22 @@ HOGO
   
   // 强制销售单卡片 + PO 卡片紧凑布局
   function _forceCompactCardLayout() {
+    // ============ V20260526n: PO 容器关键修复 · 让它跟销售单一样响应 sidebar ============
+    // PO 多了一层 .fb-card 包装 · 需要给它和 #poListBody 加 width 限制
+    document.querySelectorAll('.tab-content[data-tab="po"] .fb-card, #poListBody').forEach(function(el) {
+      el.style.setProperty('min-width', '0', 'important');
+      el.style.setProperty('max-width', '100%', 'important');
+      el.style.setProperty('overflow', 'hidden', 'important');
+      el.style.setProperty('box-sizing', 'border-box', 'important');
+    });
+    // 所有 .po-card 限制宽度
+    document.querySelectorAll('.po-card').forEach(function(el) {
+      el.style.setProperty('min-width', '0', 'important');
+      el.style.setProperty('max-width', '100%', 'important');
+      el.style.setProperty('width', '100%', 'important');
+      el.style.setProperty('box-sizing', 'border-box', 'important');
+    });
+    
     // ============ 销售单 so-card-body ============
     document.querySelectorAll('.so-card-body').forEach(function(el) {
       // 强制 flex 布局
