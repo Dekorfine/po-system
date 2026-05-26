@@ -2752,13 +2752,13 @@ function renderPoList() {
 
     return `
       <div class="po-card ${isCancelled ? 'cancelled' : ''}" style="${isPending ? 'border-color:var(--warning); border-width:2px;' : isRejected ? 'border-color:var(--danger); border-width:2px;' : ''}">
-        <div class="po-card-top">
-          <div>
+        <div class="po-card-top" style="display:flex; align-items:center; flex-wrap:wrap; gap:14px; padding:10px 14px; background:var(--bg-elevated); border-bottom:1px solid var(--border-subtle); font-size:12px;">
+          <div style="flex:1 1 auto; min-width:280px; max-width:660px;">
             <span class="po-no">${escapeHtml(p.po_number || '')}</span>
             <span class="po-meta" style="margin-left: 12px;">销售单 ${adminLink ? `<a href="${adminLink}" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600;" title="在 Shopify 后台打开">${escapeHtml(p.order_no || '')} ↗</a>` : `<b>${escapeHtml(p.order_no || '')}</b>`} · ${escapeHtml(p.site || '')}</span>
           </div>
-          <div class="po-meta">供应商：<b>${escapeHtml(p.supplier || '')}</b></div>
-          <div class="po-meta" style="text-align:right; font-family: 'JetBrains Mono', monospace;">¥ ${Number(p.total_amount || 0).toFixed(2)}</div>
+          <div class="po-meta" style="flex-shrink:0; flex-grow:0; min-width:140px; max-width:240px;">供应商:<b>${escapeHtml(p.supplier || '')}</b></div>
+          <div class="po-meta" style="flex-shrink:0; flex-grow:0; width:160px; text-align:right; font-family:'JetBrains Mono',monospace; margin-left:0;">¥ ${Number(p.total_amount || 0).toFixed(2)}</div>
         </div>
         ${isPending ? `<div style="background:rgba(180,83,9,0.08); padding:8px 14px; border-bottom:1px solid var(--border-subtle); font-size:12px;"><b style="color:var(--warning);">⚠️ 待主管审批：</b><span style="color:var(--text-secondary);">${approvalReasons.join('；') || '触发审批阈值'}</span></div>` : ''}
         ${isRejected && p.approval_note ? `<div style="background:rgba(185,28,28,0.08); padding:8px 14px; border-bottom:1px solid var(--border-subtle); font-size:12px;"><b style="color:var(--danger);">❌ 驳回原因：</b><span style="color:var(--text-primary);">${escapeHtml(p.approval_note)}</span>${p.approved_by ? ` <span style="color:var(--text-tertiary);">· 由 ${escapeHtml(p.approved_by)} 驳回</span>` : ''}</div>` : ''}
@@ -2792,7 +2792,7 @@ function renderPoList() {
             ${p.box_note ? `<div style="color:var(--text-secondary); margin-top:6px;">📦 <b>纸箱:</b> ${escapeHtml(p.box_note)}</div>` : ''}
             ${p.note ? `<div style="color:var(--text-secondary); margin-top:4px; padding:6px 8px; background:rgba(245,158,11,0.06); border-left:2px solid var(--warning); border-radius:3px; white-space:pre-wrap;">📝 <b>其他:</b> ${escapeHtml(p.note)}</div>` : ''}
           </div>
-          <div style="font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; width: 180px;">
+          <div style="font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; flex-grow: 0; width: 180px; margin-left: 0;">
             <div>开单:${created}</div>
             <div>下单日期:${escapeHtml(p.promised_date || '—')}</div>
             <div style="margin-top: 4px;">

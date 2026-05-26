@@ -1390,9 +1390,9 @@ function renderShopifyOrders() {
             ${internalNote ? `<div><b style="color:var(--accent);">📝 内部备注：</b><span style="color:var(--text-primary); white-space:pre-wrap;">${escapeHtml(internalNote)}</span></div>` : ''}
           </div>`;
         })()}
-        <div class="so-card-body">
-          <div class="so-products">${productsHtml}</div>
-          <div class="so-card-side">
+        <div class="so-card-body" style="display:flex; align-items:flex-start; gap:20px; padding:12px 14px;">
+          <div class="so-products" style="flex:1 1 auto; min-width:0; max-width:720px; display:flex; flex-direction:column; gap:8px;">${productsHtml}</div>
+          <div class="so-card-side" style="flex-shrink:0; flex-grow:0; width:220px; min-width:0; margin-left:0; display:flex; flex-direction:column; gap:8px; padding-left:14px; border-left:1px dashed var(--border-subtle);">
             <!-- 客户 -->
             <div class="so-recipient">
               <div class="name">${escapeHtml(customerName)}</div>
