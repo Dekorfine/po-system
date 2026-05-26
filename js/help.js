@@ -10,6 +10,24 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260526h',
+    date: '2026-05-26',
+    type: 'feature',
+    title: '⚙ 设置模块 + 🔒 JS 强制同步 sidebar padding(根本性修复)',
+    notes: [
+      '🔒 根本性修复侧栏遮挡:用 JS 直接 inline style 设 #mainApp padding-left',
+      '🔒 不依赖 CSS 规则 · 直接读 sidebar.offsetWidth 同步 padding',
+      '🔒 toggleSidebarCollapsed / applyTabLayout / DOMContentLoaded / window resize 都触发同步',
+      '⚙ 新设计「⚙ 设置」模块 · 5 个 tab 集中管理:',
+      '   📦 产品维护 — 直接跳转到产品 tab(完整功能)',
+      '   🌐 网站维护 — 按 category 分组展示所有网站',
+      '   👥 人员维护 — 店铺负责人 + 超时配置',
+      '   🏭 供应商 — 自动从 PO/订单/售后聚合 · 显示全部供应商',
+      '   ⚙ 高级(主管专属)— 催单阈值 + 危险操作区',
+      '点击顶栏 ⚙ 按钮打开 · 默认在产品维护 tab',
+    ],
+  },
+  {
     v: '20260526g',
     date: '2026-05-26',
     type: 'fix',

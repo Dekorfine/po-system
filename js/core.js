@@ -2623,6 +2623,9 @@ function applyTabLayout() {
     document.body.classList.remove('has-side-tabs');
     document.body.classList.remove('side-collapsed');
   }
+  
+  // V20260526h: 应用完布局后强制同步 padding
+  setTimeout(() => { if (typeof syncMainAppPadding === 'function') syncMainAppPadding(); }, 50);
 }
 
 // V5-W3-2026-05-26: 切换侧栏收起/展开
@@ -2639,7 +2642,128 @@ function toggleSidebarCollapsed() {
     toggleBtn.innerHTML = isNowCollapsed ? '⏵' : '⏴';
     toggleBtn.title = isNowCollapsed ? '展开侧栏' : '收起侧栏';
   }
+  // V20260526h: 关键修复 · 用 JS 直接同步 mainApp padding-left
+  // CSS 规则有时会被覆盖 · JS 直接 inline style 最稳
+  setTimeout(syncMainAppPadding, 200);  // 等 transition 完成(width 0.18s)
 }
+
+// V20260526h: 关键 · 用 JS 同步 mainApp 的 padding-left 为实际 sidebar 宽度
+// 这样不管 CSS 怎么变,padding 一定跟 sidebar 宽度匹配
+function syncMainAppPadding() {
+  const sb = document.getElementById('sideTabBar');
+  const main = document.getElementById('mainApp');
+  if (!main) return;
+  if (!sb || sb.style.display === 'none' || !document.body.classList.contains('has-side-tabs')) {
+    main.style.paddingLeft = '0';
+    return;
+  }
+  const sbWidth = sb.offsetWidth || (sb.classList.contains('collapsed') ? 56 : 150);
+  main.style.paddingLeft = (sbWidth + 4) + 'px';  // +4px buffer 防止贴边
+}
+
+// 暴露给 window
+window.syncMainAppPadding = syncMainAppPadding;
+
+// V20260526h: 系统设置 modal · 打开 + tab 切换
+function openSettings() {
+  const modal = document.getElementById('settingsModal');
+  if (!modal) return;
+  modal.classList.add('show');
+  // 主管才看到高级 tab
+  const advTab = document.getElementById('settingsAdvancedTab');
+  if (advTab) advTab.style.display = (typeof IS_ADMIN !== 'undefined' && IS_ADMIN) ? '' : 'none';
+  // 默认打开产品维护 tab
+  switchSettingsTab('products');
+  // 渲染网站列表 / 供应商列表
+  renderSettingsSites();
+  renderSettingsSuppliers();
+}
+
+function switchSettingsTab(tab) {
+  document.querySelectorAll('.settings-tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  document.querySelectorAll('.settings-pane').forEach(p => {
+    p.style.display = (p.dataset.pane === tab) ? '' : 'none';
+  });
+  // 切到供应商 tab 时刷新列表
+  if (tab === 'suppliers') renderSettingsSuppliers();
+  if (tab === 'sites') renderSettingsSites();
+}
+
+function renderSettingsSites() {
+  const el = document.getElementById('settingsSitesList');
+  if (!el) return;
+  if (typeof SHOPS_PRESET === 'undefined') {
+    el.innerHTML = '<div style="grid-column:1/-1; padding:16px; text-align:center; color:var(--text-tertiary);">SHOPS_PRESET 未加载</div>';
+    return;
+  }
+  // 按 category 分组
+  const groups = {};
+  SHOPS_PRESET.forEach(s => {
+    const g = s.category || '其他';
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(s);
+  });
+  const grpIcons = { '主站': '⭐', '子站': '🌍', '老站': '📦', '内部': '🔧', '其他': '📌' };
+  el.innerHTML = Object.entries(groups).map(([g, sites]) => `
+    <div style="grid-column: 1/-1; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-top: 8px; padding: 4px 8px; background: var(--bg-card); border-radius: 4px;">
+      ${grpIcons[g] || '📌'} ${g} · ${sites.length}
+    </div>
+    ${sites.map(s => `
+      <div style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 6px; font-size: 12px;">
+        <div style="font-weight: 600; color: var(--text-primary);">${escapeHtml(s.label || '')}</div>
+        <div style="font-size: 10.5px; color: var(--text-tertiary); margin-top: 2px;">${escapeHtml(s.domain || s.value || '')}</div>
+      </div>
+    `).join('')}
+  `).join('');
+}
+
+function renderSettingsSuppliers() {
+  const el = document.getElementById('settingsSuppliers');
+  const countEl = document.getElementById('suppliersCountInline');
+  if (!el) return;
+  // 从已有 SUPPLIERS 或 PO/Orders 数据中提取
+  const all = new Set();
+  if (typeof PO_LIST !== 'undefined' && Array.isArray(PO_LIST)) {
+    PO_LIST.forEach(p => { if (p.supplier) all.add(p.supplier); });
+  }
+  if (typeof CHASE_ORDERS !== 'undefined' && Array.isArray(CHASE_ORDERS)) {
+    CHASE_ORDERS.forEach(o => { if (o.supplier) all.add(o.supplier); });
+  }
+  if (typeof AFTERSALES !== 'undefined' && Array.isArray(AFTERSALES)) {
+    AFTERSALES.forEach(a => { if (a.supplier) all.add(a.supplier); });
+  }
+  const list = [...all].sort();
+  if (countEl) countEl.textContent = list.length;
+  if (list.length === 0) {
+    el.innerHTML = '<div style="padding:24px; text-align:center; color:var(--text-tertiary); font-size:12.5px;">还没有供应商记录 · 在 PO/订单/售后中填供应商后会自动出现在这里</div>';
+    return;
+  }
+  el.innerHTML = `<div style="display:flex; flex-wrap:wrap; gap:6px;">${list.map(s => `
+    <span style="display:inline-flex; align-items:center; padding:4px 10px; background:var(--bg-card); border:1px solid var(--border); border-radius:14px; font-size:12px;">
+      🏭 ${escapeHtml(s)}
+    </span>
+  `).join('')}</div>`;
+}
+
+function addSupplierConfig() {
+  const input = document.getElementById('newSupplier');
+  if (!input) return;
+  const val = (input.value || '').trim();
+  if (!val) { if (typeof toast === 'function') toast('请填供应商名称', 'warn'); return; }
+  // 这里只是 UI 反馈 · 实际供应商会在使用中自动注册到 SUPPLIERS
+  if (typeof toast === 'function') toast(`✓ 已记录「${val}」· 在 PO/订单中使用时会自动联想`);
+  input.value = '';
+  renderSettingsSuppliers();
+}
+
+// 暴露给 window
+window.openSettings = openSettings;
+window.switchSettingsTab = switchSettingsTab;
+window.renderSettingsSites = renderSettingsSites;
+window.renderSettingsSuppliers = renderSettingsSuppliers;
+window.addSupplierConfig = addSupplierConfig;
 
 // 让 updateBadges() 也同步刷新 sidebar 徽章
 function syncSideBadges() {
@@ -2793,7 +2917,17 @@ window.addEventListener('DOMContentLoaded', () => {
     const m = document.getElementById('mainApp');
     if ((m && m.style.display !== 'none') || attempts++ > 120) {
       clearInterval(wait);
-      if (m && m.style.display !== 'none') applyTabLayout();
+      if (m && m.style.display !== 'none') {
+        applyTabLayout();
+        // V20260526h: 应用完布局后再次同步 padding(双保险)
+        setTimeout(syncMainAppPadding, 100);
+        setTimeout(syncMainAppPadding, 500);  // 再保险一次
+      }
     }
   }, 500);
+});
+
+// V20260526h: 窗口大小变化时也要同步 padding
+window.addEventListener('resize', () => {
+  if (typeof syncMainAppPadding === 'function') syncMainAppPadding();
 });
