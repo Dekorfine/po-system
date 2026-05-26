@@ -132,6 +132,9 @@ function feedbackRender() {
             <button class="btn" onclick="feedbackImportClaudeAnalysis()" title="把 Claude 回复的分析结果粘贴回来 · 自动写入对应反馈">
               📥 导入 Claude 分析
             </button>
+            <button class="btn" onclick="feedbackOpenDownloadDialog()" title="下载所有反馈为 PDF/Markdown/HTML/JSON 文件 · 给老板备份或离线给 Claude">
+              💾 下载反馈
+            </button>
           ` : ''}
           <button class="btn ghost" onclick="feedbackLoad().then(feedbackRender)">🔄</button>
         </div>
@@ -781,6 +784,466 @@ async function feedbackDoImport() {
 }
 
 // ============================================================
+// 💾 下载反馈(PDF / Markdown / HTML / JSON)· V5-W3-2026-05-26
+// ============================================================
+
+function feedbackOpenDownloadDialog() {
+  const modal = document.getElementById('feedbackDownloadModal');
+  if (!modal) { toast('下载 modal 未加载', 'err'); return; }
+  // 默认选项
+  document.getElementById('fbDlScope').value = 'all';
+  document.getElementById('fbDlFormat').value = 'markdown';
+  document.getElementById('fbDlIncludeImages').checked = true;
+  document.getElementById('fbDlIncludeResolved').checked = false;
+  _feedbackUpdateDlPreview();
+  modal.classList.add('show');
+}
+
+function feedbackCloseDownloadDialog() {
+  document.getElementById('feedbackDownloadModal')?.classList.remove('show');
+}
+
+function _feedbackUpdateDlPreview() {
+  const scope = document.getElementById('fbDlScope').value;
+  const includeResolved = document.getElementById('fbDlIncludeResolved').checked;
+  const items = _feedbackGetDownloadItems(scope, includeResolved);
+  document.getElementById('fbDlCountHint').textContent = `将导出 ${items.length} 条反馈`;
+}
+
+function _feedbackGetDownloadItems(scope, includeResolved) {
+  let items = [...FEEDBACK_ITEMS];
+  if (scope === 'pending') {
+    items = items.filter(f => f.status === 'pending' || f.status === 'analyzing');
+  } else if (scope === 'urgent') {
+    items = items.filter(f => f.severity === 'urgent' || f.severity === 'high');
+  } else if (scope === 'with_screenshots') {
+    items = items.filter(f => f.screenshots && f.screenshots.length > 0);
+  } else if (scope === 'mine') {
+    const me = _feedbackGetCurrentUser();
+    items = items.filter(f => f.reporter_id === me.id);
+  } else if (scope === 'last_week') {
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    items = items.filter(f => new Date(f.created_at).getTime() > weekAgo);
+  }
+  // 是否含已修复的
+  if (!includeResolved) {
+    items = items.filter(f => f.status !== 'resolved' && f.status !== 'rejected' && f.status !== 'duplicate');
+  }
+  return items;
+}
+
+async function feedbackDoDownload() {
+  const scope = document.getElementById('fbDlScope').value;
+  const format = document.getElementById('fbDlFormat').value;
+  const includeImages = document.getElementById('fbDlIncludeImages').checked;
+  const includeResolved = document.getElementById('fbDlIncludeResolved').checked;
+  
+  const items = _feedbackGetDownloadItems(scope, includeResolved);
+  if (items.length === 0) { toast('没有符合条件的反馈', 'info'); return; }
+  
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const scopeLabels = { all: '全部', pending: '待处理', urgent: '紧急', with_screenshots: '含截图', mine: '我提的', last_week: '近7天' };
+  const scopeLabel = scopeLabels[scope] || scope;
+  
+  if (format === 'markdown') {
+    const md = _feedbackGenerateMarkdown(items, includeImages);
+    _feedbackDownloadBlob(md, `跟单反馈_${scopeLabel}_${dateStr}.md`, 'text/markdown;charset=utf-8');
+    toast(`✓ 已下载 ${items.length} 条反馈 (Markdown)`, 'ok');
+  } else if (format === 'html') {
+    toast('生成中 · 含截图可能需要几秒...', 'info');
+    const html = await _feedbackGenerateHTML(items, includeImages);
+    _feedbackDownloadBlob(html, `跟单反馈_${scopeLabel}_${dateStr}.html`, 'text/html;charset=utf-8');
+    toast(`✓ 已下载 ${items.length} 条反馈 (HTML) · 用浏览器打开 → Ctrl+P → 另存为 PDF`, 'ok', 5000);
+  } else if (format === 'pdf_print') {
+    // 直接在浏览器打开 + 触发打印
+    toast('打开打印视图中...', 'info');
+    const html = await _feedbackGenerateHTML(items, includeImages, true);
+    const w = window.open('', '_blank');
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+      // 等图片加载完触发打印
+      setTimeout(() => { try { w.print(); } catch(_) {} }, 1500);
+    } else {
+      toast('浏览器拦截了新窗口 · 请允许弹窗', 'err');
+    }
+  } else if (format === 'json') {
+    const json = JSON.stringify(items, null, 2);
+    _feedbackDownloadBlob(json, `跟单反馈_${scopeLabel}_${dateStr}.json`, 'application/json');
+    toast(`✓ 已下载 ${items.length} 条反馈 (JSON)`, 'ok');
+  }
+  
+  feedbackCloseDownloadDialog();
+}
+
+// 生成 Markdown(给 Claude 用最佳)
+function _feedbackGenerateMarkdown(items, includeImages) {
+  const lines = [];
+  const now = new Date().toLocaleString('zh-CN');
+  const appVer = document.getElementById('appVersionTag')?.textContent || '未知';
+  
+  lines.push(`# 跟单工作台 · 反馈汇总报告`);
+  lines.push('');
+  lines.push(`> **生成时间**: ${now}  `);
+  lines.push(`> **当前系统版本**: ${appVer}  `);
+  lines.push(`> **反馈总数**: ${items.length}  `);
+  lines.push(`> **导出人**: ${_feedbackGetCurrentUser().name}`);
+  lines.push('');
+  
+  // 按类型分组统计
+  const byType = {};
+  items.forEach(f => { byType[f.type] = (byType[f.type] || 0) + 1; });
+  lines.push(`## 📊 概览`);
+  Object.entries(byType).forEach(([t, c]) => {
+    const meta = FEEDBACK_TYPES[t] || { icon: '◆', label: t };
+    lines.push(`- ${meta.icon} **${meta.label}**: ${c} 条`);
+  });
+  lines.push('');
+  lines.push('---');
+  lines.push('');
+  
+  // 给 Claude 的指令
+  lines.push(`## 🤖 致 Claude · 处理这批反馈`);
+  lines.push('');
+  lines.push('请对下面每条反馈给出:');
+  lines.push('1. **根因**(root_cause): 问题真正在哪里 / 为什么会这样');
+  lines.push('2. **提议方案**(proposed_fix): 怎么修 · 涉及什么改动');
+  lines.push('3. **涉及文件**(files_affected): 需要改哪几个 .js / .html / .css');
+  lines.push('4. **预估工作量**(estimated_hours): 大概几小时(0.5 / 1 / 2 / 4 / 8)');
+  lines.push('5. **风险**(risk): 有无破坏性变更 / 数据迁移 / 兼容问题');
+  lines.push('');
+  lines.push('返回格式:JSON 数组,可直接粘回反馈中心的「📥 导入 Claude 分析」按钮。');
+  lines.push('');
+  lines.push('```json');
+  lines.push('[');
+  lines.push('  {');
+  lines.push('    "id": "反馈的 UUID",');
+  lines.push('    "root_cause": "...",');
+  lines.push('    "proposed_fix": "...",');
+  lines.push('    "files_affected": ["utils.js", "issues.js"],');
+  lines.push('    "estimated_hours": 2,');
+  lines.push('    "risk": "..."');
+  lines.push('  }');
+  lines.push(']');
+  lines.push('```');
+  lines.push('');
+  lines.push('---');
+  lines.push('');
+  
+  // 逐条
+  items.forEach((f, i) => {
+    const typeMeta = FEEDBACK_TYPES[f.type] || { icon: '◆', label: f.type };
+    const sevMeta = f.severity ? (FEEDBACK_SEVERITIES[f.severity] || {}) : null;
+    const statusMeta = FEEDBACK_STATUSES[f.status] || { label: f.status };
+    
+    lines.push(`## ${i + 1}. ${typeMeta.icon} ${f.title}`);
+    lines.push('');
+    lines.push(`| 字段 | 值 |`);
+    lines.push(`|---|---|`);
+    lines.push(`| **ID** | \`${f.id}\` |`);
+    lines.push(`| **类型** | ${typeMeta.icon} ${typeMeta.label} |`);
+    lines.push(`| **状态** | ${statusMeta.label} |`);
+    if (sevMeta) lines.push(`| **紧急度** | ${sevMeta.icon || ''} ${sevMeta.label || f.severity} |`);
+    if (f.module) lines.push(`| **模块** | ${_feedbackGetModuleLabel(f.module)} |`);
+    lines.push(`| **提报人** | ${f.reporter_name || '匿名'} (${f.reporter_system || 'po'} 系统) |`);
+    lines.push(`| **提交时间** | ${new Date(f.created_at).toLocaleString('zh-CN')} |`);
+    if (f.upvotes > 0) lines.push(`| **点赞数** | 👍 ${f.upvotes}(说明多人遇到)|`);
+    if (f.app_version) lines.push(`| **App 版本** | \`${f.app_version}\` |`);
+    if (f.fixed_in_version) lines.push(`| **修复版本** | \`v${f.fixed_in_version}\` ✅ |`);
+    lines.push('');
+    
+    if (f.description) {
+      lines.push(`### 📝 详细描述`);
+      lines.push('');
+      lines.push(f.description);
+      lines.push('');
+    }
+    
+    if (f.reproduction_steps) {
+      lines.push(`### 🔄 复现步骤`);
+      lines.push('');
+      lines.push(f.reproduction_steps);
+      lines.push('');
+    }
+    
+    if (f.expected_behavior || f.actual_behavior) {
+      lines.push(`### ✓ vs ✗`);
+      lines.push('');
+      if (f.expected_behavior) {
+        lines.push(`**✓ 预期**:`);
+        lines.push(f.expected_behavior);
+        lines.push('');
+      }
+      if (f.actual_behavior) {
+        lines.push(`**✗ 实际**:`);
+        lines.push(f.actual_behavior);
+        lines.push('');
+      }
+    }
+    
+    if (includeImages && f.screenshots && f.screenshots.length > 0) {
+      lines.push(`### 📷 截图(${f.screenshots.length} 张)`);
+      lines.push('');
+      f.screenshots.forEach((s, idx) => {
+        lines.push(`![截图${idx + 1}](${s})`);
+        lines.push('');
+      });
+    }
+    
+    if (f.browser_info) {
+      lines.push(`### 🌐 环境信息`);
+      lines.push('');
+      lines.push('```');
+      lines.push(`User Agent: ${f.browser_info.userAgent || '?'}`);
+      lines.push(`Platform:   ${f.browser_info.platform || '?'}`);
+      lines.push(`Screen:     ${f.browser_info.screen || '?'}`);
+      lines.push(`Viewport:   ${f.browser_info.viewport || '?'}`);
+      lines.push(`URL:        ${f.browser_info.url || '?'}`);
+      lines.push('```');
+      lines.push('');
+    }
+    
+    if (f.ai_analysis && Object.keys(f.ai_analysis).length > 0) {
+      lines.push(`### 🤖 上次 Claude 分析(已存)`);
+      lines.push('');
+      if (f.ai_analysis.root_cause) lines.push(`- **根因**: ${f.ai_analysis.root_cause}`);
+      if (f.ai_analysis.proposed_fix) lines.push(`- **方案**: ${f.ai_analysis.proposed_fix}`);
+      if (f.ai_analysis.files_affected) lines.push(`- **文件**: ${f.ai_analysis.files_affected.join(', ')}`);
+      if (f.ai_analysis.estimated_hours) lines.push(`- **预估**: ${f.ai_analysis.estimated_hours} 小时`);
+      if (f.ai_analysis.risk) lines.push(`- **风险**: ${f.ai_analysis.risk}`);
+      lines.push('');
+    }
+    
+    if (f.comments && f.comments.length > 0) {
+      lines.push(`### 💬 评论(${f.comments.length})`);
+      lines.push('');
+      f.comments.forEach(c => {
+        const time = new Date(c.time).toLocaleString('zh-CN');
+        lines.push(`- **${c.user_name || c.user_id}** (${time}):`);
+        lines.push(`  > ${(c.text || '').split('\n').join('\n  > ')}`);
+      });
+      lines.push('');
+    }
+    
+    if (f.resolution_notes) {
+      lines.push(`### ✅ 修复说明`);
+      lines.push('');
+      lines.push(f.resolution_notes);
+      lines.push('');
+    }
+    
+    if (f.rejection_reason) {
+      lines.push(`### ❌ 不修复原因`);
+      lines.push('');
+      lines.push(f.rejection_reason);
+      lines.push('');
+    }
+    
+    lines.push('---');
+    lines.push('');
+  });
+  
+  lines.push('');
+  lines.push(`> 报告由 跟单工作台 反馈中心 自动生成 · 共 ${items.length} 条反馈`);
+  
+  return lines.join('\n');
+}
+
+// 生成 HTML(可直接打印为 PDF)
+async function _feedbackGenerateHTML(items, includeImages, autoPrint = false) {
+  const now = new Date().toLocaleString('zh-CN');
+  const appVer = document.getElementById('appVersionTag')?.textContent || '未知';
+  const me = _feedbackGetCurrentUser().name;
+  
+  // 把图片转 base64 内嵌(让 HTML 自包含 · 即使断网也能看)
+  let imgCache = new Map();
+  if (includeImages) {
+    const allUrls = new Set();
+    items.forEach(f => (f.screenshots || []).forEach(u => allUrls.add(u)));
+    for (const url of allUrls) {
+      try {
+        const r = await fetch(url);
+        const blob = await r.blob();
+        const dataUrl = await new Promise(resolve => {
+          const fr = new FileReader();
+          fr.onload = () => resolve(fr.result);
+          fr.readAsDataURL(blob);
+        });
+        imgCache.set(url, dataUrl);
+      } catch (e) {
+        // 失败就保留原 URL
+        console.warn('[FEEDBACK] 图片转 base64 失败:', url, e);
+      }
+    }
+  }
+  
+  const getImgSrc = url => imgCache.get(url) || url;
+  
+  let html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>跟单工作台 · 反馈报告</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 30px; background: #fff; }
+  h1 { font-size: 28px; color: #1e293b; border-bottom: 3px solid #2563eb; padding-bottom: 12px; }
+  h2 { font-size: 19px; color: #1e293b; margin-top: 36px; padding-left: 12px; border-left: 4px solid #2563eb; page-break-after: avoid; }
+  h3 { font-size: 15px; color: #475569; margin-top: 18px; page-break-after: avoid; }
+  .meta { color: #64748b; font-size: 13px; padding: 14px 16px; background: #f1f5f9; border-radius: 8px; margin: 14px 0; }
+  .meta b { color: #1e293b; }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 16px 0; }
+  .summary-card { background: #f8fafc; border-left: 3px solid #2563eb; padding: 10px 14px; border-radius: 4px; font-size: 13px; }
+  .summary-card b { font-size: 20px; color: #1e293b; display: block; }
+  .item { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 16px 0; page-break-inside: avoid; }
+  .item-title { font-size: 17px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 12px; }
+  .badge { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge-bug { background: #fef2f2; color: #dc2626; }
+  .badge-feature { background: #faf5ff; color: #7c3aed; }
+  .badge-improvement { background: #f0f9ff; color: #0891b2; }
+  .badge-urgent { background: #fef2f2; color: #dc2626; }
+  .badge-high { background: #fff7ed; color: #ea580c; }
+  .badge-normal { background: #fefce8; color: #ca8a04; }
+  .badge-low { background: #f0fdf4; color: #16a34a; }
+  .badge-status { background: #f1f5f9; color: #475569; }
+  table.meta-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12.5px; }
+  table.meta-table td { padding: 5px 10px; border-bottom: 1px solid #f1f5f9; }
+  table.meta-table td:first-child { color: #64748b; width: 110px; font-weight: 600; }
+  .section-title { font-size: 13px; font-weight: 700; color: #475569; margin: 12px 0 6px; }
+  .desc-box { background: #f8fafc; padding: 10px 14px; border-radius: 6px; font-size: 13px; white-space: pre-wrap; border-left: 3px solid #cbd5e1; }
+  .screenshots { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin: 8px 0; }
+  .screenshots img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 6px; border: 1px solid #e2e8f0; }
+  .env-info { background: #1e293b; color: #94a3b8; font-family: monospace; font-size: 11px; padding: 10px 14px; border-radius: 6px; white-space: pre-wrap; }
+  .ai-section { background: linear-gradient(135deg, #faf5ff, #f0f9ff); padding: 12px 16px; border-radius: 6px; border-left: 3px solid #7c3aed; margin: 8px 0; }
+  .comment { background: #f8fafc; padding: 8px 12px; border-radius: 6px; margin: 4px 0; border-left: 2px solid #cbd5e1; font-size: 12.5px; }
+  .comment-meta { color: #64748b; font-size: 11px; margin-bottom: 2px; }
+  .footer { margin-top: 36px; padding-top: 20px; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 11px; text-align: center; }
+  
+  @media print {
+    body { padding: 16px; }
+    .item { page-break-inside: avoid; box-shadow: none; }
+    .no-print { display: none !important; }
+  }
+</style>
+</head>
+<body>
+  <h1>📋 跟单工作台 · 反馈汇总报告</h1>
+  <div class="meta">
+    <b>生成时间</b>: ${now}<br>
+    <b>系统版本</b>: ${escapeHtml(appVer)}<br>
+    <b>反馈总数</b>: ${items.length}<br>
+    <b>导出人</b>: ${escapeHtml(me)}
+  </div>
+`;
+  
+  // 概览统计
+  const byType = {};
+  const bySev = {};
+  const byStatus = {};
+  items.forEach(f => {
+    byType[f.type] = (byType[f.type] || 0) + 1;
+    if (f.severity) bySev[f.severity] = (bySev[f.severity] || 0) + 1;
+    byStatus[f.status] = (byStatus[f.status] || 0) + 1;
+  });
+  
+  html += `<h2>📊 概览</h2><div class="summary">`;
+  Object.entries(byType).forEach(([t, c]) => {
+    const m = FEEDBACK_TYPES[t] || { icon: '◆', label: t };
+    html += `<div class="summary-card">${m.icon} ${m.label}<b>${c}</b></div>`;
+  });
+  html += `</div>`;
+  
+  // 逐条
+  items.forEach((f, i) => {
+    const typeMeta = FEEDBACK_TYPES[f.type] || { icon: '◆', label: f.type };
+    const sevMeta = f.severity ? (FEEDBACK_SEVERITIES[f.severity] || {}) : null;
+    const statusMeta = FEEDBACK_STATUSES[f.status] || { label: f.status };
+    
+    html += `<div class="item"><div class="item-title">${i + 1}. ${typeMeta.icon} ${escapeHtml(f.title)}</div>`;
+    html += `<div class="badges">`;
+    html += `<span class="badge badge-${f.type}">${typeMeta.label}</span>`;
+    if (sevMeta) html += `<span class="badge badge-${f.severity}">${sevMeta.icon || ''} ${sevMeta.label || f.severity}</span>`;
+    html += `<span class="badge badge-status">${statusMeta.label}</span>`;
+    if (f.module) html += `<span class="badge badge-status">${_feedbackGetModuleLabel(f.module)}</span>`;
+    if (f.fixed_in_version) html += `<span class="badge" style="background:#dcfce7; color:#16a34a;">✅ v${escapeHtml(f.fixed_in_version)}</span>`;
+    html += `</div>`;
+    
+    html += `<table class="meta-table">`;
+    html += `<tr><td>ID</td><td><code style="font-size:10px;">${escapeHtml(f.id)}</code></td></tr>`;
+    html += `<tr><td>提报人</td><td>${escapeHtml(f.reporter_name || '匿名')} (${escapeHtml(f.reporter_system || 'po')} 系统)</td></tr>`;
+    html += `<tr><td>提交时间</td><td>${new Date(f.created_at).toLocaleString('zh-CN')}</td></tr>`;
+    if (f.upvotes > 0) html += `<tr><td>点赞</td><td>👍 ${f.upvotes}</td></tr>`;
+    if (f.app_version) html += `<tr><td>App 版本</td><td>${escapeHtml(f.app_version)}</td></tr>`;
+    html += `</table>`;
+    
+    if (f.description) {
+      html += `<div class="section-title">📝 详细描述</div><div class="desc-box">${escapeHtml(f.description)}</div>`;
+    }
+    if (f.reproduction_steps) {
+      html += `<div class="section-title">🔄 复现步骤</div><div class="desc-box">${escapeHtml(f.reproduction_steps)}</div>`;
+    }
+    if (f.expected_behavior) {
+      html += `<div class="section-title" style="color:#16a34a;">✓ 预期</div><div class="desc-box">${escapeHtml(f.expected_behavior)}</div>`;
+    }
+    if (f.actual_behavior) {
+      html += `<div class="section-title" style="color:#dc2626;">✗ 实际</div><div class="desc-box">${escapeHtml(f.actual_behavior)}</div>`;
+    }
+    if (includeImages && f.screenshots && f.screenshots.length > 0) {
+      html += `<div class="section-title">📷 截图 (${f.screenshots.length})</div><div class="screenshots">`;
+      f.screenshots.forEach(s => { html += `<img src="${getImgSrc(s)}" alt="screenshot">`; });
+      html += `</div>`;
+    }
+    if (f.ai_analysis && Object.keys(f.ai_analysis).length > 0) {
+      html += `<div class="section-title">🤖 Claude AI 分析</div><div class="ai-section">`;
+      if (f.ai_analysis.root_cause) html += `<div><b>根因:</b> ${escapeHtml(f.ai_analysis.root_cause)}</div>`;
+      if (f.ai_analysis.proposed_fix) html += `<div><b>方案:</b> ${escapeHtml(f.ai_analysis.proposed_fix)}</div>`;
+      if (f.ai_analysis.files_affected && f.ai_analysis.files_affected.length) html += `<div><b>文件:</b> ${f.ai_analysis.files_affected.map(x => `<code>${escapeHtml(x)}</code>`).join(', ')}</div>`;
+      if (f.ai_analysis.estimated_hours) html += `<div><b>预估:</b> ${escapeHtml(String(f.ai_analysis.estimated_hours))} 小时</div>`;
+      if (f.ai_analysis.risk) html += `<div><b>⚠ 风险:</b> ${escapeHtml(f.ai_analysis.risk)}</div>`;
+      html += `</div>`;
+    }
+    if (f.comments && f.comments.length > 0) {
+      html += `<div class="section-title">💬 评论 (${f.comments.length})</div>`;
+      f.comments.forEach(c => {
+        html += `<div class="comment"><div class="comment-meta"><b>${escapeHtml(c.user_name || c.user_id || '')}</b> · ${new Date(c.time).toLocaleString('zh-CN')}</div>${escapeHtml(c.text || '').replace(/\n/g, '<br>')}</div>`;
+      });
+    }
+    if (f.browser_info) {
+      html += `<details style="margin-top:10px;"><summary style="cursor:pointer; font-size:12px; color:#64748b;">🌐 环境信息</summary><div class="env-info">User Agent: ${escapeHtml(f.browser_info.userAgent || '?')}\nPlatform:   ${escapeHtml(f.browser_info.platform || '?')}\nScreen:     ${escapeHtml(f.browser_info.screen || '?')}\nViewport:   ${escapeHtml(f.browser_info.viewport || '?')}\nURL:        ${escapeHtml(f.browser_info.url || '?')}</div></details>`;
+    }
+    if (f.resolution_notes) {
+      html += `<div class="section-title" style="color:#16a34a;">✅ 修复说明</div><div class="desc-box">${escapeHtml(f.resolution_notes)}</div>`;
+    }
+    if (f.rejection_reason) {
+      html += `<div class="section-title" style="color:#dc2626;">❌ 不修复原因</div><div class="desc-box">${escapeHtml(f.rejection_reason)}</div>`;
+    }
+    
+    html += `</div>`;
+  });
+  
+  html += `<div class="footer">由 跟单工作台 反馈中心 自动生成 · 共 ${items.length} 条 · 报告生成于 ${now}</div>`;
+  html += `</body></html>`;
+  
+  return html;
+}
+
+// Blob 下载工具
+function _feedbackDownloadBlob(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 100);
+}
+
+// ============================================================
 // 工具函数
 // ============================================================
 
@@ -834,6 +1297,10 @@ window.feedbackExportForClaude = feedbackExportForClaude;
 window.feedbackImportClaudeAnalysis = feedbackImportClaudeAnalysis;
 window.feedbackCloseImport = feedbackCloseImport;
 window.feedbackDoImport = feedbackDoImport;
+window.feedbackOpenDownloadDialog = feedbackOpenDownloadDialog;
+window.feedbackCloseDownloadDialog = feedbackCloseDownloadDialog;
+window.feedbackDoDownload = feedbackDoDownload;
+window._feedbackUpdateDlPreview = _feedbackUpdateDlPreview;
 window.feedbackSetFilter = feedbackSetFilter;
 window.feedbackSetSearchText = feedbackSetSearchText;
 window.feedbackClearFilters = feedbackClearFilters;
