@@ -19,6 +19,7 @@ const SHOPIFY = {
     { domain: 'docolamp.myshopify.com',       site_code: 'LS' },
     { domain: 'mooijane.myshopify.com',       site_code: 'MJ' },
     { domain: 'decormote.myshopify.com',      site_code: 'RS' },
+    { domain: 'janedecor.myshopify.com',      site_code: 'JD' },
   ],
   FN_URL: 'https://pyfmuknvjqfwcqvbrsvw.supabase.co/functions/v1/shopify-api',
   _stores: [],
