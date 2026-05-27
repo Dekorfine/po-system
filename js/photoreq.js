@@ -425,10 +425,10 @@ function _photoReqCardHtmlGrid(log) {
          onmouseenter="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';"
          onmouseleave="this.style.transform=''; this.style.boxShadow='';">
       
-      <!-- 大图区(180px 高)-->
-      <div style="position:relative; background:var(--bg-elevated); height:180px; overflow:hidden;">
+      <!-- V28aa: 大图区 · aspect-ratio + contain 保留完整图 -->
+      <div style="position:relative; background:var(--bg-elevated); aspect-ratio: 4/3; overflow:hidden;">
         ${log.product_image 
-          ? `<img src="${escapeHtml(log.product_image)}" style="width:100%; height:100%; object-fit:cover; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
+          ? `<img src="${escapeHtml(log.product_image)}" style="width:100%; height:100%; object-fit:contain; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
           : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:48px;">📷</div>`}
         ${urgent ? `<span style="position:absolute; top:8px; left:8px; background:var(--danger); color:white; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,0.15);">🚨 加急</span>` : ''}
         <span style="position:absolute; top:8px; right:8px;">${sourceBadge}</span>
