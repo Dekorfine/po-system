@@ -25,7 +25,7 @@
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260526o"></script>
-<script src="js/help.js?v=20260527j"></script>
+<script src="js/help.js?v=20260527k"></script>
 <script src="js/dateFilter.js?v=20260526p"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
@@ -35,7 +35,7 @@
 <script src="js/aftersales.js?v=20260527j"></script>
 <script src="js/missing.js?v=20260527i"></script>
 <script src="js/orders.js?v=20260526q"></script>
-<script src="js/shopify.js?v=20260527g"></script>
+<script src="js/shopify.js?v=20260527k"></script>
 <script src="js/po.js?v=20260527h"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script src="js/cross-dept.js?v=20260526m"></script>
@@ -3653,6 +3653,16 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .store-chip-status { font-size: 11px; font-weight: 700; color: var(--success); }
 .store-chip-status.install { color: var(--accent); }
 
+/* V20260527k: 店铺 chip 拖拽排序 */
+.store-chip[draggable="true"] { cursor: grab; }
+.store-chip[draggable="true"]:active { cursor: grabbing; }
+.store-chip.chip-dragging { opacity: 0.4; }
+.store-chip.chip-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+  background: rgba(37,99,235,0.06);
+}
+
 /* 销售业绩可点击卡片 */
 .sales-stat-card {
   background: var(--bg-elevated);
@@ -5561,7 +5571,7 @@ body.has-side-tabs .section-block {
       <span id="salesAutoSyncIndicator" style="font-size: 11px; color: var(--text-tertiary);"></span>
       <button class="btn small" onclick="shopifyToggleAutoSync()" id="salesAutoSyncBtn" title="自动同步开关">⏱️ 自动</button>
       <button class="btn small" onclick="shopifyReloadStores()" title="刷新店铺状态">🔄 刷新</button>
-      <button class="btn small" onclick="shopifyOpenAddStore()" title="跨 organization 的店:手动填 token 添加" style="background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.3); color: #92400e;">➕ 手动添加</button>
+      <button class="btn small" onclick="shopifyOpenAddStore()" id="salesAddStoreBtn" title="跨 organization 的店:手动填 token 添加(仅老板)" style="background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.3); color: #92400e; display: none;">➕ 手动添加</button>
     </div>
 
     <div id="salesStatsContainer" style="margin-top: 14px;"></div>
