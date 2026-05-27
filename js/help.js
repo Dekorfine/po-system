@@ -10,6 +10,43 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260527d',
+    date: '2026-05-27',
+    type: 'feature',
+    title: '🚨 售后:加急单(速联达)标识 + 售后原因改多选 + 加急筛选',
+    notes: [
+      '🚨 售后单 modal 顶部加「加急单(速联达·商业快递)」开关 · 红橙渐变高亮',
+      '🚨 速联达=商业快递,标记后供应商需优先安排发货',
+      '✨ 售后原因改为多选 · 主原因按钮支持点击切换(再点取消)',
+      '✨ 子原因区按已选主原因分组展开 · 每个主类下可独立选一个子类',
+      '✨ 新数据结构 · `a.reasons`(数组) + `a.reasonSubs`(对象) + `a.isUrgent`',
+      '🔒 向后兼容 · 老 `reason` 字符串自动 parse 成数组 · 仍同步写入用于旧代码',
+      '✨ 顶部 chip 条加「🚨 仅加急(速联达)」筛选 · 红橙渐变 active 态',
+      '✨ 顶部统计加「🚨 加急 N」实时计数',
+      '✨ 列表卡片:加急单加红色左边框 + 红橙渐变徽章「🚨 加急·速联达」',
+      '✨ 网格卡片:加急单加红色外发光描边 + 替换 🔥X天 角标为「🚨 加急·速联达」',
+      '✨ 老的「全部原因」筛选下拉照常工作(匹配 reasons 数组任一项)',
+      '🔒 升 aftersales.js → v20260527d',
+    ],
+  },
+  {
+    v: '20260527c',
+    date: '2026-05-27',
+    type: 'fix',
+    title: '🐛 Shopify 店铺管理 modal 错位 + 列表看不到(白名单修复)',
+    notes: [
+      '🔍 根因:项目里 `.modal` 默认是 720px 卡片样式(不是 fixed overlay)',
+      '🔍 特定 ID 的 modal 才会被 CSS 升级为 fixed 全屏居中 overlay(L4051 白名单)',
+      '🔍 之前 `#shopifyAddStoreModal` 没在白名单 → modal 漂到左下角 · Tab 切换看不到',
+      '✅ 把 `#shopifyAddStoreModal` 加入 fixed-overlay CSS 白名单',
+      '✅ `shopifyOpenAddStore` 改用 `style.display="flex"` 触发 [style*="flex"] 选择器',
+      '✅ `shopifySubmitAddStore` 关闭改成 inline 方式 · HTML 关闭按钮 onclick 同步',
+      '✅ modal 现在居中显示 · 2 个 tab 都能看到 · 表格 + 删除/停用按钮可用',
+      '✅ 可以从「已连接店铺」tab 删除 mooijane 的错误旧记录',
+      '🔒 升 shopify.js → v20260527c',
+    ],
+  },
+  {
     v: '20260526h',
     date: '2026-05-26',
     type: 'feature',

@@ -4,6 +4,8 @@
 // ============================================================
 // 依赖：core.js · utils.js
 // ============================================================
+// V20260527d: 售后原因改多选 + 新增「🚨 加急单(速联达)」字段和筛选
+// ============================================================
 
 // 售后快速筛选模式（叠加在 status filter 之上）
 // 空字符串 = 无叠加；'thismonth' / 'today' / 'overdue' = 按对应维度过滤
@@ -12,6 +14,9 @@ let _aftersalesQuickMode = '';
 // V5-2026-05-24: 售后阈值筛选 + 仅未处理 chip(跟催单一致的体验)
 let _afterThresholdFilter = 0;   // 0=不限,>0=显示发起≥N天的
 let _onlyUnhandled = false;       // 仅显示无任何 followups 的(没人跟进的)
+
+// V20260527d: 加急单筛选(速联达 · 商业快递 · 需要紧急发货)
+let _onlyUrgentExpress = false;
 
 // V20260526d: 视角切换 · 'list'(详细信息行) / 'grid'(图墙卡片 · 一眼识货)
 let _aftersalesViewMode = (localStorage.getItem('aftersales_view_mode') || 'list');
@@ -135,8 +140,21 @@ function renderAfterThresholdChips() {
       ⚠ 仅未处理 <span class="cnt-mini" style="${_onlyUnhandled ? 'background:rgba(255,255,255,0.25); color:white;' : ''}">${unhandledCnt}</span>
     </button>
     
+    ${(() => {
+      // V20260527d: 仅加急(速联达)chip
+      const urgentCnt = activeSet.filter(a => a.isUrgent).length;
+      return `<button class="rule-chip" 
+              onclick="toggleOnlyUrgentExpress()" 
+              title="只显示标记为「加急单 · 速联达」的售后(商业快递 · 需要紧急发货)"
+              style="${_onlyUrgentExpress 
+                ? 'background:linear-gradient(135deg,#ef4444,#f97316); color:white; border-color:#ef4444; box-shadow:0 2px 10px rgba(239,68,68,0.5), 0 0 0 3px rgba(239,68,68,0.15); font-weight:700;' 
+                : 'border-left:3px solid #ef4444; color:#b91c1c;'}">
+        🚨 仅加急(速联达) <span class="cnt-mini" style="${_onlyUrgentExpress ? 'background:rgba(255,255,255,0.25); color:white;' : ''}">${urgentCnt}</span>
+      </button>`;
+    })()}
+    
     <span style="margin-left:auto; font-size: 11px; color: var(--text-tertiary);">
-      未解决 <b style="color:#dc2626;">${activeSet.length}</b> · 待处理 <b style="color:#f59e0b;">${unhandledCnt}</b>
+      未解决 <b style="color:#dc2626;">${activeSet.length}</b> · 待处理 <b style="color:#f59e0b;">${unhandledCnt}</b> · 🚨 加急 <b style="color:#ef4444;">${activeSet.filter(a => a.isUrgent).length}</b>
     </span>
   `;
 }
@@ -196,6 +214,8 @@ function renderAftersales() {
     if (_afterThresholdFilter > 0 && afterDaysSince(a) < _afterThresholdFilter) return false;
     // V5-2026-05-24: 仅未处理(没人跟进过的)
     if (_onlyUnhandled && (a.followups || []).length > 0) return false;
+    // V20260527d: 仅加急(速联达)
+    if (_onlyUrgentExpress && !a.isUrgent) return false;
     // V5: 用了阈值/未处理筛选时,默认隐藏已解决/已取消的(否则不直观)
     if ((_afterThresholdFilter > 0 || _onlyUnhandled) && ['resolved','cancelled'].includes(a.status)) return false;
     
@@ -205,7 +225,11 @@ function renderAftersales() {
     }
     if (fSupp && a.supplier !== fSupp) return false;
     if (fSite && a.site !== fSite) return false;
-    if (fReason && !(a.reason || '').startsWith(fReason)) return false;
+    // V20260527d: 多原因匹配 — 任一已选主类等于 fReason 就保留(兼容老 reason 字符串)
+    if (fReason) {
+      const { mains } = getAfterReasons(a);
+      if (!mains.includes(fReason)) return false;
+    }
     if (fs === 'active') return !['resolved','cancelled'].includes(a.status);
     if (fs === 'completed') return ['resolved','cancelled'].includes(a.status);
     if (fs === 'all') return true;
@@ -336,6 +360,8 @@ function _renderAftersaleCard(a, i) {
   const isDone = ['resolved', 'cancelled'].includes(status);
   const days = afterDaysSince(a);
   const urgent = !isDone && days >= 7;
+  // V20260527d: 加急单(速联达)— 跟"逾期 urgent"语义不同,这是商业快递需求
+  const expressUrgent = !!a.isUrgent;
   
   // 多图布局(借鉴找灯)
   let coverHTML = '';
@@ -368,18 +394,23 @@ function _renderAftersaleCard(a, i) {
     }
   }
   
-  const reason = (a.reason || '').split('·')[0] || a.reason || '';
+  // V20260527d: 多原因显示(grid 卡片)
+  const { mains: gridMains } = getAfterReasons(a);
+  const reasonDisplay = gridMains.length > 0 
+    ? gridMains.join(' + ')
+    : ((a.reason || '').split('·')[0] || a.reason || '');
+  const reason = reasonDisplay;
   const reasonDetail = (a.reasonDetail || '').trim();
   const fuCount = (a.followups || []).length;
   const supplier = a.supplier || '';
   const product = a.product || a.productName || '';
   
   return `
-    <div class="as-card ${urgent ? 'urgent' : ''} ${isDone ? 'done' : ''}" onclick="openAftersales('${a._id}')">
+    <div class="as-card ${urgent ? 'urgent' : ''} ${expressUrgent ? 'express-urgent' : ''} ${isDone ? 'done' : ''}" onclick="openAftersales('${a._id}')" ${expressUrgent ? 'style="box-shadow:0 0 0 2px #ef4444, 0 4px 12px rgba(239,68,68,0.25);"' : ''}>
       <div class="cover ${coverCls}">
         ${coverHTML}
         <span class="status-badge" style="background:${statusMeta.bg}; color:${statusMeta.color};">${statusMeta.label}</span>
-        ${urgent ? `<span class="urgent-badge">🔥 ${days}天</span>` : ''}
+        ${expressUrgent ? `<span class="urgent-badge" style="background:linear-gradient(135deg,#ef4444,#f97316);color:#fff;font-weight:700;box-shadow:0 2px 6px rgba(239,68,68,0.4);">🚨 加急·速联达</span>` : (urgent ? `<span class="urgent-badge">🔥 ${days}天</span>` : '')}
         ${fuCount > 0 ? `<span class="comments-badge">💬 ${fuCount}</span>` : ''}
         ${n > 0 ? `<span class="photo-count">📷 ${n}</span>` : ''}
       </div>
@@ -488,12 +519,23 @@ function _renderAftersaleRow(a, i) {
         <b>📞 ${formatShortDate(lastFu.date)}:</b> ${escapeHtml((lastFu.note || '').slice(0, 70))}${(lastFu.note || '').length > 70 ? '...' : ''}
       </div>` : '';
     
-    const reasonHtml = a.reason 
-      ? `<span class="reason-tag">⚠ ${escapeHtml(a.reason)}</span>`
-      : '<span class="reason-tag empty">⚠ 未选原因</span>';
+    const reasonHtml = (() => {
+      // V20260527d: 多原因 → 多个 reason-tag
+      const { mains } = getAfterReasons(a);
+      if (mains.length > 0) {
+        return mains.map(m => `<span class="reason-tag">⚠ ${escapeHtml(m)}</span>`).join('');
+      }
+      return a.reason 
+        ? `<span class="reason-tag">⚠ ${escapeHtml(a.reason)}</span>`
+        : '<span class="reason-tag empty">⚠ 未选原因</span>';
+    })();
+    // V20260527d: 加急徽章(列表模式)
+    const urgentRowBadge = a.isUrgent 
+      ? `<span class="reason-tag" style="background:linear-gradient(135deg,#ef4444,#f97316);color:#fff;font-weight:700;border:none;">🚨 加急·速联达</span>` 
+      : '';
     
     return `
-      <div class="record-row after-row s-${a.status}">
+      <div class="record-row after-row s-${a.status}" ${a.isUrgent ? 'style="border-left:3px solid #ef4444;"' : ''}>
         <div class="row-num row-num-with-thumb">
           <span class="row-num-idx">${i + 1}</span>
           ${productImageHtml}
@@ -505,6 +547,7 @@ function _renderAftersaleRow(a, i) {
           <div class="order-line">
             <span class="order-no-big">${escapeHtml(a.orderNo || '⚠ 待填订单号')}</span>
             ${siteBadge}
+            ${urgentRowBadge}
             ${reasonHtml}
           </div>
           <div class="product-line">📦 ${escapeHtml(a.product || '未填产品')}</div>
@@ -534,7 +577,10 @@ async function addAftersales() {
     _id: 'A' + Date.now() + Math.random().toString(36).slice(2, 6),
     orderNo: '', product: '', supplier: '',
     site: defaultSite,
+    // V20260527d: 新字段 — 多选原因 + 加急
+    reasons: [], reasonSubs: {},
     reason: '', reasonDetail: '',
+    isUrgent: false,
     createdDate: new Date().toISOString().slice(0, 10),
     status: 'pending', nextFollow: '', resolvedDate: '',
     screenshots: [], followups: [],
@@ -634,37 +680,75 @@ function openAfterModal(id, agent) {
 function renderAfterModalContent() {
   const a = currentAfter();
   if (!a) return;
+  
+  // V20260527d: 多原因 + 加急
+  const { mains: selectedMains, subs: selectedSubs } = getAfterReasons(a);
+  const reasonStr = _buildReasonString(selectedMains, selectedSubs);
+  const isUrgent = !!a.isUrgent;
+  
   document.getElementById('asmHeader').innerHTML = `
     <div class="top">
       <div class="order-no">${escapeHtml(a.orderNo || '(未填订单号)')}</div>
+      ${isUrgent ? `<span style="font-size:11px;background:linear-gradient(135deg,#ef4444,#f97316);color:#fff;padding:3px 9px;border-radius:4px;font-weight:700;box-shadow:0 2px 6px rgba(239,68,68,0.35);">🚨 加急单·速联达</span>` : ''}
       ${IS_ADMIN && window._currentItemAgent ? `<span style="font-size:11px;background:rgba(124,58,237,0.1);color:var(--purple);padding:2px 8px;border-radius:4px;font-weight:600;">👤 ${escapeHtml(window._currentItemAgent)}</span>` : ''}
       <div class="top-status"><span class="status-pill s-${a.status}" style="display:inline-flex;padding:5px 12px;">${AFTER_STATUS_LABELS[a.status]}</span></div>
     </div>
     <div class="meta">
       ${a.product ? `<span>📦 ${escapeHtml(a.product)}</span>` : ''}
       ${a.supplier ? `<span>🏭 ${escapeHtml(a.supplier)}</span>` : ''}
-      ${a.reason ? `<span style="color:var(--pink);font-weight:600;">⚠ ${escapeHtml(a.reason)}</span>` : ''}
+      ${reasonStr ? `<span style="color:var(--pink);font-weight:600;">⚠ ${escapeHtml(reasonStr)}</span>` : ''}
     </div>
   `;
-  // 原因 + 状态
-  const { main: mainReason, sub: subReason } = _parseReason(a.reason);
-  document.querySelectorAll('#asmReasonGrid .status-pill').forEach(p => p.classList.toggle('selected', p.dataset.r === mainReason));
+  
+  // V20260527d: 加急单开关(在 #asmUrgentToggle 占位)
+  const urgentEl = document.getElementById('asmUrgentToggle');
+  if (urgentEl) {
+    urgentEl.innerHTML = `
+      <button type="button" class="urgent-toggle-btn ${isUrgent ? 'on' : ''}" onclick="toggleAfterUrgent()"
+              style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;transition:all 0.15s;border:2px solid ${isUrgent ? '#ef4444' : 'var(--border)'};background:${isUrgent ? 'linear-gradient(135deg,#ef4444,#f97316)' : 'var(--bg-card)'};color:${isUrgent ? '#fff' : 'var(--text-secondary)'};box-shadow:${isUrgent ? '0 3px 10px rgba(239,68,68,0.3)' : 'none'};">
+        ${isUrgent ? '🚨' : '⚪'} 加急单(速联达·商业快递)${isUrgent ? ' · 已标记' : ''}
+      </button>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">速联达=商业快递,标记后供应商需优先安排发货</div>
+    `;
+  }
+  
+  // V20260527d: 主原因按钮高亮(多选)
+  document.querySelectorAll('#asmReasonGrid .status-pill').forEach(p => {
+    p.classList.toggle('selected', selectedMains.includes(p.dataset.r));
+  });
+  // 状态 pill 高亮
   document.querySelectorAll('#aftersalesModal .status-grid:not(#asmReasonGrid):not(#asmSubReasonGrid) .status-pill').forEach(p => p.classList.toggle('selected', p.dataset.st === a.status));
   
-  // 子原因渲染
+  // V20260527d: 子原因区 — 为每个已选主原因展开一组子原因 chip
   const subWrap = document.getElementById('asmSubReasonWrap');
   const subGrid = document.getElementById('asmSubReasonGrid');
   if (subWrap && subGrid) {
-    if (mainReason && REASON_TREE[mainReason] && REASON_TREE[mainReason].subs.length > 0) {
-      subWrap.style.display = '';
-      subGrid.innerHTML = REASON_TREE[mainReason].subs.map(s => {
-        const esc = escapeHtml(s).replace(/'/g, '&#39;');
-        const onclick = `setAfterSubReason('${s.replace(/'/g, "\\'")}')`;
-        return `<div class="status-pill ${s === subReason ? 'selected' : ''}" data-sub="${esc}" onclick="${onclick}">${esc}</div>`;
-      }).join('');
-    } else {
+    if (selectedMains.length === 0) {
       subWrap.style.display = 'none';
       subGrid.innerHTML = '';
+    } else {
+      subWrap.style.display = '';
+      subGrid.innerHTML = selectedMains.map(main => {
+        const tree = REASON_TREE[main];
+        if (!tree || !tree.subs || tree.subs.length === 0) return '';
+        const curSub = selectedSubs[main] || '';
+        const escMain = main.replace(/'/g, "\\'");
+        const pills = tree.subs.map(s => {
+          const escSub = escapeHtml(s);
+          const escSubJs = s.replace(/'/g, "\\'");
+          const sel = s === curSub ? 'selected' : '';
+          return `<div class="status-pill ${sel}" onclick="setAfterSubReason('${escMain}', '${escSubJs}')">${escSub}</div>`;
+        }).join('');
+        return `
+          <div style="margin-bottom:10px;">
+            <div style="font-size:11.5px;color:var(--text-secondary);margin-bottom:5px;font-weight:600;">
+              ${tree.icon || '·'} ${escapeHtml(main)} 
+              <span style="font-weight:400;color:var(--text-tertiary);">— 具体类型(可选)</span>
+            </div>
+            <div class="status-grid cols-3">${pills}</div>
+          </div>
+        `;
+      }).join('');
     }
   }
   
@@ -737,9 +821,70 @@ function _parseReason(reason) {
   return { main, sub: parts[1] || '' };
 }
 
-async function setAfterReason(mainReason) {
-  // 点主原因：保留主原因，清空子原因
-  persistCurrentAfter(a => { a.reason = mainReason; });
+// ============================================================
+// V20260527d: 售后原因多选辅助
+// ------------------------------------------------------------
+// 新数据结构(向后兼容):
+//   a.reasons      = ['产品瑕疵', '物流损坏']  // 主原因数组
+//   a.reasonSubs   = { '产品瑕疵': '喷漆不良/掉漆' }  // 各主类下的子原因
+//   a.reason       = '产品瑕疵 · 喷漆不良/掉漆 + 物流损坏'  // 兼容字段(同步生成)
+//   a.isUrgent     = true/false  // 加急单(速联达)
+// 老数据 a.reason 字符串自动 parse,无需迁移
+// ============================================================
+function getAfterReasons(a) {
+  // 优先读新数组;空就从老 reason 拆出来
+  if (Array.isArray(a.reasons) && a.reasons.length > 0) {
+    const subs = (a.reasonSubs && typeof a.reasonSubs === 'object') ? a.reasonSubs : {};
+    // 迁移老主原因名
+    const mains = a.reasons.map(m => REASON_MIGRATION[m] || m);
+    return { mains, subs };
+  }
+  // 兼容老数据:reason 是字符串 "主 · 子" 或多个用 " + " 拼
+  if (!a.reason) return { mains: [], subs: {} };
+  const segments = a.reason.split(' + ');
+  const mains = [];
+  const subs = {};
+  segments.forEach(seg => {
+    const { main, sub } = _parseReason(seg);
+    if (main && !mains.includes(main)) {
+      mains.push(main);
+      if (sub) subs[main] = sub;
+    }
+  });
+  return { mains, subs };
+}
+
+// 把多选 mains + subs 拼回兼容字符串(供旧代码/筛选/导出读)
+function _buildReasonString(mains, subs) {
+  if (!mains || mains.length === 0) return '';
+  return mains.map(m => {
+    const sub = subs && subs[m];
+    return sub ? `${m} · ${sub}` : m;
+  }).join(' + ');
+}
+
+// 多选 toggle:点主原因 → 加入/移除数组
+async function toggleAfterReason(mainReason) {
+  const a = currentAfter();
+  if (!a) return;
+  const { mains, subs } = getAfterReasons(a);
+  const idx = mains.indexOf(mainReason);
+  let newMains, newSubs;
+  if (idx >= 0) {
+    // 已选 → 取消,顺带移除该主类下的子原因
+    newMains = mains.filter(m => m !== mainReason);
+    newSubs = { ...subs };
+    delete newSubs[mainReason];
+  } else {
+    // 未选 → 加入末尾
+    newMains = [...mains, mainReason];
+    newSubs = { ...subs };
+  }
+  persistCurrentAfter(x => {
+    x.reasons = newMains;
+    x.reasonSubs = newSubs;
+    x.reason = _buildReasonString(newMains, newSubs);  // 同步兼容字段
+  });
   renderAfterModalContent();
   renderAftersales();
   renderAfterReport();
@@ -749,13 +894,27 @@ async function setAfterReason(mainReason) {
   catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
 }
 
-async function setAfterSubReason(subReason) {
+// 给指定主原因设置子原因(点 chip 点子原因 chip 时调)
+async function setAfterSubReason(mainReason, subReason) {
   const a = currentAfter();
   if (!a) return;
-  const main = _parseReason(a.reason).main;
-  if (!main) { toast('请先选择主原因', 'warn'); return; }
-  const newReason = subReason ? `${main} · ${subReason}` : main;
-  persistCurrentAfter(x => { x.reason = newReason; });
+  const { mains, subs } = getAfterReasons(a);
+  if (!mains.includes(mainReason)) {
+    toast('请先勾选 "' + mainReason + '" 主原因', 'warn');
+    return;
+  }
+  const newSubs = { ...subs };
+  // 再次点击同一个子原因 = 取消
+  if (newSubs[mainReason] === subReason) {
+    delete newSubs[mainReason];
+  } else {
+    newSubs[mainReason] = subReason;
+  }
+  persistCurrentAfter(x => {
+    x.reasons = mains;
+    x.reasonSubs = newSubs;
+    x.reason = _buildReasonString(mains, newSubs);
+  });
   renderAfterModalContent();
   renderAftersales();
   renderAfterReport();
@@ -763,6 +922,33 @@ async function setAfterSubReason(subReason) {
   DATA._cancelDebounce('after_' + agent);
   try { await fullSyncAftersales(agent); }
   catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
+}
+
+// V20260527d: 加急单(速联达)开关
+async function toggleAfterUrgent() {
+  const a = currentAfter();
+  if (!a) return;
+  const next = !a.isUrgent;
+  persistCurrentAfter(x => { x.isUrgent = next; });
+  renderAfterModalContent();
+  renderAftersales();
+  updateAfterStats();
+  const agent = window._currentItemAgent || CURRENT_AGENT;
+  DATA._cancelDebounce('after_' + agent);
+  try { await fullSyncAftersales(agent); }
+  catch (err) { console.error(err); toast('同步失败:' + (err.message || err), 'err'); }
+  toast(next ? '🚨 已标记为加急单(速联达)' : '已取消加急标记', 'ok');
+}
+
+// V20260527d: 顶部 chip 切换"仅加急"
+function toggleOnlyUrgentExpress() {
+  _onlyUrgentExpress = !_onlyUrgentExpress;
+  renderAftersales();
+}
+
+// 保留旧 setAfterReason 名以防其他地方误调(自动转发到 toggle)
+async function setAfterReason(mainReason) {
+  return toggleAfterReason(mainReason);
 }
 
 async function setAfterStatus(st) {
