@@ -7638,7 +7638,11 @@ HOGO
           <input type="text" id="addStoreScope" placeholder="read_orders,read_products,..." 
                  style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: 'JetBrains Mono', monospace;"
                  value="read_orders,read_products,read_customers,read_fulfillments,read_shipping,read_inventory">
-          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">默认值已填好 · 与你 app 配置的一致</div>
+          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px; line-height: 1.5;">
+            默认值已填好 · 与 app 配置一致<br>
+            如需读 60 天前的老订单 → 加 <code style="background:var(--bg-card); padding:1px 4px; border-radius:3px; color:var(--accent);">read_all_orders</code>:<br>
+            <code style="background:var(--bg-card); padding:2px 6px; border-radius:3px; font-size:11px; word-break:break-all; display:inline-block; margin-top:2px;">read_orders,read_all_orders,read_products,read_customers,read_fulfillments,read_shipping,read_inventory</code>
+          </div>
         </div>
       </div>
       
