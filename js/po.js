@@ -2328,6 +2328,8 @@ async function masterUnbindSelf() {
 // ============ 采购单 tab ============
 let PO_LIST = [];
 let PO_FILTER = 'active';  // V20260526c: 默认从 'all' 改为 'active' (店小秘式待办)
+// V20260526q: PO 店铺过滤(参考销售单)· 支持单店/多店 · manual PO(无 sales_order_id)不受影响
+let PO_SHOP_FILTER = new Set();
 let PO_SALES_ORDERS_MAP = {};
 let PO_SUPPLIER_FILTER = '';
 let PO_DATE_FILTER = null;  // {days, creator?} 时间范围筛选
@@ -2380,6 +2382,8 @@ async function renderPo() {
     poRefreshCounts();
     renderPoList();
     loadPoStats();
+    // V20260526q: 加载完 PO 后渲染店铺过滤 chip
+    if (typeof poRenderShops === 'function') poRenderShops();
   } catch (e) { toast('加载采购单失败：' + (e.message || e), 'err'); }
 }
 
@@ -2625,6 +2629,15 @@ function renderPoList() {
 
   // 供应商筛选
   if (PO_SUPPLIER_FILTER) list = list.filter(p => (p.supplier || '') === PO_SUPPLIER_FILTER);
+  
+  // V20260526q: 店铺筛选(从关联 SO 获取 shop_domain · manual PO 无 SO 关联不受过滤)
+  if (PO_SHOP_FILTER && PO_SHOP_FILTER.size > 0) {
+    list = list.filter(p => {
+      if (!p.sales_order_id) return true;  // manual PO 总是显示(没法判断店铺)
+      const so = PO_SALES_ORDERS_MAP[p.sales_order_id];
+      return so && PO_SHOP_FILTER.has(so.shop_domain || '');
+    });
+  }
 
   // 日期筛选（点击业绩卡片 或 日期下拉)
   // V20260526a: 重构 PO_DATE_FILTER 用 preset string + 可选 creator
@@ -4416,3 +4429,90 @@ async function poEditDescription(poId) {
     toast('保存失败：' + (e.message || e), 'err');
   }
 }
+
+// ============================================================
+// V20260526q: PO 店铺过滤(参考销售单 chip)
+// ============================================================
+
+function poRenderShops() {
+  const grid = document.getElementById('poStoresGrid');
+  if (!grid) return;
+  const stores = (typeof SHOPIFY !== 'undefined' && SHOPIFY._stores) ? SHOPIFY._stores : [];
+  if (stores.length === 0) {
+    grid.innerHTML = '<span style="font-size:11px; color:var(--text-tertiary);">先去销售单同步店铺</span>';
+    _updatePoShopFilterStatusBar();
+    return;
+  }
+  const connectedStores = stores.filter(s => s.connected);
+  if (connectedStores.length === 0) {
+    grid.innerHTML = '<span style="font-size:11px; color:var(--text-tertiary);">先去销售单连接店铺</span>';
+    _updatePoShopFilterStatusBar();
+    return;
+  }
+  grid.innerHTML = connectedStores.map(s => {
+    const isFiltered = PO_SHOP_FILTER.has(s.domain);
+    return `
+      <span class="store-chip connected ${isFiltered ? 'filtering' : ''}" 
+        onclick="poToggleShopFilter('${s.domain}')"
+        title="${escapeHtml(s.display_name)} · ${isFiltered ? '【当前过滤】再次点击取消 · ' : ''}点击只看该店的 PO">
+        <span class="store-chip-code">${s.site_code}</span>
+        <span class="store-chip-name">${escapeHtml(s.display_name)}</span>
+        <span class="store-chip-status">${isFiltered ? '🎯' : '✓'}</span>
+      </span>`;
+  }).join('');
+  _updatePoShopFilterStatusBar();
+}
+
+function _updatePoShopFilterStatusBar() {
+  const status = document.getElementById('poStoresFilterStatus');
+  const clearBtn = document.getElementById('poStoresClearBtn');
+  if (!status || !clearBtn) return;
+  const n = PO_SHOP_FILTER.size;
+  if (n === 0) {
+    status.style.display = 'none';
+    clearBtn.style.display = 'none';
+  } else if (n === 1) {
+    const domain = [...PO_SHOP_FILTER][0];
+    const code = (typeof SHOPIFY !== 'undefined' && SHOPIFY.siteCodeOf) ? SHOPIFY.siteCodeOf(domain) : domain.split('.')[0];
+    status.textContent = `仅显示 ${code} 的 PO`;
+    status.className = 'shop-filter-status';
+    status.style.display = '';
+    clearBtn.style.display = '';
+  } else {
+    status.textContent = `过滤 ${n} 家店的 PO`;
+    status.className = 'shop-filter-status multi';
+    status.style.display = '';
+    clearBtn.style.display = '';
+  }
+}
+
+function poToggleShopFilter(domain) {
+  const isOnlyThis = PO_SHOP_FILTER.size === 1 && PO_SHOP_FILTER.has(domain);
+  if (isOnlyThis) {
+    PO_SHOP_FILTER.clear();
+    toast('已清除店铺过滤,显示全部 PO', 'info', 1200);
+  } else if (PO_SHOP_FILTER.has(domain)) {
+    PO_SHOP_FILTER.delete(domain);
+    const code = (SHOPIFY && SHOPIFY.siteCodeOf) ? SHOPIFY.siteCodeOf(domain) : domain;
+    toast(`已从过滤中移除 ${code}`, 'info', 1200);
+  } else {
+    PO_SHOP_FILTER.add(domain);
+    const code = (SHOPIFY && SHOPIFY.siteCodeOf) ? SHOPIFY.siteCodeOf(domain) : domain;
+    toast(`已添加 ${code} 到过滤`, 'info', 1200);
+  }
+  poRenderShops();
+  PO_PAGE = 1;
+  renderPoList();
+}
+window.poToggleShopFilter = poToggleShopFilter;
+
+function poClearShopFilter() {
+  if (PO_SHOP_FILTER.size === 0) return;
+  PO_SHOP_FILTER.clear();
+  poRenderShops();
+  PO_PAGE = 1;
+  renderPoList();
+  toast('已显示全部店铺的 PO', 'info', 1200);
+}
+window.poClearShopFilter = poClearShopFilter;
+window.poRenderShops = poRenderShops;

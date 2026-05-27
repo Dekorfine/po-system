@@ -2223,7 +2223,13 @@ function renderActiveTab() {
       }).catch(e => console.warn('销售单加载失败:', e));
     }
   }
-  else if (CURRENT_TAB === 'po') { if (typeof renderPo === 'function') renderPo(); }
+  else if (CURRENT_TAB === 'po') {
+    if (typeof renderPo === 'function') renderPo();
+    // V20260526q: 切到 PO tab 时刷新店铺过滤 chip(店铺列表来自 SHOPIFY._stores)
+    if (typeof poRenderShops === 'function') {
+      setTimeout(() => poRenderShops(), 80);
+    }
+  }
   else if (CURRENT_TAB === 'finance') { if (typeof renderFinance === 'function') renderFinance(); }
   else if (CURRENT_TAB === 'products') { if (typeof renderProducts === 'function') renderProducts(); }
   else if (CURRENT_TAB === 'analytics') { renderAnalytics(); }

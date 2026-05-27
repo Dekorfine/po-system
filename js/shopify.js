@@ -178,7 +178,46 @@ function renderShopifyStores() {
         </span>`;
     }
   }).join('');
+  
+  // V20260526q: 更新过滤状态条 + 清除按钮显隐
+  _updateShopFilterStatusBar();
 }
+
+// V20260526q: 显示当前过滤状态(共用辅助函数)
+function _updateShopFilterStatusBar() {
+  const status = document.getElementById('salesStoresFilterStatus');
+  const clearBtn = document.getElementById('salesStoresClearBtn');
+  if (!status || !clearBtn) return;
+  
+  const n = (SHOPIFY_SEARCH?.shops?.size) || 0;
+  if (n === 0) {
+    status.style.display = 'none';
+    clearBtn.style.display = 'none';
+  } else if (n === 1) {
+    const domain = [...SHOPIFY_SEARCH.shops][0];
+    const code = SHOPIFY?.siteCodeOf?.(domain) || domain.split('.')[0];
+    status.textContent = `仅显示 ${code}`;
+    status.className = 'shop-filter-status';
+    status.style.display = '';
+    clearBtn.style.display = '';
+  } else {
+    status.textContent = `过滤 ${n} 家店`;
+    status.className = 'shop-filter-status multi';
+    status.style.display = '';
+    clearBtn.style.display = '';
+  }
+}
+
+// V20260526q: 清除店铺过滤 · 显示全部店订单
+function shopifyClearShopFilter() {
+  if (!SHOPIFY_SEARCH || !SHOPIFY_SEARCH.shops) return;
+  SHOPIFY_SEARCH.shops.clear();
+  if (typeof shopifyRenderShops === 'function') shopifyRenderShops();
+  if (typeof shopifyRenderShopFilter === 'function') shopifyRenderShopFilter();
+  if (typeof shopifyDoSearch === 'function') shopifyDoSearch();
+  toast('已显示全部店铺的订单', 'info', 1200);
+}
+window.shopifyClearShopFilter = shopifyClearShopFilter;
 
 async function shopifyRenameStore(storeId, currentName) {
   const newName = await showPrompt({
