@@ -297,31 +297,109 @@ async function saveCustomPo() {
   try {
     const { error } = await sb.from('orders').insert(poRow);
     if (error) throw error;
-    // 同步产品表（新 SKU 入库）
-    for (const li of validLines) {
-      try {
-        const { data: existing } = await sb.from('products').select('id').eq('sku', li.sku.trim()).maybeSingle();
-        if (!existing) {
-          await sb.from('products').insert({
-            sku: li.sku.trim(),
-            name_cn: li.title.trim(),
-            spec_en: li.variant.trim(),
-            image_url: li.image_url || null,
-            last_purchase_price: li.price,
-            default_supplier: supName,
-            last_purchased_at: new Date().toISOString(),
-          });
-        }
-      } catch (e) { console.warn('同步产品失败:', e); }
-    }
+    
+    // V20260527r: 双向同步 · 把当前 PO 的(产品 ↔ 供应商)关系写回 products.suppliers
+    const syncResult = await _syncSuppliersFromPoLines(supName, validLines);
+    
+    // 主 toast
     toast(needsApproval ? `✓ 已创建 ${poNum}，等主管审批` : `✓ 已创建采购单 ${poNum}`);
+    
+    // V27o 同步结果提示(仅在有新增/append 时显示 · 让用户感知)
+    if (syncResult.newCount > 0 || syncResult.appendedCount > 0) {
+      const parts = [];
+      if (syncResult.newCount > 0) parts.push(`新建 ${syncResult.newCount} 个产品`);
+      if (syncResult.appendedCount > 0) parts.push(`${syncResult.appendedCount} 个产品加了供应商「${supName}」`);
+      setTimeout(() => toast(`📦 产品库已同步:${parts.join(' · ')}`, 'info', 2500), 600);
+    }
+    
     closeCustomPoModal();
     await renderPo();  // 刷新 PO 列表
     if (PO_FILTER !== 'pending' && needsApproval) toast('请进「⏳ 待审批」子tab 查看', 'info');
   } catch (e) {
-    toast('保存失败：' + (e.message || e), 'err');
+    toast('保存失败:' + (e.message || e), 'err');
   }
 }
+
+// V20260527r: 把 PO 的(产品 ↔ 供应商)关系同步写回 products.suppliers
+// 通用 helper · customPo / batchPo 都调用
+// li 必须有:sku, title(可选), variant(可选), image_url(可选), price, qty
+// 返回:{ newCount, appendedCount, priceUpdatedCount }
+async function _syncSuppliersFromPoLines(supName, lineItems) {
+  const stats = { newCount: 0, appendedCount: 0, priceUpdatedCount: 0 };
+  if (!supName || !Array.isArray(lineItems) || lineItems.length === 0) return stats;
+  
+  for (const li of lineItems) {
+    try {
+      const sku = (li.sku || '').trim();
+      if (!sku) continue;
+      const { data: existing } = await sb.from('products')
+        .select('id, suppliers, default_supplier').eq('sku', sku).maybeSingle();
+      
+      if (!existing) {
+        // 新 SKU · 创建 + supplier 作为第一项默认
+        await sb.from('products').insert({
+          sku,
+          name_cn: (li.title || li.title_cn || '').trim(),
+          spec_en: (li.variant || '').trim(),
+          image_url: li.image_url || null,
+          last_purchase_price: li.price,
+          default_supplier: supName,
+          suppliers: [{ 
+            name: supName, note: '', is_default: true, 
+            last_price: li.price, sort_order: 0 
+          }],
+          last_purchased_at: new Date().toISOString(),
+        });
+        stats.newCount++;
+      } else {
+        let currentSuppliers = Array.isArray(existing.suppliers) ? existing.suppliers.slice() : [];
+        // 数组空但老 default_supplier 有值 · 先转入数组
+        if (currentSuppliers.length === 0 && existing.default_supplier) {
+          currentSuppliers.push({
+            name: existing.default_supplier, note: '', is_default: true,
+            last_price: null, sort_order: 0
+          });
+        }
+        
+        const existIdx = currentSuppliers.findIndex(s => (s.name || '').trim() === supName);
+        if (existIdx >= 0) {
+          // 已在 · 更新 last_price
+          currentSuppliers[existIdx].last_price = li.price;
+          stats.priceUpdatedCount++;
+        } else {
+          // 不在 · append · 没默认就设为默认
+          const hasDefault = currentSuppliers.some(s => s.is_default);
+          currentSuppliers.push({
+            name: supName, note: '',
+            is_default: !hasDefault,
+            last_price: li.price,
+            sort_order: currentSuppliers.length
+          });
+          stats.appendedCount++;
+        }
+        
+        const defaultName = currentSuppliers.find(s => s.is_default)?.name || supName;
+        
+        await sb.from('products').update({
+          suppliers: currentSuppliers,
+          default_supplier: defaultName,
+          last_purchase_price: li.price,
+          last_purchased_at: new Date().toISOString(),
+        }).eq('id', existing.id);
+      }
+    } catch (e) { 
+      console.warn('同步产品/供应商失败 SKU=' + (li.sku || '?'), e);
+    }
+  }
+  
+  // 让 PRODUCTS_CACHE 失效 · 下次进产品 tab 自动重新加载
+  if (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE._lastLoaded) {
+    PRODUCTS_CACHE._lastLoaded = 0;
+  }
+  
+  return stats;
+}
+window._syncSuppliersFromPoLines = _syncSuppliersFromPoLines;
 
 
 // ============================================================

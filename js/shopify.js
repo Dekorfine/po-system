@@ -2376,6 +2376,11 @@ async function batchPoSubmit() {
       if (insErr) throw insErr;
       created.push(insertedPo);
       
+      // V20260527r: 双向同步 · 把这张批量 PO 的(产品 ↔ 供应商)关系写回 products.suppliers
+      if (typeof _syncSuppliersFromPoLines === 'function') {
+        try { await _syncSuppliersFromPoLines(supName, liData); } catch (e) { console.warn('批量PO同步供应商失败', e); }
+      }
+      
       // 更新每个销售订单的 line_items[].po_assignments
       const ordersByOrderId = {};
       liData.forEach(li => {
