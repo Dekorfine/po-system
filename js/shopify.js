@@ -2281,3 +2281,146 @@ async function batchPoSubmit() {
     toast(`❌ 全部失败 (${failed} 张)`, 'err');
   }
 }
+
+// ============================================================
+// V20260526q: 手动添加店铺(跨 organization 用 · 直接填 token)
+// ============================================================
+
+function shopifyOpenAddStore() {
+  // 清空表单
+  ['addStoreDomain', 'addStoreDisplayName', 'addStoreSiteCode', 'addStoreToken'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const hint = document.getElementById('addStoreHint');
+  if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
+  
+  // 打开 modal
+  if (typeof openModal === 'function') {
+    openModal('shopifyAddStoreModal');
+  } else {
+    document.getElementById('shopifyAddStoreModal').style.display = 'flex';
+    document.getElementById('shopifyAddStoreModal').classList.add('show');
+  }
+  
+  setTimeout(() => document.getElementById('addStoreDomain')?.focus(), 100);
+}
+window.shopifyOpenAddStore = shopifyOpenAddStore;
+
+async function shopifySubmitAddStore() {
+  const domain = (document.getElementById('addStoreDomain')?.value || '').trim().toLowerCase();
+  const displayName = (document.getElementById('addStoreDisplayName')?.value || '').trim();
+  const siteCode = (document.getElementById('addStoreSiteCode')?.value || '').trim().toUpperCase();
+  const token = (document.getElementById('addStoreToken')?.value || '').trim();
+  const scope = (document.getElementById('addStoreScope')?.value || '').trim();
+  
+  const hint = document.getElementById('addStoreHint');
+  const submitBtn = document.getElementById('addStoreSubmitBtn');
+  const showHint = (msg, type) => {
+    if (!hint) return;
+    const colors = {
+      err:  { bg: '#fef2f2', color: '#991b1b', border: 'rgba(220,38,38,0.3)' },
+      ok:   { bg: '#f0fdf4', color: '#166534', border: 'rgba(22,163,74,0.3)' },
+      info: { bg: '#eff6ff', color: '#1e40af', border: 'rgba(37,99,235,0.3)' },
+    };
+    const c = colors[type] || colors.info;
+    hint.style.cssText = `display:block; margin-top:14px; padding:10px 14px; border-radius:6px; font-size:12px; background:${c.bg}; color:${c.color}; border:1px solid ${c.border};`;
+    hint.textContent = msg;
+  };
+  
+  // 1. 校验
+  if (!domain) return showHint('请输入店铺域名', 'err');
+  if (!/^[a-z0-9-]+\.myshopify\.com$/.test(domain)) {
+    return showHint('域名格式错误,正确格式:xxxx.myshopify.com', 'err');
+  }
+  if (!displayName) return showHint('请填写显示名', 'err');
+  if (!siteCode) return showHint('请填写 Site Code', 'err');
+  if (!/^[A-Z0-9]{2,6}$/.test(siteCode)) return showHint('Site Code 必须是 2-6 个大写字母/数字', 'err');
+  if (!token) return showHint('请粘贴 Admin API access token', 'err');
+  if (!token.startsWith('shpat_') && !token.startsWith('shppa_')) {
+    return showHint('Token 格式错误 · Shopify Admin API token 通常以 shpat_ 开头', 'err');
+  }
+  
+  submitBtn.classList.add('loading');
+  submitBtn.disabled = true;
+  
+  try {
+    // 2. 验证 token 是否有效(调用 Shopify API · 拿 shop 信息)
+    showHint('正在验证 token · 调用 Shopify API…', 'info');
+    
+    const verifyRes = await fetch(`https://${domain}/admin/api/2026-04/shop.json`, {
+      headers: { 'X-Shopify-Access-Token': token },
+    });
+    
+    if (!verifyRes.ok) {
+      const errText = await verifyRes.text();
+      let msg = `Token 验证失败(HTTP ${verifyRes.status})`;
+      if (verifyRes.status === 401) msg = 'Token 无效或已过期 · 请检查';
+      if (verifyRes.status === 403) msg = 'Token 权限不足 · 请检查 API Scopes';
+      if (verifyRes.status === 404) msg = '店铺不存在 · 请检查域名';
+      throw new Error(msg + ' · ' + errText.slice(0, 100));
+    }
+    
+    const { shop } = await verifyRes.json();
+    
+    // 3. 检查是否已存在
+    showHint('✓ Token 验证通过 · 正在写入数据库…', 'info');
+    
+    const { data: existing, error: queryErr } = await sb
+      .from('shopify_stores')
+      .select('id, shop_domain')
+      .eq('shop_domain', domain)
+      .maybeSingle();
+    
+    if (queryErr) throw queryErr;
+    
+    const payload = {
+      shop_domain: domain,
+      shop_name: domain.replace('.myshopify.com', ''),
+      display_name: displayName,
+      site_code: siteCode,
+      access_token: token,
+      scope: scope || 'read_orders,read_products,read_customers,read_fulfillments,read_shipping,read_inventory',
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    };
+    
+    let action = '';
+    if (existing) {
+      // 已存在 → 询问是否覆盖
+      if (!confirm(`店铺 ${domain} 已存在,确认覆盖 token 和配置吗?`)) {
+        submitBtn.classList.remove('loading');
+        submitBtn.disabled = false;
+        return showHint('已取消,未做任何更改', 'info');
+      }
+      const { error } = await sb.from('shopify_stores').update(payload).eq('id', existing.id);
+      if (error) throw error;
+      action = '更新';
+    } else {
+      const { error } = await sb.from('shopify_stores').insert(payload);
+      if (error) throw error;
+      action = '添加';
+    }
+    
+    showHint(`✓ ${action}成功 · 店铺 ${shop?.name || displayName} (${siteCode}) 已可用`, 'ok');
+    toast(`✓ ${action}成功:${displayName} (${siteCode})`, 'success', 3000);
+    
+    // 1.5 秒后关闭 modal + 刷新店铺列表
+    setTimeout(() => {
+      if (typeof closeModal === 'function') closeModal('shopifyAddStoreModal');
+      else {
+        document.getElementById('shopifyAddStoreModal').style.display = 'none';
+        document.getElementById('shopifyAddStoreModal').classList.remove('show');
+      }
+      if (typeof shopifyReloadStores === 'function') shopifyReloadStores();
+    }, 1500);
+    
+  } catch (e) {
+    console.error('添加店铺失败:', e);
+    showHint('❌ ' + (e.message || e), 'err');
+  } finally {
+    submitBtn.classList.remove('loading');
+    submitBtn.disabled = false;
+  }
+}
+window.shopifySubmitAddStore = shopifySubmitAddStore;
