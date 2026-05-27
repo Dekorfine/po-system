@@ -10,6 +10,25 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260527v',
+    date: '2026-05-27',
+    type: 'fix',
+    title: '🐛 修「+ 新建跨部门消息」modal 布局错乱 · 巨大空白 + 表单挤左下角',
+    notes: [
+      '🔍 用户截图:modal 内 grid 错乱 · 左列堆 chip 和小输入框 · 右列只剩 label · 中间巨大空白',
+      '🔍 根因猜测:.cdm-form-grid 用 grid-template-columns: 110px 1fr · 当 watcher 区(13 个 chip)高度过大时可能撑乱 grid · 加上 align-items:center 导致 label 被居中拉跨多行',
+      '',
+      '✅ 修法:不再用 2 列 grid · 改成简单的垂直堆叠(label 在上 · input 在下)',
+      '   · 这是标准表单布局 · 不会有 grid 错乱风险',
+      '   · label 字体加粗到 600 · 跟 input 紧贴(margin-bottom: -4px)',
+      '   · 不再 text-align: right(竖排不需要)',
+      '',
+      '✅ 顺手删了 modal HTML 里一个空 label(原 grid 占位用 · 现在垂直布局多余)',
+      '',
+      '🔒 只改 index.html(CSS + HTML)· cross-dept.js 没动 · 升 help.js → v20260527v',
+    ],
+  },
+  {
     v: '20260527u',
     date: '2026-05-27',
     type: 'feature',
