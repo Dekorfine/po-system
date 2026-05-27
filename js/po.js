@@ -10,6 +10,10 @@ let CUSTOM_PO_STATE = null;
 async function openCustomPoModal() {
   // 确保供应商列表已加载
   await SUPPLIERS.loadAll();
+  // V20260527s: 预加载产品库(供 SKU 在库提示用 · 不阻塞 modal 打开)
+  if (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.loadAll) {
+    PRODUCTS_CACHE.loadAll().catch(() => {});
+  }
   const today = new Date().toISOString().slice(0, 10);
   CUSTOM_PO_STATE = {
     supplierName: '',
@@ -34,7 +38,8 @@ function renderCustomPo() {
   const s = CUSTOM_PO_STATE;
   const body = document.getElementById('customPoBody');
   const lineItemsHtml = s.lineItems.map((li, i) => `
-    <div style="display:grid; grid-template-columns: 90px 1fr 80px 90px 90px 36px; gap:8px; padding:10px; border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:8px; align-items:start;">
+    <div style="border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:8px; padding:0;">
+      <div style="display:grid; grid-template-columns: 90px 1fr 80px 90px 90px 36px; gap:8px; padding:10px; align-items:start;">
       <div data-li-img="${li.id}">
         ${li.image_url ? `<img src="${escapeHtml(li.image_url)}" style="width:90px; height:90px; object-fit:cover; border-radius:6px; cursor:pointer;" onclick="cpoEditLineImage('${li.id}')">` : `<div onclick="cpoEditLineImage('${li.id}')" style="width:90px; height:90px; border:2px dashed var(--border); border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text-tertiary); font-size:11px; text-align:center;">📷<br>添加图片</div>`}
       </div>
@@ -55,6 +60,9 @@ function renderCustomPo() {
       <input type="number" min="0" step="0.01" placeholder="单价" value="${li.price}" oninput="cpoSetLine('${li.id}','price',this.value); updateCpoTotal();" style="width:100%; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:5px; text-align:center;">
       <div style="text-align:right; font-family:monospace; font-size:12px; align-self:center;" data-li-subtotal="${li.id}">${(Number(li.qty) * Number(li.price)).toFixed(2)}</div>
       <button class="btn small" onclick="cpoRemoveLine('${li.id}')" style="align-self:center; ${s.lineItems.length <= 1 ? 'opacity:0.4; pointer-events:none;' : 'color:var(--danger);'}" title="${s.lineItems.length <= 1 ? '至少需要一行' : '删除此行'}">✕</button>
+      </div>
+      <!-- V20260527s: 供应商提示区(SKU 在库时显示) -->
+      <div data-li-supplier-hint="${li.id}" style="padding:0 10px 8px; display:none;"></div>
     </div>
   `).join('');
 
@@ -105,6 +113,14 @@ function renderCustomPo() {
     </div>
   `;
   updateCpoTotal();
+  // V20260527s: 初次渲染后,为已有 SKU 的行触发供应商提示
+  setTimeout(() => {
+    s.lineItems.forEach(li => {
+      if ((li.sku || '').trim() && typeof _cpoUpdateLineSupplierHint === 'function') {
+        _cpoUpdateLineSupplierHint(li);
+      }
+    });
+  }, 0);
 }
 
 function cpoSetLine(id, field, val) {
@@ -115,7 +131,87 @@ function cpoSetLine(id, field, val) {
   else li[field] = val;
   const subEl = document.querySelector(`[data-li-subtotal="${id}"]`);
   if (subEl) subEl.textContent = (Number(li.qty) * Number(li.price)).toFixed(2);
+  // V20260527s: SKU 变化 → 查产品库 → 提示已有供应商(debounce 250ms)
+  if (field === 'sku') {
+    if (li._supHintTimer) clearTimeout(li._supHintTimer);
+    li._supHintTimer = setTimeout(() => _cpoUpdateLineSupplierHint(li), 250);
+  }
 }
+
+// V20260527s: 异步查产品库 + 渲染供应商提示
+async function _cpoUpdateLineSupplierHint(li) {
+  const hintEl = document.querySelector(`[data-li-supplier-hint="${li.id}"]`);
+  if (!hintEl) return;
+  const sku = (li.sku || '').trim();
+  if (!sku) { hintEl.innerHTML = ''; hintEl.style.display = 'none'; return; }
+  
+  // 优先从 PRODUCTS_CACHE 找(快)· 找不到再查 DB
+  let product = null;
+  if (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE._all) {
+    product = PRODUCTS_CACHE._all.find(p => (p.sku || '').trim() === sku);
+  }
+  if (!product) {
+    try {
+      const { data } = await sb.from('products')
+        .select('id, sku, suppliers, default_supplier').eq('sku', sku).maybeSingle();
+      product = data;
+    } catch (_) {}
+  }
+  
+  if (!product) {
+    // 新 SKU · 提示会自动入库
+    hintEl.innerHTML = `<div style="font-size:11px; color:var(--text-tertiary); padding:4px 0;">💡 新 SKU · 保存 PO 时会自动加入产品库</div>`;
+    hintEl.style.display = '';
+    return;
+  }
+  
+  const supps = (typeof _getProductSuppliers === 'function') ? _getProductSuppliers(product) : [];
+  if (supps.length === 0) {
+    hintEl.innerHTML = `<div style="font-size:11px; color:var(--text-tertiary); padding:4px 0;">📦 此 SKU 在库 · 但还没设供应商</div>`;
+    hintEl.style.display = '';
+    return;
+  }
+  
+  // 显示供应商列表 + 一键设为 PO 供应商
+  const currentSup = (CUSTOM_PO_STATE.supplierName || '').trim();
+  hintEl.innerHTML = `
+    <div style="display:flex; align-items:center; gap:6px; padding:6px 8px; background:rgba(13,148,136,0.05); border-left:3px solid var(--teal); border-radius:0 4px 4px 0; flex-wrap:wrap;">
+      <span style="font-size:11px; color:var(--text-secondary); font-weight:500;">📦 此产品已有:</span>
+      ${supps.map(s => {
+        const isCurrent = s.name === currentSup;
+        return `<span 
+          onclick="${isCurrent ? '' : `cpoUseSuggestedSupplier('${escapeHtml(s.name).replace(/'/g, "\\'")}')`}"
+          style="display:inline-flex; align-items:center; gap:3px; padding:2px 8px; font-size:11px; border-radius:10px; cursor:${isCurrent ? 'default' : 'pointer'}; ${isCurrent ? 'background:var(--accent); color:white; font-weight:600;' : (s.is_default ? 'background:rgba(22,163,74,0.1); color:#15803d; border:1px solid rgba(22,163,74,0.3);' : 'background:white; color:var(--text-secondary); border:1px solid var(--border);')}"
+          title="${isCurrent ? '当前已选' : '点击设为本 PO 供应商'}${s.note ? ' · ' + escapeHtml(s.note) : ''}${s.last_price ? ' · 上次 ¥' + Number(s.last_price).toFixed(2) : ''}">
+          ${s.is_default && !isCurrent ? '🥇 ' : ''}${isCurrent ? '✓ ' : ''}${escapeHtml(s.name)}${s.note ? `<span style="color:var(--text-tertiary); font-weight:400;">·${escapeHtml(s.note)}</span>` : ''}
+        </span>`;
+      }).join('')}
+    </div>
+  `;
+  hintEl.style.display = '';
+}
+
+// V20260527s: 点击产品行的供应商建议 → 自动填到 PO 顶部供应商字段
+function cpoUseSuggestedSupplier(name) {
+  if (!name || !CUSTOM_PO_STATE) return;
+  const input = document.getElementById('cpoSupplierInput');
+  if (input) {
+    input.value = name;
+    CUSTOM_PO_STATE.supplierName = name;
+    // 查 SUPPLIERS 设 ID(若已存在)· 否则保存时会新增
+    const found = SUPPLIERS.byName(name);
+    CUSTOM_PO_STATE.supplierId = found ? found.id : null;
+  }
+  // 关掉下拉
+  const r = document.getElementById('cpoSupplierResults');
+  if (r) r.style.display = 'none';
+  toast(`✓ 已设供应商「${name}」`, 'info', 1200);
+  // 刷新所有行的提示(让"当前已选"高亮跟着变)
+  if (CUSTOM_PO_STATE?.lineItems) {
+    CUSTOM_PO_STATE.lineItems.forEach(li => _cpoUpdateLineSupplierHint(li));
+  }
+}
+window.cpoUseSuggestedSupplier = cpoUseSuggestedSupplier;
 
 function cpoAddLine() {
   const newId = 'cpo-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
