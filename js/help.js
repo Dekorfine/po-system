@@ -10,6 +10,31 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260527w',
+    date: '2026-05-27',
+    type: 'fix',
+    title: '🐛 修「📨 拍摄需求」tab 入口不显示 · 27t 漏了 3 处注册',
+    notes: [
+      '🔍 用户反馈:进系统没看到拍摄需求入口 · 顶部没 · 左侧栏也没',
+      '🔍 根因:tab 入口需要 4 处注册 · 27t 只做了 2 处',
+      '   ✓ ALL_MODULES 数据条目(已加)',
+      '   ✓ <div class="tab-content" data-tab="photoreq"> 内容容器(已加)',
+      '   ❌ <div class="tab-item" data-tab="photoreq"> 顶部 nav 元素(漏)← 这是用户能看到的入口',
+      '   ❌ TAB_LAYOUT_DEFAULT 默认 zone(漏)· side 还是 top',
+      '   ❌ TAB_META icon + label + badgeId(漏)· sidebar 没法渲染',
+      '',
+      '✅ 补 3 处:',
+      '   · TAB_LAYOUT_DEFAULT.photoreq = "side"(默认左侧栏 · 用户可拖到顶部)',
+      '   · TAB_META.photoreq = { icon: "📨", label: "拍摄需求", badgeId: null }',
+      '   · index.html 顶部 tab-nav 加 <div class="tab-item" data-tab="photoreq">',
+      '',
+      '🎯 这次推完应该在 sidebar 看到 📨 拍摄需求(在 📊 绩效 下面)',
+      '   · 想拖到顶部?点 sidebar 底部 [📐 自定义布局]',
+      '',
+      '🔒 升 core.js / help.js → v20260527w(跳过 v 已用)',
+    ],
+  },
+  {
     v: '20260527v',
     date: '2026-05-27',
     type: 'fix',

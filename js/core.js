@@ -2569,6 +2569,7 @@ const TAB_LAYOUT_DEFAULT = {
   consolidation: 'side',
   performance:   'side',
   analytics:     'side',
+  photoreq:      'side',
 };
 const TAB_META = {
   sales:         { icon: '📥', label: '销售单',     badgeId: 'badgeSales' },
@@ -2585,6 +2586,7 @@ const TAB_META = {
   consolidation: { icon: '🧊', label: '合箱',       badgeId: null },
   analytics:     { icon: '📈', label: '数据',       badgeId: null },
   performance:   { icon: '📊', label: '绩效',       badgeId: 'badgePerformance' },
+  photoreq:      { icon: '📨', label: '拍摄需求',   badgeId: null },
 };
 
 function getTabLayout() {
