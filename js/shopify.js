@@ -254,26 +254,28 @@ function populateFetchShopDropdown() {
 function shopifyQuickFetchFromCard(domain) {
   switchTab('sales');
   setTimeout(() => {
-    // V20260526q: 点店铺 chip 同时设置过滤 · 只显示这家店的订单
-    // 之前只触发同步,但不过滤列表 · 用户点了 PL 还看到其他店
+    // V20260527: 点 chip 只做本地过滤(瞬间)· 不再触发 Shopify API 拉数据(慢)
+    // 用户想拉最新数据请单独点 [📥 拉单] 按钮 · 或顶部 [🔄 刷新]
+    // 这样切换店铺像店小秘一样流畅
     if (typeof SHOPIFY_SEARCH !== 'undefined' && SHOPIFY_SEARCH.shops) {
-      // 智能切换:如果只有这一家被过滤,再次点击 = 清除过滤(看全部)
       const isOnlyThis = SHOPIFY_SEARCH.shops.size === 1 && SHOPIFY_SEARCH.shops.has(domain);
       if (isOnlyThis) {
-        SHOPIFY_SEARCH.shops.clear();  // 清除 → 看全部
-        toast('已清除店铺过滤,显示全部订单', 'info', 1500);
+        SHOPIFY_SEARCH.shops.clear();
+        toast('已清除店铺过滤,显示全部订单', 'info', 1200);
       } else {
-        SHOPIFY_SEARCH.shops = new Set([domain]);  // 单店过滤
+        SHOPIFY_SEARCH.shops = new Set([domain]);
         const code = (SHOPIFY?.siteCodeOf && SHOPIFY.siteCodeOf(domain)) || domain.split('.')[0];
-        toast(`✓ 已切换到 ${code} 的订单`, 'info', 1500);
+        toast(`✓ 已切换到 ${code} 的订单`, 'info', 1200);
       }
-      // 渲染上方 chip 高亮 + 下方 country-chip
       if (typeof shopifyRenderShops === 'function') shopifyRenderShops();
       if (typeof shopifyRenderShopFilter === 'function') shopifyRenderShopFilter();
+      // 关键:本地过滤 + 重新渲染 · 瞬间生效
+      if (typeof shopifyDoSearch === 'function') shopifyDoSearch();
     }
-    document.getElementById('salesFetchShop').value = domain;
-    shopifyFetchOrders();  // 同步该店数据 · 同步后会重新 render 应用过滤
-  }, 100);
+    // 隐藏 select 也设值(为了后续手动拉单时知道是哪家店)
+    const sel = document.getElementById('salesFetchShop');
+    if (sel) sel.value = domain;
+  }, 50);
 }
 
 function setSalesDefaultDates() {
@@ -2425,3 +2427,145 @@ async function shopifySubmitAddStore() {
   }
 }
 window.shopifySubmitAddStore = shopifySubmitAddStore;
+
+// ============================================================
+// V20260527: 店铺管理 modal (列表 + 添加 + 删除)
+// ============================================================
+
+function shopifyMgrSwitchTab(tab) {
+  // 切换 tab 高亮
+  document.querySelectorAll('.store-mgr-tab').forEach(b => {
+    const active = b.dataset.stab === tab;
+    b.style.borderBottomColor = active ? 'var(--accent)' : 'transparent';
+    b.style.color = active ? 'var(--accent)' : 'var(--text-secondary)';
+    b.classList.toggle('active', active);
+  });
+  // 切换内容
+  document.getElementById('storeMgrTabList').style.display = (tab === 'list') ? 'block' : 'none';
+  document.getElementById('storeMgrTabAdd').style.display = (tab === 'add') ? 'block' : 'none';
+  // 切换底部按钮
+  const submitBtn = document.getElementById('addStoreSubmitBtn');
+  if (submitBtn) submitBtn.style.display = (tab === 'add') ? '' : 'none';
+  
+  if (tab === 'list') {
+    shopifyMgrRenderList();
+  }
+}
+window.shopifyMgrSwitchTab = shopifyMgrSwitchTab;
+
+async function shopifyMgrRenderList() {
+  const wrap = document.getElementById('storeMgrList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="text-align:center; padding:40px 20px; color:var(--text-tertiary); font-size:13px;">加载中...</div>';
+  
+  try {
+    const { data, error } = await sb.from('shopify_stores')
+      .select('id, shop_domain, shop_name, display_name, site_code, is_active, scope, updated_at, created_at')
+      .order('shop_domain');
+    
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      wrap.innerHTML = '<div style="text-align:center; padding:40px 20px; color:var(--text-tertiary); font-size:13px;">还没有连接任何店铺<br>点上方「➕ 手动添加新店」开始</div>';
+      return;
+    }
+    
+    let html = `
+      <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+        <thead>
+          <tr style="background:var(--bg-elevated); border-bottom:2px solid var(--border);">
+            <th style="padding:10px 8px; text-align:left; font-weight:600;">Code</th>
+            <th style="padding:10px 8px; text-align:left; font-weight:600;">域名</th>
+            <th style="padding:10px 8px; text-align:left; font-weight:600;">显示名</th>
+            <th style="padding:10px 8px; text-align:center; font-weight:600; width:60px;">状态</th>
+            <th style="padding:10px 8px; text-align:center; font-weight:600; width:170px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>`;
+    
+    data.forEach(s => {
+      const codeBadge = s.site_code 
+        ? `<span style="background:var(--bg-elevated); padding:3px 8px; border-radius:4px; font-family:monospace; font-weight:700; font-size:11px;">${escapeHtml(s.site_code)}</span>`
+        : `<span style="color:var(--text-tertiary); font-size:11px;">未设</span>`;
+      const activeBadge = s.is_active
+        ? `<span style="background:rgba(21,128,61,0.1); color:var(--success); padding:3px 8px; border-radius:4px; font-size:11px; font-weight:600;">✓ 活跃</span>`
+        : `<span style="background:rgba(107,114,128,0.1); color:var(--text-tertiary); padding:3px 8px; border-radius:4px; font-size:11px; font-weight:600;">已停用</span>`;
+      
+      html += `
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:10px 8px;">${codeBadge}</td>
+          <td style="padding:10px 8px; font-family:monospace; color:var(--accent); font-size:11.5px; word-break:break-all;">${escapeHtml(s.shop_domain)}</td>
+          <td style="padding:10px 8px;">${escapeHtml(s.display_name || s.shop_name || '')}</td>
+          <td style="padding:10px 8px; text-align:center;">${activeBadge}</td>
+          <td style="padding:10px 8px; text-align:center;">
+            <button class="btn small" onclick="shopifyMgrToggleActive('${s.id}', ${s.is_active})" title="${s.is_active ? '停用' : '激活'}" style="padding:4px 8px; font-size:11px;">${s.is_active ? '⏸ 停用' : '▶ 激活'}</button>
+            <button class="btn small" onclick="shopifyMgrDelete('${s.id}', '${escapeHtml(s.shop_domain).replace(/'/g, '&#39;')}')" title="删除连接" style="padding:4px 8px; font-size:11px; background:rgba(220,38,38,0.06); border-color:rgba(220,38,38,0.3); color:var(--danger);">🗑 删除</button>
+          </td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+  } catch (e) {
+    wrap.innerHTML = `<div style="color:var(--danger); padding:20px; font-size:13px;">加载失败:${escapeHtml(e.message || String(e))}</div>`;
+  }
+}
+window.shopifyMgrRenderList = shopifyMgrRenderList;
+
+async function shopifyMgrToggleActive(id, currentActive) {
+  try {
+    const { error } = await sb.from('shopify_stores')
+      .update({ is_active: !currentActive, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+    toast(currentActive ? '已停用' : '已激活', 'info', 1200);
+    await shopifyMgrRenderList();
+    if (typeof shopifyReloadStores === 'function') shopifyReloadStores();
+  } catch (e) {
+    toast('操作失败:' + (e.message || e), 'err');
+  }
+}
+window.shopifyMgrToggleActive = shopifyMgrToggleActive;
+
+async function shopifyMgrDelete(id, domain) {
+  const confirmed = confirm(
+    `⚠ 确认删除店铺连接?\n\n店铺:${domain}\n\n` +
+    `- 跟单系统会移除此店的 token 记录\n` +
+    `- 已同步的订单数据保留在 DB(不删)\n` +
+    `- 不会撤销 Shopify 端的 app 授权\n` +
+    `- 想完全卸载,需去 Shopify Admin 操作\n\n` +
+    `确认删除?`
+  );
+  if (!confirmed) return;
+  
+  try {
+    const { error } = await sb.from('shopify_stores').delete().eq('id', id);
+    if (error) throw error;
+    toast(`✓ 已删除 ${domain} 的连接`, 'success', 2000);
+    await shopifyMgrRenderList();
+    if (typeof shopifyReloadStores === 'function') shopifyReloadStores();
+  } catch (e) {
+    toast('删除失败:' + (e.message || e), 'err');
+  }
+}
+window.shopifyMgrDelete = shopifyMgrDelete;
+
+// 重写 shopifyOpenAddStore · 默认显示列表 tab
+const _origOpen = window.shopifyOpenAddStore;
+window.shopifyOpenAddStore = function() {
+  // 清空表单
+  ['addStoreDomain', 'addStoreDisplayName', 'addStoreSiteCode', 'addStoreToken'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const hint = document.getElementById('addStoreHint');
+  if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
+  
+  if (typeof openModal === 'function') {
+    openModal('shopifyAddStoreModal');
+  } else {
+    document.getElementById('shopifyAddStoreModal').style.display = 'flex';
+    document.getElementById('shopifyAddStoreModal').classList.add('show');
+  }
+  // 默认显示列表 tab
+  shopifyMgrSwitchTab('list');
+};
