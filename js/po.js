@@ -1872,7 +1872,10 @@ function renderSuppliersList() {
           <div class="contact">${escapeHtml(s.contact_name || '—')}</div>
           <div class="phone">${escapeHtml(s.contact_phone || '—')}</div>
           <div class="orders">${s.total_orders || 0}</div>
-          <div class="actions"><button class="btn small" onclick="event.stopPropagation(); openSupplierEdit('${s.id}')">编辑</button></div>
+          <div class="actions">
+            <button class="btn small" onclick="event.stopPropagation(); openSupplierStatement('${s.id}')" title="月度对账单 · 当月 PO 列表 + 合计 + 一键导出" style="background:rgba(13,148,136,0.06); border-color:rgba(13,148,136,0.3); color:var(--teal); margin-right:4px;">📊 对账</button>
+            <button class="btn small" onclick="event.stopPropagation(); openSupplierEdit('${s.id}')">编辑</button>
+          </div>
         </div>`;
       }).join('')}
     </div>
@@ -1880,6 +1883,388 @@ function renderSuppliersList() {
   `;
 }
 
+// ============================================================
+// V20260527x: 供应商月度对账单
+// 月底跟供应商对账场景:本月在你家下了多少单 · 多少件 · 总金额
+// 一键导出 CSV(给供应商发邮件)+ 打印友好 HTML(打印盖章用)
+// ============================================================
+let SUPPLIER_STMT = null;
+
+async function openSupplierStatement(supplierId) {
+  const s = SUPPLIERS.byId(supplierId);
+  if (!s) { toast('找不到供应商', 'err'); return; }
+  
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  
+  SUPPLIER_STMT = {
+    supplier: s,
+    month: thisMonth,
+    pos: [],
+    loading: true,
+  };
+  
+  document.getElementById('supplierStatementModal').style.display = 'flex';
+  _renderSupplierStatementBody();
+  await _loadSupplierStatementData();
+  _renderSupplierStatementBody();
+}
+window.openSupplierStatement = openSupplierStatement;
+
+function closeSupplierStatement() {
+  document.getElementById('supplierStatementModal').style.display = 'none';
+  SUPPLIER_STMT = null;
+}
+window.closeSupplierStatement = closeSupplierStatement;
+
+async function _loadSupplierStatementData() {
+  if (!SUPPLIER_STMT) return;
+  SUPPLIER_STMT.loading = true;
+  
+  const { supplier, month } = SUPPLIER_STMT;
+  const [y, m] = month.split('-').map(Number);
+  const fromDate = `${y}-${String(m).padStart(2, '0')}-01T00:00:00`;
+  // 下个月第一天
+  const nextMonth = new Date(y, m, 1).toISOString();
+  
+  try {
+    const { data, error } = await sb.from('orders')
+      .select('id, po_number, supplier, source, status, promised_date, created_at, line_items, total_amount, box_note, creator_name, sales_order_id, site')
+      .eq('supplier', supplier.name)
+      .not('po_number', 'is', null)
+      .gte('created_at', fromDate)
+      .lt('created_at', nextMonth)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    SUPPLIER_STMT.pos = data || [];
+  } catch (e) {
+    console.error('加载对账数据失败:', e);
+    toast('加载失败:' + (e.message || e), 'err');
+    SUPPLIER_STMT.pos = [];
+  }
+  SUPPLIER_STMT.loading = false;
+}
+
+function changeStatementMonth(newMonth) {
+  if (!SUPPLIER_STMT) return;
+  SUPPLIER_STMT.month = newMonth;
+  SUPPLIER_STMT.loading = true;
+  _renderSupplierStatementBody();
+  _loadSupplierStatementData().then(_renderSupplierStatementBody);
+}
+window.changeStatementMonth = changeStatementMonth;
+
+// 月份选择器:从 12 个月前到当月
+function _monthsForSelect() {
+  const arr = [];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    arr.push(value);
+  }
+  return arr;
+}
+
+function _renderSupplierStatementBody() {
+  const body = document.getElementById('supplierStatementBody');
+  if (!body || !SUPPLIER_STMT) return;
+  
+  const { supplier, month, pos, loading } = SUPPLIER_STMT;
+  
+  // 合计
+  let totalPOs = pos.length;
+  let totalItems = 0;
+  let totalAmount = 0;
+  let cancelledCount = 0;
+  pos.forEach(p => {
+    if (p.status === 'cancelled') { cancelledCount++; return; }
+    totalAmount += Number(p.total_amount || 0);
+    (p.line_items || []).forEach(li => totalItems += Number(li.qty || 0));
+  });
+  const activePOs = totalPOs - cancelledCount;
+  
+  body.innerHTML = `
+    <!-- 供应商基本信息 -->
+    <div style="display:flex; gap:16px; align-items:flex-start; padding:14px; background:var(--bg-elevated); border-radius:8px; margin-bottom:14px;">
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:16px; font-weight:700; color:var(--text-primary); margin-bottom:4px;">${escapeHtml(supplier.name)}</div>
+        <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-wrap:wrap; gap:10px;">
+          ${supplier.contact_name ? `<span>👤 ${escapeHtml(supplier.contact_name)}</span>` : ''}
+          ${supplier.contact_phone ? `<span>📞 ${escapeHtml(supplier.contact_phone)}</span>` : ''}
+          ${supplier.payment_terms ? `<span>💳 ${escapeHtml(supplier.payment_terms)}</span>` : ''}
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <label style="font-size:11px; color:var(--text-tertiary); margin-bottom:4px; display:block;">对账月份</label>
+        <select onchange="changeStatementMonth(this.value)" style="padding:6px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:6px; background:white; font-family:monospace;">
+          ${_monthsForSelect().map(mm => `<option value="${mm}" ${mm === month ? 'selected' : ''}>${mm}${mm === month ? '' : ''}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+
+    <!-- 合计区 -->
+    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom:14px;">
+      <div style="padding:12px; background:rgba(37,99,235,0.05); border:1px solid rgba(37,99,235,0.15); border-radius:8px;">
+        <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:3px;">PO 单数</div>
+        <div style="font-size:22px; font-weight:700; color:var(--accent); font-family:monospace;">${activePOs}</div>
+        ${cancelledCount > 0 ? `<div style="font-size:10px; color:var(--text-tertiary); margin-top:2px;">+${cancelledCount} 已取消</div>` : ''}
+      </div>
+      <div style="padding:12px; background:rgba(13,148,136,0.05); border:1px solid rgba(13,148,136,0.15); border-radius:8px;">
+        <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:3px;">总件数</div>
+        <div style="font-size:22px; font-weight:700; color:var(--teal); font-family:monospace;">${totalItems}</div>
+      </div>
+      <div style="padding:12px; background:rgba(22,163,74,0.05); border:1px solid rgba(22,163,74,0.15); border-radius:8px; grid-column: span 2;">
+        <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:3px;">总金额(本月 · 不含已取消)</div>
+        <div style="font-size:24px; font-weight:700; color:var(--success); font-family:monospace;">¥ ${totalAmount.toFixed(2)}</div>
+      </div>
+    </div>
+
+    <!-- PO 列表 -->
+    ${loading ? `
+      <div style="padding:32px; text-align:center; color:var(--text-tertiary);">📦 加载中...</div>
+    ` : pos.length === 0 ? `
+      <div style="padding:32px; text-align:center; color:var(--text-tertiary); background:var(--bg-card); border:1px dashed var(--border); border-radius:8px;">
+        本月没有在「${escapeHtml(supplier.name)}」开过 PO
+      </div>
+    ` : `
+      <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+        <div style="display:grid; grid-template-columns: 100px 1fr 70px 100px 90px; gap:8px; padding:8px 12px; background:var(--bg-elevated); font-size:10.5px; font-weight:600; color:var(--text-tertiary); text-transform:uppercase;">
+          <div>PO 号</div>
+          <div>产品明细</div>
+          <div style="text-align:center;">件数</div>
+          <div style="text-align:right;">金额</div>
+          <div style="text-align:center;">状态</div>
+        </div>
+        ${pos.map(p => {
+          const items = p.line_items || [];
+          const qty = items.reduce((s, li) => s + Number(li.qty || 0), 0);
+          const isCancelled = p.status === 'cancelled';
+          const statusMeta = _poStatusMeta(p.status);
+          return `
+          <div style="display:grid; grid-template-columns: 100px 1fr 70px 100px 90px; gap:8px; padding:10px 12px; border-top:1px solid var(--border-subtle); font-size:12px; align-items:flex-start; ${isCancelled ? 'opacity:0.5; text-decoration:line-through;' : ''}">
+            <div style="font-family:monospace; color:var(--accent); font-size:11.5px;">${escapeHtml(p.po_number || '')}</div>
+            <div style="font-size:11.5px; line-height:1.5;">
+              ${items.map(li => `<div>${escapeHtml(li.title_cn || li.sku || '')} <span style="color:var(--text-tertiary); font-family:monospace;">${escapeHtml(li.sku || '')}</span> × ${li.qty}</div>`).join('')}
+              ${p.box_note ? `<div style="font-size:10.5px; color:var(--text-tertiary); margin-top:3px;">📝 ${escapeHtml(p.box_note)}</div>` : ''}
+            </div>
+            <div style="text-align:center; font-family:monospace; font-weight:600;">${qty}</div>
+            <div style="text-align:right; font-family:monospace; font-weight:600; color:var(--text-primary);">¥${Number(p.total_amount || 0).toFixed(2)}</div>
+            <div style="text-align:center;">
+              <span style="display:inline-block; padding:2px 8px; font-size:10.5px; border-radius:10px; background:${statusMeta.bg}; color:${statusMeta.color}; font-weight:600;">${statusMeta.label}</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    `}
+    
+    <!-- 导出按钮 -->
+    <div style="display:flex; gap:8px; margin-top:16px; padding-top:12px; border-top:1px solid var(--border-subtle);">
+      <button class="btn" onclick="exportSupplierStatementCsv()" ${pos.length === 0 ? 'disabled style="opacity:0.5;"' : ''}>📥 导出 CSV(发邮件)</button>
+      <button class="btn" onclick="printSupplierStatement()" ${pos.length === 0 ? 'disabled style="opacity:0.5;"' : ''}>🖨 打印对账单(可盖章)</button>
+      <span style="margin-left:auto; font-size:11px; color:var(--text-tertiary); align-self:center;">
+        💡 CSV 用 Excel 打开 · 打印版含合计 + 印章位
+      </span>
+    </div>
+  `;
+}
+
+function _poStatusMeta(status) {
+  const meta = {
+    pending_approval: { label: '⏳ 待审批', bg: 'rgba(202,138,4,0.1)', color: '#854f0b' },
+    producing:        { label: '生产中', bg: 'rgba(37,99,235,0.1)', color: 'var(--accent)' },
+    shipped:          { label: '已发货', bg: 'rgba(124,58,237,0.1)', color: 'var(--purple)' },
+    arrived:          { label: '已到货', bg: 'rgba(13,148,136,0.1)', color: 'var(--teal)' },
+    inventory:        { label: '已入库', bg: 'rgba(22,163,74,0.1)', color: 'var(--success)' },
+    cancelled:        { label: '已取消', bg: 'rgba(107,114,128,0.1)', color: 'var(--text-tertiary)' },
+    rejected:         { label: '已驳回', bg: 'rgba(220,38,38,0.1)', color: 'var(--danger)' },
+  };
+  return meta[status] || { label: status, bg: 'var(--bg-elevated)', color: 'var(--text-secondary)' };
+}
+
+// 导出 CSV(逐 PO 一行)· 文件名:对账_广州X厂_2026-05.csv
+function exportSupplierStatementCsv() {
+  if (!SUPPLIER_STMT || SUPPLIER_STMT.pos.length === 0) { toast('无数据', 'warn'); return; }
+  const { supplier, month, pos } = SUPPLIER_STMT;
+  
+  const header = ['PO 号', '下单日期', '约交期', '产品明细', '总件数', '总金额(¥)', '状态', '备注'];
+  const rows = pos.map(p => {
+    const items = p.line_items || [];
+    const qty = items.reduce((s, li) => s + Number(li.qty || 0), 0);
+    const products = items.map(li => `${li.title_cn || li.sku}(${li.sku}) ×${li.qty}`).join(' / ');
+    const statusLabel = _poStatusMeta(p.status).label.replace(/[⏳]/g, '').trim();
+    const orderDate = p.created_at ? p.created_at.slice(0, 10) : '';
+    return [
+      p.po_number || '',
+      orderDate,
+      p.promised_date || '',
+      products,
+      qty,
+      Number(p.total_amount || 0).toFixed(2),
+      statusLabel,
+      p.box_note || ''
+    ];
+  });
+  
+  // 合计行
+  const activePos = pos.filter(p => p.status !== 'cancelled');
+  const totalQty = activePos.reduce((s, p) => s + (p.line_items || []).reduce((q, li) => q + Number(li.qty || 0), 0), 0);
+  const totalAmount = activePos.reduce((s, p) => s + Number(p.total_amount || 0), 0);
+  rows.push(['', '', '', '【合计(不含已取消)】', totalQty, totalAmount.toFixed(2), `${activePos.length} 单`, '']);
+  
+  // CSV 字符串 · UTF-8 BOM 让 Excel 中文不乱码
+  const csvLines = [header, ...rows].map(row => 
+    row.map(cell => {
+      const s = String(cell || '');
+      // 如果含逗号/引号/换行,用引号包并转义内部引号
+      if (/[,"\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    }).join(',')
+  );
+  const csv = '\uFEFF' + csvLines.join('\r\n');
+  
+  // 下载
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `对账_${supplier.name}_${month}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 100);
+  
+  toast(`✓ 已下载 · ${a.download}`, 'success', 2000);
+}
+window.exportSupplierStatementCsv = exportSupplierStatementCsv;
+
+// 打印对账单 · 新窗口 · 含合计 + 印章位
+function printSupplierStatement() {
+  if (!SUPPLIER_STMT || SUPPLIER_STMT.pos.length === 0) { toast('无数据', 'warn'); return; }
+  const { supplier, month, pos } = SUPPLIER_STMT;
+  
+  const activePos = pos.filter(p => p.status !== 'cancelled');
+  const totalQty = activePos.reduce((s, p) => s + (p.line_items || []).reduce((q, li) => q + Number(li.qty || 0), 0), 0);
+  const totalAmount = activePos.reduce((s, p) => s + Number(p.total_amount || 0), 0);
+  const cancelledCount = pos.length - activePos.length;
+  
+  // 公司名:从用户记忆 · JANEDECOR INC / Vakker Limited
+  const companyName = 'JANEDECOR INC / Vakker Limited';
+  
+  const html = `<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8">
+<title>对账单 - ${escapeHtml(supplier.name)} - ${month}</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color: #222; font-size: 12px; line-height: 1.5; }
+  .head { text-align: center; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid #333; }
+  .head h1 { font-size: 22px; margin: 0 0 6px; }
+  .head .subtitle { font-size: 13px; color: #666; }
+  .meta { display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 12px; }
+  .meta .left, .meta .right { line-height: 1.8; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 11px; }
+  th { background: #f0f0f0; padding: 8px 6px; border: 1px solid #999; text-align: left; font-weight: 600; }
+  td { padding: 6px; border: 1px solid #ccc; vertical-align: top; }
+  td.right { text-align: right; }
+  td.center { text-align: center; }
+  td.mono { font-family: monospace; }
+  tr.cancelled td { color: #999; text-decoration: line-through; }
+  tr.total { font-weight: 700; background: #fafafa; }
+  tr.total td { border-top: 2px solid #333; padding: 10px 6px; }
+  .signature { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 24px; border-top: 1px dashed #999; }
+  .sig-box { width: 45%; }
+  .sig-box .label { font-weight: 600; margin-bottom: 60px; }
+  .sig-box .line { border-bottom: 1px solid #333; height: 30px; }
+  .sig-box .sub { font-size: 10px; color: #666; margin-top: 4px; text-align: center; }
+  @media print { body { margin: 0; } .no-print { display: none; } }
+</style>
+</head><body>
+
+<div class="head">
+  <h1>📋 月度对账单</h1>
+  <div class="subtitle">Monthly Statement · ${month}</div>
+</div>
+
+<div class="meta">
+  <div class="left">
+    <div><b>供应商:</b>${escapeHtml(supplier.name)}</div>
+    ${supplier.contact_name ? `<div><b>联系人:</b>${escapeHtml(supplier.contact_name)}</div>` : ''}
+    ${supplier.contact_phone ? `<div><b>电话:</b>${escapeHtml(supplier.contact_phone)}</div>` : ''}
+    ${supplier.payment_terms ? `<div><b>付款条件:</b>${escapeHtml(supplier.payment_terms)}</div>` : ''}
+  </div>
+  <div class="right" style="text-align:right;">
+    <div><b>对账方:</b>${companyName}</div>
+    <div><b>对账月份:</b>${month}</div>
+    <div><b>出账日期:</b>${new Date().toISOString().slice(0,10)}</div>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:14%;">PO 号</th>
+      <th style="width:11%;">下单日期</th>
+      <th>产品明细</th>
+      <th style="width:6%;">件数</th>
+      <th style="width:10%;">金额(¥)</th>
+      <th style="width:8%;">状态</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${pos.map(p => {
+      const items = p.line_items || [];
+      const qty = items.reduce((s, li) => s + Number(li.qty || 0), 0);
+      const isCancelled = p.status === 'cancelled';
+      const products = items.map(li => `${escapeHtml(li.title_cn || li.sku || '')} (${escapeHtml(li.sku || '')}) × ${li.qty}`).join('<br>');
+      return `
+        <tr ${isCancelled ? 'class="cancelled"' : ''}>
+          <td class="mono">${escapeHtml(p.po_number || '')}</td>
+          <td class="mono">${p.created_at ? p.created_at.slice(0, 10) : ''}</td>
+          <td>${products}${p.box_note ? `<br><span style="color:#888;font-size:10px;">📝 ${escapeHtml(p.box_note)}</span>` : ''}</td>
+          <td class="center mono">${qty}</td>
+          <td class="right mono">¥${Number(p.total_amount || 0).toFixed(2)}</td>
+          <td class="center">${_poStatusMeta(p.status).label.replace(/[⏳📦🚚]/g, '').trim()}</td>
+        </tr>
+      `;
+    }).join('')}
+    <tr class="total">
+      <td colspan="3">合计(不含已取消)</td>
+      <td class="center mono">${totalQty}</td>
+      <td class="right mono">¥${totalAmount.toFixed(2)}</td>
+      <td class="center">${activePos.length} 单${cancelledCount > 0 ? ` <span style="font-weight:400; color:#888;">(+${cancelledCount} 已取消)</span>` : ''}</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="signature">
+  <div class="sig-box">
+    <div class="label">供应商确认</div>
+    <div class="line"></div>
+    <div class="sub">盖章 + 签字 + 日期</div>
+  </div>
+  <div class="sig-box">
+    <div class="label">${companyName}</div>
+    <div class="line"></div>
+    <div class="sub">盖章 + 签字 + 日期</div>
+  </div>
+</div>
+
+<div class="no-print" style="margin-top:30px; text-align:center;">
+  <button onclick="window.print()" style="padding:8px 20px; font-size:14px; cursor:pointer;">🖨 打印</button>
+  <button onclick="window.close()" style="padding:8px 20px; font-size:14px; cursor:pointer; margin-left:10px;">关闭</button>
+</div>
+
+<script>setTimeout(() => window.print(), 500);</script>
+</body></html>`;
+  
+  const w = window.open('', '_blank');
+  if (!w) { toast('请允许新窗口弹出', 'warn'); return; }
+  w.document.write(html);
+  w.document.close();
+}
+window.printSupplierStatement = printSupplierStatement;
+
+// ============================================================
 // V4：过滤"仅看待审批"开关
 let supplierFilterPending = false;
 
