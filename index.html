@@ -26,7 +26,7 @@
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260526o"></script>
 <script src="js/help.js?v=20260526h"></script>
-<script src="js/dateFilter.js?v=20260526e"></script>
+<script src="js/dateFilter.js?v=20260526p"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
@@ -34,7 +34,7 @@
 <script src="js/trash.js"></script>
 <script src="js/aftersales.js?v=20260526o"></script>
 <script src="js/missing.js?v=20260526o"></script>
-<script src="js/orders.js?v=20260526o"></script>
+<script src="js/orders.js?v=20260526p"></script>
 <script src="js/shopify.js?v=20260526o"></script>
 <script src="js/po.js?v=20260526o"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
@@ -1392,6 +1392,30 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   font-size: 10.5px;
   font-weight: 700;
 }
+/* V20260526p: 紧急度分级 · 4 个颜色档(注意/警告/严重/紧急)+ 边框 + badge 配色 */
+.as-card.urgent-warn { border-color: #facc15; border-width: 2px; }
+.as-card.urgent-warn .urgent-badge { background: linear-gradient(135deg, #facc15, #eab308); color: #422006; box-shadow: 0 2px 8px rgba(234,179,8,0.4); }
+.as-card.urgent-danger { border-color: #f97316; border-width: 2px; }
+.as-card.urgent-danger .urgent-badge { background: linear-gradient(135deg, #fb923c, #ea580c); color: white; box-shadow: 0 2px 8px rgba(234,88,12,0.5); }
+.as-card.urgent-critical { border-color: #dc2626; border-width: 2px; box-shadow: 0 2px 12px rgba(220,38,38,0.15); }
+.as-card.urgent-critical .urgent-badge { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; box-shadow: 0 2px 10px rgba(220,38,38,0.5); animation: pulse-critical 2s ease-in-out infinite; }
+.as-card.urgent-nuclear { border-color: #7f1d1d; border-width: 3px; box-shadow: 0 2px 16px rgba(127,29,29,0.25); }
+.as-card.urgent-nuclear .urgent-badge { background: linear-gradient(135deg, #b91c1c, #7f1d1d); color: white; box-shadow: 0 2px 12px rgba(127,29,29,0.6); animation: pulse-critical 1.2s ease-in-out infinite; font-weight: 800; }
+@keyframes pulse-critical { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.05); } }
+/* 图片上显眼的承诺日期(只在 urgent 状态下显示) */
+.as-card .promised-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.75);
+  color: white;
+  font-size: 10.5px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+  font-family: 'JetBrains Mono', monospace;
+}
 .as-card .comments-badge,
 .as-card .photo-count {
   position: absolute; bottom: 8px;
@@ -2436,6 +2460,17 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .urgent-alert.no-red .urgent-count { background: #ea580c; }
 .urgent-meta { font-size: 11.5px; color: var(--text-secondary); }
 .urgent-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }
+/* V20260526p: 紧急 banner 折叠 */
+.urgent-toggle {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-left: 6px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.urgent-alert.collapsed .urgent-list { display: none; }
+.urgent-alert.collapsed .urgent-head { margin-bottom: 0; }
+.urgent-alert.collapsed .urgent-toggle { transform: rotate(-90deg); }
 .urgent-item {
   display: grid;
   grid-template-columns: 28px 90px 1fr 110px 95px 80px 70px;
@@ -4947,11 +4982,12 @@ body.has-side-tabs .section-block {
 <!-- ============ TAB 1: 催单 ============ -->
 <div class="tab-content active" data-tab="orders">
   <div class="section-block">
-    <!-- 🚨 紧急告警 Banner -->
+    <!-- 🚨 紧急告警 Banner · V20260526p: 可折叠 -->
     <div class="urgent-alert" id="urgentAlert" style="display: none;">
-      <div class="urgent-head">
+      <div class="urgent-head" onclick="toggleUrgentAlert()" style="cursor:pointer; user-select:none;">
         <div class="urgent-title">🚨 需立即处理<span class="urgent-count" id="urgentCount">0</span></div>
         <div class="urgent-meta" id="urgentSubtitle"></div>
+        <span class="urgent-toggle" id="urgentToggle" title="点击折叠/展开">▼</span>
       </div>
       <div class="urgent-list" id="urgentList"></div>
     </div>
