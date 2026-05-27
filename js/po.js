@@ -2234,6 +2234,8 @@ async function openProductEdit(productId) {
   const p = PRODUCTS_CACHE._byId[productId];
   if (!p) return;
   PRODUCT_EDIT_ID = productId;
+  // V20260527q: 预加载供应商库 · 为联想搜索做准备
+  try { await SUPPLIERS.loadAll(); } catch (_) {}
   // 深拷贝当前 suppliers · 避免直接改 cache
   const current = _getProductSuppliers(p);
   PRODUCT_EDIT_SUPPLIERS = current.map(s => ({
@@ -2317,10 +2319,20 @@ function _renderProductSupplierList() {
   list.innerHTML = PRODUCT_EDIT_SUPPLIERS.map((s, idx) => `
     <div style="display:grid; grid-template-columns: 30px 1fr 1.2fr 90px 36px; gap:8px; align-items:center; padding:8px 10px; background:${s.is_default ? 'rgba(22,163,74,0.06)' : 'var(--bg-card)'}; border:1px solid ${s.is_default ? 'rgba(22,163,74,0.25)' : 'var(--border)'}; border-radius:6px; margin-bottom:6px;">
       <div style="text-align:center; font-size:14px; color:var(--text-tertiary); cursor:grab;" title="排序">${s.is_default ? '🥇' : (idx + 1)}</div>
-      <input type="text" value="${escapeHtml(s.name)}" 
-             placeholder="供应商名(如:广州X厂)"
-             oninput="updateProductSupplier(${idx}, 'name', this.value)"
-             style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:4px; background:white;">
+      <!-- V20260527q: 供应商名 · 联想搜索 + 可自由输入 -->
+      <div style="position:relative;">
+        <input type="text" 
+               id="prodSupNameInput_${idx}"
+               value="${escapeHtml(s.name)}" 
+               placeholder="供应商名(如:广州X厂)"
+               oninput="prodSupNameSearch(${idx}, this.value)"
+               onfocus="prodSupNameSearch(${idx}, this.value)"
+               onblur="setTimeout(() => { const r = document.getElementById('prodSupNameResults_${idx}'); if (r) r.style.display = 'none'; }, 200)"
+               style="width:100%; padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:4px; background:white;">
+        <div id="prodSupNameResults_${idx}" 
+             style="display:none; position:absolute; top:100%; left:0; right:0; z-index:2000; background:white; border:1px solid var(--border); border-radius:6px; box-shadow:var(--shadow-md); max-height:240px; overflow-y:auto; margin-top:2px;">
+        </div>
+      </div>
       <input type="text" value="${escapeHtml(s.note)}" 
              placeholder="备注(玻璃 / 塑料 / 价格贵 / 炒货)"
              oninput="updateProductSupplier(${idx}, 'note', this.value)"
@@ -2338,6 +2350,96 @@ function _renderProductSupplierList() {
   `).join('');
 }
 
+// V20260527q: 产品编辑 modal 内 · 供应商名联想搜索 + 新增
+function prodSupNameSearch(idx, q) {
+  // 同步当前输入到状态
+  if (PRODUCT_EDIT_SUPPLIERS[idx]) {
+    PRODUCT_EDIT_SUPPLIERS[idx].name = q;
+  }
+  const results = document.getElementById('prodSupNameResults_' + idx);
+  if (!results) return;
+  
+  const matches = (typeof SUPPLIERS !== 'undefined' && SUPPLIERS.search) ? SUPPLIERS.search(q) : [];
+  const trimmed = (q || '').trim();
+  const exists = trimmed && SUPPLIERS.byName ? SUPPLIERS.byName(trimmed) : null;
+  
+  // 不重复:已在当前产品 supplier 列表里的名字标灰
+  const alreadyUsed = new Set(
+    PRODUCT_EDIT_SUPPLIERS
+      .map((s, i) => i !== idx ? (s.name || '').trim().toLowerCase() : null)
+      .filter(Boolean)
+  );
+  
+  let html = matches.slice(0, 8).map(s => {
+    const dup = alreadyUsed.has((s.name || '').toLowerCase());
+    return `
+      <div class="picker-item" 
+           ${dup ? '' : `onmousedown="prodSupNamePick(${idx}, '${escapeHtml(s.name).replace(/'/g,"\\'")}')"`}
+           style="padding:8px 12px; cursor:${dup ? 'not-allowed' : 'pointer'}; border-bottom:1px solid var(--border-subtle); ${dup ? 'opacity:0.4;' : ''}"
+           onmouseenter="${dup ? '' : "this.style.background='var(--bg-elevated)'"}"
+           onmouseleave="this.style.background=''">
+        <div style="font-size:12.5px; font-weight:500;">${escapeHtml(s.name)}${dup ? ' <span style="font-size:10px; color:var(--text-tertiary);">(已在列表)</span>' : ''}</div>
+        <div style="font-size:11px; color:var(--text-tertiary);">${s.contact_name ? escapeHtml(s.contact_name) + ' · ' : ''}${s.contact_phone ? escapeHtml(s.contact_phone) : ''}${s.total_orders ? ` · 共 ${s.total_orders} 单` : ''}</div>
+      </div>`;
+  }).join('');
+  
+  // "➕ 新增"项 · 当输入了但库里没有
+  if (trimmed && !exists && !alreadyUsed.has(trimmed.toLowerCase())) {
+    html += `
+      <div class="picker-item" 
+           onmousedown="prodSupNameAddNew(${idx}, '${escapeHtml(trimmed).replace(/'/g,"\\'")}')"
+           style="padding:8px 12px; cursor:pointer; background:rgba(37,99,235,0.04); color:var(--accent);"
+           onmouseenter="this.style.background='rgba(37,99,235,0.1)'"
+           onmouseleave="this.style.background='rgba(37,99,235,0.04)'">
+        <div style="font-size:12.5px; font-weight:600;">➕ 新增供应商「${escapeHtml(trimmed)}」</div>
+        <div style="font-size:11px; color:var(--text-tertiary);">点此存入供应商库 · 之后其他产品也能选</div>
+      </div>`;
+  }
+  
+  if (!html) {
+    html = '<div style="padding:10px 12px; color:var(--text-tertiary); font-size:12px;">无匹配 · 输入新名后可添加</div>';
+  }
+  
+  results.innerHTML = html;
+  results.style.display = 'block';
+}
+window.prodSupNameSearch = prodSupNameSearch;
+
+// 选中已有供应商
+function prodSupNamePick(idx, name) {
+  if (!PRODUCT_EDIT_SUPPLIERS[idx]) return;
+  PRODUCT_EDIT_SUPPLIERS[idx].name = name;
+  const input = document.getElementById('prodSupNameInput_' + idx);
+  if (input) input.value = name;
+  const results = document.getElementById('prodSupNameResults_' + idx);
+  if (results) results.style.display = 'none';
+}
+window.prodSupNamePick = prodSupNamePick;
+
+// 新增供应商到库 · 然后设到这一行
+async function prodSupNameAddNew(idx, name) {
+  if (!PRODUCT_EDIT_SUPPLIERS[idx]) return;
+  const trimmed = (name || '').trim();
+  if (!trimmed) return;
+  // 检查是否真的没存(防御)
+  const existing = SUPPLIERS.byName ? SUPPLIERS.byName(trimmed) : null;
+  if (existing) {
+    prodSupNamePick(idx, existing.name);
+    return;
+  }
+  try {
+    const { data, error } = await sb.from('suppliers').insert({ name: trimmed }).select().single();
+    if (error) throw error;
+    // 强刷供应商缓存
+    if (SUPPLIERS.loadAll) await SUPPLIERS.loadAll(true);
+    prodSupNamePick(idx, data.name);
+    toast(`✓ 已新增供应商「${data.name}」到供应商库`, 'success', 1500);
+  } catch (e) {
+    toast('新增失败:' + (e.message || e), 'err');
+  }
+}
+window.prodSupNameAddNew = prodSupNameAddNew;
+
 function addProductSupplier() {
   // 新加的若是第一个,自动设为默认
   const isFirst = PRODUCT_EDIT_SUPPLIERS.length === 0;
@@ -2349,12 +2451,14 @@ function addProductSupplier() {
     sort_order: PRODUCT_EDIT_SUPPLIERS.length,
   });
   _renderProductSupplierList();
-  // 自动 focus 到新行的供应商名输入框
+  // V20260527q: 用 ID 直接定位新行的供应商名输入框 · focus + 触发联想
   setTimeout(() => {
-    const inputs = document.querySelectorAll('#productEditSupplierList input[type="text"]');
-    const newInput = inputs[(PRODUCT_EDIT_SUPPLIERS.length - 1) * 2];
-    if (newInput) newInput.focus();
-    // V27n autocomplete 防御
+    const newIdx = PRODUCT_EDIT_SUPPLIERS.length - 1;
+    const newInput = document.getElementById('prodSupNameInput_' + newIdx);
+    if (newInput) {
+      newInput.focus();
+    }
+    // autocomplete 防御
     if (typeof _disableAutofillOnFields === 'function') {
       _disableAutofillOnFields(document.getElementById('productEditSupplierList'));
     }
