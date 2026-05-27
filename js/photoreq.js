@@ -88,12 +88,14 @@ async function renderPhotoReq() {
   const isAdmin = (typeof IS_ADMIN !== 'undefined' && IS_ADMIN);
   const cfg = _photoReqGetConfig();
   const cfgConfigured = !!(localStorage.getItem('worktrack_supabase_url') && localStorage.getItem('worktrack_supabase_anon_key'));
+  const cfgLabel = cfgConfigured ? '✓ 已配置' : 'ℹ 使用默认';
   
-  // 配置状态条
+  // V20260527u: 配置 + 连接状态条 · 进 tab 自动测连接
   const cfgBar = `
-    <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:${cfgConfigured ? 'rgba(22,163,74,0.05)' : 'rgba(245,158,11,0.05)'}; border-left:3px solid ${cfgConfigured ? 'var(--success)' : '#f59e0b'}; border-radius:0 6px 6px 0; margin-bottom:12px; font-size:11.5px;">
-      <span style="color:${cfgConfigured ? 'var(--success)' : '#92400e'};">${cfgConfigured ? '✓ 已配置' : '⚠ 使用默认配置(美工 Supabase)'} · ${cfg.url.replace('https://', '').slice(0, 30)}...</span>
-      ${isAdmin ? `<button class="btn small" onclick="photoReqOpenConfig()" style="font-size:11px; padding:3px 10px; margin-left:auto;">⚙ 配置</button>` : ''}
+    <div id="photoReqStatusBar" style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:rgba(100,116,139,0.05); border-left:3px solid #94a3b8; border-radius:0 6px 6px 0; margin-bottom:12px; font-size:11.5px; transition:all 0.2s;">
+      <span id="photoReqStatusText" style="color:var(--text-secondary);">📨 拍摄部对接 · ${cfgLabel} · ${cfg.url.replace('https://', '').slice(0, 30)}... · <span style="color:var(--text-tertiary);">连接测试中...</span></span>
+      <button class="btn small" onclick="photoReqTestConnection()" style="font-size:11px; padding:3px 10px; margin-left:auto;">🔍 测试连接</button>
+      ${isAdmin ? `<button class="btn small" onclick="photoReqOpenConfig()" style="font-size:11px; padding:3px 10px;">⚙ 配置</button>` : ''}
     </div>
   `;
   
@@ -131,8 +133,71 @@ async function renderPhotoReq() {
   `;
   
   await _photoReqLoadAndRender();
+  // V20260527u: 进 tab 自动测一次连接 · 状态条变绿/红
+  setTimeout(() => photoReqTestConnection(true), 50);
 }
 window.renderPhotoReq = renderPhotoReq;
+
+// V20260527u: 测试连接 · 简单 SELECT count · 不取数据
+// silent=true 表示不弹 toast(进 tab 自动测时)· silent=false 弹 toast(用户主动点测试时)
+async function photoReqTestConnection(silent = false) {
+  const bar = document.getElementById('photoReqStatusBar');
+  const txt = document.getElementById('photoReqStatusText');
+  if (bar && txt) {
+    bar.style.background = 'rgba(100,116,139,0.05)';
+    bar.style.borderLeftColor = '#94a3b8';
+    const cfg = _photoReqGetConfig();
+    txt.innerHTML = `📨 拍摄部对接 · <span style="color:var(--text-tertiary);">🔄 测试中...</span>`;
+  }
+  
+  const client = _photoReqClient();
+  if (!client) {
+    _photoReqSetStatusBar('error', '客户端未初始化 · 检查配置');
+    if (!silent) toast('❌ 客户端未初始化', 'err');
+    return false;
+  }
+  
+  try {
+    // V2 文档 #10:用 SELECT count 测连接(轻量)
+    const { error } = await client.from('photo_logs').select('id', { count: 'exact', head: true }).limit(1);
+    if (error) throw error;
+    _photoReqSetStatusBar('ok', '连接 OK · 拍摄部 Supabase 通了');
+    if (!silent) toast('✓ 连接 OK · 拍摄部 Supabase 通了', 'success', 1500);
+    return true;
+  } catch (e) {
+    const msg = e.message || String(e);
+    let hint = msg;
+    if (msg.includes('permission denied') || msg.includes('JWT') || msg.includes('row-level')) {
+      hint = 'RLS 拒绝 · 让 Martin 跑 v2 文档 #9 的 4 条 policy';
+    } else if (msg.includes('relation') && msg.includes('does not exist')) {
+      hint = '表 photo_logs 不存在 · 拍摄部那边没建表';
+    } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+      hint = '网络不通 · URL 错了?';
+    }
+    _photoReqSetStatusBar('error', '连接失败:' + hint);
+    if (!silent) toast('❌ 连接失败:' + hint, 'err', 4000);
+    console.error('photoReq 连接测试失败:', e);
+    return false;
+  }
+}
+window.photoReqTestConnection = photoReqTestConnection;
+
+function _photoReqSetStatusBar(state, message) {
+  const bar = document.getElementById('photoReqStatusBar');
+  const txt = document.getElementById('photoReqStatusText');
+  if (!bar || !txt) return;
+  const cfg = _photoReqGetConfig();
+  const urlShort = cfg.url.replace('https://', '').slice(0, 30);
+  if (state === 'ok') {
+    bar.style.background = 'rgba(22,163,74,0.06)';
+    bar.style.borderLeftColor = 'var(--success)';
+    txt.innerHTML = `📨 拍摄部对接 · <span style="color:var(--success); font-weight:600;">✓ ${escapeHtml(message)}</span> · <span style="color:var(--text-tertiary);">${urlShort}...</span>`;
+  } else if (state === 'error') {
+    bar.style.background = 'rgba(220,38,38,0.05)';
+    bar.style.borderLeftColor = 'var(--danger)';
+    txt.innerHTML = `📨 拍摄部对接 · <span style="color:var(--danger); font-weight:600;">❌ ${escapeHtml(message)}</span>`;
+  }
+}
 
 function photoReqSetFilter(filter) {
   PHOTOREQ._filter = filter;
