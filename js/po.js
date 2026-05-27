@@ -2169,12 +2169,20 @@ function renderProductsList() {
   body.innerHTML = `
     <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; overflow:hidden;">
       <div class="product-header">
-        <div></div><div>SKU / 英文名</div><div>中文名</div><div>默认供应商</div><div>上次单价</div><div></div>
+        <div></div><div>SKU / 英文名</div><div>中文名</div><div>供应商列表</div><div>上次单价</div><div></div>
       </div>
       ${list.slice(0, 200).map(p => {
         const hasAlias = !p.master_product_id && PRODUCTS_CACHE._all.some(x => x.master_product_id === p.id);
         const isAlias = !!p.master_product_id;
         const master = isAlias ? PRODUCTS_CACHE._byId[p.master_product_id] : null;
+        // V20260527n: 多供应商显示 · 优先用 suppliers 数组,fallback 到老 default_supplier
+        const supps = _getProductSuppliers(p);
+        const suppHtml = supps.length === 0
+          ? '<span style="color:var(--text-tertiary)">—</span>'
+          : `<div style="display:flex; flex-wrap:wrap; gap:3px;">${supps.slice(0, 3).map(s => `
+              <span style="display:inline-flex; align-items:center; gap:3px; padding:2px 6px; font-size:11px; border-radius:4px; ${s.is_default ? 'background:rgba(22,163,74,0.1); color:#15803d; font-weight:600; border:1px solid rgba(22,163,74,0.25);' : 'background:var(--bg-elevated); color:var(--text-secondary); border:1px solid var(--border-subtle);'}" title="${s.note ? escapeHtml(s.note) : ''}">
+                ${s.is_default ? '🥇 ' : ''}${escapeHtml(s.name)}${s.note ? `<span style="color:var(--text-tertiary); font-weight:400;">·${escapeHtml(s.note)}</span>` : ''}
+              </span>`).join('')}${supps.length > 3 ? `<span style="font-size:11px; color:var(--text-tertiary); padding:2px 4px;">+${supps.length - 3}</span>` : ''}</div>`;
         return `
         <div class="product-row ${isAlias ? 'is-alias' : ''}" data-sku="${escapeHtml(p.sku)}">
           ${p.image_url ? `<img class="prod-img" src="${escapeHtml(p.image_url)}" onclick="openImgLightbox('${escapeHtml(p.image_url)}')">` : `<div class="prod-noimg">📷</div>`}
@@ -2185,7 +2193,7 @@ function renderProductsList() {
           <div>
             <div class="name-cn">${p.name_cn ? escapeHtml(p.name_cn) : '<span style="color:var(--text-tertiary)">未维护</span>'}</div>
           </div>
-          <div style="font-size:12px;">${p.default_supplier ? escapeHtml(p.default_supplier) : '<span style="color:var(--text-tertiary)">—</span>'}</div>
+          <div>${suppHtml}</div>
           <div class="price">${p.last_purchase_price ? '¥' + Number(p.last_purchase_price).toFixed(2) : '—'}</div>
           <div class="actions">
             <button class="btn small" onclick="openProductEdit('${p.id}')">编辑</button>
@@ -2198,30 +2206,254 @@ function renderProductsList() {
   `;
 }
 
+// V20260527n: 统一获取产品的供应商列表(向后兼容老 default_supplier 字段)
+function _getProductSuppliers(p) {
+  if (!p) return [];
+  // 优先用新数组
+  if (Array.isArray(p.suppliers) && p.suppliers.length > 0) {
+    return p.suppliers.slice().sort((a, b) => {
+      // 默认的排最前 · 其次按 sort_order
+      if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
+      return (a.sort_order || 0) - (b.sort_order || 0);
+    });
+  }
+  // fallback 到老 default_supplier 字符串
+  if (p.default_supplier) {
+    return [{ name: p.default_supplier, note: '', is_default: true, sort_order: 0 }];
+  }
+  return [];
+}
+window._getProductSuppliers = _getProductSuppliers;
+
+// V20260527n: 产品编辑 modal · 中文名 + 多供应商管理
+// ============================================================
+let PRODUCT_EDIT_ID = null;
+let PRODUCT_EDIT_SUPPLIERS = []; // 当前编辑中的 suppliers 数组(临时,保存时才写回)
+
 async function openProductEdit(productId) {
   const p = PRODUCTS_CACHE._byId[productId];
   if (!p) return;
-  const newCn = await showPrompt({
-    title: `编辑产品中文名「${p.sku}」`,
-    message: '这个中文名会替代英文名，显示在销售单、采购单、打印预览中。',
-    field: { label: '中文名', value: p.name_cn || '', placeholder: '例如：极简北欧落地灯' },
+  PRODUCT_EDIT_ID = productId;
+  // 深拷贝当前 suppliers · 避免直接改 cache
+  const current = _getProductSuppliers(p);
+  PRODUCT_EDIT_SUPPLIERS = current.map(s => ({
+    name: s.name || '',
+    note: s.note || '',
+    is_default: !!s.is_default,
+    last_price: s.last_price || null,
+    sort_order: s.sort_order || 0,
+  }));
+  
+  // 渲染 modal 内容
+  document.getElementById('productEditSku').textContent = p.sku;
+  _renderProductEditBody(p);
+  
+  // 显示 modal
+  const modal = document.getElementById('productEditModal');
+  modal.style.display = 'flex';
+  
+  // V27n autocomplete 防御
+  if (typeof _disableAutofillOnFields === 'function') {
+    setTimeout(() => _disableAutofillOnFields(modal), 0);
+  }
+}
+window.openProductEdit = openProductEdit;
+
+function closeProductEdit() {
+  document.getElementById('productEditModal').style.display = 'none';
+  PRODUCT_EDIT_ID = null;
+  PRODUCT_EDIT_SUPPLIERS = [];
+}
+window.closeProductEdit = closeProductEdit;
+
+function _renderProductEditBody(p) {
+  const body = document.getElementById('productEditBody');
+  body.innerHTML = `
+    <!-- 产品基本信息 -->
+    <div style="display:flex; gap:14px; align-items:flex-start; padding:12px; background:var(--bg-elevated); border-radius:8px; margin-bottom:18px;">
+      ${p.image_url ? `<img src="${escapeHtml(p.image_url)}" style="width:72px; height:72px; border-radius:6px; object-fit:cover; flex-shrink:0;">` : '<div style="width:72px; height:72px; background:var(--bg-card); border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:24px;">📷</div>'}
+      <div style="flex:1; min-width:0;">
+        <div style="font-family:'JetBrains Mono', monospace; color:var(--accent); font-size:12px; margin-bottom:4px;">${escapeHtml(p.sku)}</div>
+        <div style="font-size:13px; color:var(--text-secondary); word-break:break-word;">${escapeHtml(p.name_en || '')}</div>
+      </div>
+    </div>
+
+    <!-- 中文名 -->
+    <div style="margin-bottom:20px;">
+      <label style="display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">中文名</label>
+      <input type="text" id="productEditNameCn" value="${escapeHtml(p.name_cn || '')}" 
+             placeholder="例如:极简北欧落地灯"
+             style="width:100%; padding:8px 12px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">
+      <div style="font-size:11px; color:var(--text-tertiary); margin-top:4px;">替代英文名 · 显示在销售单 / 采购单 / 打印预览</div>
+    </div>
+
+    <!-- 多供应商管理 -->
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <label style="font-size:12px; font-weight:600; color:var(--text-secondary);">
+          🏭 供应商列表 <span style="font-weight:400; color:var(--text-tertiary);">(<span id="productEditSupplierCount">0</span> 个)</span>
+        </label>
+        <button class="btn small" onclick="addProductSupplier()" style="font-size:11px;">+ 添加供应商</button>
+      </div>
+      <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:10px; padding:8px 12px; background:rgba(13,148,136,0.06); border-radius:6px; border-left:3px solid var(--teal);">
+        💡 一个产品可备注多个供应商 · 备注材质/价格特点(玻璃/塑料/价格贵/炒货) · 下单时根据"哪家有货"快速切换
+      </div>
+      <div id="productEditSupplierList"></div>
+    </div>
+  `;
+  _renderProductSupplierList();
+}
+
+function _renderProductSupplierList() {
+  const list = document.getElementById('productEditSupplierList');
+  const cntEl = document.getElementById('productEditSupplierCount');
+  if (cntEl) cntEl.textContent = PRODUCT_EDIT_SUPPLIERS.length;
+  
+  if (PRODUCT_EDIT_SUPPLIERS.length === 0) {
+    list.innerHTML = `<div style="padding:20px; text-align:center; color:var(--text-tertiary); background:var(--bg-card); border:1px dashed var(--border); border-radius:6px; font-size:12px;">还没有供应商 · 点 [+ 添加供应商]</div>`;
+    return;
+  }
+  
+  list.innerHTML = PRODUCT_EDIT_SUPPLIERS.map((s, idx) => `
+    <div style="display:grid; grid-template-columns: 30px 1fr 1.2fr 90px 36px; gap:8px; align-items:center; padding:8px 10px; background:${s.is_default ? 'rgba(22,163,74,0.06)' : 'var(--bg-card)'}; border:1px solid ${s.is_default ? 'rgba(22,163,74,0.25)' : 'var(--border)'}; border-radius:6px; margin-bottom:6px;">
+      <div style="text-align:center; font-size:14px; color:var(--text-tertiary); cursor:grab;" title="排序">${s.is_default ? '🥇' : (idx + 1)}</div>
+      <input type="text" value="${escapeHtml(s.name)}" 
+             placeholder="供应商名(如:广州X厂)"
+             oninput="updateProductSupplier(${idx}, 'name', this.value)"
+             style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:4px; background:white;">
+      <input type="text" value="${escapeHtml(s.note)}" 
+             placeholder="备注(玻璃 / 塑料 / 价格贵 / 炒货)"
+             oninput="updateProductSupplier(${idx}, 'note', this.value)"
+             style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:4px; background:white;">
+      <button class="btn small ${s.is_default ? 'primary' : ''}" 
+              onclick="setProductSupplierDefault(${idx})"
+              title="${s.is_default ? '当前默认' : '设为默认'}"
+              style="font-size:11px; padding:4px 8px;">
+        ${s.is_default ? '✓ 默认' : '设默认'}
+      </button>
+      <button class="btn small" onclick="delProductSupplier(${idx})" 
+              title="删除"
+              style="font-size:12px; padding:4px 8px; color:var(--danger); background:rgba(220,38,38,0.06); border-color:rgba(220,38,38,0.25);">🗑</button>
+    </div>
+  `).join('');
+}
+
+function addProductSupplier() {
+  // 新加的若是第一个,自动设为默认
+  const isFirst = PRODUCT_EDIT_SUPPLIERS.length === 0;
+  PRODUCT_EDIT_SUPPLIERS.push({
+    name: '',
+    note: '',
+    is_default: isFirst,
+    last_price: null,
+    sort_order: PRODUCT_EDIT_SUPPLIERS.length,
   });
-  if (newCn === null) return;
+  _renderProductSupplierList();
+  // 自动 focus 到新行的供应商名输入框
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('#productEditSupplierList input[type="text"]');
+    const newInput = inputs[(PRODUCT_EDIT_SUPPLIERS.length - 1) * 2];
+    if (newInput) newInput.focus();
+    // V27n autocomplete 防御
+    if (typeof _disableAutofillOnFields === 'function') {
+      _disableAutofillOnFields(document.getElementById('productEditSupplierList'));
+    }
+  }, 30);
+}
+window.addProductSupplier = addProductSupplier;
+
+function updateProductSupplier(idx, field, value) {
+  if (!PRODUCT_EDIT_SUPPLIERS[idx]) return;
+  PRODUCT_EDIT_SUPPLIERS[idx][field] = value;
+  // 不重渲染 · 避免输入时 cursor 跳掉
+}
+window.updateProductSupplier = updateProductSupplier;
+
+function setProductSupplierDefault(idx) {
+  if (!PRODUCT_EDIT_SUPPLIERS[idx]) return;
+  // 单选:只能一个默认
+  PRODUCT_EDIT_SUPPLIERS.forEach((s, i) => { s.is_default = (i === idx); });
+  _renderProductSupplierList();
+}
+window.setProductSupplierDefault = setProductSupplierDefault;
+
+function delProductSupplier(idx) {
+  if (!PRODUCT_EDIT_SUPPLIERS[idx]) return;
+  const wasDefault = PRODUCT_EDIT_SUPPLIERS[idx].is_default;
+  PRODUCT_EDIT_SUPPLIERS.splice(idx, 1);
+  // 删的是默认 → 把第一项设为新默认
+  if (wasDefault && PRODUCT_EDIT_SUPPLIERS.length > 0) {
+    PRODUCT_EDIT_SUPPLIERS[0].is_default = true;
+  }
+  _renderProductSupplierList();
+}
+window.delProductSupplier = delProductSupplier;
+
+async function saveProductEdit() {
+  const productId = PRODUCT_EDIT_ID;
+  if (!productId) return;
+  const p = PRODUCTS_CACHE._byId[productId];
+  if (!p) return;
+  
+  const newCn = (document.getElementById('productEditNameCn')?.value || '').trim();
+  
+  // 清理 suppliers:去掉空名供应商,补 sort_order
+  const cleanSuppliers = PRODUCT_EDIT_SUPPLIERS
+    .filter(s => (s.name || '').trim())
+    .map((s, i) => ({
+      name: s.name.trim(),
+      note: (s.note || '').trim(),
+      is_default: !!s.is_default,
+      last_price: s.last_price || null,
+      sort_order: i,
+    }));
+  
+  // 校验:如果有 supplier 但没人是默认,自动设第一个为默认
+  if (cleanSuppliers.length > 0 && !cleanSuppliers.some(s => s.is_default)) {
+    cleanSuppliers[0].is_default = true;
+  }
+  
+  // 双向同步:取 is_default=true 的 name 写到 default_supplier 字段(向后兼容)
+  const defaultSupplierName = cleanSuppliers.find(s => s.is_default)?.name || null;
+  
   try {
-    // V4-2026-05-24: 跟单手动改中文名 → 同时标 name_cn_locked
-    await sb.from('products').update({ 
-      name_cn: newCn.trim(),
-      name_cn_locked: true,
-      translation_source: 'manual',
-    }).eq('id', productId);
-    if (p) {
-      p.name_cn = newCn.trim();
+    const updates = {
+      suppliers: cleanSuppliers,
+      default_supplier: defaultSupplierName,
+    };
+    // 中文名只在变化时更新(且标 manual 不让 AI 覆盖)
+    if (newCn !== (p.name_cn || '')) {
+      updates.name_cn = newCn;
+      updates.name_cn_locked = true;
+      updates.translation_source = 'manual';
+    }
+    
+    const { error } = await sb.from('products').update(updates).eq('id', productId);
+    if (error) throw error;
+    
+    // 同步更新本地 cache
+    p.suppliers = cleanSuppliers;
+    p.default_supplier = defaultSupplierName;
+    if (updates.name_cn !== undefined) {
+      p.name_cn = updates.name_cn;
       p.name_cn_locked = true;
     }
-    toast('✓ 已保存 · 此后 AI 不再自动覆盖此中文名');
+    
+    toast(`✓ 已保存 · ${cleanSuppliers.length} 个供应商`);
+    closeProductEdit();
     renderProducts();
-  } catch (e) { toast('保存失败：' + (e.message || e), 'err'); }
+  } catch (e) { 
+    // V27n: 如果是 suppliers 字段不存在错误,提示用户跑 SQL
+    const msg = e.message || String(e);
+    if (msg.includes('suppliers') || msg.includes('column')) {
+      toast('⚠ 数据库还没加 suppliers 字段 · 请先跑 sql/add-product-suppliers.sql', 'err', 4000);
+    } else {
+      toast('保存失败:' + msg, 'err'); 
+    }
+  }
 }
+window.saveProductEdit = saveProductEdit;
+// ============================================================
 
 // ============ 同款绑定 ============
 let MASTER_BIND_PRODUCT_ID = null;

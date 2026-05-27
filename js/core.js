@@ -2961,8 +2961,14 @@ window.perfOnDateChange = perfOnDateChange;
 window.purchasesOnDateChange = purchasesOnDateChange;
 
 // V20260527g: 全局禁用浏览器自动填充邮箱/历史记录(除登录页)
-// 问题:Chrome 用历史邮箱/账号填充所有 input 下拉建议(订单备注里都会出现邮箱列表)
-// 修复:给非登录区的 input/textarea 设 autocomplete="new-password" — 这个非标值最有效阻止 Chrome 自动填充
+// V20260527n: 加强 · Chrome 89+ 越来越不尊重单一 autocomplete · 叠加多个防御属性
+// 防御层(越多越保险):
+//   1. autocomplete="new-password" — 主拦截 · Chrome 视为新密码字段不建议历史
+//   2. role="presentation"          — 标记为非语义元素 · Chrome 跳过 autofill
+//   3. aria-autocomplete="none"     — A11y 拒绝 autocomplete
+//   4. data-lpignore="true"         — LastPass 等密码管理器忽略
+//   5. data-form-type="other"       — 1Password 忽略
+//   6. data-1p-ignore="true"        — 1Password 旧版兼容
 // 跳过:登录页(#loginScreen 内) · type=password · 已显式设过 autocomplete 的字段
 function _disableAutofillOnFields(root) {
   if (!root || !root.querySelectorAll) return;
@@ -2972,10 +2978,18 @@ function _disableAutofillOnFields(root) {
     if (el.closest('#loginScreen')) return;
     // 密码字段不动
     if (el.type === 'password') return;
-    // 已显式设过的不覆盖
-    if (el.hasAttribute('autocomplete') && el.getAttribute('autocomplete') !== '') return;
-    // 设为非标值 · Chrome 视作"新密码"字段 · 不会建议历史邮箱
+    // 已显式设过 autocomplete 的不覆盖(防止意外破坏)
+    if (el.hasAttribute('autocomplete') && el.getAttribute('autocomplete') !== '' && el.getAttribute('autocomplete') !== 'new-password') return;
+    
+    // 主拦截
     el.setAttribute('autocomplete', 'new-password');
+    // V27n: 叠加防御层
+    if (!el.hasAttribute('role')) el.setAttribute('role', 'presentation');
+    if (!el.hasAttribute('aria-autocomplete')) el.setAttribute('aria-autocomplete', 'none');
+    if (!el.hasAttribute('data-lpignore')) el.setAttribute('data-lpignore', 'true');
+    if (!el.hasAttribute('data-form-type')) el.setAttribute('data-form-type', 'other');
+    if (!el.hasAttribute('data-1p-ignore')) el.setAttribute('data-1p-ignore', 'true');
+    
     // 兜底 · 给 textarea 加 spellcheck off 避免分心(可选)
     if (el.tagName === 'TEXTAREA' && !el.hasAttribute('spellcheck')) {
       el.setAttribute('spellcheck', 'false');
