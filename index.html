@@ -5489,6 +5489,7 @@ body.has-side-tabs .section-block {
       <span id="salesAutoSyncIndicator" style="font-size: 11px; color: var(--text-tertiary);"></span>
       <button class="btn small" onclick="shopifyToggleAutoSync()" id="salesAutoSyncBtn" title="自动同步开关">⏱️ 自动</button>
       <button class="btn small" onclick="shopifyReloadStores()" title="刷新店铺状态">🔄 刷新</button>
+      <button class="btn small" onclick="shopifyOpenAddStore()" title="跨 organization 的店:手动填 token 添加" style="background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.3); color: #92400e;">➕ 手动添加</button>
     </div>
 
     <div id="salesStatsContainer" style="margin-top: 14px;"></div>
@@ -7570,6 +7571,85 @@ HOGO
   console.log('[卡片布局修复 V20260526k] 运行时强制紧凑布局脚本已加载 · 销售单 + PO');
 })();
 </script>
+
+<!-- ============ V20260526q: 手动添加店铺 modal(跨 organization 用) ============ -->
+<div id="shopifyAddStoreModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width: 560px;">
+    <div class="modal-header">
+      <div class="modal-title">➕ 手动添加 Shopify 店铺</div>
+      <button class="modal-close" onclick="closeModal('shopifyAddStoreModal')">✕</button>
+    </div>
+    <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+      
+      <div style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(245,158,11,0.03)); padding: 14px; border-radius: 8px; border-left: 4px solid #f59e0b; margin-bottom: 18px;">
+        <div style="font-weight: 600; font-size: 13px; color: #92400e; margin-bottom: 6px;">⚠ 什么时候用这个?</div>
+        <div style="font-size: 12.5px; color: #78350f; line-height: 1.6;">
+          只在「店铺不在 JANEDECOR organization」时用。<br>
+          同组织的店请用 <a href="https://pyfmuknvjqfwcqvbrsvw.supabase.co/functions/v1/shopify-install" target="_blank" style="color: var(--accent); font-weight: 600;">OAuth 自动安装</a>。
+        </div>
+      </div>
+      
+      <div style="background: var(--bg-elevated); padding: 14px; border-radius: 8px; margin-bottom: 18px;">
+        <div style="font-weight: 600; font-size: 13px; margin-bottom: 8px;">📋 准备工作(在店铺 Admin 里完成)</div>
+        <ol style="font-size: 12.5px; color: var(--text-secondary); padding-left: 20px; line-height: 1.8;">
+          <li>登录新店铺 Admin → <code style="background: var(--bg-card); padding: 1px 5px; border-radius: 3px;">Settings</code> → <code style="background: var(--bg-card); padding: 1px 5px; border-radius: 3px;">Apps and sales channels</code></li>
+          <li>点 <b>Develop apps</b> → <b>Build apps in Dev Dashboard</b> → <b>Create app</b></li>
+          <li>配置 API Scopes(参考 vakkerlight 那个 app):<br>
+            <code style="background: var(--bg-card); padding: 2px 6px; border-radius: 3px; font-size: 11px; display: inline-block; margin-top: 4px;">read_orders, read_products, read_customers, read_fulfillments, read_shipping, read_inventory</code>
+          </li>
+          <li>Release version → Install on store</li>
+          <li>拿到 <b>Admin API access token</b>(<code style="background: rgba(220,38,38,0.1); padding: 1px 5px; border-radius: 3px; color: var(--danger);">shpat_xxxxxxxxxx</code> 开头)</li>
+          <li>回到这里填下面的表单</li>
+        </ol>
+      </div>
+      
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px;">店铺域名 <span style="color: var(--danger);">*</span></label>
+          <input type="text" id="addStoreDomain" placeholder="例如:lumioshine.myshopify.com" 
+                 style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: 'JetBrains Mono', monospace;">
+          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">必须以 .myshopify.com 结尾(不含 https://)</div>
+        </div>
+        
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px;">显示名 <span style="color: var(--danger);">*</span></label>
+          <input type="text" id="addStoreDisplayName" placeholder="例如:Lumio Shine" 
+                 style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;">
+          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">在销售单/PO 里显示的友好名称</div>
+        </div>
+        
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px;">Site Code <span style="color: var(--danger);">*</span></label>
+          <input type="text" id="addStoreSiteCode" placeholder="例如:LU" maxlength="6"
+                 style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: 'JetBrains Mono', monospace; text-transform: uppercase;">
+          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">2-4 字母的代号(已用:VK / DF / DC / PL / RD / MH / LS / MJ / RS)</div>
+        </div>
+        
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px;">Admin API Access Token <span style="color: var(--danger);">*</span></label>
+          <input type="password" id="addStoreToken" placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" 
+                 style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: 'JetBrains Mono', monospace;">
+          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">⚠ 高度敏感 · 加密存储 · 不要分享</div>
+        </div>
+        
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px;">权限范围(可选)</label>
+          <input type="text" id="addStoreScope" placeholder="read_orders,read_products,..." 
+                 style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: 'JetBrains Mono', monospace;"
+                 value="read_orders,read_products,read_customers,read_fulfillments,read_shipping,read_inventory">
+          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">默认值已填好 · 与你 app 配置的一致</div>
+        </div>
+      </div>
+      
+      <div id="addStoreHint" style="display:none; margin-top: 14px; padding: 10px 14px; border-radius: 6px; font-size: 12px;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('shopifyAddStoreModal')">取消</button>
+      <button class="btn primary" id="addStoreSubmitBtn" onclick="shopifySubmitAddStore()">✓ 添加并验证</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
