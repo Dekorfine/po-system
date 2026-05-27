@@ -20,23 +20,23 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260526q"></script>
+<script src="js/core.js?v=20260527g"></script>
 <script src="js/utils.js?v=20260525z"></script>
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260526o"></script>
-<script src="js/help.js?v=20260527e"></script>
+<script src="js/help.js?v=20260527g"></script>
 <script src="js/dateFilter.js?v=20260526p"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260527d"></script>
+<script src="js/aftersales.js?v=20260527f"></script>
 <script src="js/missing.js?v=20260526o"></script>
 <script src="js/orders.js?v=20260526q"></script>
-<script src="js/shopify.js?v=20260527e"></script>
-<script src="js/po.js?v=20260526q"></script>
+<script src="js/shopify.js?v=20260527g"></script>
+<script src="js/po.js?v=20260527g"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script src="js/cross-dept.js?v=20260526m"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
@@ -1744,6 +1744,14 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .report-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; box-shadow: var(--shadow-sm); }
 .report-card h3 { font-size: 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
 .report-card h3 .actions { font-size: 11px; }
+/* V20260527f: 可折叠报表卡片 */
+.report-card.collapsible h3 { margin-bottom: 0; transition: margin-bottom 0.2s; }
+.report-card.collapsible:not(.collapsed) h3 { margin-bottom: 14px; }
+.report-card.collapsible .asr-body { max-height: 600px; overflow: hidden; transition: max-height 0.25s ease, opacity 0.2s; opacity: 1; }
+.report-card.collapsible.collapsed .asr-body { max-height: 0; opacity: 0; pointer-events: none; margin: 0; }
+.report-card.collapsible h3:hover { color: var(--accent); }
+.report-card.collapsible #asReportToggleIcon { display:inline-block; transform: rotate(0deg); }
+.report-card.collapsible.collapsed #asReportToggleIcon { transform: rotate(0deg); }
 .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .report-block h4 { font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
 .bar-row { display: grid; grid-template-columns: 110px 1fr 50px 60px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); font-size: 12.5px; }
@@ -5122,11 +5130,17 @@ body.has-side-tabs .section-block {
       <div class="stat-card danger clickable" onclick="quickFilterAfter('overdue')" title="点击查看：逾期"><div class="label">逾期</div><div class="value mono"><span id="asOverdue">0</span><span class="unit">单</span></div><div class="sub">需紧急</div></div>
     </div>
     
-    <!-- 月度统计区 -->
+    <!-- 月度统计区 · V20260527f 默认折叠 -->
     <div class="aftersales-stats">
-      <div class="report-card">
-        <h3>📊 本月售后汇总（<span id="reportMonth"></span>）<div class="actions"><button class="btn sm ghost" onclick="exportAfterReport()">📋 导出汇总</button></div></h3>
-        <div class="report-grid">
+      <div class="report-card collapsible" id="asReportCard">
+        <h3 onclick="toggleAfterReport(event)" style="cursor:pointer; user-select:none;">
+          <span>📊 本月售后汇总（<span id="reportMonth"></span>）</span>
+          <span style="display:flex; align-items:center; gap:10px;">
+            <button class="btn sm ghost" onclick="event.stopPropagation(); exportAfterReport()">📋 导出汇总</button>
+            <span id="asReportToggleIcon" style="font-size:12px; color:var(--text-tertiary); transition:transform 0.2s;">▼</span>
+          </span>
+        </h3>
+        <div class="report-grid asr-body">
           <div class="report-block">
             <h4>🏭 按供应商排名</h4>
             <div id="reportBySupplier"></div>
