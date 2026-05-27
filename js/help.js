@@ -10,6 +10,24 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260527e',
+    date: '2026-05-27',
+    type: 'fix',
+    title: '🐛 隐藏「mooijane ➕安装」chip · 老店已被 JD app 接管',
+    notes: [
+      '🔍 根因:`mooijane.myshopify.com` 在 STORES_META 硬编码,DB 里没 active 记录 → 渲染成"+ 安装"chip',
+      '🔍 chip 上点击触发的是 `shopifyInstall(...)`(装店),不是删除',
+      '🔍 「已连接店铺」表格只显示 connected=true 的店,所以 mooijane 不在表格里 → 找不到删除入口',
+      '✅ STORES_META 给 mooijane 加 `legacyOnly: true` 标记',
+      '✅ 保留 site_code="MJ" 用于历史订单解析(若有 site=MJ 的旧数据照常工作)',
+      '✅ chip 渲染逻辑:`legacyOnly && !connected` → 跳过(不显示)',
+      '✅ 已连接的 legacyOnly 仍显示(防止误删还活着的店)',
+      '✅ 总数从写死 `connected/9` 改成动态算 `connected/totalVisible`',
+      '🌐 业务:janedecor.myshopify.com (JD app · 显示名 Mooijane) 已替代 mooijane.myshopify.com',
+      '🔒 升 shopify.js → v20260527e · 升 help.js → v20260527e',
+    ],
+  },
+  {
     v: '20260527d',
     date: '2026-05-27',
     type: 'feature',

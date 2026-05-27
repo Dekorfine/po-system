@@ -4,6 +4,9 @@
 // ============================================================
 // 依赖：core.js · utils.js
 // ============================================================
+// V20260527e: STORES_META 加 legacyOnly 字段 · mooijane 已被 JD app 接管 · chip 不再显示
+// V20260527c: 店铺管理 modal 加入 fixed-overlay 白名单 · 修错位 + 列表看不见
+// ============================================================
 
 // ============================================================
 // Shopify 销售单模块（批次 3：状态机 + DB 持久化 + sub-tabs）
@@ -17,7 +20,9 @@ const SHOPIFY = {
     { domain: 'vakkerge.myshopify.com',       site_code: 'RD' },
     { domain: 'vkwholesale.myshopify.com',    site_code: 'MH' },
     { domain: 'docolamp.myshopify.com',       site_code: 'LS' },
-    { domain: 'mooijane.myshopify.com',       site_code: 'MJ' },
+    // V20260527e: mooijane.myshopify.com 已被 janedecor.myshopify.com (JD app) 接管
+    // 保留 site_code='MJ' 用于历史订单解析,但不在 chip 条显示 "+ 安装" 入口
+    { domain: 'mooijane.myshopify.com',       site_code: 'MJ', legacyOnly: true },
     { domain: 'decormote.myshopify.com',      site_code: 'RS' },
     { domain: 'janedecor.myshopify.com',      site_code: 'JD' },
   ],
@@ -150,10 +155,13 @@ function renderShopifyStores() {
   const grid = document.getElementById('salesStoresGrid');
   if (!grid) return;
   const stores = SHOPIFY._stores;
-  const connected = stores.filter(s => s.connected).length;
-  document.getElementById('salesStoresTotal').textContent = `${connected}/9`;
+  // V20260527e: chip 条只显示「非 legacyOnly」的店;但已连接的 legacyOnly 仍显示(防误删活的店)
+  const visibleStores = stores.filter(s => !s.legacyOnly || s.connected);
+  const connected = visibleStores.filter(s => s.connected).length;
+  const totalVisible = visibleStores.length;
+  document.getElementById('salesStoresTotal').textContent = `${connected}/${totalVisible}`;
 
-  grid.innerHTML = stores.map(s => {
+  grid.innerHTML = visibleStores.map(s => {
     // V20260526q: 当前店被设为过滤(单店或多店里)→ 显示选中态(蓝色边框 + 强调)
     const isFiltered = typeof SHOPIFY_SEARCH !== 'undefined' 
                     && SHOPIFY_SEARCH.shops 
@@ -2410,11 +2418,8 @@ async function shopifySubmitAddStore() {
     
     // 1.5 秒后关闭 modal + 刷新店铺列表
     setTimeout(() => {
-      if (typeof closeModal === 'function') closeModal('shopifyAddStoreModal');
-      else {
-        document.getElementById('shopifyAddStoreModal').style.display = 'none';
-        document.getElementById('shopifyAddStoreModal').classList.remove('show');
-      }
+      // V20260527c: 直接 style.display='none' · 与 fixed overlay CSS 一致
+      document.getElementById('shopifyAddStoreModal').style.display = 'none';
       if (typeof shopifyReloadStores === 'function') shopifyReloadStores();
     }, 1500);
     
@@ -2560,12 +2565,10 @@ window.shopifyOpenAddStore = function() {
   const hint = document.getElementById('addStoreHint');
   if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
   
-  if (typeof openModal === 'function') {
-    openModal('shopifyAddStoreModal');
-  } else {
-    document.getElementById('shopifyAddStoreModal').style.display = 'flex';
-    document.getElementById('shopifyAddStoreModal').classList.add('show');
-  }
+  // V20260527c: 用 style.display='flex' 触发 fixed overlay CSS([style*="flex"] 选择器)
+  // 项目里 modal 用这个机制 · 不是 .modal-bg.show 那套
+  document.getElementById('shopifyAddStoreModal').style.display = 'flex';
+  
   // 默认显示列表 tab
   shopifyMgrSwitchTab('list');
 };
