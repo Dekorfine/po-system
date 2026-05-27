@@ -35,7 +35,7 @@
 <script src="js/aftersales.js?v=20260526o"></script>
 <script src="js/missing.js?v=20260526o"></script>
 <script src="js/orders.js?v=20260526q"></script>
-<script src="js/shopify.js?v=20260526o"></script>
+<script src="js/shopify.js?v=20260526q"></script>
 <script src="js/po.js?v=20260526o"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script src="js/cross-dept.js?v=20260526m"></script>
@@ -3511,6 +3511,21 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .store-chip:hover { background: var(--bg-card); border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .store-chip.connected { background: rgba(21,128,61,0.06); border-color: rgba(21,128,61,0.25); }
 .store-chip.connected:hover { background: rgba(21,128,61,0.1); border-color: var(--success); }
+/* V20260526q: 被设为过滤源的店 · 蓝色边框 + 强调 */
+.store-chip.connected.filtering {
+  background: linear-gradient(135deg, rgba(37,99,235,0.12), rgba(37,99,235,0.05));
+  border-color: var(--accent);
+  border-width: 2px;
+  box-shadow: 0 2px 8px rgba(37,99,235,0.2);
+  transform: translateY(-1px);
+}
+.store-chip.connected.filtering .store-chip-code {
+  background: var(--accent);
+}
+.store-chip.connected.filtering .store-chip-status {
+  color: var(--accent);
+  font-size: 13px;
+}
 .store-chip-code {
   display: inline-block; padding: 1px 6px; border-radius: 6px;
   background: var(--text-tertiary); color: white;
