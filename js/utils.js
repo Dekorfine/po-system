@@ -4,6 +4,8 @@
 // ============================================================
 // 依赖：core.js
 // ============================================================
+// V20260527m: 自动同步默认关闭 · 跟店小秘一致 · 防止后台 5 分钟无感拉数据
+// ============================================================
 
 // ============================================================
 // V4-2026-05-24：催单 / 售后 # 列产品大图样式（自动注入到页面）
@@ -1225,7 +1227,10 @@ function closeImgLightbox(e) {
 const SHOPIFY_AUTOSYNC_KEY = 'shopify_autosync_on';
 
 function shopifyAutoSyncOn() {
-  return localStorage.getItem(SHOPIFY_AUTOSYNC_KEY) !== '0';
+  // V20260527m: 默认关闭 · 必须显式开启('1')才生效
+  // 之前 bug:用 !== '0' 判定 · localStorage 没值时默认开启 → 后台每 5 分钟无感拉数据
+  // 现在跟店小秘一致 · 用户主动点 [⏱️ 自动] 按钮才开
+  return localStorage.getItem(SHOPIFY_AUTOSYNC_KEY) === '1';
 }
 
 function shopifyToggleAutoSync() {
