@@ -332,11 +332,18 @@ function _updateShopFilterStatusBar() {
 }
 
 // V20260526q: 清除店铺过滤 · 显示全部店订单
+// V20260527p: 修 bug · 之前调用的 shopifyRenderShops 不存在(正确名是 renderShopifyStores)
+// typeof 守卫让函数缺失静默无报错 · 导致 chip 高亮态没刷新 = 用户看"关不掉"
 function shopifyClearShopFilter() {
   if (!SHOPIFY_SEARCH || !SHOPIFY_SEARCH.shops) return;
   SHOPIFY_SEARCH.shops.clear();
-  if (typeof shopifyRenderShops === 'function') shopifyRenderShops();
+  // 重渲 chip 行(清掉 🎯 高亮)
+  if (typeof renderShopifyStores === 'function') renderShopifyStores();
+  // 重渲国家筛选下方的 chip 区
   if (typeof shopifyRenderShopFilter === 'function') shopifyRenderShopFilter();
+  // 隐藏状态条 + 清除按钮(否则会残留)
+  _updateShopFilterStatusBar();
+  // 重新渲染订单列表(显示全部)
   if (typeof shopifyDoSearch === 'function') shopifyDoSearch();
   toast('已显示全部店铺的订单', 'info', 1200);
 }
@@ -399,8 +406,9 @@ function shopifyQuickFetchFromCard(domain) {
         const code = (SHOPIFY?.siteCodeOf && SHOPIFY.siteCodeOf(domain)) || domain.split('.')[0];
         toast(`✓ 已切换到 ${code} 的订单`, 'info', 1200);
       }
-      if (typeof shopifyRenderShops === 'function') shopifyRenderShops();
+      if (typeof renderShopifyStores === 'function') renderShopifyStores();
       if (typeof shopifyRenderShopFilter === 'function') shopifyRenderShopFilter();
+      _updateShopFilterStatusBar();
       // 关键:本地过滤 + 重新渲染 · 瞬间生效
       if (typeof shopifyDoSearch === 'function') shopifyDoSearch();
     }
@@ -751,8 +759,9 @@ function shopifyToggleShop(domain) {
   if (SHOPIFY_SEARCH.shops.has(domain)) SHOPIFY_SEARCH.shops.delete(domain);
   else SHOPIFY_SEARCH.shops.add(domain);
   shopifyRenderShopFilter();
-  // V20260526q: country-chip 改变时,同步刷新顶部 store-chip 的过滤高亮态
-  if (typeof shopifyRenderShops === 'function') shopifyRenderShops();
+  // V20260527p: 修 bug · 旧 shopifyRenderShops 不存在 · 正确名 renderShopifyStores
+  if (typeof renderShopifyStores === 'function') renderShopifyStores();
+  _updateShopFilterStatusBar();
   shopifyDoSearch();
 }
 

@@ -10,6 +10,27 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260527p',
+    date: '2026-05-27',
+    type: 'fix',
+    title: '🐛 关键修复 · 店铺过滤"关不掉" — 函数名拼写 bug(静默潜伏 N 天)',
+    notes: [
+      '🔍 用户反馈:拖动 chip 到前面后,点 [✖ 显示全部] 没反应,chip 高亮还在 = 关不掉',
+      '🔍 根因:shopifyClearShopFilter 等 3 处调用了 `shopifyRenderShops()` 函数 · 但代码里根本没这个函数',
+      '   · 正确名是 `renderShopifyStores`(单复数 + 命名风格不一致)',
+      '   · 用了 `if (typeof shopifyRenderShops === "function")` 守卫',
+      '     → 函数缺失不报错,静默跳过 → 用户感知 "关不掉"',
+      '   · 这个 bug 之前一直有 · 27k 拖拽功能上线后更暴露(每次操作 chip 都看出问题)',
+      '',
+      '✅ 修复 3 处错调用 (shopify.js):',
+      '   · L335 shopifyClearShopFilter — 改成 renderShopifyStores + _updateShopFilterStatusBar',
+      '   · L755 shopifyToggleShop — 同上',
+      '   · L409 shopifyQuickFetchFromCard 内部 — 同上',
+      '',
+      '🔒 升 shopify.js / help.js → v20260527p (跳过 o 避免与数字 0 混淆)',
+    ],
+  },
+  {
     v: '20260527n',
     date: '2026-05-27',
     type: 'feature',
