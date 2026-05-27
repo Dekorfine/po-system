@@ -1067,10 +1067,10 @@ function refreshAsFb() {
   
   const card = document.getElementById('asFb');
   if (!card.dataset.userToggled) {
-    // V20260527f: 默认折叠 + localStorage 记忆
-    // localStorage 'as_fb_collapsed': '0'=用户展开,'1'/null=折叠(默认)
-    const saved = localStorage.getItem('as_fb_collapsed');
-    card.classList.toggle('collapsed', saved !== '0');
+    // V20260527j: 真·默认折叠 · 每次进 tab 都强制折叠
+    // 用户当次会话点开后仍保持展开(由 toggleFb 设 dataset.userToggled='1')
+    // 刷新页面后 DOM 重建 · userToggled 丢失 · 重新回到折叠
+    card.classList.add('collapsed');
   }
   
   if (buckets[_asFbTab].length === 0) {
@@ -1122,6 +1122,11 @@ function toggleAfterReport(e) {
 
 // 本月汇总报表
 function renderAfterReport() {
+  // V20260527j: 汇总已移到 analytics tab · DOM 不在 aftersales tab 时 early return
+  const supEl = document.getElementById('reportBySupplier');
+  const reasonEl = document.getElementById('reportByReason');
+  if (!supEl || !reasonEl) return;
+  
   // V20260527f: 应用 localStorage 折叠状态(默认折叠)
   const reportCard = document.getElementById('asReportCard');
   if (reportCard && !reportCard.dataset.collapseApplied) {
@@ -1147,7 +1152,6 @@ function renderAfterReport() {
   const supplierList = Object.entries(bySupplier).sort((a, b) => b[1].count - a[1].count).slice(0, 6);
   const maxCount = supplierList.length > 0 ? supplierList[0][1].count : 1;
   
-  const supEl = document.getElementById('reportBySupplier');
   if (supplierList.length === 0) {
     supEl.innerHTML = '<div style="font-size: 12px; color: var(--text-tertiary); padding: 12px; text-align: center;">本月暂无售后</div>';
   } else {
@@ -1173,7 +1177,6 @@ function renderAfterReport() {
   const reasonList = Object.entries(byReason).sort((a, b) => b[1] - a[1]);
   const totalReason = monthData.length || 1;
   
-  const reasonEl = document.getElementById('reportByReason');
   if (reasonList.length === 0) {
     reasonEl.innerHTML = '<div style="font-size: 12px; color: var(--text-tertiary); padding: 12px; text-align: center;">本月暂无售后</div>';
   } else {

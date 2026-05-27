@@ -2232,7 +2232,14 @@ function renderActiveTab() {
   }
   else if (CURRENT_TAB === 'finance') { if (typeof renderFinance === 'function') renderFinance(); }
   else if (CURRENT_TAB === 'products') { if (typeof renderProducts === 'function') renderProducts(); }
-  else if (CURRENT_TAB === 'analytics') { renderAnalytics(); }
+  else if (CURRENT_TAB === 'analytics') { 
+    renderAnalytics();
+    // V20260527j: 售后汇总已移到 analytics tab 顶部 · 切到此 tab 时触发渲染
+    if (typeof renderAfterReport === 'function') {
+      // 等数据就绪后再渲染(AFTERSALES 可能还没加载完)
+      setTimeout(() => { try { renderAfterReport(); } catch (_) {} }, 80);
+    }
+  }
   else if (CURRENT_TAB === 'performance') { 
     if (typeof renderPerformance === 'function') renderPerformance();
     setTimeout(_populatePerfDateFilter, 50);  // V20260526e

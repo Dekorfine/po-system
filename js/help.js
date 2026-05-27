@@ -10,6 +10,26 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260527j',
+    date: '2026-05-27',
+    type: 'feature',
+    title: '✨ 售后汇总搬到「📈 数据」tab + 待处理售后真·默认折叠',
+    notes: [
+      '🐛 问题:售后 tab 顶部的「📊 本月售后汇总」挡住记录工作区 · 跟单日常用不到',
+      '✨ 把「📊 本月售后汇总」从 aftersales tab 移到 analytics tab(📈 数据)顶部',
+      '   · 在 .info-bar 之后 · sub-tab 之前 · 不侵入 analytics.js 已有逻辑',
+      '   · 默认折叠 · 点击展开 · localStorage 记忆',
+      '   · analytics tab 切换时自动触发 renderAfterReport',
+      '🔒 给 renderAfterReport 加 null 防护 · DOM 不在时 early return(防止报错)',
+      '✨ 「🔧 待处理售后」改为真·默认折叠',
+      '   · 之前 27f 用 localStorage 记忆 · 但用户希望每次刷新都默认折叠',
+      '   · 改为忽略 localStorage · 进 tab 强制 collapsed',
+      '   · 用户当次会话点开仍保持展开(由 dataset.userToggled 控制)',
+      '   · 刷新页面后 DOM 重建 · userToggled 丢失 · 回到折叠',
+      '🔒 升 aftersales.js / core.js / help.js → v20260527j',
+    ],
+  },
+  {
     v: '20260527i',
     date: '2026-05-27',
     type: 'feature',
