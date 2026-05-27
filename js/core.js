@@ -2492,6 +2492,12 @@ function toggleFb(id, e) {
   const c = document.getElementById(id);
   c.classList.toggle('collapsed');
   c.dataset.userToggled = '1';
+  // V20260526q: 记忆折叠状态(只对带 _collapsed 偏好的元素生效)
+  if (id === 'ordersFb') {
+    localStorage.setItem('orders_fb_collapsed', c.classList.contains('collapsed') ? '1' : '0');
+  } else if (id === 'asFb') {
+    localStorage.setItem('as_fb_collapsed', c.classList.contains('collapsed') ? '1' : '0');
+  }
 }
 
 // ============================================================================

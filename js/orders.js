@@ -1337,8 +1337,15 @@ function refreshOrdersFb() {
   document.getElementById('ordersFbTotal').textContent = `共 ${total} 单`;
   
   const card = document.getElementById('ordersFb');
+  // V20260526q: 永远默认折叠 · 用户主动点开后用 localStorage 记忆
+  // 之前是有数据自动展开 · 用户反馈太吵 · 改成默认折叠
   if (!card.dataset.userToggled) {
-    card.classList.toggle('collapsed', buckets.overdue.length === 0 && buckets.today.length === 0);
+    const userPref = localStorage.getItem('orders_fb_collapsed');
+    if (userPref === '0') {
+      card.classList.remove('collapsed');  // 用户上次展开过
+    } else {
+      card.classList.add('collapsed');     // 默认折叠
+    }
   }
   
   if (buckets[_ordersFbTab].length === 0) {
@@ -1402,9 +1409,12 @@ function renderUrgentBanner() {
   }
   
   banner.style.display = 'block';
-  // V20260526p: 恢复折叠状态
-  if (localStorage.getItem('urgent_alert_collapsed') === '1') {
+  // V20260526q: 默认折叠 · 只在用户主动展开过时才展开
+  // 之前用 localStorage === '1' 才折叠 · 现在反向:必须 === '0' 才展开
+  if (localStorage.getItem('urgent_alert_collapsed') !== '0') {
     banner.classList.add('collapsed');
+  } else {
+    banner.classList.remove('collapsed');
   }
   document.getElementById('urgentCount').textContent = urgent.length;
   
