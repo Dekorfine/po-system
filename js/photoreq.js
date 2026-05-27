@@ -48,6 +48,7 @@ const PHOTOREQ = {
   _list: [],
   _allLogs: [],          // V27y: 全量缓存(订阅会更新)
   _filter: 'all-activities',  // V27y: 默认看全部动态
+  _viewMode: (typeof localStorage !== 'undefined' && localStorage.getItem('photoreq_view_mode')) || 'list',  // V28a: 'list' | 'grid'
   _loadedAt: 0,
   _channel: null,        // V27y: realtime subscription handle
   _lastToastAt: 0,       // V27y: toast 节流(防刷屏)
@@ -132,8 +133,8 @@ async function renderPhotoReq() {
       ${isAdmin ? `<button class="btn" onclick="photoReqOpenBatch()" title="跟单专员/主管专用 · 一次录入多条" style="background:rgba(124,58,237,0.08); border-color:rgba(124,58,237,0.3); color:var(--purple);">📥 批量录入</button>` : ''}
     </div>
 
-    <!-- V27y: 筛选 sub-tab(v3) -->
-    <div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">
+    <!-- V27y: 筛选 sub-tab(v3) + V28a: 视图切换 -->
+    <div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; align-items:center;">
       ${[
         { k: 'all-activities', label: '🌐 全部工作动态' },
         { k: 'mine',           label: '👤 我提的' },
@@ -146,6 +147,18 @@ async function renderPhotoReq() {
           ${f.label}
         </button>
       `).join('')}
+      
+      <!-- V28a: 视图切换 -->
+      <div style="margin-left:auto; display:inline-flex; gap:0; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
+        <button onclick="photoReqSetViewMode('list')" 
+                style="padding:5px 10px; font-size:11.5px; border:0; cursor:pointer; background:${PHOTOREQ._viewMode === 'list' ? 'var(--accent)' : 'var(--bg-card)'}; color:${PHOTOREQ._viewMode === 'list' ? 'white' : 'var(--text-secondary)'}; font-weight:${PHOTOREQ._viewMode === 'list' ? '600' : '400'};" title="列表视图(紧凑 · 适合查找)">
+          ☰ 列表
+        </button>
+        <button onclick="photoReqSetViewMode('grid')" 
+                style="padding:5px 10px; font-size:11.5px; border:0; border-left:1px solid var(--border); cursor:pointer; background:${PHOTOREQ._viewMode === 'grid' ? 'var(--accent)' : 'var(--bg-card)'}; color:${PHOTOREQ._viewMode === 'grid' ? 'white' : 'var(--text-secondary)'}; font-weight:${PHOTOREQ._viewMode === 'grid' ? '600' : '400'};" title="网格视图(瀑布流 · 看大图)">
+          ⊞ 网格
+        </button>
+      </div>
     </div>
 
     <div id="photoReqList">
@@ -229,6 +242,14 @@ function photoReqSetFilter(filter) {
 }
 window.photoReqSetFilter = photoReqSetFilter;
 
+// V28a: 切换视图模式
+function photoReqSetViewMode(mode) {
+  PHOTOREQ._viewMode = mode;
+  try { localStorage.setItem('photoreq_view_mode', mode); } catch (_) {}
+  renderPhotoReq();  // 重渲整个 tab(切换按钮状态也要变)
+}
+window.photoReqSetViewMode = photoReqSetViewMode;
+
 // ─────────────── 加载列表 · V27y 改:全量查 + 客户端筛选 ───────────────
 async function _photoReqLoadAndRender() {
   const listEl = document.getElementById('photoReqList');
@@ -307,76 +328,151 @@ function _photoReqRenderList(list) {
     return;
   }
   
-  listEl.innerHTML = list.map(log => _photoReqCardHtml(log)).join('');
+  // V28a: 根据视图模式选择容器布局
+  if (PHOTOREQ._viewMode === 'grid') {
+    listEl.innerHTML = `
+      <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:14px;">
+        ${list.map(log => _photoReqCardHtmlGrid(log)).join('')}
+      </div>
+    `;
+  } else {
+    // list 视图 · 紧凑横向布局
+    listEl.innerHTML = list.map(log => _photoReqCardHtmlList(log)).join('');
+  }
 }
 
-function _photoReqCardHtml(log) {
+// V28a: 列表视图卡片 · 紧凑横向 · 高度 ~90px
+function _photoReqCardHtmlList(log) {
   const status = log.status || 'draft';
   const statusMeta = PHOTOREQ_STATUS_LABEL[status] || { emoji: '?', text: status, color: 'var(--bg-elevated)', fg: 'var(--text-secondary)' };
   const ext = log.external_request || {};
   const urgent = log.priority === 'urgent' || ext.urgency === 'urgent';
   const shops = Array.isArray(log.applicable_shops) ? log.applicable_shops : [];
   const attachments = Array.isArray(ext.attachments) ? ext.attachments : [];
-  
-  // V20260527y(v3 #2):来源徽章 · 自发/null 显示拍摄部
   const source = ext.source || '自发';
   const fromName = ext.from_name || '';
   const sourceBadge = _photoReqSourceBadge(source, fromName);
-  
-  // V20260527y(v3 #6):完整状态行 · 把所有 sub-state 都显示
   const statusLines = _photoReqRenderStatusLines(log);
-  
   const ageMs = Date.now() - (log.created_at_ms || 0);
   const ageStr = _photoReqFmtAge(ageMs);
+  const myId = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) ? String(CURRENT_USER_ID) 
+             : (typeof CURRENT_AGENT !== 'undefined' ? String(CURRENT_AGENT) : '');
+  const isMine = ext.from_user_id === myId;
   
-  // 判断是不是"我提的"(实时订阅 toast 用 + 显示标记)
+  // 摘要状态行(最多 2 个 sub-state · 不全显示避免高度爆炸)
+  const compactStatus = statusLines.slice(0, 2).join(' · ');
+  
+  return `
+    <div style="display:grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap:12px; padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-left:4px solid ${urgent ? 'var(--danger)' : statusMeta.fg}; border-radius:6px; margin-bottom:6px; align-items:center;">
+      <!-- 图 -->
+      <div>
+        ${log.product_image 
+          ? `<img src="${escapeHtml(log.product_image)}" style="width:64px; height:64px; object-fit:cover; border-radius:5px; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
+          : `<div style="width:64px; height:64px; background:var(--bg-elevated); border-radius:5px; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:22px;">📷</div>`}
+      </div>
+      <!-- 主信息 · 3 行 -->
+      <div style="min-width:0;">
+        <!-- 行 1:徽章 · 状态 · 产品名 · SKU(单行 truncate)-->
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px; flex-wrap:nowrap; overflow:hidden;">
+          ${urgent ? `<span style="background:var(--danger); color:white; padding:1px 6px; border-radius:8px; font-size:9.5px; font-weight:700; flex-shrink:0;">🚨</span>` : ''}
+          <span style="flex-shrink:0;">${sourceBadge}</span>
+          ${isMine && source !== '自发' ? `<span style="color:var(--accent); font-size:10px; font-weight:600; flex-shrink:0;">↳ 我提</span>` : ''}
+          <span style="background:${statusMeta.color}; color:${statusMeta.fg}; padding:1px 7px; border-radius:8px; font-size:10.5px; font-weight:600; flex-shrink:0;">${statusMeta.emoji} ${statusMeta.text}</span>
+          <span style="font-size:13px; font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;">${escapeHtml(log.product_name || '(未填)')}</span>
+          ${log.sku ? `<span style="font-size:11px; color:var(--text-tertiary); font-family:monospace; flex-shrink:0;">${escapeHtml(log.sku)}</span>` : ''}
+        </div>
+        <!-- 行 2:原因(单行 truncate)-->
+        ${ext.reason ? `
+        <div style="font-size:11.5px; color:var(--text-secondary); margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.4;" title="${escapeHtml(ext.reason)}">
+          ${escapeHtml(ext.reason)}
+        </div>` : ''}
+        <!-- 行 3:店铺 / 附件 / 状态摘要 -->
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:10.5px; color:var(--text-tertiary); line-height:1.4;">
+          ${shops.length > 0 ? `<span>🏪 ${shops.map(escapeHtml).join('·')}</span>` : ''}
+          ${attachments.length > 0 ? `<span>📎 ${attachments.length}</span>` : ''}
+          ${compactStatus ? `<span style="color:var(--text-secondary);">${compactStatus}</span>` : ''}
+        </div>
+      </div>
+      <!-- 右:时间 + ✏ -->
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
+        <span style="font-size:10.5px; color:var(--text-tertiary); white-space:nowrap;">${ageStr}</span>
+        <button onclick="photoReqOpenEdit('${escapeHtml(log.id)}')" class="btn small" style="font-size:10.5px; padding:2px 8px;" title="编辑">✏ 编辑</button>
+      </div>
+    </div>
+  `;
+}
+
+// V28a: 网格视图卡片 · 大图在上 · 信息在下
+function _photoReqCardHtmlGrid(log) {
+  const status = log.status || 'draft';
+  const statusMeta = PHOTOREQ_STATUS_LABEL[status] || { emoji: '?', text: status, color: 'var(--bg-elevated)', fg: 'var(--text-secondary)' };
+  const ext = log.external_request || {};
+  const urgent = log.priority === 'urgent' || ext.urgency === 'urgent';
+  const shops = Array.isArray(log.applicable_shops) ? log.applicable_shops : [];
+  const attachments = Array.isArray(ext.attachments) ? ext.attachments : [];
+  const source = ext.source || '自发';
+  const fromName = ext.from_name || '';
+  const sourceBadge = _photoReqSourceBadge(source, fromName);
+  const statusLines = _photoReqRenderStatusLines(log);
+  const ageMs = Date.now() - (log.created_at_ms || 0);
+  const ageStr = _photoReqFmtAge(ageMs);
   const myId = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) ? String(CURRENT_USER_ID) 
              : (typeof CURRENT_AGENT !== 'undefined' ? String(CURRENT_AGENT) : '');
   const isMine = ext.from_user_id === myId;
   
   return `
-    <div style="display:grid; grid-template-columns: 80px 1fr; gap:14px; padding:14px; background:var(--bg-card); border:1px solid var(--border); border-left:4px solid ${urgent ? 'var(--danger)' : statusMeta.fg}; border-radius:8px; margin-bottom:10px;">
-      <!-- 产品图 -->
-      <div>
+    <div style="display:flex; flex-direction:column; background:var(--bg-card); border:1px solid var(--border); border-top:4px solid ${urgent ? 'var(--danger)' : statusMeta.fg}; border-radius:8px; overflow:hidden; transition:transform 0.15s, box-shadow 0.15s; height:100%;"
+         onmouseenter="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';"
+         onmouseleave="this.style.transform=''; this.style.boxShadow='';">
+      
+      <!-- 大图区(180px 高)-->
+      <div style="position:relative; background:var(--bg-elevated); height:180px; overflow:hidden;">
         ${log.product_image 
-          ? `<img src="${escapeHtml(log.product_image)}" style="width:80px; height:80px; object-fit:cover; border-radius:6px; cursor:pointer;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
-          : `<div style="width:80px; height:80px; background:var(--bg-elevated); border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:24px;">📷</div>`}
+          ? `<img src="${escapeHtml(log.product_image)}" style="width:100%; height:100%; object-fit:cover; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
+          : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:48px;">📷</div>`}
+        ${urgent ? `<span style="position:absolute; top:8px; left:8px; background:var(--danger); color:white; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,0.15);">🚨 加急</span>` : ''}
+        <span style="position:absolute; top:8px; right:8px;">${sourceBadge}</span>
       </div>
-      <!-- 主内容 -->
-      <div style="min-width:0;">
-        <!-- 第一行:加急 + 来源 + 状态 + 时间 + ✏ 编辑 -->
-        <div style="display:flex; align-items:center; gap:6px; margin-bottom:5px; flex-wrap:wrap;">
-          ${urgent ? `<span style="background:var(--danger); color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700;">🚨 加急</span>` : ''}
-          ${sourceBadge}
-          ${isMine && source !== '自发' ? `<span style="color:var(--accent); font-size:10.5px; font-weight:600;">↳ 我提的</span>` : ''}
-          <span style="background:${statusMeta.color}; color:${statusMeta.fg}; padding:2px 9px; border-radius:10px; font-size:11px; font-weight:600;">${statusMeta.emoji} ${statusMeta.text}</span>
-          <span style="font-size:11px; color:var(--text-tertiary); margin-left:auto;">${ageStr}</span>
-          <button onclick="photoReqOpenEdit('${escapeHtml(log.id)}')" class="btn small" style="font-size:10.5px; padding:2px 8px;" title="编辑产品基础信息 + 补充原因/附件">✏ 编辑</button>
+      
+      <!-- 信息区 -->
+      <div style="padding:12px; display:flex; flex-direction:column; gap:6px; flex:1; min-width:0;">
+        <!-- 状态徽章 -->
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          <span style="background:${statusMeta.color}; color:${statusMeta.fg}; padding:2px 9px; border-radius:10px; font-size:10.5px; font-weight:600;">${statusMeta.emoji} ${statusMeta.text}</span>
+          ${isMine && source !== '自发' ? `<span style="color:var(--accent); font-size:10px; font-weight:600;">↳ 我提</span>` : ''}
         </div>
+        
         <!-- 产品名 + SKU -->
-        <div style="font-size:14px; font-weight:600; color:var(--text-primary); margin-bottom:3px; word-break:break-word;">
+        <div style="font-size:13.5px; font-weight:600; color:var(--text-primary); line-height:1.4; word-break:break-word; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">
           ${escapeHtml(log.product_name || '(未填产品名)')}
-          ${log.sku ? `<span style="font-size:11px; font-weight:400; color:var(--text-tertiary); margin-left:6px; font-family:monospace;">${escapeHtml(log.sku)}</span>` : ''}
         </div>
-        <!-- 原因 -->
+        ${log.sku ? `<div style="font-size:11px; color:var(--text-tertiary); font-family:monospace;">${escapeHtml(log.sku)}</div>` : ''}
+        
+        <!-- 店铺 -->
+        ${shops.length > 0 ? `<div style="font-size:10.5px; color:var(--text-tertiary); line-height:1.4;">🏪 ${shops.map(escapeHtml).join(' · ')}</div>` : ''}
+        
+        <!-- 原因(最多 2 行)-->
         ${ext.reason ? `
-        <div style="font-size:12px; color:var(--text-secondary); margin-bottom:6px; line-height:1.5; max-height:42px; overflow:hidden; text-overflow:ellipsis;">
+        <div style="font-size:11.5px; color:var(--text-secondary); line-height:1.5; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;" title="${escapeHtml(ext.reason)}">
           ${escapeHtml(ext.reason)}
         </div>` : ''}
-        <!-- 店铺 / 附件 -->
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:11px; color:var(--text-tertiary); margin-bottom:4px;">
-          ${shops.length > 0 ? `<span>🏪 ${shops.map(escapeHtml).join(' · ')}</span>` : ''}
-          ${attachments.length > 0 ? `<span>📎 ${attachments.length} 张图</span>` : ''}
-        </div>
-        <!-- 完整状态行(v3 #6) -->
+        
+        <!-- 状态行(最多 2 行)-->
         ${statusLines.length > 0 ? `
-        <div style="margin-top:6px; padding-top:6px; border-top:1px dashed var(--border-subtle); display:flex; flex-direction:column; gap:3px;">
-          ${statusLines.map(line => `<div style="font-size:11px; color:var(--text-secondary);">${line}</div>`).join('')}
-        </div>` : ''}
+        <div style="margin-top:auto; padding-top:8px; border-top:1px dashed var(--border-subtle); display:flex; flex-direction:column; gap:3px;">
+          ${statusLines.slice(0, 3).map(line => `<div style="font-size:10.5px; color:var(--text-secondary); line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${line}</div>`).join('')}
+        </div>` : '<div style="margin-top:auto;"></div>'}
+        
+        <!-- 底部:时间 + 编辑 -->
+        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:6px; border-top:1px solid var(--border-subtle);">
+          <span style="font-size:10.5px; color:var(--text-tertiary);">${ageStr}${attachments.length > 0 ? ` · 📎 ${attachments.length}` : ''}</span>
+          <button onclick="photoReqOpenEdit('${escapeHtml(log.id)}')" class="btn small" style="font-size:10.5px; padding:2px 8px;" title="编辑">✏ 编辑</button>
+        </div>
       </div>
     </div>
   `;
 }
+
 
 // V20260527y(v3 #6):完整状态行 helper
 function _photoReqRenderStatusLines(log) {
