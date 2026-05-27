@@ -153,21 +153,25 @@ function renderShopifyStores() {
   document.getElementById('salesStoresTotal').textContent = `${connected}/9`;
 
   grid.innerHTML = stores.map(s => {
+    // V20260526q: 当前店被设为过滤(单店或多店里)→ 显示选中态(蓝色边框 + 强调)
+    const isFiltered = typeof SHOPIFY_SEARCH !== 'undefined' 
+                    && SHOPIFY_SEARCH.shops 
+                    && SHOPIFY_SEARCH.shops.has(s.domain);
     if (s.connected) {
-      // 已连接：绿色 chip + ✓ 标记 + 双击改名 + 点击同步
+      // 已连接:绿色 chip + ✓ 标记 + 双击改名 + 点击同步 + 过滤态高亮
       return `
-        <span class="store-chip connected" 
+        <span class="store-chip connected ${isFiltered ? 'filtering' : ''}" 
           onclick="shopifyQuickFetchFromCard('${s.domain}')"
           ondblclick="shopifyRenameStore('${s.id}', '${escapeHtml(s.display_name).replace(/'/g,"\\'")}')"
-          title="${escapeHtml(s.display_name)} · 已连接 · ${SHOPIFY.formatRelativeTime(s.last_sync_at)}同步 (双击改名)">
+          title="${escapeHtml(s.display_name)} · ${isFiltered ? '【当前过滤显示】再次点击清除过滤 · ' : ''}点击同步该店订单 (双击改名)">
           <span class="store-chip-code">${s.site_code}</span>
           <span class="store-chip-name">${escapeHtml(s.display_name)}</span>
-          <span class="store-chip-status">✓</span>
+          <span class="store-chip-status">${isFiltered ? '🎯' : '✓'}</span>
         </span>`;
     } else {
-      // 未连接：灰色 chip + 安装入口
+      // 未连接:灰色 chip + 安装入口
       return `
-        <span class="store-chip" onclick="shopifyInstall('${s.domain}')" title="${escapeHtml(s.display_name)} · 未连接，点击安装">
+        <span class="store-chip" onclick="shopifyInstall('${s.domain}')" title="${escapeHtml(s.display_name)} · 未连接,点击安装">
           <span class="store-chip-code">${s.site_code}</span>
           <span class="store-chip-name">${escapeHtml(s.display_name)}</span>
           <span class="store-chip-status install">+ 安装</span>
@@ -210,8 +214,25 @@ function populateFetchShopDropdown() {
 function shopifyQuickFetchFromCard(domain) {
   switchTab('sales');
   setTimeout(() => {
+    // V20260526q: 点店铺 chip 同时设置过滤 · 只显示这家店的订单
+    // 之前只触发同步,但不过滤列表 · 用户点了 PL 还看到其他店
+    if (typeof SHOPIFY_SEARCH !== 'undefined' && SHOPIFY_SEARCH.shops) {
+      // 智能切换:如果只有这一家被过滤,再次点击 = 清除过滤(看全部)
+      const isOnlyThis = SHOPIFY_SEARCH.shops.size === 1 && SHOPIFY_SEARCH.shops.has(domain);
+      if (isOnlyThis) {
+        SHOPIFY_SEARCH.shops.clear();  // 清除 → 看全部
+        toast('已清除店铺过滤,显示全部订单', 'info', 1500);
+      } else {
+        SHOPIFY_SEARCH.shops = new Set([domain]);  // 单店过滤
+        const code = (SHOPIFY?.siteCodeOf && SHOPIFY.siteCodeOf(domain)) || domain.split('.')[0];
+        toast(`✓ 已切换到 ${code} 的订单`, 'info', 1500);
+      }
+      // 渲染上方 chip 高亮 + 下方 country-chip
+      if (typeof shopifyRenderShops === 'function') shopifyRenderShops();
+      if (typeof shopifyRenderShopFilter === 'function') shopifyRenderShopFilter();
+    }
     document.getElementById('salesFetchShop').value = domain;
-    shopifyFetchOrders();
+    shopifyFetchOrders();  // 同步该店数据 · 同步后会重新 render 应用过滤
   }, 100);
 }
 
@@ -556,6 +577,8 @@ function shopifyToggleShop(domain) {
   if (SHOPIFY_SEARCH.shops.has(domain)) SHOPIFY_SEARCH.shops.delete(domain);
   else SHOPIFY_SEARCH.shops.add(domain);
   shopifyRenderShopFilter();
+  // V20260526q: country-chip 改变时,同步刷新顶部 store-chip 的过滤高亮态
+  if (typeof shopifyRenderShops === 'function') shopifyRenderShops();
   shopifyDoSearch();
 }
 
