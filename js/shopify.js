@@ -260,7 +260,12 @@ function populateFetchShopDropdown() {
 }
 
 function shopifyQuickFetchFromCard(domain) {
-  switchTab('sales');
+  // V20260527g: 点 chip 已在 sales tab 时,不再 switchTab(避免触发 loadOrdersFromDB 慢拉数据)
+  // 只在不在 sales tab 时才切 tab(这种情况是从其他 tab 点 chip,但目前 chip 只在 sales tab 展示,实际不触发)
+  const alreadyOnSales = (typeof CURRENT_TAB !== 'undefined' && CURRENT_TAB === 'sales');
+  if (!alreadyOnSales) {
+    switchTab('sales');
+  }
   setTimeout(() => {
     // V20260527: 点 chip 只做本地过滤(瞬间)· 不再触发 Shopify API 拉数据(慢)
     // 用户想拉最新数据请单独点 [📥 拉单] 按钮 · 或顶部 [🔄 刷新]
@@ -283,7 +288,7 @@ function shopifyQuickFetchFromCard(domain) {
     // 隐藏 select 也设值(为了后续手动拉单时知道是哪家店)
     const sel = document.getElementById('salesFetchShop');
     if (sel) sel.value = domain;
-  }, 50);
+  }, alreadyOnSales ? 0 : 50);  // 已在 sales tab 时 0ms · 跨 tab 才需 50ms 等待 DOM
 }
 
 function setSalesDefaultDates() {

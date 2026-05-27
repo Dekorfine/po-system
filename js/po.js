@@ -3171,11 +3171,16 @@ async function poRevert(poId, prevStatus, prevLabel) {
 // 推进时自动追加备注到 Shopify 订单后台（不覆盖客户原备注）
 // ============================================================
 async function renderFinance() {
+  // V20260527f: 先渲染一次(用已有数据 · 即使空也展示统计 + 空状态)
+  // 避免拉数据失败时 tab 完全空白
+  try { renderFinanceList(); } catch (_) { /* 容器还没就绪 */ }
+  
   // 复用 PO 数据，无需独立 fetch
   try {
     if (!PO_LIST || PO_LIST.length === 0) {
       // 首次进入：拉 PO 数据
-      const { data } = await sb.from('orders').select('*').not('po_number', 'is', null).order('created_at', { ascending: false }).limit(500);
+      const { data, error } = await sb.from('orders').select('*').not('po_number', 'is', null).order('created_at', { ascending: false }).limit(500);
+      if (error) throw error;
       PO_LIST = data || [];
     }
     // 同步销售单数据（同步 Shopify 备注时要用）
@@ -3184,7 +3189,19 @@ async function renderFinance() {
     }
     renderFinanceList();
   } catch (e) {
+    console.error('renderFinance 出错:', e);
     toast('加载财务数据失败：' + (e.message || e), 'err');
+    // V20260527f: 错误兜底 · 在 listBody 显示错误 + 重试按钮(不让 tab 整片空白)
+    const body = document.getElementById('financeListBody');
+    if (body) {
+      body.innerHTML = `
+        <div style="padding: 60px 20px; text-align: center; background: rgba(220,38,38,0.04); border: 1px dashed #fca5a5; border-radius: 10px;">
+          <div style="font-size: 48px; margin-bottom: 10px;">⚠</div>
+          <div style="font-size: 15px; color: #b91c1c; font-weight: 600; margin-bottom: 6px;">加载财务数据失败</div>
+          <div style="font-size: 12px; color: var(--text-tertiary); margin-bottom: 14px; font-family: var(--font-mono);">${escapeHtml(String(e.message || e)).slice(0, 200)}</div>
+          <button class="btn primary sm" onclick="renderFinance()">🔄 重试</button>
+        </div>`;
+    }
   }
 }
 
@@ -4487,18 +4504,18 @@ function _updatePoShopFilterStatusBar() {
 }
 
 function poToggleShopFilter(domain) {
+  // V20260527g: 改为单选切换 · 跟销售单一致 · 模仿店小秘
+  // 点未选 → 替换为唯一过滤
+  // 点已选(唯一) → 清空
   const isOnlyThis = PO_SHOP_FILTER.size === 1 && PO_SHOP_FILTER.has(domain);
   if (isOnlyThis) {
     PO_SHOP_FILTER.clear();
     toast('已清除店铺过滤,显示全部 PO', 'info', 1200);
-  } else if (PO_SHOP_FILTER.has(domain)) {
-    PO_SHOP_FILTER.delete(domain);
-    const code = (SHOPIFY && SHOPIFY.siteCodeOf) ? SHOPIFY.siteCodeOf(domain) : domain;
-    toast(`已从过滤中移除 ${code}`, 'info', 1200);
   } else {
+    PO_SHOP_FILTER.clear();
     PO_SHOP_FILTER.add(domain);
     const code = (SHOPIFY && SHOPIFY.siteCodeOf) ? SHOPIFY.siteCodeOf(domain) : domain;
-    toast(`已添加 ${code} 到过滤`, 'info', 1200);
+    toast(`✓ 已切换到 ${code} 的 PO`, 'info', 1200);
   }
   poRenderShops();
   PO_PAGE = 1;

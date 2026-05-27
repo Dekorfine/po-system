@@ -2953,6 +2953,52 @@ function _populatePurchasesDateFilter() {
 window.perfOnDateChange = perfOnDateChange;
 window.purchasesOnDateChange = purchasesOnDateChange;
 
+// V20260527g: 全局禁用浏览器自动填充邮箱/历史记录(除登录页)
+// 问题:Chrome 用历史邮箱/账号填充所有 input 下拉建议(订单备注里都会出现邮箱列表)
+// 修复:给非登录区的 input/textarea 设 autocomplete="new-password" — 这个非标值最有效阻止 Chrome 自动填充
+// 跳过:登录页(#loginScreen 内) · type=password · 已显式设过 autocomplete 的字段
+function _disableAutofillOnFields(root) {
+  if (!root || !root.querySelectorAll) return;
+  const fields = root.querySelectorAll('input, textarea');
+  fields.forEach(el => {
+    // 登录页保留默认 autocomplete(email / current-password)
+    if (el.closest('#loginScreen')) return;
+    // 密码字段不动
+    if (el.type === 'password') return;
+    // 已显式设过的不覆盖
+    if (el.hasAttribute('autocomplete') && el.getAttribute('autocomplete') !== '') return;
+    // 设为非标值 · Chrome 视作"新密码"字段 · 不会建议历史邮箱
+    el.setAttribute('autocomplete', 'new-password');
+    // 兜底 · 给 textarea 加 spellcheck off 避免分心(可选)
+    if (el.tagName === 'TEXTAREA' && !el.hasAttribute('spellcheck')) {
+      el.setAttribute('spellcheck', 'false');
+    }
+  });
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  // 初次跑一次(覆盖所有静态 HTML 中的 input)
+  _disableAutofillOnFields(document);
+  
+  // V20260527g: MutationObserver 监控后续动态生成的 input(modal 内容等)
+  if (typeof MutationObserver !== 'undefined') {
+    const obs = new MutationObserver(muts => {
+      muts.forEach(m => {
+        m.addedNodes.forEach(node => {
+          if (node.nodeType !== 1) return;
+          // 新节点本身是 input/textarea
+          if (node.matches && node.matches('input, textarea')) {
+            _disableAutofillOnFields(node.parentNode || document);
+          }
+          // 新节点内部含 input/textarea
+          if (node.querySelectorAll) _disableAutofillOnFields(node);
+        });
+      });
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+  }
+});
+
 // 登录后(等 mainApp 显示后)应用一次布局
 window.addEventListener('DOMContentLoaded', () => {
   let attempts = 0;
