@@ -1067,7 +1067,10 @@ function refreshAsFb() {
   
   const card = document.getElementById('asFb');
   if (!card.dataset.userToggled) {
-    card.classList.toggle('collapsed', buckets.overdue.length === 0 && buckets.today.length === 0);
+    // V20260527f: 默认折叠 + localStorage 记忆
+    // localStorage 'as_fb_collapsed': '0'=用户展开,'1'/null=折叠(默认)
+    const saved = localStorage.getItem('as_fb_collapsed');
+    card.classList.toggle('collapsed', saved !== '0');
   }
   
   if (buckets[_asFbTab].length === 0) {
@@ -1104,8 +1107,32 @@ function refreshAsFb() {
 
 function switchAsFb(t) { _asFbTab = t; document.getElementById('asFb').classList.remove('collapsed'); refreshAsFb(); }
 
+// V20260527f: 「本月售后汇总」可折叠 · 默认折叠 · localStorage 记忆
+function toggleAfterReport(e) {
+  if (e) e.stopPropagation();
+  const card = document.getElementById('asReportCard');
+  if (!card) return;
+  card.classList.toggle('collapsed');
+  const isCollapsed = card.classList.contains('collapsed');
+  localStorage.setItem('as_report_collapsed', isCollapsed ? '1' : '0');
+  // 切换箭头方向
+  const icon = document.getElementById('asReportToggleIcon');
+  if (icon) icon.textContent = isCollapsed ? '▼' : '▲';
+}
+
 // 本月汇总报表
 function renderAfterReport() {
+  // V20260527f: 应用 localStorage 折叠状态(默认折叠)
+  const reportCard = document.getElementById('asReportCard');
+  if (reportCard && !reportCard.dataset.collapseApplied) {
+    const saved = localStorage.getItem('as_report_collapsed');
+    const shouldCollapse = saved !== '0';  // '0'=展开;'1'/null=折叠(默认)
+    reportCard.classList.toggle('collapsed', shouldCollapse);
+    const icon = document.getElementById('asReportToggleIcon');
+    if (icon) icon.textContent = shouldCollapse ? '▼' : '▲';
+    reportCard.dataset.collapseApplied = '1';
+  }
+  
   const thisMonth = new Date().toISOString().slice(0, 7);
   const monthData = AFTERSALES.filter(a => a.createdDate && a.createdDate.startsWith(thisMonth));
   

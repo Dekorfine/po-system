@@ -3223,6 +3223,15 @@ function financeOnDateChange(preset) {
   renderFinanceList();
 }
 
+// V20260527h: 财务收货 sub-tab(待对账 / 本月已入库 / 历史已入库)
+let _financeSubTab = 'waiting';
+function financeSwitchSubTab(t) {
+  if (!['waiting', 'done_month', 'done_all'].includes(t)) return;
+  _financeSubTab = t;
+  renderFinanceList();
+}
+window.financeSwitchSubTab = financeSwitchSubTab;
+
 function renderFinanceList() {
   // V20260526o: 关键修复 · 先填充日期 select(不管有没有待对账 PO)
   // 否则 waiting.length === 0 时早 return,select 永远是空的黑色框
@@ -3231,8 +3240,11 @@ function renderFinanceList() {
     if (dateEl) populateDateFilterSelect(dateEl, _financeDatePreset || 'all');
   }
   
+  // V20260527h: 安全兜底 · PO_LIST 没就绪也不爆错
+  const allPo = Array.isArray(PO_LIST) ? PO_LIST : [];
+  
   // 待财务收货的 PO (status = 'arrived')
-  let waiting = PO_LIST.filter(p => p.status === 'arrived');
+  let waiting = allPo.filter(p => p.status === 'arrived');
   // V20260526e: 日期筛选(基于 PO 创建日期)
   if (_financeDatePreset && _financeDatePreset !== 'all' && typeof isDateInRange === 'function') {
     waiting = waiting.filter(p => isDateInRange(p.created_at, _financeDatePreset));
@@ -3240,112 +3252,237 @@ function renderFinanceList() {
   // 本月已收货 (status = 'received')
   const today = new Date();
   const thisMonth = today.toISOString().slice(0, 7);  // YYYY-MM
-  const doneThisMonth = PO_LIST.filter(p => p.status === 'received' && (p.updated_at || p.created_at || '').startsWith(thisMonth));
-  // 全部已收货
-  const totalDone = PO_LIST.filter(p => p.status === 'received').length;
+  const doneThisMonth = allPo.filter(p => p.status === 'received' && (p.updated_at || p.created_at || '').startsWith(thisMonth))
+    .sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''));
+  // 全部已收货(按最近更新降序)
+  const allDone = allPo.filter(p => p.status === 'received')
+    .sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''));
   // 本月总金额
   const monthAmount = doneThisMonth.reduce((s, p) => s + Number(p.total_amount || 0), 0);
+  const totalAmount = allDone.reduce((s, p) => s + Number(p.total_amount || 0), 0);
   
-  // 统计卡片
+  // V20260527h: 统计卡片改成可点击切换 sub-tab
+  const cardBase = 'cursor:pointer; transition:transform 0.1s, box-shadow 0.15s;';
+  const cardActive = 'box-shadow: 0 0 0 2px var(--accent), 0 4px 12px rgba(37,99,235,0.15); transform: translateY(-1px);';
   const statsHtml = `
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 8px;">
-      <div class="sales-stat-card" style="border-left: 4px solid var(--warning);">
+      <div class="sales-stat-card" style="border-left: 4px solid var(--warning); ${cardBase} ${_financeSubTab === 'waiting' ? cardActive : ''}"
+           onclick="financeSwitchSubTab('waiting')" title="点击查看待对账 PO">
         <div class="sales-stat-label">⏳ 待财务对账</div>
         <div class="sales-stat-num">${waiting.length}</div>
         <div class="sales-stat-sub">单 · 跟单已确认到货</div>
       </div>
-      <div class="sales-stat-card" style="border-left: 4px solid var(--success);">
+      <div class="sales-stat-card" style="border-left: 4px solid var(--success); ${cardBase} ${_financeSubTab === 'done_month' ? cardActive : ''}"
+           onclick="financeSwitchSubTab('done_month')" title="点击查看本月已入库列表">
         <div class="sales-stat-label">✓ 本月已入库</div>
         <div class="sales-stat-num">${doneThisMonth.length}</div>
         <div class="sales-stat-sub">单 · ¥${monthAmount.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</div>
       </div>
-      <div class="sales-stat-card">
+      <div class="sales-stat-card" style="${cardBase} ${_financeSubTab === 'done_all' ? cardActive : ''}"
+           onclick="financeSwitchSubTab('done_all')" title="点击查看历史已入库列表">
         <div class="sales-stat-label">📊 累计已入库</div>
-        <div class="sales-stat-num">${totalDone}</div>
-        <div class="sales-stat-sub">单 · 全部历史</div>
+        <div class="sales-stat-num">${allDone.length}</div>
+        <div class="sales-stat-sub">单 · ¥${totalAmount.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</div>
       </div>
     </div>
   `;
-  document.getElementById('financeStatsContainer').innerHTML = statsHtml;
+  const statsEl = document.getElementById('financeStatsContainer');
+  if (statsEl) statsEl.innerHTML = statsHtml;
   
   const body = document.getElementById('financeListBody');
-  if (waiting.length === 0) {
-    body.innerHTML = `
-      <div style="padding: 60px 20px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border); border-radius: 10px;">
-        <div style="font-size: 48px; margin-bottom: 10px;">🎉</div>
-        <div style="font-size: 15px; color: var(--text-primary); font-weight: 600; margin-bottom: 6px;">没有待财务收货的 PO</div>
-        <div style="font-size: 12px; color: var(--text-tertiary);">所有"已到货"的采购单都已完成对账入库</div>
-      </div>`;
-    return;
-  }
+  if (!body) return;
   
-  // 按到货时间排序（updated_at 最新的优先）
-  waiting.sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''));
-  
-  body.innerHTML = `
-    <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">
-      共 <b style="color: var(--accent);">${waiting.length}</b> 张 PO 等待财务对账确认入库：
+  // V20260527h: sub-tab 切换条
+  const subTabHtml = `
+    <div style="display:flex; gap:6px; margin-bottom:14px; padding:5px; background:var(--bg-elevated); border-radius:8px; width:fit-content;">
+      ${[
+        { k: 'waiting', label: `🎯 待对账`, cnt: waiting.length, color: '#ea580c' },
+        { k: 'done_month', label: `✓ 本月已入库`, cnt: doneThisMonth.length, color: '#16a34a' },
+        { k: 'done_all', label: `📊 历史已入库`, cnt: allDone.length, color: '#6b7280' },
+      ].map(t => {
+        const active = _financeSubTab === t.k;
+        return `<button onclick="financeSwitchSubTab('${t.k}')" 
+                style="padding:6px 14px; font-size:12.5px; border:none; cursor:pointer; border-radius:6px; font-weight:${active ? 600 : 500};
+                       background:${active ? 'var(--bg-card)' : 'transparent'};
+                       color:${active ? t.color : 'var(--text-secondary)'};
+                       box-shadow:${active ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'};
+                       transition:all 0.15s;">
+          ${t.label} <span style="opacity:0.7; margin-left:2px;">${t.cnt}</span>
+        </button>`;
+      }).join('')}
     </div>
-    ${waiting.map(p => {
-      const items = p.line_items || [];
-      const totalQty = items.reduce((s, x) => s + (x.qty || 0), 0);
-      const arrived = p.updated_at ? new Date(p.updated_at).toLocaleDateString() : '—';
-      const so = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) 
-        ? SHOPIFY._orders.find(o => o.id === p.sales_order_id) 
-        : null;
-      const shopifyHint = p.sales_order_id 
-        ? (so?.shopify_order_id 
-            ? `<span style="color:var(--success); font-size:11px;">✓ 收货后同步 Shopify ${so.shopify_order_number || ''}</span>`
-            : `<span style="color:var(--text-tertiary); font-size:11px;">⚠ 销售单未加载，请先打开销售单 tab</span>`)
-        : `<span style="color:var(--text-tertiary); font-size:11px;">ℹ 自定义 PO（无 Shopify 同步）</span>`;
-      
-      return `
-        <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 10px; transition: box-shadow 0.15s;" 
-             onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,0.08)'" 
-             onmouseout="this.style.boxShadow='none'">
-          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;">
-            <div style="flex: 1; min-width: 0;">
-              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-                <span style="font-family: monospace; font-weight: 700; color: var(--accent); font-size: 14px;">${escapeHtml(p.po_number)}</span>
-                <span style="padding: 2px 8px; background: rgba(234,88,12,0.1); color: #ea580c; font-size: 11px; border-radius: 4px; font-weight: 600;">📦 已到货</span>
-                ${p.order_no ? `<span style="font-size: 11px; color: var(--text-tertiary);">→ 销售单 <a href="#" onclick="event.preventDefault();poJumpToSalesOrder('${p.sales_order_id}');return false;" style="color: var(--accent); text-decoration: none;">${escapeHtml(p.order_no)}</a></span>` : ''}
-              </div>
-              <div style="display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
-                <span><b>供应商：</b>${escapeHtml(p.supplier || '—')}</span>
-                <span><b>数量：</b>${totalQty} 件 / ${items.length} 行</span>
-                <span><b>金额：</b><b style="color: var(--accent);">¥ ${Number(p.total_amount || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}</b></span>
-                <span><b>到货：</b>${arrived}</span>
-                <span><b>跟单：</b>${escapeHtml(p.creator_name || '—')}</span>
-              </div>
-              <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
-                ${items.slice(0, 4).map(li => `
-                  <span style="background: var(--bg-elevated); padding: 3px 8px; border-radius: 4px; font-size: 11px; color: var(--text-secondary);">
-                    ${escapeHtml((li.title_cn || li.title_en || li.sku || '').slice(0, 30))} × ${li.qty}
-                  </span>
-                `).join('')}
-                ${items.length > 4 ? `<span style="font-size: 11px; color: var(--text-tertiary);">还有 ${items.length - 4} 行...</span>` : ''}
-              </div>
-              <div style="margin-top: 8px;">${shopifyHint}</div>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;">
-              <button class="btn primary" onclick="poAdvance('${p.id}', 'received', '已完成入库')" 
-                      style="background: var(--success); padding: 8px 16px; white-space: nowrap;" 
-                      title="财务对账完成 → 推进到已入库 → 自动追加备注到 Shopify">
-                ✓ 完成入库
-              </button>
-              <button class="btn small" onclick="poOpenPrint('${p.id}')" style="padding: 4px 12px; font-size: 11px;">
-                👁 查看详情
-              </button>
-              <button class="btn small" onclick="poRevert('${p.id}', 'confirmed', '供应商已确认')" 
-                      style="padding: 4px 12px; font-size: 11px; color: var(--text-tertiary);" 
-                      title="退回到上一步（万一是误推进）">
-                ↺ 退回
-              </button>
-            </div>
-          </div>
-        </div>`;
-    }).join('')}
   `;
+  
+  // V20260527h: 按 sub-tab 渲染对应列表
+  if (_financeSubTab === 'waiting') {
+    if (waiting.length === 0) {
+      // 空状态 — 仍然显示 sub-tab 头,顺带预览"本月已入库"前 5 条
+      const previewDone = doneThisMonth.slice(0, 5);
+      body.innerHTML = subTabHtml + `
+        <div style="padding: 40px 20px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border); border-radius: 10px; margin-bottom: 14px;">
+          <div style="font-size: 42px; margin-bottom: 8px;">🎉</div>
+          <div style="font-size: 15px; color: var(--text-primary); font-weight: 600; margin-bottom: 6px;">没有待财务收货的 PO</div>
+          <div style="font-size: 12px; color: var(--text-tertiary);">所有"已到货"的采购单都已完成对账入库</div>
+          <div style="margin-top:14px; font-size:11px; color:var(--text-tertiary);">
+            ℹ 跟单确认 PO 到货后 → 状态变 <code style="background:rgba(234,88,12,0.12); padding:1px 5px; border-radius:3px; color:#ea580c;">已到货</code> → 自动出现在这里等财务对账
+          </div>
+        </div>
+        ${previewDone.length > 0 ? `
+          <div style="display:flex; align-items:center; justify-content:space-between; margin: 18px 0 10px;">
+            <div style="font-size:13px; color:var(--text-secondary); font-weight:600;">📅 本月最近入库</div>
+            <button class="btn small" onclick="financeSwitchSubTab('done_month')" style="padding:4px 10px; font-size:11px;">查看全部 ${doneThisMonth.length} 单 →</button>
+          </div>
+          ${previewDone.map(p => _renderFinanceDoneItem(p)).join('')}
+        ` : `
+          <div style="padding:20px; text-align:center; font-size:12px; color:var(--text-tertiary);">本月还没有入库记录</div>
+        `}
+      `;
+    } else {
+      body.innerHTML = subTabHtml + `
+        <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">
+          共 <b style="color: var(--accent);">${waiting.length}</b> 张 PO 等待财务对账确认入库:
+        </div>
+        ${waiting.sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''))
+          .map(p => _renderFinanceWaitingItem(p)).join('')}
+      `;
+    }
+  } else if (_financeSubTab === 'done_month') {
+    if (doneThisMonth.length === 0) {
+      body.innerHTML = subTabHtml + `
+        <div style="padding: 50px 20px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border); border-radius: 10px;">
+          <div style="font-size: 40px; margin-bottom: 8px;">📭</div>
+          <div style="font-size: 14px; color: var(--text-secondary);">本月还没有入库记录</div>
+          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;">财务点了「✓ 完成入库」后,会出现在这里</div>
+        </div>`;
+    } else {
+      body.innerHTML = subTabHtml + `
+        <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">
+          本月共 <b style="color: var(--success);">${doneThisMonth.length}</b> 单已入库 · 合计 <b style="color: var(--accent);">¥${monthAmount.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</b>
+        </div>
+        ${doneThisMonth.map(p => _renderFinanceDoneItem(p)).join('')}
+      `;
+    }
+  } else if (_financeSubTab === 'done_all') {
+    if (allDone.length === 0) {
+      body.innerHTML = subTabHtml + `
+        <div style="padding: 50px 20px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border); border-radius: 10px;">
+          <div style="font-size: 40px; margin-bottom: 8px;">📦</div>
+          <div style="font-size: 14px; color: var(--text-secondary);">还没有任何入库记录</div>
+        </div>`;
+    } else {
+      const showLimit = 50;
+      const showItems = allDone.slice(0, showLimit);
+      body.innerHTML = subTabHtml + `
+        <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">
+          累计 <b style="color: var(--accent);">${allDone.length}</b> 单已入库 · 合计 <b style="color: var(--accent);">¥${totalAmount.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</b>
+          ${allDone.length > showLimit ? `<span style="color:var(--text-tertiary); margin-left:8px;">· 显示最近 ${showLimit} 单</span>` : ''}
+        </div>
+        ${showItems.map(p => _renderFinanceDoneItem(p)).join('')}
+      `;
+    }
+  }
+}
+
+// V20260527h: 渲染"待对账"条目卡片(含完成入库按钮)
+function _renderFinanceWaitingItem(p) {
+  const items = p.line_items || [];
+  const totalQty = items.reduce((s, x) => s + (x.qty || 0), 0);
+  const arrived = p.updated_at ? new Date(p.updated_at).toLocaleDateString() : '—';
+  const so = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) 
+    ? SHOPIFY._orders.find(o => o.id === p.sales_order_id) 
+    : null;
+  const shopifyHint = p.sales_order_id 
+    ? (so?.shopify_order_id 
+        ? `<span style="color:var(--success); font-size:11px;">✓ 收货后同步 Shopify ${so.shopify_order_number || ''}</span>`
+        : `<span style="color:var(--text-tertiary); font-size:11px;">⚠ 销售单未加载,请先打开销售单 tab</span>`)
+    : `<span style="color:var(--text-tertiary); font-size:11px;">ℹ 自定义 PO(无 Shopify 同步)</span>`;
+  
+  return `
+    <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 10px; transition: box-shadow 0.15s;" 
+         onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,0.08)'" 
+         onmouseout="this.style.boxShadow='none'">
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;">
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+            <span style="font-family: monospace; font-weight: 700; color: var(--accent); font-size: 14px;">${escapeHtml(p.po_number)}</span>
+            <span style="padding: 2px 8px; background: rgba(234,88,12,0.1); color: #ea580c; font-size: 11px; border-radius: 4px; font-weight: 600;">📦 已到货</span>
+            ${p.order_no ? `<span style="font-size: 11px; color: var(--text-tertiary);">→ 销售单 <a href="#" onclick="event.preventDefault();poJumpToSalesOrder('${p.sales_order_id}');return false;" style="color: var(--accent); text-decoration: none;">${escapeHtml(p.order_no)}</a></span>` : ''}
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+            <span><b>供应商:</b>${escapeHtml(p.supplier || '—')}</span>
+            <span><b>数量:</b>${totalQty} 件 / ${items.length} 行</span>
+            <span><b>金额:</b><b style="color: var(--accent);">¥ ${Number(p.total_amount || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}</b></span>
+            <span><b>到货:</b>${arrived}</span>
+            <span><b>跟单:</b>${escapeHtml(p.creator_name || '—')}</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+            ${items.slice(0, 4).map(li => `
+              <span style="background: var(--bg-elevated); padding: 3px 8px; border-radius: 4px; font-size: 11px; color: var(--text-secondary);">
+                ${escapeHtml((li.title_cn || li.title_en || li.sku || '').slice(0, 30))} × ${li.qty}
+              </span>
+            `).join('')}
+            ${items.length > 4 ? `<span style="font-size: 11px; color: var(--text-tertiary);">还有 ${items.length - 4} 行...</span>` : ''}
+          </div>
+          <div style="margin-top: 8px;">${shopifyHint}</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;">
+          <button class="btn primary" onclick="poAdvance('${p.id}', 'received', '已完成入库')" 
+                  style="background: var(--success); padding: 8px 16px; white-space: nowrap;" 
+                  title="财务对账完成 → 推进到已入库 → 自动追加备注到 Shopify">
+            ✓ 完成入库
+          </button>
+          <button class="btn small" onclick="poOpenPrint('${p.id}')" style="padding: 4px 12px; font-size: 11px;">
+            👁 查看详情
+          </button>
+          <button class="btn small" onclick="poRevert('${p.id}', 'confirmed', '供应商已确认')" 
+                  style="padding: 4px 12px; font-size: 11px; color: var(--text-tertiary);" 
+                  title="退回到上一步(万一是误推进)">
+            ↺ 退回
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// V20260527h: 渲染"已入库"条目卡片(更紧凑 · 显示入库日期 · 无完成按钮)
+function _renderFinanceDoneItem(p) {
+  const items = p.line_items || [];
+  const totalQty = items.reduce((s, x) => s + (x.qty || 0), 0);
+  const receivedDate = p.updated_at 
+    ? new Date(p.updated_at).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }) 
+    : '—';
+  const so = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) 
+    ? SHOPIFY._orders.find(o => o.id === p.sales_order_id) 
+    : null;
+  
+  return `
+    <div style="background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--success); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px; flex-wrap: wrap;">
+            <span style="font-family: monospace; font-weight: 700; color: var(--accent); font-size: 13.5px;">${escapeHtml(p.po_number)}</span>
+            <span style="padding: 2px 7px; background: rgba(22,163,74,0.1); color: var(--success); font-size: 10.5px; border-radius: 4px; font-weight: 600;">✓ 已入库</span>
+            <span style="font-size: 11px; color: var(--text-tertiary);">📅 ${receivedDate}</span>
+            ${p.order_no ? `<span style="font-size: 11px; color: var(--text-tertiary);">→ <a href="#" onclick="event.preventDefault();poJumpToSalesOrder('${p.sales_order_id}');return false;" style="color: var(--accent); text-decoration: none;">${escapeHtml(p.order_no)}</a></span>` : ''}
+            ${so?.shopify_order_number ? `<span style="font-size: 10.5px; color: var(--success);" title="已同步 Shopify">✓ Shopify ${escapeHtml(so.shopify_order_number)}</span>` : ''}
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 11.5px; color: var(--text-secondary);">
+            <span><b>供应商:</b>${escapeHtml(p.supplier || '—')}</span>
+            <span><b>数量:</b>${totalQty} 件 / ${items.length} 行</span>
+            <span><b>金额:</b><b style="color: var(--accent);">¥ ${Number(p.total_amount || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}</b></span>
+            <span><b>跟单:</b>${escapeHtml(p.creator_name || '—')}</span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 6px; flex-shrink: 0;">
+          <button class="btn small" onclick="poOpenPrint('${p.id}')" style="padding: 4px 11px; font-size: 11px;">👁 详情</button>
+          <button class="btn small" onclick="poRevert('${p.id}', 'arrived', '退回到待对账')" 
+                  style="padding: 4px 11px; font-size: 11px; color: var(--text-tertiary);" 
+                  title="退回到待对账状态(误入库时使用)">
+            ↺ 退回
+          </button>
+        </div>
+      </div>
+    </div>`;
 }
 
 // 点采购单里的销售单号跳转到销售单 tab
