@@ -151,36 +151,150 @@ async function shopifyReloadStores() {
   }
 }
 
+// V20260527k: 店铺 chip 拖拽排序 + 删除/绑定权限收紧
+// ------------------------------------------------------------
+// 每个跟单(CURRENT_AGENT)独立保存 chip 顺序到 localStorage
+// 长期负责某店的跟单可以把 chip 拖到前面 · 不影响其他跟单
+function getShopifyChipOrder() {
+  if (typeof CURRENT_AGENT === 'undefined' || !CURRENT_AGENT) return [];
+  try {
+    return JSON.parse(localStorage.getItem(`shopify_chip_order_${CURRENT_AGENT}`) || '[]');
+  } catch (_) { return []; }
+}
+
+function saveShopifyChipOrder(domains) {
+  if (typeof CURRENT_AGENT === 'undefined' || !CURRENT_AGENT) return;
+  try {
+    localStorage.setItem(`shopify_chip_order_${CURRENT_AGENT}`, JSON.stringify(domains));
+  } catch (_) {}
+}
+
+// 按当前用户偏好排序;偏好里没有的店追加到末尾(STORES_META 默认顺序)
+function sortStoresByChipPreference(stores) {
+  const orderArr = getShopifyChipOrder();
+  if (!Array.isArray(orderArr) || orderArr.length === 0) return stores;
+  const orderMap = new Map(orderArr.map((d, i) => [d, i]));
+  const known = stores.filter(s => orderMap.has(s.domain))
+    .sort((a, b) => orderMap.get(a.domain) - orderMap.get(b.domain));
+  const unknown = stores.filter(s => !orderMap.has(s.domain));
+  return [...known, ...unknown];
+}
+
+// 拖拽事件:开始
+function shopifyChipDragStart(e, domain) {
+  if (typeof CURRENT_AGENT === 'undefined' || !CURRENT_AGENT) { e.preventDefault(); return; }
+  e.dataTransfer.setData('text/plain', domain);
+  e.dataTransfer.effectAllowed = 'move';
+  // 视觉反馈
+  e.target.style.opacity = '0.4';
+  e.target.classList.add('chip-dragging');
+}
+
+// 拖到目标 chip 上方时
+function shopifyChipDragOver(e, targetDomain) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  // 视觉反馈:目标 chip 加一个左侧蓝色线
+  e.currentTarget.classList.add('chip-drop-target');
+}
+
+function shopifyChipDragLeave(e) {
+  e.currentTarget.classList.remove('chip-drop-target');
+}
+
+// 拖拽结束(无论成不成)
+function shopifyChipDragEnd(e) {
+  e.target.style.opacity = '';
+  e.target.classList.remove('chip-dragging');
+  // 清掉所有 drop target 视觉
+  document.querySelectorAll('.chip-drop-target').forEach(el => el.classList.remove('chip-drop-target'));
+}
+
+// 落到目标 chip 上 · 把 source 移到 target 之前
+function shopifyChipDrop(e, targetDomain) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('chip-drop-target');
+  const sourceDomain = e.dataTransfer.getData('text/plain');
+  if (!sourceDomain || sourceDomain === targetDomain) return;
+  
+  // 取当前 chip 渲染顺序(可见的 stores)
+  const stores = SHOPIFY._stores || [];
+  const visible = stores.filter(s => !s.legacyOnly || s.connected);
+  const ordered = sortStoresByChipPreference(visible);
+  
+  const sourceIdx = ordered.findIndex(s => s.domain === sourceDomain);
+  const targetIdx = ordered.findIndex(s => s.domain === targetDomain);
+  if (sourceIdx < 0 || targetIdx < 0) return;
+  
+  // 把 source 移到 target 位置前面
+  const [moved] = ordered.splice(sourceIdx, 1);
+  // 移除后 targetIdx 可能要调整(如果 source 在 target 之前,target 索引会前移 1)
+  const newTargetIdx = ordered.findIndex(s => s.domain === targetDomain);
+  ordered.splice(newTargetIdx, 0, moved);
+  
+  // 保存新顺序 + 重渲染
+  saveShopifyChipOrder(ordered.map(s => s.domain));
+  renderShopifyStores();
+  toast('✓ 已调整店铺顺序(只对你生效)', 'info', 1500);
+}
+
+// 暴露给 inline onclick 用
+window.shopifyChipDragStart = shopifyChipDragStart;
+window.shopifyChipDragOver = shopifyChipDragOver;
+window.shopifyChipDragLeave = shopifyChipDragLeave;
+window.shopifyChipDragEnd = shopifyChipDragEnd;
+window.shopifyChipDrop = shopifyChipDrop;
+// ------------------------------------------------------------
+
 function renderShopifyStores() {
   const grid = document.getElementById('salesStoresGrid');
   if (!grid) return;
   const stores = SHOPIFY._stores;
   // V20260527e: chip 条只显示「非 legacyOnly」的店;但已连接的 legacyOnly 仍显示(防误删活的店)
-  const visibleStores = stores.filter(s => !s.legacyOnly || s.connected);
+  let visibleStores = stores.filter(s => !s.legacyOnly || s.connected);
+  // V20260527k: 按用户偏好顺序排序(拖拽保存的顺序)
+  visibleStores = sortStoresByChipPreference(visibleStores);
   const connected = visibleStores.filter(s => s.connected).length;
   const totalVisible = visibleStores.length;
   document.getElementById('salesStoresTotal').textContent = `${connected}/${totalVisible}`;
+
+  // V20260527k: 「➕ 手动添加」按钮仅老板可见
+  const addBtn = document.getElementById('salesAddStoreBtn');
+  if (addBtn) {
+    addBtn.style.display = (typeof IS_ADMIN !== 'undefined' && IS_ADMIN) ? '' : 'none';
+  }
 
   grid.innerHTML = visibleStores.map(s => {
     // V20260526q: 当前店被设为过滤(单店或多店里)→ 显示选中态(蓝色边框 + 强调)
     const isFiltered = typeof SHOPIFY_SEARCH !== 'undefined' 
                     && SHOPIFY_SEARCH.shops 
                     && SHOPIFY_SEARCH.shops.has(s.domain);
+    // V20260527k: 所有 chip 加拖拽事件
+    const dragAttrs = `
+      draggable="true"
+      ondragstart="shopifyChipDragStart(event, '${s.domain}')"
+      ondragover="shopifyChipDragOver(event, '${s.domain}')"
+      ondragleave="shopifyChipDragLeave(event)"
+      ondragend="shopifyChipDragEnd(event)"
+      ondrop="shopifyChipDrop(event, '${s.domain}')"
+      style="cursor:grab;"`;
     if (s.connected) {
-      // 已连接:绿色 chip + ✓ 标记 + 双击改名 + 点击同步 + 过滤态高亮
+      // 已连接:绿色 chip + ✓ 标记 + 双击改名 + 点击同步 + 过滤态高亮 + 可拖拽
       return `
-        <span class="store-chip connected ${isFiltered ? 'filtering' : ''}" 
+        <span class="store-chip connected ${isFiltered ? 'filtering' : ''}" ${dragAttrs}
           onclick="shopifyQuickFetchFromCard('${s.domain}')"
           ondblclick="shopifyRenameStore('${s.id}', '${escapeHtml(s.display_name).replace(/'/g,"\\'")}')"
-          title="${escapeHtml(s.display_name)} · ${isFiltered ? '【当前过滤显示】再次点击清除过滤 · ' : ''}点击同步该店订单 (双击改名)">
+          title="${escapeHtml(s.display_name)} · ${isFiltered ? '【当前过滤显示】再次点击清除过滤 · ' : ''}点击同步 (双击改名 · 拖拽调整顺序)">
           <span class="store-chip-code">${s.site_code}</span>
           <span class="store-chip-name">${escapeHtml(s.display_name)}</span>
           <span class="store-chip-status">${isFiltered ? '🎯' : '✓'}</span>
         </span>`;
     } else {
-      // 未连接:灰色 chip + 安装入口
+      // 未连接:灰色 chip + 安装入口(权限在 shopifyInstall 内部检查)
       return `
-        <span class="store-chip" onclick="shopifyInstall('${s.domain}')" title="${escapeHtml(s.display_name)} · 未连接,点击安装">
+        <span class="store-chip" ${dragAttrs}
+          onclick="shopifyInstall('${s.domain}')" 
+          title="${escapeHtml(s.display_name)} · 未连接 · 点击安装(限老板)">
           <span class="store-chip-code">${s.site_code}</span>
           <span class="store-chip-name">${escapeHtml(s.display_name)}</span>
           <span class="store-chip-status install">+ 安装</span>
@@ -243,6 +357,11 @@ async function shopifyRenameStore(storeId, currentName) {
 }
 
 function shopifyInstall(domain) {
+  // V20260527k: 仅老板可以安装/绑定新店
+  if (typeof IS_ADMIN === 'undefined' || !IS_ADMIN) {
+    toast('店铺绑定/安装仅限主管操作 · 请联系老板', 'warn', 2500);
+    return;
+  }
   const url = SHOPIFY.installUrl(domain);
   window.open(url, '_blank', 'noopener');
   toast('请在新窗口完成授权后回来点 🔄 刷新');
@@ -2303,6 +2422,11 @@ async function batchPoSubmit() {
 // ============================================================
 
 function shopifyOpenAddStore() {
+  // V20260527k: 仅老板可以打开手动添加店铺 modal
+  if (typeof IS_ADMIN === 'undefined' || !IS_ADMIN) {
+    toast('店铺绑定仅限主管操作 · 请联系老板', 'warn', 2500);
+    return;
+  }
   // 清空表单
   ['addStoreDomain', 'addStoreDisplayName', 'addStoreSiteCode', 'addStoreToken'].forEach(id => {
     const el = document.getElementById(id);
@@ -2324,6 +2448,11 @@ function shopifyOpenAddStore() {
 window.shopifyOpenAddStore = shopifyOpenAddStore;
 
 async function shopifySubmitAddStore() {
+  // V20260527k: 双重保护 · 仅老板可提交
+  if (typeof IS_ADMIN === 'undefined' || !IS_ADMIN) {
+    toast('店铺绑定仅限主管操作 · 请联系老板', 'warn', 2500);
+    return;
+  }
   const domain = (document.getElementById('addStoreDomain')?.value || '').trim().toLowerCase();
   const displayName = (document.getElementById('addStoreDisplayName')?.value || '').trim();
   const siteCode = (document.getElementById('addStoreSiteCode')?.value || '').trim().toUpperCase();
@@ -2500,16 +2629,20 @@ async function shopifyMgrRenderList() {
         ? `<span style="background:rgba(21,128,61,0.1); color:var(--success); padding:3px 8px; border-radius:4px; font-size:11px; font-weight:600;">✓ 活跃</span>`
         : `<span style="background:rgba(107,114,128,0.1); color:var(--text-tertiary); padding:3px 8px; border-radius:4px; font-size:11px; font-weight:600;">已停用</span>`;
       
+      // V20260527k: 非老板只显示「仅老板可操作」灰提示
+      const isAdmin = (typeof IS_ADMIN !== 'undefined' && IS_ADMIN);
+      const actionsCell = isAdmin
+        ? `<button class="btn small" onclick="shopifyMgrToggleActive('${s.id}', ${s.is_active})" title="${s.is_active ? '停用' : '激活'}" style="padding:4px 8px; font-size:11px;">${s.is_active ? '⏸ 停用' : '▶ 激活'}</button>
+           <button class="btn small" onclick="shopifyMgrDelete('${s.id}', '${escapeHtml(s.shop_domain).replace(/'/g, '&#39;')}')" title="删除连接" style="padding:4px 8px; font-size:11px; background:rgba(220,38,38,0.06); border-color:rgba(220,38,38,0.3); color:var(--danger);">🗑 删除</button>`
+        : `<span style="font-size:11px; color:var(--text-tertiary);" title="店铺管理(停用/删除)仅限主管">🔒 仅主管可操作</span>`;
+      
       html += `
         <tr style="border-bottom:1px solid var(--border);">
           <td style="padding:10px 8px;">${codeBadge}</td>
           <td style="padding:10px 8px; font-family:monospace; color:var(--accent); font-size:11.5px; word-break:break-all;">${escapeHtml(s.shop_domain)}</td>
           <td style="padding:10px 8px;">${escapeHtml(s.display_name || s.shop_name || '')}</td>
           <td style="padding:10px 8px; text-align:center;">${activeBadge}</td>
-          <td style="padding:10px 8px; text-align:center;">
-            <button class="btn small" onclick="shopifyMgrToggleActive('${s.id}', ${s.is_active})" title="${s.is_active ? '停用' : '激活'}" style="padding:4px 8px; font-size:11px;">${s.is_active ? '⏸ 停用' : '▶ 激活'}</button>
-            <button class="btn small" onclick="shopifyMgrDelete('${s.id}', '${escapeHtml(s.shop_domain).replace(/'/g, '&#39;')}')" title="删除连接" style="padding:4px 8px; font-size:11px; background:rgba(220,38,38,0.06); border-color:rgba(220,38,38,0.3); color:var(--danger);">🗑 删除</button>
-          </td>
+          <td style="padding:10px 8px; text-align:center;">${actionsCell}</td>
         </tr>`;
     });
     
@@ -2522,6 +2655,11 @@ async function shopifyMgrRenderList() {
 window.shopifyMgrRenderList = shopifyMgrRenderList;
 
 async function shopifyMgrToggleActive(id, currentActive) {
+  // V20260527k: 仅老板可停用/激活
+  if (typeof IS_ADMIN === 'undefined' || !IS_ADMIN) {
+    toast('停用/激活店铺仅限主管操作', 'warn', 2500);
+    return;
+  }
   try {
     const { error } = await sb.from('shopify_stores')
       .update({ is_active: !currentActive, updated_at: new Date().toISOString() })
@@ -2537,6 +2675,11 @@ async function shopifyMgrToggleActive(id, currentActive) {
 window.shopifyMgrToggleActive = shopifyMgrToggleActive;
 
 async function shopifyMgrDelete(id, domain) {
+  // V20260527k: 仅老板可删除店铺连接
+  if (typeof IS_ADMIN === 'undefined' || !IS_ADMIN) {
+    toast('删除店铺仅限主管操作 · 请联系老板', 'warn', 2500);
+    return;
+  }
   const confirmed = confirm(
     `⚠ 确认删除店铺连接?\n\n店铺:${domain}\n\n` +
     `- 跟单系统会移除此店的 token 记录\n` +
