@@ -25,7 +25,7 @@
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260526o"></script>
-<script src="js/help.js?v=20260527u"></script>
+<script src="js/help.js?v=20260527v"></script>
 <script src="js/dateFilter.js?v=20260526p"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
@@ -4884,8 +4884,19 @@ body.has-side-tabs .section-block {
 .cdm-modal-close { background: transparent; border: none; font-size: 20px; color: var(--text-tertiary); cursor: pointer; padding: 0 4px; }
 .cdm-modal-body { padding: 16px 18px; overflow-y: auto; flex: 1; }
 .cdm-modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border-subtle); }
-.cdm-form-grid { display: grid; grid-template-columns: 110px 1fr; gap: 10px 14px; align-items: center; }
-.cdm-form-grid label { font-size: 12px; font-weight: 500; color: var(--text-secondary); text-align: right; }
+/* V20260527v: 跨部门 modal 表单布局 · 改成垂直堆叠避免 grid 错乱 */
+.cdm-form-grid { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 12px; 
+}
+.cdm-form-grid label { 
+  font-size: 12px; 
+  font-weight: 600; 
+  color: var(--text-secondary); 
+  display: block;
+  margin-bottom: -4px;  /* 紧贴下面的 input */
+}
 .cdm-form-grid label.req::after { content: ' *'; color: var(--danger); }
 .cdm-form-grid select, .cdm-form-grid input, .cdm-form-grid textarea {
   padding: 7px 10px; font-size: 13px;
@@ -6124,7 +6135,6 @@ body.has-side-tabs .section-block {
           <!-- 由 cdmPopulateShopDropdown() 动态填充(V22-CY 用 SHOPS_PRESET) -->
         </select>
 
-        <label></label>
         <div id="cdmNewCustomShopWrap" style="display:none;">
           <input id="cdmNewCustomShopName" type="text" placeholder="输入网站名 · 仅作备注(不会自动派单)" 
             style="width:100%; padding:7px 10px; font-size:12.5px; border:1px solid #ea580c; border-radius:5px; background:rgba(234,88,12,0.05);">
