@@ -20,7 +20,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260526h"></script>
+<script src="js/core.js?v=20260526q"></script>
 <script src="js/utils.js?v=20260525z"></script>
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
@@ -34,7 +34,7 @@
 <script src="js/trash.js"></script>
 <script src="js/aftersales.js?v=20260526o"></script>
 <script src="js/missing.js?v=20260526o"></script>
-<script src="js/orders.js?v=20260526p"></script>
+<script src="js/orders.js?v=20260526q"></script>
 <script src="js/shopify.js?v=20260526o"></script>
 <script src="js/po.js?v=20260526o"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
@@ -4982,8 +4982,8 @@ body.has-side-tabs .section-block {
 <!-- ============ TAB 1: 催单 ============ -->
 <div class="tab-content active" data-tab="orders">
   <div class="section-block">
-    <!-- 🚨 紧急告警 Banner · V20260526p: 可折叠 -->
-    <div class="urgent-alert" id="urgentAlert" style="display: none;">
+    <!-- 🚨 紧急告警 Banner · V20260526q: 默认折叠 · 用户可点开 -->
+    <div class="urgent-alert collapsed" id="urgentAlert" style="display: none;">
       <div class="urgent-head" onclick="toggleUrgentAlert()" style="cursor:pointer; user-select:none;">
         <div class="urgent-title">🚨 需立即处理<span class="urgent-count" id="urgentCount">0</span></div>
         <div class="urgent-meta" id="urgentSubtitle"></div>
