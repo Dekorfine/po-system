@@ -865,6 +865,7 @@ const ALL_MODULES = [
   { key: 'products', label: '📚 产品' },
   { key: 'consolidation', label: '🧊 合箱' },
   { key: 'performance', label: '📊 绩效' },
+  { key: 'photoreq', label: '📨 拍摄需求' },
 ];
 const ALL_MODULE_KEYS = ALL_MODULES.map(m => m.key);
 
@@ -2250,6 +2251,10 @@ function renderActiveTab() {
   // V5-W3-2026-05-26: 跨部门协作 tab(美工/客服消息互通)
   else if (CURRENT_TAB === 'cross_dept') {
     if (typeof cdmOnTabActivate === 'function') cdmOnTabActivate();
+  }
+  // V20260527t: 拍摄需求中心
+  else if (CURRENT_TAB === 'photoreq') {
+    if (typeof renderPhotoReq === 'function') renderPhotoReq();
   }
   // V5-W3-2026-05-26: 反馈中心 tab
   else if (CURRENT_TAB === 'feedback') {
