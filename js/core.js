@@ -1721,6 +1721,12 @@ function showMainApp() {
   document.getElementById('mainApp').style.display = 'block';
   // V5-W3-2026-05-26: 显示主应用后立刻应用用户的 tab 布局
   setTimeout(() => { if (typeof applyTabLayout === 'function') applyTabLayout(); }, 50);
+  // V20260526q: 登录后加一条 appEntry 历史 · 用户点返回时能被 popstate 监听到 · 不会直接跳出应用
+  try {
+    if (!window.history.state || !window.history.state.appTab) {
+      window.history.pushState({ appEntry: true }, '', window.location.href);
+    }
+  } catch(_) {}
 }
 
 // ============================================================
@@ -2279,19 +2285,44 @@ function setBadge(id, n) {
 }
 
 // ============ Tab 切换 ============
-function switchTab(name) {
+function switchTab(name, fromPopstate) {
   CURRENT_TAB = name;
   try { localStorage.setItem('current_tab', name); } catch(_) {}
-  // V4：同步到 URL 参数（不污染浏览器历史，方便多窗口打开）
-  try {
-    const url = new URL(window.location.href);
-    url.searchParams.set('tab', name);
-    window.history.replaceState(null, '', url.toString());
-  } catch(_) {}
+  // V20260526q: 用 pushState 把 tab 切换记录到浏览器历史
+  // 之前用 replaceState 导致浏览器返回直接跳出应用(看起来像"登出")
+  // 现在:返回会在应用内切回上一个 tab
+  // fromPopstate=true 时不再 push(避免无限循环)
+  if (!fromPopstate) {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', name);
+      // 首次进入应用没有 state 时,用 push 创建第一条历史
+      // 后续切 tab 都用 push 累加历史
+      window.history.pushState({ appTab: name }, '', url.toString());
+    } catch(_) {}
+  }
   document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === name));
   renderActiveTab();
 }
+
+// V20260526q: 监听浏览器返回/前进 · 在应用内切换 tab(不跳出)
+window.addEventListener('popstate', (e) => {
+  // 如果 state 里有 appTab,切换到对应 tab(不再 push 避免循环)
+  if (e.state && e.state.appTab) {
+    switchTab(e.state.appTab, true);
+    return;
+  }
+  // 没有 state(用户返回到应用入口的初始页) · 不让真的离开
+  // 重新 push 一个当前 tab 的 state,把用户"留住"
+  if (CURRENT_TAB && document.getElementById('mainApp')?.style.display !== 'none') {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', CURRENT_TAB);
+      window.history.pushState({ appTab: CURRENT_TAB }, '', url.toString());
+    } catch(_) {}
+  }
+});
 
 function restoreLastTab() {
   try {
