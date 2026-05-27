@@ -25,7 +25,7 @@
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260526o"></script>
-<script src="js/help.js?v=20260527h"></script>
+<script src="js/help.js?v=20260527i"></script>
 <script src="js/dateFilter.js?v=20260526p"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
@@ -33,7 +33,7 @@
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
 <script src="js/aftersales.js?v=20260527f"></script>
-<script src="js/missing.js?v=20260526o"></script>
+<script src="js/missing.js?v=20260527i"></script>
 <script src="js/orders.js?v=20260526q"></script>
 <script src="js/shopify.js?v=20260527g"></script>
 <script src="js/po.js?v=20260527h"></script>
@@ -1836,6 +1836,25 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .missing-group-head.searching .count { background: rgba(37,99,235,0.1); color: var(--accent); }
 .missing-group-head.found .count { background: rgba(21,128,61,0.1); color: var(--success); }
 .missing-group-head.abandoned .count { background: rgba(87,83,78,0.1); color: var(--text-secondary); }
+/* V20260527i: 已找到分组头加强 · 绿色渐变背景 · 让底部折叠头也显眼 */
+.missing-group-head.found {
+  background: linear-gradient(135deg, rgba(22,163,74,0.08), rgba(34,197,94,0.04));
+  border-color: rgba(22,163,74,0.25);
+  padding: 14px 18px;
+}
+.missing-group-head.found:hover { 
+  border-color: rgba(22,163,74,0.5);
+  background: linear-gradient(135deg, rgba(22,163,74,0.12), rgba(34,197,94,0.06));
+}
+.missing-group-head.found .title { color: #15803d; font-size: 14.5px; }
+.missing-group-head.found .count {
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: white;
+  font-size: 12px;
+  padding: 3px 11px;
+  box-shadow: 0 1px 3px rgba(22,163,74,0.3);
+}
+.missing-group-head.found .toggle-arrow { color: #16a34a; font-weight: 700; }
 .missing-group-head .toggle-arrow {
   transition: transform 0.2s;
   font-size: 10px;
@@ -1851,6 +1870,68 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   margin-top: -1px;
 }
 .missing-group-head.expanded { border-radius: 10px 10px 0 0; }
+
+/* V20260527i: 顶部「已找到」成就 banner · 醒目 · 一键展开下方 */
+.missing-found-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  margin-top: 14px;
+  background: linear-gradient(135deg, rgba(22,163,74,0.1), rgba(34,197,94,0.05));
+  border: 1px solid rgba(22,163,74,0.28);
+  border-left: 4px solid #16a34a;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.18s;
+}
+.missing-found-banner:hover {
+  background: linear-gradient(135deg, rgba(22,163,74,0.15), rgba(34,197,94,0.08));
+  transform: translateX(3px);
+  box-shadow: 0 3px 14px rgba(22,163,74,0.18);
+}
+.missing-found-banner .banner-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.missing-found-banner .banner-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+.missing-found-banner .banner-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #15803d;
+}
+.missing-found-banner .banner-title b {
+  color: #16a34a;
+  font-size: 18px;
+  margin: 0 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.missing-found-banner .banner-sub {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  margin-top: 3px;
+}
+.missing-found-banner .banner-arrow {
+  padding: 7px 14px;
+  background: white;
+  border: 1px solid rgba(22,163,74,0.3);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #16a34a;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.missing-found-banner:hover .banner-arrow {
+  background: #16a34a;
+  color: white;
+  border-color: #16a34a;
+}
 .missing-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
