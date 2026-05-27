@@ -211,13 +211,31 @@ function renderMissing() {
     const searching = list.filter(m => m.status === 'searching');
     const found = list.filter(m => m.status === 'found');
     let html = '';
+    
+    // V20260527i: 已找到 > 0 时,在顶部加醒目成就 banner · 一键展开下方 found 区块
+    if (found.length > 0) {
+      html += `
+        <div class="missing-found-banner" onclick="expandMissingFoundAndScroll()" 
+             title="点击展开下方「已找到」区块,查看 ${found.length} 个已下单的灯具">
+          <div class="banner-left">
+            <span class="banner-icon">🎉</span>
+            <div>
+              <div class="banner-title">已找到 / 已下单 <b>${found.length}</b> 个灯具</div>
+              <div class="banner-sub">团队协作成果 · 点击展开查看明细</div>
+            </div>
+          </div>
+          <span class="banner-arrow">展开查看 ▼</span>
+        </div>
+      `;
+    }
+    
     // 搜寻中（默认展开）
     if (searching.length > 0) {
       html += renderMissingGroup('searching', '🔍 搜寻中', searching, false);
     } else {
       html += `<div class="empty-state" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; margin-top: 14px;"><div class="icon">🔍</div><div class="text">没有搜寻中的找灯任务</div></div>`;
     }
-    // 已找到（默认折叠）
+    // 已找到（默认折叠 · head 样式已加强 · 见 CSS .missing-group-head.found）
     if (found.length > 0) {
       html += renderMissingGroup('found', '✅ 已找到 / 已下单', found, true);
     }
@@ -317,6 +335,21 @@ function toggleMissingGroup(key) {
   el.classList.toggle('collapsed');
   el.querySelector('.missing-group-head').classList.toggle('expanded');
 }
+
+// V20260527i: 点顶部 banner → 展开下方「已找到」区块 + 平滑滚到那里
+function expandMissingFoundAndScroll() {
+  const el = document.getElementById('missingGroup_found');
+  if (!el) return;
+  // 强制展开
+  el.classList.remove('collapsed');
+  const head = el.querySelector('.missing-group-head');
+  if (head) head.classList.add('expanded');
+  // 平滑滚到该区块顶部
+  setTimeout(() => {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 80);
+}
+window.expandMissingFoundAndScroll = expandMissingFoundAndScroll;
 
 // ============ V4：自定义数量对话框（截图打包前先选要导多少个）============
 function _promptExportLimit(target) {
