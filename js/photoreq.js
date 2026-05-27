@@ -129,6 +129,7 @@ async function renderPhotoReq() {
         </h2>
       </div>
       <button class="btn primary" onclick="photoReqOpenNew()">+ 新建拍摄需求</button>
+      ${isAdmin ? `<button class="btn" onclick="photoReqOpenBatch()" title="跟单专员/主管专用 · 一次录入多条" style="background:rgba(124,58,237,0.08); border-color:rgba(124,58,237,0.3); color:var(--purple);">📥 批量录入</button>` : ''}
     </div>
 
     <!-- V27y: 筛选 sub-tab(v3) -->
@@ -343,13 +344,14 @@ function _photoReqCardHtml(log) {
       </div>
       <!-- 主内容 -->
       <div style="min-width:0;">
-        <!-- 第一行:加急 + 来源 + 状态 + 时间 -->
+        <!-- 第一行:加急 + 来源 + 状态 + 时间 + ✏ 编辑 -->
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:5px; flex-wrap:wrap;">
           ${urgent ? `<span style="background:var(--danger); color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700;">🚨 加急</span>` : ''}
           ${sourceBadge}
           ${isMine && source !== '自发' ? `<span style="color:var(--accent); font-size:10.5px; font-weight:600;">↳ 我提的</span>` : ''}
           <span style="background:${statusMeta.color}; color:${statusMeta.fg}; padding:2px 9px; border-radius:10px; font-size:11px; font-weight:600;">${statusMeta.emoji} ${statusMeta.text}</span>
           <span style="font-size:11px; color:var(--text-tertiary); margin-left:auto;">${ageStr}</span>
+          <button onclick="photoReqOpenEdit('${escapeHtml(log.id)}')" class="btn small" style="font-size:10.5px; padding:2px 8px;" title="编辑产品基础信息 + 补充原因/附件">✏ 编辑</button>
         </div>
         <!-- 产品名 + SKU -->
         <div style="font-size:14px; font-weight:600; color:var(--text-primary); margin-bottom:3px; word-break:break-word;">
@@ -854,3 +856,578 @@ function _photoReqUnsubscribeRealtime() {
   }
 }
 window._photoReqUnsubscribeRealtime = _photoReqUnsubscribeRealtime;
+
+// ============================================================================
+// V20260527z(v3 #4 + #5):编辑模式 · 区分可编辑 vs 只读 · merge 不覆盖
+// ============================================================================
+let PHOTOREQ_EDIT = null;
+
+// 可编辑字段白名单(v3 #4)
+const PHOTOREQ_EDITABLE_FIELDS = [
+  'product_name', 'sku', 'product_image', 'applicable_shops', 'product_type', 'product_notes'
+];
+
+function photoReqOpenEdit(logId) {
+  const log = (PHOTOREQ._allLogs || []).find(l => l.id === logId);
+  if (!log) { toast('找不到该需求 · 可能刚被删除', 'warn'); return; }
+  
+  const myId = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) ? String(CURRENT_USER_ID) 
+             : (typeof CURRENT_AGENT !== 'undefined' ? String(CURRENT_AGENT) : 'anon');
+  
+  PHOTOREQ_EDIT = {
+    logId,
+    originalUpdatedAt: log.updated_at,
+    isMine: log.external_request?.from_user_id === myId,
+    // 可编辑字段(从 log 拷贝当前值)
+    product_name: log.product_name || '',
+    sku: log.sku || '',
+    product_image: log.product_image || '',
+    applicable_shops: Array.isArray(log.applicable_shops) ? [...log.applicable_shops] : [],
+    product_type: log.product_type || '',
+    product_notes: log.product_notes || '',
+    // external_request 追加用
+    reason_append: '',
+    new_attachments: [],
+    urgency_upgrade: null,  // null = 不变 / 'urgent' = 升级加急
+    // 只读引用
+    _readonly: log,
+  };
+  
+  document.getElementById('photoReqEditModal').style.display = 'flex';
+  _photoReqRenderEdit();
+  if (typeof _disableAutofillOnFields === 'function') {
+    setTimeout(() => _disableAutofillOnFields(document.getElementById('photoReqEditModal')), 0);
+  }
+}
+window.photoReqOpenEdit = photoReqOpenEdit;
+
+function photoReqCloseEdit() {
+  document.getElementById('photoReqEditModal').style.display = 'none';
+  PHOTOREQ_EDIT = null;
+}
+window.photoReqCloseEdit = photoReqCloseEdit;
+
+function _photoReqRenderEdit() {
+  const s = PHOTOREQ_EDIT;
+  if (!s) return;
+  const log = s._readonly;
+  const ext = log.external_request || {};
+  const body = document.getElementById('photoReqEditBody');
+  
+  // 黄色边框样式 · 可编辑字段统一用
+  const editBorder = 'border:2px solid #f59e0b; background:rgba(245,158,11,0.03);';
+  // 灰色样式 · 只读字段
+  const readonlyStyle = 'background:var(--bg-elevated); color:var(--text-tertiary); border:1px solid var(--border-subtle); padding:8px 10px; border-radius:5px; font-size:12.5px;';
+  
+  body.innerHTML = `
+    <!-- 编辑模式提示 -->
+    <div style="padding:10px 12px; background:rgba(245,158,11,0.08); border-left:3px solid #f59e0b; border-radius:0 6px 6px 0; margin-bottom:14px; font-size:11.5px; color:var(--text-secondary); line-height:1.6;">
+      📝 你正在编辑「${escapeHtml(log.product_name || '(无名)')}」<br>
+      <span style="color:var(--text-tertiary);">${s.isMine ? '👤 这条是你提的 · 全部可改' : '👥 这条是别人提的 · 只能改产品基础信息 + 追加补充原因/附件'}</span>
+    </div>
+
+    <!-- 可编辑字段区 -->
+    <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">📝 产品基础信息(任何人都可改)</div>
+    
+    <div style="display:grid; grid-template-columns: 2fr 1fr; gap:12px; margin-bottom:12px;">
+      <div>
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">产品名</label>
+        <input type="text" value="${escapeHtml(s.product_name)}" oninput="PHOTOREQ_EDIT.product_name=this.value"
+               style="width:100%; padding:7px 10px; font-size:13px; border-radius:5px; ${editBorder}">
+      </div>
+      <div>
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">SKU</label>
+        <input type="text" value="${escapeHtml(s.sku)}" oninput="PHOTOREQ_EDIT.sku=this.value"
+               style="width:100%; padding:7px 10px; font-size:13px; border-radius:5px; font-family:monospace; ${editBorder}">
+      </div>
+    </div>
+    
+    <div style="margin-bottom:12px;">
+      <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">应用店铺(多选)</label>
+      <div style="display:flex; flex-wrap:wrap; gap:5px; padding:6px; border-radius:5px; ${editBorder}">
+        ${PHOTOREQ_SHOPS.map(shop => {
+          const checked = s.applicable_shops.includes(shop);
+          return `<span onclick="_photoReqEditToggleShop('${escapeHtml(shop).replace(/'/g, "\\'")}')"
+                        style="padding:4px 9px; font-size:11.5px; border:1px solid ${checked ? 'var(--accent)' : 'var(--border)'}; border-radius:12px; cursor:pointer; user-select:none; background:${checked ? 'var(--accent)' : 'var(--bg-card)'}; color:${checked ? 'white' : 'var(--text-secondary)'}; font-weight:${checked ? '600' : '400'};">
+                    ${checked ? '✓ ' : ''}${escapeHtml(shop)}
+                  </span>`;
+        }).join('')}
+      </div>
+    </div>
+    
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+      <div>
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">类型</label>
+        <select onchange="PHOTOREQ_EDIT.product_type=this.value"
+                style="width:100%; padding:7px 10px; font-size:13px; border-radius:5px; ${editBorder}">
+          ${[
+            { v: '', label: '— 未指定 —' },
+            { v: '新款', label: '🆕 新款' },
+            { v: '常规', label: '📦 常规产品' },
+            { v: '样品', label: '🧪 样品' },
+            { v: '现货', label: '✅ 现货' },
+            { v: '定制', label: '💎 定制' },
+            { v: '客服需求', label: '📨 客服需求' },
+            { v: '跟单需求', label: '📋 跟单需求' },
+          ].map(o => `<option value="${o.v}" ${s.product_type === o.v ? 'selected' : ''}>${o.label}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">产品图 URL</label>
+        <input type="text" value="${escapeHtml(s.product_image)}" oninput="PHOTOREQ_EDIT.product_image=this.value"
+               placeholder="https://...png"
+               style="width:100%; padding:7px 10px; font-size:12px; border-radius:5px; ${editBorder}">
+      </div>
+    </div>
+    
+    <div style="margin-bottom:14px;">
+      <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">产品备注 · 特殊属性 / 尺寸 / 材质提醒</label>
+      <textarea oninput="PHOTOREQ_EDIT.product_notes=this.value" rows="2"
+                placeholder="例:客户要黄铜色 · 高度 1.5m · 110V 美规"
+                style="width:100%; padding:8px 10px; font-size:12.5px; border-radius:5px; resize:vertical; font-family:inherit; ${editBorder}">${escapeHtml(s.product_notes)}</textarea>
+    </div>
+    
+    <!-- 补充原因 + 追加附件(走 external_request append) -->
+    <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--border-subtle);">
+      <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">➕ 追加补充(不覆盖原始内容)</div>
+      
+      <div style="margin-bottom:12px;">
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">补充原因(会追加到原 reason 末尾 · 带日期标记)</label>
+        <textarea oninput="PHOTOREQ_EDIT.reason_append=this.value" rows="2"
+                  placeholder="客户又补充了 · 要求颜色再深一点..."
+                  style="width:100%; padding:8px 10px; font-size:12.5px; border-radius:5px; resize:vertical; font-family:inherit; border:2px solid #f59e0b; background:rgba(245,158,11,0.03);">${escapeHtml(s.reason_append)}</textarea>
+        ${ext.reason ? `
+          <details style="margin-top:6px;">
+            <summary style="font-size:10.5px; color:var(--text-tertiary); cursor:pointer;">查看原 reason</summary>
+            <div style="margin-top:4px; padding:6px 8px; background:var(--bg-elevated); border-radius:4px; font-size:11.5px; color:var(--text-secondary); white-space:pre-wrap; max-height:120px; overflow-y:auto;">${escapeHtml(ext.reason)}</div>
+          </details>` : ''}
+      </div>
+      
+      ${(s.urgency_upgrade === null && ext.urgency !== 'urgent') ? `
+        <div style="margin-bottom:6px;">
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); cursor:pointer;">
+            <input type="checkbox" onchange="PHOTOREQ_EDIT.urgency_upgrade=this.checked?'urgent':null; _photoReqRenderEdit()">
+            升级为 🚨 加急(客户投诉 / 平台 dispute 等)
+          </label>
+        </div>
+      ` : ext.urgency === 'urgent' ? `
+        <div style="font-size:11px; color:var(--danger); margin-bottom:6px;">🚨 当前已经是加急状态</div>
+      ` : `
+        <div style="font-size:11px; color:var(--danger); margin-bottom:6px;">🚨 将升级为加急(保存生效)<button onclick="PHOTOREQ_EDIT.urgency_upgrade=null; _photoReqRenderEdit()" style="margin-left:6px; font-size:10px; padding:1px 6px;">取消升级</button></div>
+      `}
+    </div>
+    
+    <!-- 只读区 · 拍摄部填的字段 -->
+    <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--border-subtle);">
+      <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">🔒 以下是拍摄部/系统填的 · 你只能看</div>
+      
+      <div style="display:grid; grid-template-columns: 100px 1fr; gap:8px 12px; font-size:12px;">
+        <div style="color:var(--text-tertiary);">状态:</div>
+        <div style="${readonlyStyle}">${PHOTOREQ_STATUS_LABEL[log.status]?.emoji || '?'} ${PHOTOREQ_STATUS_LABEL[log.status]?.text || log.status}</div>
+        
+        <div style="color:var(--text-tertiary);">紧急度:</div>
+        <div style="${readonlyStyle}">${log.priority || 'normal'}</div>
+        
+        ${log.photographer_name ? `
+          <div style="color:var(--text-tertiary);">摄影师:</div>
+          <div style="${readonlyStyle}">📷 ${escapeHtml(log.photographer_name)}${log.shoot_date ? ' (' + log.shoot_date + ')' : ''}</div>
+        ` : ''}
+        
+        ${log.editor_name ? `
+          <div style="color:var(--text-tertiary);">剪辑师:</div>
+          <div style="${readonlyStyle}">🎬 ${escapeHtml(log.editor_name)}${log.edit_date ? ' (' + log.edit_date + ')' : ''}</div>
+        ` : ''}
+        
+        ${log.pre_shoot_review?.status ? `
+          <div style="color:var(--text-tertiary);">美工预审:</div>
+          <div style="${readonlyStyle}">${PHOTOREQ_PRE_SHOOT_LABEL[log.pre_shoot_review.status] || log.pre_shoot_review.status}</div>
+        ` : ''}
+        
+        ${log.review?.status ? `
+          <div style="color:var(--text-tertiary);">视频审核:</div>
+          <div style="${readonlyStyle}">${PHOTOREQ_REVIEW_LABEL[log.review.status] || log.review.status}</div>
+        ` : ''}
+        
+        ${log.url_horizontal ? `
+          <div style="color:var(--text-tertiary);">视频:</div>
+          <div style="${readonlyStyle}"><a href="${escapeHtml(log.url_horizontal)}" target="_blank" style="color:var(--accent);">📺 横版</a>${log.url_vertical ? ' · <a href="' + escapeHtml(log.url_vertical) + '" target="_blank" style="color:var(--accent);">📱 竖版</a>' : ''}</div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function _photoReqEditToggleShop(shop) {
+  if (!PHOTOREQ_EDIT) return;
+  const arr = PHOTOREQ_EDIT.applicable_shops;
+  const idx = arr.indexOf(shop);
+  if (idx >= 0) arr.splice(idx, 1);
+  else arr.push(shop);
+  _photoReqRenderEdit();
+}
+window._photoReqEditToggleShop = _photoReqEditToggleShop;
+
+// 保存编辑 · 两步:1) update 基础字段(白名单)2) merge external_request(append-only)
+async function photoReqSaveEdit() {
+  const s = PHOTOREQ_EDIT;
+  if (!s) return;
+  
+  const client = _photoReqClient();
+  if (!client) { toast('Supabase 客户端未初始化', 'err'); return; }
+  
+  // 校验
+  if (!(s.product_name || '').trim()) { toast('产品名不能为空', 'warn'); return; }
+  
+  const nowIso = new Date().toISOString();
+  
+  try {
+    // STEP 1:更新可编辑字段(只走白名单)
+    const basicsUpdate = {
+      product_name: s.product_name.trim(),
+      sku: (s.sku || '').trim() || null,
+      product_image: (s.product_image || '').trim() || null,
+      applicable_shops: s.applicable_shops || [],
+      product_type: (s.product_type || '').trim() || null,
+      product_notes: (s.product_notes || '').trim() || null,
+      updated_at: nowIso,
+    };
+    const { error: err1 } = await client.from('photo_logs')
+      .update(basicsUpdate)
+      .eq('id', s.logId);
+    if (err1) throw err1;
+    
+    // STEP 2:如果有补充原因 / 升级加急,merge external_request(先 fetch 再写)
+    const needMerge = (s.reason_append || '').trim() || s.urgency_upgrade;
+    if (needMerge) {
+      const { data: row, error: err2 } = await client.from('photo_logs')
+        .select('external_request')
+        .eq('id', s.logId)
+        .single();
+      if (err2) throw err2;
+      
+      const current = row?.external_request || {};
+      const merged = { ...current };
+      
+      // 追加 reason(带日期标记)
+      if ((s.reason_append || '').trim()) {
+        const dateStr = new Date().toLocaleDateString('zh-CN');
+        const myName = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) ? CURRENT_AGENT : '我';
+        merged.reason = (current.reason || '') + 
+          `\n\n--- ${dateStr} ${myName} 补充 ---\n` + 
+          s.reason_append.trim();
+      }
+      
+      // 升级加急
+      if (s.urgency_upgrade === 'urgent') {
+        merged.urgency = 'urgent';
+      }
+      
+      const finalUpdate = {
+        external_request: merged,
+        updated_at: nowIso,
+      };
+      if (s.urgency_upgrade === 'urgent') finalUpdate.priority = 'urgent';
+      
+      const { error: err3 } = await client.from('photo_logs')
+        .update(finalUpdate)
+        .eq('id', s.logId);
+      if (err3) throw err3;
+    }
+    
+    toast('✓ 已保存修改', 'success', 2000);
+    photoReqCloseEdit();
+    // 触发列表刷新(realtime 也会推送 · 这里手动刷以防延迟)
+    setTimeout(() => _photoReqLoadAndRender(), 100);
+  } catch (e) {
+    console.error('保存编辑失败:', e);
+    toast('保存失败:' + (e.message || e), 'err', 4000);
+  }
+}
+window.photoReqSaveEdit = photoReqSaveEdit;
+
+// ============================================================================
+// V20260527z(v3 #7):批量录入 · 跟单专员/主管专属
+// 多行表格 · 默认值统一 · Promise.allSettled 并行 insert · 同批次 batch_id 一致
+// ============================================================================
+let PHOTOREQ_BATCH = null;
+
+function photoReqOpenBatch() {
+  if (typeof IS_ADMIN !== 'undefined' && !IS_ADMIN) {
+    toast('批量录入仅限主管 / 跟单专员', 'warn');
+    return;
+  }
+  
+  PHOTOREQ_BATCH = {
+    rows: [
+      _photoReqBatchEmptyRow(),
+      _photoReqBatchEmptyRow(),
+      _photoReqBatchEmptyRow(),
+    ],
+    defaults: {
+      urgency: 'normal',
+      reason_prefix: '',
+      batch_id: crypto.randomUUID(),
+    },
+    submitting: false,
+  };
+  
+  document.getElementById('photoReqBatchModal').style.display = 'flex';
+  _photoReqRenderBatch();
+}
+window.photoReqOpenBatch = photoReqOpenBatch;
+
+function photoReqCloseBatch() {
+  document.getElementById('photoReqBatchModal').style.display = 'none';
+  PHOTOREQ_BATCH = null;
+}
+window.photoReqCloseBatch = photoReqCloseBatch;
+
+function _photoReqBatchEmptyRow() {
+  return {
+    _id: 'r' + Math.random().toString(36).slice(2, 9),
+    product_name: '',
+    sku: '',
+    applicable_shops: [],
+    urgency: '',  // 空 = 用默认
+    reason: '',
+  };
+}
+
+function _photoReqRenderBatch() {
+  const s = PHOTOREQ_BATCH;
+  if (!s) return;
+  const body = document.getElementById('photoReqBatchBody');
+  
+  body.innerHTML = `
+    <!-- 默认设置区 -->
+    <div style="display:grid; grid-template-columns: 1fr 2fr; gap:12px; padding:12px; background:rgba(124,58,237,0.05); border-radius:8px; margin-bottom:14px;">
+      <div>
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">统一紧急度</label>
+        <select onchange="PHOTOREQ_BATCH.defaults.urgency=this.value" style="width:100%; padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:5px;">
+          <option value="normal" ${s.defaults.urgency === 'normal' ? 'selected' : ''}>普通</option>
+          <option value="urgent" ${s.defaults.urgency === 'urgent' ? 'selected' : ''}>🚨 加急</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">统一原因前缀(可选 · 会自动加到每条原因前)</label>
+        <input type="text" value="${escapeHtml(s.defaults.reason_prefix)}" oninput="PHOTOREQ_BATCH.defaults.reason_prefix=this.value"
+               placeholder="例:本周新品汇总 / 周五拍摄计划"
+               style="width:100%; padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:5px;">
+      </div>
+    </div>
+    
+    <!-- 表格 header -->
+    <div style="display:grid; grid-template-columns: 1.6fr 1fr 2fr 90px 1.8fr 36px; gap:6px; padding:8px 10px; background:var(--bg-elevated); font-size:10.5px; font-weight:600; color:var(--text-tertiary); border-radius:6px 6px 0 0; text-transform:uppercase;">
+      <div>产品名 *</div>
+      <div>SKU</div>
+      <div>店铺</div>
+      <div>紧急度</div>
+      <div>原因</div>
+      <div></div>
+    </div>
+    
+    <!-- 表格 rows -->
+    <div style="border:1px solid var(--border); border-top:0; border-radius:0 0 6px 6px; overflow:hidden;">
+      ${s.rows.map((r, idx) => _photoReqBatchRowHtml(r, idx)).join('')}
+    </div>
+    
+    <!-- 操作 -->
+    <div style="display:flex; gap:8px; margin-top:10px; align-items:center;">
+      <button class="btn small" onclick="_photoReqBatchAddRow()" style="padding:5px 12px;">+ 加一行</button>
+      <button class="btn small" onclick="_photoReqBatchAddRows(5)" style="padding:5px 12px;">+ 加 5 行</button>
+      <span style="margin-left:auto; font-size:11.5px; color:var(--text-secondary);">共 <b style="color:var(--purple);">${s.rows.filter(r => r.product_name.trim()).length}</b> 行待提交(${s.rows.length} 总)</span>
+    </div>
+    
+    <div style="margin-top:14px; padding:10px 12px; background:rgba(13,148,136,0.05); border-left:3px solid var(--teal); border-radius:0 6px 6px 0; font-size:11px; color:var(--text-secondary); line-height:1.6;">
+      💡 <b>使用提示:</b><br>
+      · 只有"产品名"是必填 · 其他都可后续编辑(走 ✏ 编辑)<br>
+      · 提交后立刻出现在拍摄部首页(每条独立 PO 一样)· 同一批次的 batch_id 一致(后续可查同一批)<br>
+      · 失败的行不影响其他成功的(Promise.allSettled)
+    </div>
+  `;
+}
+
+function _photoReqBatchRowHtml(r, idx) {
+  const shopsLabel = r.applicable_shops.length > 0 
+    ? r.applicable_shops.join(' · ') 
+    : '<span style="color:var(--text-tertiary);">未选</span>';
+  return `
+    <div style="display:grid; grid-template-columns: 1.6fr 1fr 2fr 90px 1.8fr 36px; gap:6px; padding:6px 10px; border-top:${idx > 0 ? '1px solid var(--border-subtle)' : '0'}; align-items:center;">
+      <input type="text" value="${escapeHtml(r.product_name)}" oninput="_photoReqBatchSetField('${r._id}','product_name',this.value); _photoReqBatchUpdateCount()"
+             placeholder="必填..."
+             style="padding:6px 8px; font-size:12px; border:1px solid ${r.product_name.trim() ? 'var(--border)' : 'rgba(245,158,11,0.4)'}; border-radius:4px;">
+      <input type="text" value="${escapeHtml(r.sku)}" oninput="_photoReqBatchSetField('${r._id}','sku',this.value)"
+             placeholder="可选"
+             style="padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:4px; font-family:monospace;">
+      <div onclick="_photoReqBatchOpenShops('${r._id}')" style="padding:6px 8px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; cursor:pointer; background:var(--bg-card); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(r.applicable_shops.join(' / '))}">
+        ${shopsLabel}
+      </div>
+      <select onchange="_photoReqBatchSetField('${r._id}','urgency',this.value)"
+              style="padding:6px 8px; font-size:11.5px; border:1px solid var(--border); border-radius:4px;">
+        <option value="" ${!r.urgency ? 'selected' : ''}>默认</option>
+        <option value="normal" ${r.urgency === 'normal' ? 'selected' : ''}>普通</option>
+        <option value="urgent" ${r.urgency === 'urgent' ? 'selected' : ''}>🚨 加急</option>
+      </select>
+      <input type="text" value="${escapeHtml(r.reason)}" oninput="_photoReqBatchSetField('${r._id}','reason',this.value)"
+             placeholder="可选"
+             style="padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:4px;">
+      <button onclick="_photoReqBatchRemoveRow('${r._id}')" style="padding:4px 8px; font-size:11px; color:var(--danger); background:transparent; border:1px solid transparent; cursor:pointer; border-radius:4px;" title="删除此行">✕</button>
+    </div>
+  `;
+}
+
+function _photoReqBatchSetField(rowId, field, val) {
+  if (!PHOTOREQ_BATCH) return;
+  const r = PHOTOREQ_BATCH.rows.find(x => x._id === rowId);
+  if (r) r[field] = val;
+}
+window._photoReqBatchSetField = _photoReqBatchSetField;
+
+function _photoReqBatchUpdateCount() {
+  // 只更新计数 · 不全重渲(防止焦点丢失)
+  // 实际触发是用户输入完整产品名时 · 此处轻量刷新
+  if (!PHOTOREQ_BATCH) return;
+  const cnt = PHOTOREQ_BATCH.rows.filter(r => r.product_name.trim()).length;
+  // 简单粗暴 · 找到计数 b 元素更新
+  const counts = document.querySelectorAll('#photoReqBatchBody b');
+  if (counts.length) counts[counts.length - 1].textContent = cnt;
+}
+window._photoReqBatchUpdateCount = _photoReqBatchUpdateCount;
+
+function _photoReqBatchAddRow() {
+  if (!PHOTOREQ_BATCH) return;
+  PHOTOREQ_BATCH.rows.push(_photoReqBatchEmptyRow());
+  _photoReqRenderBatch();
+}
+window._photoReqBatchAddRow = _photoReqBatchAddRow;
+
+function _photoReqBatchAddRows(n) {
+  if (!PHOTOREQ_BATCH) return;
+  for (let i = 0; i < n; i++) PHOTOREQ_BATCH.rows.push(_photoReqBatchEmptyRow());
+  _photoReqRenderBatch();
+}
+window._photoReqBatchAddRows = _photoReqBatchAddRows;
+
+function _photoReqBatchRemoveRow(rowId) {
+  if (!PHOTOREQ_BATCH) return;
+  PHOTOREQ_BATCH.rows = PHOTOREQ_BATCH.rows.filter(r => r._id !== rowId);
+  // 至少保留 1 行
+  if (PHOTOREQ_BATCH.rows.length === 0) PHOTOREQ_BATCH.rows.push(_photoReqBatchEmptyRow());
+  _photoReqRenderBatch();
+}
+window._photoReqBatchRemoveRow = _photoReqBatchRemoveRow;
+
+// 简易店铺多选 · prompt 输入 · 后续可改为 popover(本轮先简单)
+function _photoReqBatchOpenShops(rowId) {
+  if (!PHOTOREQ_BATCH) return;
+  const r = PHOTOREQ_BATCH.rows.find(x => x._id === rowId);
+  if (!r) return;
+  // 弹一个简单选择 dialog
+  const shopList = PHOTOREQ_SHOPS.map((s, i) => `${i + 1}. ${r.applicable_shops.includes(s) ? '✓' : '·'} ${s}`).join('\n');
+  const input = prompt(`选择店铺(输入序号 · 逗号分隔)\n\n${shopList}\n\n例:1,3,5 · 留空清除`, r.applicable_shops.map(sh => PHOTOREQ_SHOPS.indexOf(sh) + 1).join(','));
+  if (input === null) return;  // 取消
+  if (input.trim() === '') {
+    r.applicable_shops = [];
+  } else {
+    const idxs = input.split(/[,，\s]+/).map(x => parseInt(x.trim()) - 1).filter(x => x >= 0 && x < PHOTOREQ_SHOPS.length);
+    r.applicable_shops = [...new Set(idxs.map(i => PHOTOREQ_SHOPS[i]))];
+  }
+  _photoReqRenderBatch();
+}
+window._photoReqBatchOpenShops = _photoReqBatchOpenShops;
+
+async function photoReqSubmitBatch() {
+  const s = PHOTOREQ_BATCH;
+  if (!s) return;
+  if (s.submitting) return;
+  
+  // 过滤空行(product_name 为空的不提交)
+  const validRows = s.rows.filter(r => (r.product_name || '').trim());
+  if (validRows.length === 0) { toast('没有可提交的行 · 至少填一个产品名', 'warn'); return; }
+  
+  const client = _photoReqClient();
+  if (!client) { toast('Supabase 客户端未初始化', 'err'); return; }
+  
+  const myId = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) ? String(CURRENT_USER_ID) 
+             : (typeof CURRENT_AGENT !== 'undefined' ? String(CURRENT_AGENT) : 'unknown');
+  const myName = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) ? CURRENT_AGENT : '跟单';
+  
+  if (!confirm(`确认提交 ${validRows.length} 条拍摄需求?\n\n紧急度默认:${s.defaults.urgency === 'urgent' ? '🚨 加急' : '普通'}\n原因前缀:${s.defaults.reason_prefix || '(无)'}`)) return;
+  
+  s.submitting = true;
+  document.getElementById('photoReqBatchSubmitBtn').textContent = '⏳ 提交中...';
+  document.getElementById('photoReqBatchSubmitBtn').disabled = true;
+  
+  const now = Date.now();
+  const nowIso = new Date().toISOString();
+  
+  const inserts = validRows.map(r => {
+    const urgency = r.urgency || s.defaults.urgency || 'normal';
+    let reason = (r.reason || '').trim();
+    if (s.defaults.reason_prefix) {
+      reason = s.defaults.reason_prefix + (reason ? ' · ' + reason : '');
+    }
+    return {
+      id: crypto.randomUUID(),
+      product_name: r.product_name.trim(),
+      sku: (r.sku || '').trim() || null,
+      applicable_shops: r.applicable_shops || [],
+      product_type: '跟单需求',
+      status: 'draft',
+      priority: urgency,
+      external_request: {
+        source: '跟单',
+        from_name: myName,
+        from_user_id: myId,
+        from_dept: '跟单部',
+        reason: reason || '(批量录入 · 待补充)',
+        urgency,
+        attachments: [],
+        created_at_ms: now,
+        external_ref_id: null,
+        batch_id: s.defaults.batch_id,
+      },
+      created_by_id: myId,
+      created_by_name: myName,
+      created_at_ms: now,
+      updated_at: nowIso,
+    };
+  });
+  
+  // 并行提交 · 不会因单个失败影响其他
+  const results = await Promise.allSettled(
+    inserts.map(row => client.from('photo_logs').insert(row))
+  );
+  
+  let succeeded = 0;
+  let failed = 0;
+  const errorMsgs = [];
+  results.forEach((r, idx) => {
+    if (r.status === 'fulfilled' && !r.value.error) {
+      succeeded++;
+    } else {
+      failed++;
+      const err = r.status === 'rejected' ? r.reason : r.value.error;
+      errorMsgs.push(`行 ${idx + 1} (${validRows[idx].product_name}):${err?.message || err}`);
+    }
+  });
+  
+  s.submitting = false;
+  
+  if (failed === 0) {
+    toast(`✓ 全部 ${succeeded} 条提交成功`, 'success', 3000);
+    photoReqCloseBatch();
+    setTimeout(() => _photoReqLoadAndRender(), 200);
+  } else {
+    document.getElementById('photoReqBatchSubmitBtn').textContent = '💾 批量提交';
+    document.getElementById('photoReqBatchSubmitBtn').disabled = false;
+    alert(`⚠ 部分失败 · 成功 ${succeeded} 条 · 失败 ${failed} 条\n\n${errorMsgs.join('\n')}`);
+    if (succeeded > 0) {
+      // 移除已成功的行 · 让用户重试失败的
+      // (简单实现:直接关 modal,让用户进列表看)
+      toast(`✓ ${succeeded} 条已成功 · ${failed} 条失败 · 见弹窗详情`, 'warn', 5000);
+      setTimeout(() => _photoReqLoadAndRender(), 200);
+    }
+  }
+}
+window.photoReqSubmitBatch = photoReqSubmitBatch;
