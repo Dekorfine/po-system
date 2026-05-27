@@ -46,8 +46,11 @@ function _photoReqClient() {
 const PHOTOREQ = {
   _client: null,
   _list: [],
-  _filter: 'mine',    // 'mine' / 'all' / 'urgent' / 'in_progress' / 'done'
+  _allLogs: [],          // V27y: 全量缓存(订阅会更新)
+  _filter: 'all-activities',  // V27y: 默认看全部动态
   _loadedAt: 0,
+  _channel: null,        // V27y: realtime subscription handle
+  _lastToastAt: 0,       // V27y: toast 节流(防刷屏)
 };
 
 // ─────────────── 12 店铺(从 v2 文档复制 · 别让 AI 编名) ───────────────
@@ -56,6 +59,23 @@ const PHOTOREQ_SHOPS = [
   'Radilum', 'Mooielight', 'Dekorfine', 'Pinlighting',
   'Lumioshine', 'Rayonshine', '阿里巴巴 · Radilum INC', '其他'
 ];
+
+// ─────────────── V27y: 来源徽章配置 ───────────────
+const PHOTOREQ_SOURCE_BADGES = {
+  '客服':  { emoji: '📨', label: '客服', bg: 'rgba(37,99,235,0.1)',  fg: '#1e40af' },
+  '跟单':  { emoji: '📋', label: '跟单', bg: 'rgba(124,58,237,0.1)', fg: '#6d28d9' },
+  '销售':  { emoji: '💰', label: '销售', bg: 'rgba(234,88,12,0.1)',  fg: '#9a3412' },
+  '美工':  { emoji: '🎨', label: '美工', bg: 'rgba(13,148,136,0.1)', fg: '#0f766e' },
+  '自发':  { emoji: '📷', label: '拍摄部', bg: 'rgba(120,113,108,0.15)', fg: '#57534e' },
+};
+function _photoReqSourceBadge(source, fromName) {
+  const cfg = PHOTOREQ_SOURCE_BADGES[source] || PHOTOREQ_SOURCE_BADGES['自发'];
+  const nameStr = (source === '客服' || source === '跟单' || source === '销售') && fromName 
+    ? ` · ${escapeHtml(fromName)}` : '';
+  return `<span style="display:inline-flex; align-items:center; padding:2px 8px; font-size:10.5px; border-radius:10px; background:${cfg.bg}; color:${cfg.fg}; font-weight:600;">
+    ${cfg.emoji} ${cfg.label}${nameStr}
+  </span>`;
+}
 
 // ─────────────── 主流程状态显示 ───────────────
 const PHOTOREQ_STATUS_LABEL = {
@@ -111,14 +131,14 @@ async function renderPhotoReq() {
       <button class="btn primary" onclick="photoReqOpenNew()">+ 新建拍摄需求</button>
     </div>
 
-    <!-- 筛选 sub-tab -->
+    <!-- V27y: 筛选 sub-tab(v3) -->
     <div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">
       ${[
-        { k: 'mine',        label: '👤 我提的' },
-        { k: 'urgent',      label: '🚨 加急' },
-        { k: 'in_progress', label: '⏳ 进行中' },
-        { k: 'done',        label: '✅ 已完成' },
-        { k: 'all',         label: '📋 全部(主管视角)' },
+        { k: 'all-activities', label: '🌐 全部工作动态' },
+        { k: 'mine',           label: '👤 我提的' },
+        { k: 'urgent',         label: '🚨 加急' },
+        { k: 'in-progress',    label: '⏳ 进行中' },
+        { k: 'done',           label: '✅ 已完成' },
       ].map(f => `
         <button onclick="photoReqSetFilter('${f.k}')" class="photoreq-filter-chip ${PHOTOREQ._filter === f.k ? 'active' : ''}" 
                 style="padding:6px 12px; font-size:12px; border:1px solid ${PHOTOREQ._filter === f.k ? 'var(--accent)' : 'var(--border)'}; border-radius:18px; background:${PHOTOREQ._filter === f.k ? 'var(--accent)' : 'var(--bg-card)'}; color:${PHOTOREQ._filter === f.k ? 'white' : 'var(--text-secondary)'}; cursor:pointer; font-weight:${PHOTOREQ._filter === f.k ? '600' : '400'};">
@@ -135,6 +155,8 @@ async function renderPhotoReq() {
   await _photoReqLoadAndRender();
   // V20260527u: 进 tab 自动测一次连接 · 状态条变绿/红
   setTimeout(() => photoReqTestConnection(true), 50);
+  // V20260527y: 进 tab 启动实时订阅(订阅全部 · 自动 throttle toast)
+  _photoReqSubscribeRealtime();
 }
 window.renderPhotoReq = renderPhotoReq;
 
@@ -201,11 +223,12 @@ function _photoReqSetStatusBar(state, message) {
 
 function photoReqSetFilter(filter) {
   PHOTOREQ._filter = filter;
-  renderPhotoReq();
+  // V20260527y: 切 sub-tab 只重渲列表 · 不发请求(用 _allLogs 缓存)
+  _photoReqApplyFilterAndRender();
 }
 window.photoReqSetFilter = photoReqSetFilter;
 
-// ─────────────── 加载列表 ───────────────
+// ─────────────── 加载列表 · V27y 改:全量查 + 客户端筛选 ───────────────
 async function _photoReqLoadAndRender() {
   const listEl = document.getElementById('photoReqList');
   if (!listEl) return;
@@ -217,34 +240,15 @@ async function _photoReqLoadAndRender() {
   }
   
   try {
-    let q = client.from('photo_logs').select('*')
-      .eq('external_request->>source', '跟单')
-      .order('created_at_ms', { ascending: false })
-      .limit(200);
-    
-    // "我提的" 加 from_user_id 过滤
-    if (PHOTOREQ._filter === 'mine') {
-      const myId = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) || (typeof CURRENT_AGENT !== 'undefined' ? CURRENT_AGENT : '');
-      if (myId) q = q.eq('external_request->>from_user_id', String(myId));
-    }
-    
-    const { data, error } = await q;
+    // V20260527y(v3 #3):一次拉全部 · 不过滤 source · 客户端筛选切换 sub-tab 不发请求
+    const { data, error } = await client.from('photo_logs').select('*')
+      .order('updated_at', { ascending: false })
+      .limit(500);
     if (error) throw error;
     
-    let list = data || [];
-    
-    // 应用本地筛选
-    if (PHOTOREQ._filter === 'urgent') {
-      list = list.filter(x => x.priority === 'urgent' || x.external_request?.urgency === 'urgent');
-    } else if (PHOTOREQ._filter === 'in_progress') {
-      list = list.filter(x => !['done', 'cancelled'].includes(x.status));
-    } else if (PHOTOREQ._filter === 'done') {
-      list = list.filter(x => x.status === 'done');
-    }
-    
-    PHOTOREQ._list = list;
+    PHOTOREQ._allLogs = data || [];
     PHOTOREQ._loadedAt = Date.now();
-    _photoReqRenderList(list);
+    _photoReqApplyFilterAndRender();
   } catch (e) {
     console.error('加载拍摄需求失败:', e);
     listEl.innerHTML = `<div style="padding:20px; text-align:center; color:var(--danger); background:rgba(220,38,38,0.05); border-radius:8px;">
@@ -252,6 +256,39 @@ async function _photoReqLoadAndRender() {
       <span style="font-size:11px; color:var(--text-tertiary);">如果是权限错误 · 让 Martin 配 RLS · 见文档 #9</span>
     </div>`;
   }
+}
+
+// V20260527y: 客户端筛选 + 渲染(不发请求)
+function _photoReqApplyFilterAndRender() {
+  const all = PHOTOREQ._allLogs || [];
+  const tab = PHOTOREQ._filter;
+  const myId = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) ? String(CURRENT_USER_ID) 
+             : (typeof CURRENT_AGENT !== 'undefined' ? String(CURRENT_AGENT) : '');
+  
+  let list = all;
+  switch (tab) {
+    case 'all-activities':
+      // 不过滤 · 显示全部
+      break;
+    case 'mine':
+      list = all.filter(l => l.external_request?.from_user_id === myId);
+      break;
+    case 'urgent':
+      list = all.filter(l => 
+        (l.priority === 'urgent' || l.external_request?.urgency === 'urgent') 
+        && l.status !== 'done'
+      );
+      break;
+    case 'in-progress':
+      list = all.filter(l => ['shooting', 'shot', 'editing', 'edited', 'uploading'].includes(l.status));
+      break;
+    case 'done':
+      list = all.filter(l => l.status === 'done');
+      break;
+  }
+  
+  PHOTOREQ._list = list;
+  _photoReqRenderList(list);
 }
 
 function _photoReqRenderList(list) {
@@ -280,19 +317,21 @@ function _photoReqCardHtml(log) {
   const shops = Array.isArray(log.applicable_shops) ? log.applicable_shops : [];
   const attachments = Array.isArray(ext.attachments) ? ext.attachments : [];
   
-  // 子流程状态
-  const preReview = log.pre_shoot_review;
-  const review = log.review;
-  let subStatus = '';
-  if (preReview?.status && PHOTOREQ_PRE_SHOOT_LABEL[preReview.status]) {
-    subStatus = `<div style="font-size:11px; color:var(--text-secondary); margin-top:3px;">${PHOTOREQ_PRE_SHOOT_LABEL[preReview.status]}</div>`;
-  }
-  if (review?.status && PHOTOREQ_REVIEW_LABEL[review.status]) {
-    subStatus += `<div style="font-size:11px; color:var(--text-secondary); margin-top:3px;">${PHOTOREQ_REVIEW_LABEL[review.status]}</div>`;
-  }
+  // V20260527y(v3 #2):来源徽章 · 自发/null 显示拍摄部
+  const source = ext.source || '自发';
+  const fromName = ext.from_name || '';
+  const sourceBadge = _photoReqSourceBadge(source, fromName);
+  
+  // V20260527y(v3 #6):完整状态行 · 把所有 sub-state 都显示
+  const statusLines = _photoReqRenderStatusLines(log);
   
   const ageMs = Date.now() - (log.created_at_ms || 0);
   const ageStr = _photoReqFmtAge(ageMs);
+  
+  // 判断是不是"我提的"(实时订阅 toast 用 + 显示标记)
+  const myId = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) ? String(CURRENT_USER_ID) 
+             : (typeof CURRENT_AGENT !== 'undefined' ? String(CURRENT_AGENT) : '');
+  const isMine = ext.from_user_id === myId;
   
   return `
     <div style="display:grid; grid-template-columns: 80px 1fr; gap:14px; padding:14px; background:var(--bg-card); border:1px solid var(--border); border-left:4px solid ${urgent ? 'var(--danger)' : statusMeta.fg}; border-radius:8px; margin-bottom:10px;">
@@ -304,27 +343,74 @@ function _photoReqCardHtml(log) {
       </div>
       <!-- 主内容 -->
       <div style="min-width:0;">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+        <!-- 第一行:加急 + 来源 + 状态 + 时间 -->
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:5px; flex-wrap:wrap;">
           ${urgent ? `<span style="background:var(--danger); color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700;">🚨 加急</span>` : ''}
+          ${sourceBadge}
+          ${isMine && source !== '自发' ? `<span style="color:var(--accent); font-size:10.5px; font-weight:600;">↳ 我提的</span>` : ''}
           <span style="background:${statusMeta.color}; color:${statusMeta.fg}; padding:2px 9px; border-radius:10px; font-size:11px; font-weight:600;">${statusMeta.emoji} ${statusMeta.text}</span>
-          <span style="font-size:11px; color:var(--text-tertiary);">${ageStr}</span>
+          <span style="font-size:11px; color:var(--text-tertiary); margin-left:auto;">${ageStr}</span>
         </div>
+        <!-- 产品名 + SKU -->
         <div style="font-size:14px; font-weight:600; color:var(--text-primary); margin-bottom:3px; word-break:break-word;">
           ${escapeHtml(log.product_name || '(未填产品名)')}
           ${log.sku ? `<span style="font-size:11px; font-weight:400; color:var(--text-tertiary); margin-left:6px; font-family:monospace;">${escapeHtml(log.sku)}</span>` : ''}
         </div>
+        <!-- 原因 -->
+        ${ext.reason ? `
         <div style="font-size:12px; color:var(--text-secondary); margin-bottom:6px; line-height:1.5; max-height:42px; overflow:hidden; text-overflow:ellipsis;">
-          ${escapeHtml(ext.reason || '(无原因描述)')}
-        </div>
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:11px; color:var(--text-tertiary);">
+          ${escapeHtml(ext.reason)}
+        </div>` : ''}
+        <!-- 店铺 / 附件 -->
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:11px; color:var(--text-tertiary); margin-bottom:4px;">
           ${shops.length > 0 ? `<span>🏪 ${shops.map(escapeHtml).join(' · ')}</span>` : ''}
           ${attachments.length > 0 ? `<span>📎 ${attachments.length} 张图</span>` : ''}
-          ${ext.from_name ? `<span>👤 ${escapeHtml(ext.from_name)}</span>` : ''}
         </div>
-        ${subStatus}
+        <!-- 完整状态行(v3 #6) -->
+        ${statusLines.length > 0 ? `
+        <div style="margin-top:6px; padding-top:6px; border-top:1px dashed var(--border-subtle); display:flex; flex-direction:column; gap:3px;">
+          ${statusLines.map(line => `<div style="font-size:11px; color:var(--text-secondary);">${line}</div>`).join('')}
+        </div>` : ''}
       </div>
     </div>
   `;
+}
+
+// V20260527y(v3 #6):完整状态行 helper
+function _photoReqRenderStatusLines(log) {
+  const lines = [];
+  
+  // 摄影师 / 剪辑师 / 上传者
+  if (log.photographer_name) lines.push(`📷 摄影师:${escapeHtml(log.photographer_name)}${log.shoot_date ? ` (${log.shoot_date})` : ''}`);
+  if (log.editor_name)       lines.push(`🎬 剪辑师:${escapeHtml(log.editor_name)}${log.edit_date ? ` (${log.edit_date})` : ''}`);
+  if (log.uploader_name)     lines.push(`⬆️ 上传者:${escapeHtml(log.uploader_name)}${log.upload_date ? ` (${log.upload_date})` : ''}`);
+  
+  // 美工预审子流程(v22-EW)
+  const psr = log.pre_shoot_review;
+  if (psr?.status && PHOTOREQ_PRE_SHOOT_LABEL[psr.status]) {
+    const by = psr.decision_by_name ? ` (${escapeHtml(psr.decision_by_name)})` : '';
+    lines.push(PHOTOREQ_PRE_SHOOT_LABEL[psr.status] + by);
+  }
+  
+  // 视频审核子流程(v22-EO)
+  const r = log.review;
+  if (r?.status && PHOTOREQ_REVIEW_LABEL[r.status]) {
+    const by = r.decision_by_name ? ` (${escapeHtml(r.decision_by_name)})` : '';
+    lines.push(PHOTOREQ_REVIEW_LABEL[r.status] + by);
+  }
+  
+  // 卡住原因(v22-EQ)
+  if (log.pending_reason && (log.status === 'draft' || log.status === 'shooting')) {
+    lines.push(`📌 卡住原因:${escapeHtml(log.pending_reason)}`);
+  }
+  
+  // 已嵌入独立站
+  if (log.embed_status === 'embedded') {
+    const xhs = log.url_xiaohongshu ? ' · 📕 小红书已发' : '';
+    lines.push(`🌐 已嵌入独立站${xhs}`);
+  }
+  
+  return lines;
 }
 
 function _photoReqFmtAge(ms) {
@@ -667,3 +753,104 @@ async function photoReqSubmitNew() {
   }
 }
 window.photoReqSubmitNew = photoReqSubmitNew;
+
+// ============================================================================
+// V20260527y(v3 #8):实时订阅 · 订阅全部 photo_logs 变化
+// · INSERT:客服/跟单/销售 来源的新需求 → 弹 toast(throttle ≥3s)
+// · UPDATE:我提的状态变化 → 弹 toast
+// · 任何变化:静默刷新列表
+// ============================================================================
+function _photoReqSubscribeRealtime() {
+  // 已订阅就不重复
+  if (PHOTOREQ._channel) return;
+  
+  const client = _photoReqClient();
+  if (!client) return;
+  
+  const myId = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) ? String(CURRENT_USER_ID) 
+             : (typeof CURRENT_AGENT !== 'undefined' ? String(CURRENT_AGENT) : 'anon');
+  
+  try {
+    PHOTOREQ._channel = client
+      .channel(`photo-logs-watch-${myId}-${Date.now()}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'photo_logs' },
+        _photoReqOnRealtimeEvent
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[photoReq] realtime subscribed');
+        }
+      });
+  } catch (e) {
+    console.error('[photoReq] subscribe failed:', e);
+    PHOTOREQ._channel = null;
+  }
+}
+
+function _photoReqOnRealtimeEvent(payload) {
+  const { eventType, new: newRow, old: oldRow } = payload;
+  const myId = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) ? String(CURRENT_USER_ID) 
+             : (typeof CURRENT_AGENT !== 'undefined' ? String(CURRENT_AGENT) : 'anon');
+  
+  // 1. 更新本地缓存(无论事件类型 · 保持数据新鲜)
+  if (eventType === 'INSERT' && newRow) {
+    // 加到列表头部
+    PHOTOREQ._allLogs.unshift(newRow);
+  } else if (eventType === 'UPDATE' && newRow) {
+    const idx = PHOTOREQ._allLogs.findIndex(l => l.id === newRow.id);
+    if (idx >= 0) PHOTOREQ._allLogs[idx] = newRow;
+    else PHOTOREQ._allLogs.unshift(newRow);  // 之前不在缓存里(超出 500) · 现在出现了
+  } else if (eventType === 'DELETE' && oldRow) {
+    PHOTOREQ._allLogs = PHOTOREQ._allLogs.filter(l => l.id !== oldRow.id);
+  }
+  
+  // 2. 弹 toast(throttle · 3 秒内不重复弹)
+  const now = Date.now();
+  const sinceLastToast = now - (PHOTOREQ._lastToastAt || 0);
+  const canToast = sinceLastToast > 3000;
+  
+  if (canToast && typeof toast === 'function') {
+    if (eventType === 'INSERT' && newRow?.external_request) {
+      const src = newRow.external_request.source;
+      // 只弹 客服/跟单/销售 来源(自发的不弹 · 避免拍摄部内部操作刷屏)
+      if (['客服', '跟单', '销售'].includes(src)) {
+        const from = newRow.external_request.from_name || '';
+        toast(`📨 新需求:${newRow.product_name}${from ? ' · ' + src + '·' + from : ''}`, 'info', 2500);
+        PHOTOREQ._lastToastAt = now;
+      }
+    } else if (eventType === 'UPDATE' && newRow?.external_request?.from_user_id === myId) {
+      // 自己提的 · 状态变化才弹
+      if (oldRow && oldRow.status !== newRow.status) {
+        const statusMap = {
+          shooting:  '📷 拍摄部已接',
+          shot:      '✓ 已拍完',
+          editing:   '🎬 剪辑中',
+          edited:    '✓ 已剪辑',
+          uploading: '⬆️ 上传中',
+          done:      '✅ 完成 · 已上线',
+        };
+        const label = statusMap[newRow.status];
+        if (label) {
+          toast(`你提的「${newRow.product_name}」→ ${label}`, 'success', 3000);
+          PHOTOREQ._lastToastAt = now;
+        }
+      }
+    }
+  }
+  
+  // 3. 静默刷新列表(应用当前 filter)
+  _photoReqApplyFilterAndRender();
+}
+
+// 退出 tab / 切到别的 tab 时退订(释放资源)
+function _photoReqUnsubscribeRealtime() {
+  if (PHOTOREQ._channel) {
+    try {
+      const client = _photoReqClient();
+      if (client) client.removeChannel(PHOTOREQ._channel);
+    } catch (_) {}
+    PHOTOREQ._channel = null;
+  }
+}
+window._photoReqUnsubscribeRealtime = _photoReqUnsubscribeRealtime;
