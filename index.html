@@ -20,19 +20,19 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260527g"></script>
+<script src="js/core.js?v=20260527j"></script>
 <script src="js/utils.js?v=20260525z"></script>
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260526o"></script>
-<script src="js/help.js?v=20260527i"></script>
+<script src="js/help.js?v=20260527j"></script>
 <script src="js/dateFilter.js?v=20260526p"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
 <script src="js/purchases.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/trash.js"></script>
-<script src="js/aftersales.js?v=20260527f"></script>
+<script src="js/aftersales.js?v=20260527j"></script>
 <script src="js/missing.js?v=20260527i"></script>
 <script src="js/orders.js?v=20260526q"></script>
 <script src="js/shopify.js?v=20260527g"></script>
@@ -5211,29 +5211,6 @@ body.has-side-tabs .section-block {
       <div class="stat-card danger clickable" onclick="quickFilterAfter('overdue')" title="点击查看：逾期"><div class="label">逾期</div><div class="value mono"><span id="asOverdue">0</span><span class="unit">单</span></div><div class="sub">需紧急</div></div>
     </div>
     
-    <!-- 月度统计区 · V20260527f 默认折叠 -->
-    <div class="aftersales-stats">
-      <div class="report-card collapsible" id="asReportCard">
-        <h3 onclick="toggleAfterReport(event)" style="cursor:pointer; user-select:none;">
-          <span>📊 本月售后汇总（<span id="reportMonth"></span>）</span>
-          <span style="display:flex; align-items:center; gap:10px;">
-            <button class="btn sm ghost" onclick="event.stopPropagation(); exportAfterReport()">📋 导出汇总</button>
-            <span id="asReportToggleIcon" style="font-size:12px; color:var(--text-tertiary); transition:transform 0.2s;">▼</span>
-          </span>
-        </h3>
-        <div class="report-grid asr-body">
-          <div class="report-block">
-            <h4>🏭 按供应商排名</h4>
-            <div id="reportBySupplier"></div>
-          </div>
-          <div class="report-block">
-            <h4>📌 按原因分布</h4>
-            <div id="reportByReason"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-    
     <div class="toolbar">
       <div class="search-box"><input type="text" id="asSearch" placeholder="搜索订单号、产品、供应商..." oninput="_aftersalesQuickMode='';renderAftersales()"></div>
       <select class="filter-select" id="asFilterStatus" onchange="_aftersalesQuickMode='';renderAftersales()">
@@ -6476,6 +6453,29 @@ body.has-side-tabs .section-block {
     <div class="info-bar">
       📈 <b style="color: var(--text-primary);">数据分析</b> · 综合分析 / 店铺业绩 / SKU 销量 / 订单趋势 / 客户分布。
       <span id="analyticsMode" style="font-weight:600; color: var(--purple); margin-left: 8px;"></span>
+    </div>
+
+    <!-- V20260527j: 售后汇总从 aftersales tab 移到这里 · 默认折叠 -->
+    <div class="aftersales-stats" style="margin-top: 14px;">
+      <div class="report-card collapsible collapsed" id="asReportCard">
+        <h3 onclick="toggleAfterReport(event)" style="cursor:pointer; user-select:none;">
+          <span>📊 本月售后汇总（<span id="reportMonth"></span>）</span>
+          <span style="display:flex; align-items:center; gap:10px;">
+            <button class="btn sm ghost" onclick="event.stopPropagation(); exportAfterReport()">📋 导出汇总</button>
+            <span id="asReportToggleIcon" style="font-size:12px; color:var(--text-tertiary); transition:transform 0.2s;">▼</span>
+          </span>
+        </h3>
+        <div class="report-grid asr-body">
+          <div class="report-block">
+            <h4>🏭 按供应商排名</h4>
+            <div id="reportBySupplier"></div>
+          </div>
+          <div class="report-block">
+            <h4>📌 按原因分布</h4>
+            <div id="reportByReason"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 顶部时间筛选 -->
