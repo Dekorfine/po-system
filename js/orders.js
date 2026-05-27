@@ -21,8 +21,8 @@ async function loadChaseOrders() {
   try {
     let q = sb.from('orders').select('*')
       .is('deleted_at', null);
-    // 非主管：只看自己的订单
-    if (!IS_ADMIN && CURRENT_USER_ID) q = q.eq('agent_id', CURRENT_USER_ID);
+    // V20260526p: 催单完全开放 · 所有人可看 + 改所有催单(应业务需求 · 之前只看自己的)
+    // if (!IS_ADMIN && CURRENT_USER_ID) q = q.eq('agent_id', CURRENT_USER_ID);
     const { data, error } = await q.order('created_at', { ascending: false });
     if (error) throw error;
 
@@ -269,7 +269,17 @@ function _renderOrderCard(o, i) {
   }[eff] || { label: eff, color: '#6b7280', bg: 'rgba(107,114,128,0.15)' };
   const isDone = ['arrived', 'cancelled'].includes(status);
   const days = (typeof chaseDaysSince === 'function') ? chaseDaysSince(o) : 0;
-  const urgent = !isDone && (eff === 'overdue' || days >= 14);
+  
+  // V20260526p: 紧急度分级 · 不同时间节点不同提醒颜色(用户需求)
+  // 0-3 天:正常 / 3-7 天:warn 黄 / 7-15 天:danger 橙 / 15-30 天:critical 红 / 30+ 天:nuclear 暗红
+  let urgentLevel = '';
+  if (!isDone) {
+    if (days >= 30)      urgentLevel = 'nuclear';     // 暗红 · 极严重
+    else if (days >= 15) urgentLevel = 'critical';    // 红色 · 严重
+    else if (days >= 7)  urgentLevel = 'danger';      // 橙色 · 警告
+    else if (days >= 3)  urgentLevel = 'warn';        // 黄色 · 提醒
+  }
+  const urgent = urgentLevel !== '';
   
   // 收集图片(产品图 + 沟通截图)
   const productImages = (typeof _getRelatedOrderImages === 'function') ? _getRelatedOrderImages(o.orderNo) : [];
@@ -318,12 +328,22 @@ function _renderOrderCard(o, i) {
   const fuCount = (o.followups || []).length;
   const lastFu = fuCount > 0 ? o.followups[fuCount - 1] : null;
   
+  // V20260526p: 紧急度文案 + 图标(分级显示)
+  const urgentMeta = {
+    warn:     { icon: '⏰', text: `${days}天`, label: '注意' },
+    danger:   { icon: '⚠',  text: `${days}天`, label: '警告' },
+    critical: { icon: '🔥', text: `${days}天`, label: '严重' },
+    nuclear:  { icon: '🚨', text: `${days}天`, label: '紧急' },
+  };
+  const um = urgentMeta[urgentLevel] || null;
+  
   return `
-    <div class="as-card ${urgent ? 'urgent' : ''} ${isDone ? 'done' : ''}" onclick="openOrder('${o._id}')">
+    <div class="as-card ${urgentLevel ? 'urgent urgent-' + urgentLevel : ''} ${isDone ? 'done' : ''}" onclick="openOrder('${o._id}')">
       <div class="cover ${coverCls}">
         ${coverHTML}
         <span class="status-badge" style="background:${statusMeta.bg}; color:${statusMeta.color};">${statusMeta.label}</span>
-        ${urgent ? `<span class="urgent-badge">🔥 ${days}天</span>` : ''}
+        ${um ? `<span class="urgent-badge urgent-badge-${urgentLevel}" title="${um.label} · 已超期 ${days} 天">${um.icon} ${um.text}</span>` : ''}
+        ${o.promisedDate && !isDone ? `<span class="promised-badge">📅 ${escapeHtml(o.promisedDate)}</span>` : ''}
         ${fuCount > 0 ? `<span class="comments-badge">📞 ${fuCount}</span>` : ''}
         ${n > 0 ? `<span class="photo-count">📷 ${n}</span>` : ''}
       </div>
@@ -334,7 +354,6 @@ function _renderOrderCard(o, i) {
         ${lastFu ? `<div class="detail">最近沟通(${lastFu.date}): ${escapeHtml((lastFu.note || '').slice(0, 50))}${(lastFu.note || '').length > 50 ? '...' : ''}</div>` : '<div class="detail" style="color:var(--text-tertiary);">未沟通</div>'}
         <div class="meta">
           ${o.site ? `<span class="site">🌐 ${escapeHtml(o.site)}</span>` : ''}
-          ${o.promisedDate ? `<span class="date">📅 承诺 ${escapeHtml(o.promisedDate)}</span>` : ''}
           ${o.nextFollow ? `<span class="date" style="color:#dc2626;">⏰ 下次 ${escapeHtml(o.nextFollow)}</span>` : ''}
         </div>
       </div>
@@ -1359,6 +1378,15 @@ function refreshOrdersFb() {
 function switchOrdersFb(t) { _ordersFbTab = t; document.getElementById('ordersFb').classList.remove('collapsed'); refreshOrdersFb(); }
 
 // ============ 🚨 紧急告警 Banner（橙/红预警订单）============
+// V20260526p: 可折叠 · localStorage 记忆状态
+function toggleUrgentAlert() {
+  const banner = document.getElementById('urgentAlert');
+  if (!banner) return;
+  banner.classList.toggle('collapsed');
+  localStorage.setItem('urgent_alert_collapsed', banner.classList.contains('collapsed') ? '1' : '0');
+}
+window.toggleUrgentAlert = toggleUrgentAlert;
+
 function renderUrgentBanner() {
   const banner = document.getElementById('urgentAlert');
   if (!banner) return;
@@ -1374,6 +1402,10 @@ function renderUrgentBanner() {
   }
   
   banner.style.display = 'block';
+  // V20260526p: 恢复折叠状态
+  if (localStorage.getItem('urgent_alert_collapsed') === '1') {
+    banner.classList.add('collapsed');
+  }
   document.getElementById('urgentCount').textContent = urgent.length;
   
   const redCount = urgent.filter(o => getOrderUrgencyLevel(o) === 'red').length;

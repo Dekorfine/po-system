@@ -186,7 +186,7 @@ function populateDateFilterSelect(selectEl, currentValue, options = {}) {
   if (!selectEl) return;
   const opts = {
     yearsBack: 2,
-    includeWeeks: true,
+    includeWeeks: false,  // V20260526p: 默认关闭周筛选(选项过多让人头晕,参考 Shopify 风格)
     includeCustom: true,
     extraTop: [],
     ...options,
@@ -205,51 +205,51 @@ function populateDateFilterSelect(selectEl, currentValue, options = {}) {
     html += `<option disabled>──────────</option>`;
   }
   
+  // V20260526p: 重组选项 · Shopify 风格 · 最常用的放前面
+  // 第一组:核心快捷(用户 80% 时间用这几个)
   html += `<option value="all">📋 所有时间</option>`;
-  
-  html += `<optgroup label="⚡ 快捷">`;
-  html += `<option value="today">📍 今天</option>`;
-  html += `<option value="yesterday">⏪ 昨天</option>`;
-  html += `<option value="this_week">📅 本周</option>`;
-  html += `<option value="last_week">⏮ 上周</option>`;
-  html += `<option value="this_month">📆 本月</option>`;
-  html += `<option value="last_month">⏮ 上月</option>`;
-  html += `<option value="last_7">⏱ 近 7 天</option>`;
-  html += `<option value="last_30">⏱ 近 30 天</option>`;
-  html += `<option value="last_90">⏱ 近 90 天</option>`;
-  html += `<option value="last_365">⏱ 近 1 年</option>`;
+  html += `<optgroup label="📍 滚动时间段">`;
+  html += `<option value="today">今天</option>`;
+  html += `<option value="yesterday">昨天</option>`;
+  html += `<option value="last_7">过去 7 天</option>`;
+  html += `<option value="last_30">过去 30 天</option>`;
+  html += `<option value="last_90">过去 90 天</option>`;
+  html += `<option value="last_365">过去 1 年</option>`;
   html += `</optgroup>`;
   
-  // 按年度(最近 N 年)
-  html += `<optgroup label="📅 按年度">`;
-  for (let y = curYear; y >= curYear - opts.yearsBack; y--) {
-    html += `<option value="Y${y}">${y} 全年</option>`;
+  // 第二组:固定周期(本期/上期)
+  html += `<optgroup label="📅 固定周期">`;
+  html += `<option value="this_week">本周</option>`;
+  html += `<option value="last_week">上周</option>`;
+  html += `<option value="this_month">本月</option>`;
+  html += `<option value="last_month">上月</option>`;
+  html += `<option value="Y${curYear}">今年</option>`;
+  html += `<option value="Y${curYear - 1}">去年</option>`;
+  html += `</optgroup>`;
+  
+  // 第三组:按月度(只当年)· 平时不太用
+  html += `<optgroup label="📆 ${curYear} 年按月">`;
+  const curMonth = now.getMonth() + 1;
+  for (let m = 1; m <= curMonth; m++) {
+    html += `<option value="Y${curYear}M${String(m).padStart(2, '0')}">${curYear}年${m}月</option>`;
   }
   html += `</optgroup>`;
   
-  // 按月度(当年所有 12 个月 + 去年最后几个月)
-  html += `<optgroup label="📆 按月度(${curYear} 年)">`;
-  for (let m = 1; m <= 12; m++) {
-    const isFuture = (curYear === now.getFullYear() && m > now.getMonth() + 1);
-    html += `<option value="Y${curYear}M${String(m).padStart(2, '0')}"${isFuture ? ' style="color:#94a3b8;"' : ''}>${curYear}年${m}月${isFuture ? ' (未来)' : ''}</option>`;
-  }
-  html += `</optgroup>`;
-  
-  // 去年和前年
-  for (let y = curYear - 1; y >= curYear - opts.yearsBack; y--) {
-    html += `<optgroup label="📆 按月度(${y} 年)">`;
-    for (let m = 1; m <= 12; m++) {
-      html += `<option value="Y${y}M${String(m).padStart(2, '0')}">${y}年${m}月</option>`;
+  // 第四组:历史年度按月度(折叠,只看到一个 optgroup)
+  if (opts.yearsBack > 0) {
+    for (let y = curYear - 1; y >= curYear - opts.yearsBack; y--) {
+      html += `<optgroup label="📆 ${y} 年按月">`;
+      for (let m = 1; m <= 12; m++) {
+        html += `<option value="Y${y}M${String(m).padStart(2, '0')}">${y}年${m}月</option>`;
+      }
+      html += `</optgroup>`;
     }
-    html += `</optgroup>`;
   }
   
-  // 按周(当年每月每周 · 折叠在 optgroup)
+  // 按周(可选 · 默认关闭 · 用户主动开启时才显示)
   if (opts.includeWeeks) {
-    html += `<optgroup label="🗓 按周(${curYear} 年 · 一个月分 4-5 周)">`;
-    // 只列出当年已过或本月的周(避免太多选项)
-    const maxMonth = now.getMonth() + 1;
-    for (let m = 1; m <= maxMonth; m++) {
+    html += `<optgroup label="🗓 ${curYear} 年按周">`;
+    for (let m = 1; m <= curMonth; m++) {
       const lastDay = new Date(curYear, m, 0).getDate();
       const totalWeeks = Math.ceil(lastDay / 7);
       for (let w = 1; w <= totalWeeks; w++) {
@@ -264,7 +264,7 @@ function populateDateFilterSelect(selectEl, currentValue, options = {}) {
   // 自定义
   if (opts.includeCustom) {
     html += `<option disabled>──────────</option>`;
-    html += `<option value="custom_open">⚙ 自定义日期范围...</option>`;
+    html += `<option value="custom_open">⚙ 自定义日期范围…</option>`;
   }
   
   selectEl.innerHTML = html;
