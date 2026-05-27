@@ -36,7 +36,7 @@
 <script src="js/missing.js?v=20260526o"></script>
 <script src="js/orders.js?v=20260526q"></script>
 <script src="js/shopify.js?v=20260526q"></script>
-<script src="js/po.js?v=20260526o"></script>
+<script src="js/po.js?v=20260526q"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script src="js/cross-dept.js?v=20260526m"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
@@ -3526,6 +3526,34 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   color: var(--accent);
   font-size: 13px;
 }
+/* V20260526q: 店铺过滤状态条 + 清除按钮(销售单/PO 共用) */
+.shop-filter-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: linear-gradient(135deg, rgba(37,99,235,0.12), rgba(37,99,235,0.05));
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(37,99,235,0.25);
+  white-space: nowrap;
+}
+.shop-filter-status::before { content: "🎯"; font-size: 10px; }
+.shop-filter-status.multi { background: linear-gradient(135deg, rgba(124,58,237,0.12), rgba(124,58,237,0.05)); color: var(--purple); border-color: rgba(124,58,237,0.25); }
+.shop-filter-status.multi::before { content: "🎯"; }
+.shop-clear-btn {
+  font-size: 11px !important;
+  padding: 3px 9px !important;
+  background: rgba(220,38,38,0.06) !important;
+  border-color: rgba(220,38,38,0.3) !important;
+  color: var(--danger) !important;
+}
+.shop-clear-btn:hover {
+  background: rgba(220,38,38,0.12) !important;
+  border-color: var(--danger) !important;
+}
 .store-chip-code {
   display: inline-block; padding: 1px 6px; border-radius: 6px;
   background: var(--text-tertiary); color: white;
@@ -5451,10 +5479,12 @@ body.has-side-tabs .section-block {
 <div class="tab-content" data-tab="sales">
   <div class="section-block">
 
-    <!-- 紧凑店铺连接条（一行显示） -->
+    <!-- 紧凑店铺连接条(一行显示)· V20260526q: 加状态条 + 显示全部 -->
     <div id="salesStoresCard" style="margin-top: 10px; padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
       <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600;">🏪 店铺</span>
       <span class="fb-total" id="salesStoresTotal" style="font-size: 11px; color: var(--text-tertiary);">0 / 9</span>
+      <span id="salesStoresFilterStatus" class="shop-filter-status" style="display:none;"></span>
+      <button id="salesStoresClearBtn" class="btn small shop-clear-btn" onclick="shopifyClearShopFilter()" style="display:none;" title="清除店铺过滤,显示全部店订单">✖ 显示全部</button>
       <div id="salesStoresGrid" style="display: flex; gap: 5px; flex-wrap: wrap; flex: 1;"></div>
       <span id="salesAutoSyncIndicator" style="font-size: 11px; color: var(--text-tertiary);"></span>
       <button class="btn small" onclick="shopifyToggleAutoSync()" id="salesAutoSyncBtn" title="自动同步开关">⏱️ 自动</button>
@@ -5809,10 +5839,20 @@ body.has-side-tabs .section-block {
       <div class="fb-head" style="cursor: default;">
         <div class="fb-title">📦 采购单</div>
         <div class="fb-tabs" style="cursor: default; gap: 8px;">
-          <button class="btn primary small" onclick="openCustomPoModal()" style="font-size:12px;" title="不基于销售单，直接新建采购单（线下/补货/定制）">➕ 新建采购单</button>
+          <button class="btn primary small" onclick="openCustomPoModal()" style="font-size:12px;" title="不基于销售单,直接新建采购单(线下/补货/定制)">➕ 新建采购单</button>
           <button class="btn small" onclick="openSuppliersManager()" style="font-size:12px;">🏭 供应商档案</button>
         </div>
       </div>
+      
+      <!-- V20260526q: PO 店铺过滤条(可按店看 PO) -->
+      <div id="poStoresCard" style="margin-top: 10px; padding: 8px 12px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600;">🏪 按店过滤</span>
+        <span id="poStoresFilterStatus" class="shop-filter-status" style="display:none;"></span>
+        <button id="poStoresClearBtn" class="btn small shop-clear-btn" onclick="poClearShopFilter()" style="display:none;" title="清除店铺过滤,显示全部店的采购单">✖ 显示全部</button>
+        <div id="poStoresGrid" style="display: flex; gap: 5px; flex-wrap: wrap; flex: 1;"></div>
+        <span style="font-size: 11px; color: var(--text-tertiary);">点店铺 chip 只看该店 PO · 再点取消</span>
+      </div>
+      
       <div id="poStatsContainer" style="margin-top: 12px;"></div>
       <div class="po-subtabs" style="margin-top: 12px;">
         <button class="sub-tab-btn active" data-pofilter="active" onclick="poShowFilter('active')" title="店小秘式『待办』· 等你跟进的:待审批 + 待发供应商 + 已下单(不含已完成/已取消)">🎯 待办 <span class="cnt" id="poCntActive">0</span></button>
