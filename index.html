@@ -586,6 +586,7 @@ body {
 .modal-bg { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(28,25,23,0.4); z-index: 100; /* backdrop-filter removed for performance */ }
 .modal-bg.show { display: flex; align-items: center; justify-content: center; }
 .modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 28px; width: 720px; max-width: 92vw; max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow-lg); animation: modalIn 0.2s ease; position: relative; }
+.modal-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; width: 720px; max-width: 92vw; max-height: 88vh; overflow: hidden; box-shadow: var(--shadow-lg); animation: modalIn 0.2s ease; position: relative; }
 @keyframes modalIn { from { transform: scale(0.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .modal h2 { font-size: 20px; margin-bottom: 6px; }
 .modal .desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
