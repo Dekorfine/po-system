@@ -4681,7 +4681,9 @@ function poOpenPrint(poId) {
         <tbody>
           ${items.map((li, i) => {
             const cleanTitle = _stripSkus(li.title_cn || '');
-            const rawSpecs = extractVariantInfo(li.variant || '');
+            const eff = (typeof PRODUCTS_CACHE !== 'undefined' && li.sku) ? (PRODUCTS_CACHE.effectiveBySku(li.sku) || {}) : {};
+            const skuNotes = (eff.notes || '').trim();
+            const rawSpecs = skuNotes || extractVariantInfo(li.variant || '');
             const cleanSpecs = _stripSkus(rawSpecs);
             // V5-W3-2026-05-26: per-line 电气标准 + 备注(优先用 line_item 自己的字段,fallback 到 PO-level)
             const lineStd = li.electrical_standard || _lookupStd || '';
@@ -4969,7 +4971,9 @@ function _buildSinglePoExportNode(po, includeImages) {
         <tbody>
           ${items.map((li, i) => {
             const cleanTitle = _stripSkus(li.title_cn || '');
-            const rawSpecs = extractVariantInfo(li.variant || '');
+            const eff = (typeof PRODUCTS_CACHE !== 'undefined' && li.sku) ? (PRODUCTS_CACHE.effectiveBySku(li.sku) || {}) : {};
+            const skuNotes = (eff.notes || '').trim();
+            const rawSpecs = skuNotes || extractVariantInfo(li.variant || '');
             const cleanSpecs = _stripSkus(rawSpecs);
             const lineStd = li.electrical_standard || _lookupStd || '';
             const lineNote = li.line_note || '';

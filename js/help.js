@@ -10,6 +10,27 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260528r',
+    date: '2026-05-28',
+    type: 'fix',
+    title: '🐛 修 SKU 备注改了但 PO 打印规格还是旧英文(数据源不一致)',
+    notes: [
+      '🔴 现象:在"编辑"改好 SKU 备注(中文)· 但 PO 打印的产品规格列还是英文',
+      '🔍 根因:两个地方数据源不同',
+      '   · 开 PO modal 的 SKU 备注 → 读 products.notes(你改的)✓',
+      '   · PO 打印的"产品规格"列 → 重新跑 extractVariantInfo(variant) 实时翻译 ✗',
+      '   · 词典翻不全(如 Grain Hydrographics)→ 打印还是英文',
+      '',
+      '✅ 修法:PO 打印的产品规格优先用 SKU 备注(products.notes)',
+      '   · 有 SKU 备注 → 直接用(你改什么打印什么)',
+      '   · 没有 → 才回退 extractVariantInfo 实时翻译',
+      '   · 打印 + 预览两处都改',
+      '',
+      '💡 现在改了 SKU 备注 → PO 打印立即同步(数据源统一)',
+      '🔒 升 po.js / help.js → v20260528r',
+    ],
+  },
+  {
     v: '20260528q',
     date: '2026-05-28',
     type: 'feature',
