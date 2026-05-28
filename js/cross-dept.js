@@ -814,6 +814,8 @@ function cdmOpenNewModal(preset = {}) {
   const modal = document.getElementById('cdmNewModal');
   if (!modal) return;
   _CDM_NEW_WATCHERS = [];  // v22-CW 补丁:重置 watcher 选择
+  _CDM_NEW_IMGS = [];      // V28m:重置图片附件
+  if (typeof _cdmRenderNewImgs === 'function') _cdmRenderNewImgs();
   document.getElementById('cdmNewToSystem').value = preset.to_system || '';
   document.getElementById('cdmNewCategory').value = preset.category || 'general';
   document.getElementById('cdmNewPriority').value = preset.priority || 'normal';
@@ -831,7 +833,106 @@ function cdmOpenNewModal(preset = {}) {
   cdmUpdateSuggestedReceiver();
   modal.classList.add('show');
 }
-function cdmCloseNewModal() { document.getElementById('cdmNewModal')?.classList.remove('show'); }
+function cdmCloseNewModal() { document.getElementById('cdmNewModal')?.classList.remove('show'); _CDM_NEW_IMGS = []; }
+
+// ============================================================================
+// V28m:发工单图片附件(标准结构 {url, name, mime} · 传 MessageBus 的 attachments 桶)
+// ============================================================================
+let _CDM_NEW_IMGS = [];  // [{url, name, mime, size}]
+
+async function _cdmUploadImage(file) {
+  // 压缩
+  const compressed = await _cdmCompressImg(file);
+  const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+  const path = `po-requests/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await cdmClient.storage.from('attachments')
+    .upload(path, compressed, { upsert: false, contentType: compressed.type || file.type });
+  if (error) throw error;
+  const { data: { publicUrl } } = cdmClient.storage.from('attachments').getPublicUrl(path);
+  // 标准结构(美工/客服三方统一):url + name + mime + size
+  return { url: publicUrl, name: file.name, mime: compressed.type || file.type || 'image/png', size: compressed.size || file.size };
+}
+
+function _cdmCompressImg(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 1600;
+        let { width, height } = img;
+        if (width > max || height > max) {
+          if (width > height) { height = height * max / width; width = max; }
+          else { width = width * max / height; height = max; }
+        }
+        const cv = document.createElement('canvas');
+        cv.width = width; cv.height = height;
+        cv.getContext('2d').drawImage(img, 0, 0, width, height);
+        cv.toBlob(b => resolve(b || file), 'image/jpeg', 0.85);
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function cdmNewPickImages(input) {
+  const files = [...(input.files || [])];
+  input.value = '';
+  for (const f of files) {
+    if (!f.type.startsWith('image/')) continue;
+    await _cdmAddNewImg(f);
+  }
+}
+window.cdmNewPickImages = cdmNewPickImages;
+
+async function cdmNewPasteImage(e) {
+  const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+  if (!items) return;
+  for (const it of items) {
+    if (it.type && it.type.startsWith('image/')) {
+      e.preventDefault();
+      const f = it.getAsFile();
+      if (f) await _cdmAddNewImg(f);
+      return;
+    }
+  }
+}
+window.cdmNewPasteImage = cdmNewPasteImage;
+
+async function _cdmAddNewImg(file) {
+  const placeholder = { url: '', name: file.name, mime: 'uploading', _uploading: true };
+  _CDM_NEW_IMGS.push(placeholder);
+  _cdmRenderNewImgs();
+  try {
+    const att = await _cdmUploadImage(file);
+    const idx = _CDM_NEW_IMGS.indexOf(placeholder);
+    if (idx >= 0) _CDM_NEW_IMGS[idx] = att;
+    toast('✓ 图片已上传', 'success', 1200);
+  } catch (err) {
+    const idx = _CDM_NEW_IMGS.indexOf(placeholder);
+    if (idx >= 0) _CDM_NEW_IMGS.splice(idx, 1);
+    toast('上传失败:' + (err.message || err), 'err', 4000);
+  }
+  _cdmRenderNewImgs();
+}
+
+function _cdmRenderNewImgs() {
+  const el = document.getElementById('cdmNewImgList');
+  if (!el) return;
+  el.innerHTML = _CDM_NEW_IMGS.map((img, i) => img._uploading
+    ? `<div style="width:60px;height:60px;border-radius:6px;background:var(--bg-elevated);display:flex;align-items:center;justify-content:center;font-size:11px;">⏳</div>`
+    : `<div style="position:relative;width:60px;height:60px;">
+         <img src="${escapeHtml(img.url)}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;">
+         <button onclick="cdmRemoveNewImg(${i})" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:var(--danger);color:#fff;border:0;font-size:11px;cursor:pointer;line-height:1;">✕</button>
+       </div>`
+  ).join('');
+}
+
+function cdmRemoveNewImg(i) { _CDM_NEW_IMGS.splice(i, 1); _cdmRenderNewImgs(); }
+window.cdmRemoveNewImg = cdmRemoveNewImg;
 
 function cdmPopulateShopDropdown() {
   const el = document.getElementById('cdmNewRelatedShop');
@@ -990,6 +1091,10 @@ async function cdmSubmitNew() {
     toUserName = opt?.getAttribute('data-name') || opt?.textContent?.split('·')[0]?.trim() || toUserId;
   }
 
+  // V28m:带上图片附件(过滤掉还在上传的)
+  const attachments = _CDM_NEW_IMGS.filter(im => im.url && !im._uploading)
+    .map(im => ({ url: im.url, name: im.name, mime: im.mime, size: im.size }));
+
   const row = {
     from_system: 'po', from_user_id: me.id, from_user_name: me.name,
     to_system: toSys, to_user_id: toUserId, to_user_name: toUserName,
@@ -998,6 +1103,7 @@ async function cdmSubmitNew() {
     related_ref: relR || null, related_type: relT || null, related_shop: relShop || null,
     status: 'pending', thread: [], read_by: [me.id],
     watchers: [..._CDM_NEW_WATCHERS],   // v22-CW 补丁:跟单勾选的额外通知人
+    attachments: attachments,            // V28m:标准结构 {url, name, mime, size}
     created_at_ms: Date.now(),
   };
   try {
@@ -1007,6 +1113,7 @@ async function cdmSubmitNew() {
     const watcherCount = _CDM_NEW_WATCHERS.length;
     toast(`✓ 已发送给${(CDM_SYSTEMS[toSys] || {}).short || toSys}部${toUserName ? ` · 自动派给 ${toUserName}` : ''}${watcherCount > 0 ? ` · ${watcherCount} 人关注` : ''}`);
     _CDM_NEW_WATCHERS = [];
+    _CDM_NEW_IMGS = [];   // V28m:清空已发送的图片
     await cdmLoadMessages();
   } catch (e) {
     console.error('[CDM] 发送失败:', e);
@@ -1084,6 +1191,40 @@ function cdmRenderDetail(m) {
 
     ${m.body ? `<div style="background:var(--bg-elevated); padding:12px 14px; border-radius:6px; margin-bottom:14px; font-size:13px; line-height:1.6; white-space:pre-wrap; word-break:break-word;">${escapeHtml(m.body)}</div>` : ''}
 
+    ${(() => {
+      // V28m:渲染附件(多字段容错 · 跟美工 cdmAttUrl 对齐 · 能认 url/path/各种 mime)
+      const atts = Array.isArray(m.attachments) ? m.attachments : [];
+      if (atts.length === 0) return '';
+      const attUrl = (a) => {
+        if (typeof a === 'string') return a;
+        const direct = a.url || a.dataUrl || a.src || a.href || a.publicUrl || a.public_url || a.downloadUrl;
+        if (direct) return direct;
+        const p = a.path || a.storage_path || a.key || a.file_path;
+        if (p) { try { return cdmClient.storage.from('attachments').getPublicUrl(p).data.publicUrl; } catch (e) { return ''; } }
+        return '';
+      };
+      const isImg = (a) => {
+        const mime = a.mime || a.mimeType || a.type || a.content_type || a.contentType || '';
+        if (mime.startsWith && mime.startsWith('image/')) return true;
+        const u = attUrl(a);
+        return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(u);
+      };
+      const cells = atts.map(a => {
+        const u = attUrl(a);
+        if (!u) return '';
+        if (isImg(a)) {
+          return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="display:inline-block;">
+            <img src="${escapeHtml(u)}" style="width:90px;height:90px;object-fit:cover;border-radius:6px;border:1px solid var(--border);"
+                 onerror="this.outerHTML='<div style=\\'width:90px;height:90px;border-radius:6px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-tertiary);text-align:center;\\'>⚠️ 图片<br>打不开</div>'">
+          </a>`;
+        }
+        return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="font-size:12px; color:var(--accent);">📎 ${escapeHtml(a.name || '附件')}</a>`;
+      }).join('');
+      return `<div style="margin-bottom:14px;">
+        <div style="font-size:12px; color:var(--text-tertiary); margin-bottom:6px;">📷 附件 (${atts.length})</div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">${cells}</div>
+      </div>`;
+    })()}
     ${canAssign ? `
       <div style="background:rgba(37,99,235,0.04); border:1px solid rgba(37,99,235,0.2); border-radius:6px; padding:10px 12px; margin-bottom:14px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
