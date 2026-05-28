@@ -709,10 +709,13 @@ function extractVariantInfo(variantTitle) {
   // 材质中英对照
   const MATERIAL_MAP = {
     // 多词条目（按长度优先匹配）
+    'wood grain hydrographics': '木纹水转印', 'grain hydrographics': '木纹水转印',
+    'hydrographics': '水转印', 'water transfer printing': '水转印',
     'stainless steel': '不锈钢',
     'oak wood': '橡木', 'walnut wood': '胡桃木', 'ash wood': '白蜡木',
     'cherry wood': '樱桃木', 'pine wood': '松木', 'teak wood': '柚木',
-    'solid wood': '实木',
+    'solid wood': '实木', 'wood grain': '木纹', 'frosted glass': '磨砂玻璃',
+    'clear glass': '透明玻璃', 'smoked glass': '茶色玻璃', 'amber glass': '琥珀玻璃',
     // 单词
     brass: '黄铜', copper: '铜', bronze: '青铜',
     iron: '铁', steel: '钢',
@@ -1042,12 +1045,14 @@ function renderPoForm() {
           <!-- V5-W3-2026-05-26: per-line 备注输入框(每行独立,跟单可编辑)-->
           <div style="margin-top:6px; display:flex; gap:6px; align-items:center;">
             <span style="font-size:11px; color:var(--text-secondary); font-weight:500; flex-shrink:0; min-width:60px;">📝 本行备注:</span>
-            <input type="text" 
+            <input type="text" id="poLineNote_${li.shopify_line_item_id}"
               value="${escapeHtml(PO_FORM_STATE.lineNotes[li.shopify_line_item_id] || '')}"
               placeholder="自动填入 / 跟单可编辑(尺寸/色温/特殊要求/加急等)"
               oninput="poFormSetLineNote('${li.shopify_line_item_id}', this.value)"
               ${fullyAssigned ? 'disabled' : ''}
               style="flex:1; padding:4px 8px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card); color:var(--text-primary); font-family:inherit;">
+            ${fullyAssigned ? '' : `<button onclick="poFormTranslateLine('${li.shopify_line_item_id}')" title="一键翻译:把残留英文规格翻成中文(AI)"
+              style="flex-shrink:0; padding:4px 9px; font-size:11px; border:1px solid #7c3aed; background:#7c3aed10; color:#7c3aed; border-radius:4px; cursor:pointer; white-space:nowrap;">🌐 翻译</button>`}
           </div>
         </div>
         <div style="position:relative;">
@@ -1255,6 +1260,63 @@ function poFormSetLineNote(liid, val) {
   PO_FORM_STATE.lineNotes[liid] = val;
   PO_FORM_STATE.lineNotesManuallyEdited[liid] = true;
 }
+
+// V28q:一键 AI 翻译本行备注(把残留英文规格翻成中文)
+async function poFormTranslateLine(liid) {
+  const input = document.getElementById('poLineNote_' + liid);
+  if (!input) return;
+  const original = input.value || '';
+  // 没有英文字母就不用翻
+  if (!/[a-zA-Z]{2,}/.test(original)) { toast('本行备注没有需要翻译的英文', 'info', 1500); return; }
+  const btn = input.parentElement.querySelector('button');
+  const oldTxt = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = '翻译中…'; btn.disabled = true; }
+  try {
+    const translated = await _aiTranslateSpec(original);
+    if (translated) {
+      input.value = translated;
+      poFormSetLineNote(liid, translated);
+      toast('✓ 已翻译', 'success', 1500);
+    } else {
+      toast('翻译无结果', 'warn');
+    }
+  } catch (e) {
+    toast('翻译失败:' + (e.message || e), 'err', 4000);
+  } finally {
+    if (btn) { btn.textContent = oldTxt; btn.disabled = false; }
+  }
+}
+window.poFormTranslateLine = poFormTranslateLine;
+
+// V28q:通用 AI 翻译灯具规格(英文→中文 · 保留尺寸数字 · 灯具术语)
+async function _aiTranslateSpec(text) {
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 500,
+      messages: [{
+        role: 'user',
+        content: `你是灯具外贸跟单翻译助手。把下面的灯具产品规格翻译成简洁中文(发给中国工厂下单用)。规则:
+- 尺寸数字/单位保留(cm/D/H 等),英寸转cm
+- 灯具术语:Wall Lamp=壁灯, Pendant=吊灯, Chandelier=吊灯, Table Lamp=台灯, heads/lights=头
+- 材质/工艺:Hydrographics=水转印, Wood Grain=木纹, Brass=黄铜, Glass=玻璃 等
+- 色温:Warm Light/3000K=暖光3000K, Cool=冷光
+- 已经是中文的保留不变
+- 只输出翻译结果,不要解释,不要加引号
+
+待翻译:
+${text}`
+      }],
+    }),
+  });
+  if (!resp.ok) throw new Error('API ' + resp.status);
+  const data = await resp.json();
+  const out = (data.content || []).map(c => c.type === 'text' ? c.text : '').join('').trim();
+  return out;
+}
+window._aiTranslateSpec = _aiTranslateSpec;
 function poFormSetQty(liid, val) {
   PO_FORM_STATE.lineItemSelections[liid].qty = parseInt(val) || 0;
   renderPoForm();
