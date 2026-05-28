@@ -584,6 +584,7 @@ async function wooSyncOrders(storeMeta) {
     // 2. 转格式 + upsert 到 shopify_orders
     let saved = 0, failed = 0;
     const failedOrders = [];
+    let firstError = null;  // V28e2: 记第一个错误的完整信息
     for (const wo of orders) {
       try {
         const normalized = wooNormalizeOrder(wo, storeMeta);
@@ -593,8 +594,12 @@ async function wooSyncOrders(storeMeta) {
         saved++;
       } catch (e) {
         failed++;
+        if (!firstError) {
+          // Supabase error 对象有 message/details/hint/code
+          firstError = e.message || e.details || e.hint || JSON.stringify(e);
+        }
         failedOrders.push({ id: wo.id, error: e.message || String(e) });
-        console.error('upsert woo order failed:', wo.id, e);
+        console.error('upsert woo order failed:', wo.id, 'message=', e.message, 'details=', e.details, 'hint=', e.hint, 'code=', e.code);
       }
     }
     
@@ -602,7 +607,13 @@ async function wooSyncOrders(storeMeta) {
     let msg = `「${storeMeta.display_name}」同步完成 · 共 ${orders.length} 单 · 入库 ${saved}`;
     if (failed > 0) msg += ` · 失败 ${failed}`;
     if (hint) hint.textContent = msg + ' · ' + new Date().toLocaleTimeString();
-    toast(msg, failed > 0 ? 'warn' : 'success');
+    // V28e2: 失败时把真实数据库错误显示出来(关键!)
+    if (failed > 0 && firstError) {
+      toast(`同步失败原因:${firstError}`, 'err', 9000);
+      if (hint) hint.textContent = `❌ ${firstError}`;
+    } else {
+      toast(msg, failed > 0 ? 'warn' : 'success');
+    }
     if (failed > 0) console.warn('Failed woo orders:', failedOrders);
     
     await shopifyReloadOrdersAndRender(true);
