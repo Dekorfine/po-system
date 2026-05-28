@@ -20,12 +20,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260528L"></script>
+<script src="js/core.js?v=20260528n"></script>
 <script src="js/utils.js?v=20260527m"></script>
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260528j"></script>
-<script src="js/help.js?v=20260528m"></script>
+<script src="js/help.js?v=20260528n"></script>
 <script src="js/dateFilter.js?v=20260526p"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
@@ -38,6 +38,7 @@
 <script src="js/shopify.js?v=20260528L"></script>
 <script src="js/po.js?v=20260527x"></script>
 <script src="js/inventory.js?v=20260528f"></script>
+<script src="js/inspection.js?v=20260528n"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script src="js/cross-dept.js?v=20260528m"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
@@ -6134,6 +6135,33 @@ body.has-side-tabs .section-block {
   <div class="section-block">
     <div id="inventoryBody">
       <div style="padding:32px; text-align:center; color:var(--text-tertiary);">加载中...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAB: 验货单 ============ -->
+<div class="tab-content" data-tab="inspection">
+  <div class="section-block">
+    <div id="inspectionBody">
+      <div style="padding:32px; text-align:center; color:var(--text-tertiary);">加载中...</div>
+    </div>
+  </div>
+</div>
+
+<!-- 验货单 · 新建/编辑 Modal -->
+<div class="modal-bg" id="inspEditModal">
+  <div class="modal-card" style="max-width:720px; max-height:90vh; display:flex; flex-direction:column;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border);">
+      <h3 id="inspEditTitle" style="margin:0; font-size:16px;">➕ 新建验货单</h3>
+      <button class="modal-close" onclick="inspCloseEdit()">✕</button>
+    </div>
+    <div id="inspEditBody" style="padding:20px; overflow-y:auto; flex:1;"></div>
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid var(--border);">
+      <button class="btn" id="inspDeleteBtn" onclick="inspDelete()" style="color:var(--danger); display:none;">🗑 删除</button>
+      <div style="display:flex; gap:8px; margin-left:auto;">
+        <button class="btn" onclick="inspCloseEdit()">取消</button>
+        <button class="btn primary" onclick="inspSave()">💾 保存</button>
+      </div>
     </div>
   </div>
 </div>
