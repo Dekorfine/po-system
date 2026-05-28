@@ -10,6 +10,33 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260528i',
+    date: '2026-05-28',
+    type: 'feature',
+    title: '✨ Mooielight(woo)订单卡片补全 · 产品链接 + WC 详情',
+    notes: [
+      '🎉 Mooielight 订单已成功抓取(5 个坑全攻克)· 本轮补全展示',
+      '',
+      '✨ 1) 产品行加 WordPress 链接(每个产品):',
+      '   · 🔧 跳 WP 后台产品页(编辑/库存/价格)',
+      '   · 🛒 跳店铺前台商品页(客户视角)',
+      '   · SKU 也可点击 → WP 后台',
+      '   · 防止 woo 误用 Shopify 跳转(hasShopifyProduct 排除 woo)',
+      '',
+      '✨ 2) 右侧栏加「🌐 WooCommerce 详情」块:',
+      '   · 💳 支付方式(payment_method_title)',
+      '   · 🚚 运费 + 快速/标准标识',
+      '   · 🧾 税费',
+      '   · 📄 发票号(PDF Invoice 插件 wpo_wcpdf_invoice_number)',
+      '   · 🔧 后台订单链接 + 📄 发票下载',
+      '',
+      '✅ 客户备注:woo 的 customer_note 已自动进现有备注区(无需额外改)',
+      '🔧 数据全部从 raw_payload 提取(同步时已保存完整 WC 原始数据)',
+      '',
+      '🔒 升 shopify.js / help.js → v20260528i',
+    ],
+  },
+  {
     v: '20260528h',
     date: '2026-05-28',
     type: 'feature',

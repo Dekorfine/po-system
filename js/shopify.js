@@ -1736,14 +1736,30 @@ function renderShopifyOrders() {
       // V5-2026-05-24: 双图标 - 🔧 跳后台编辑 / 🛒 跳前台商品页
       const liId = li.shopify_line_item_id || '';
       const skuEsc = escapeHtml(li.sku || '').replace(/'/g, "\\'");
-      const hasShopifyProduct = li.sku && o.shop_domain && o.shop_domain !== 'manual';
+      const isWoo = o.platform === 'woo';  // V28i: woo 平台
+      const hasShopifyProduct = li.sku && o.shop_domain && o.shop_domain !== 'manual' && !isWoo;
+      
+      // V28i: woo 产品链接(WP 后台 + 前台 · 公开 URL · 直接 target=_blank)
+      const wooBase = isWoo ? ('https://' + String(o.shop_domain || '').replace(/^https?:\/\//, '').replace(/\/$/, '')) : '';
+      const wooIcons = (isWoo && li.product_id) ? `
+        <a href="${wooBase}/wp-admin/post.php?post=${li.product_id}&action=edit" target="_blank" rel="noopener"
+           onclick="event.stopPropagation();"
+           style="margin-left:6px; color:var(--accent); text-decoration:none; font-size:11px; opacity:0.85;"
+           title="🔧 在 WordPress 后台打开此产品(编辑/库存/价格)">🔧</a>
+        <a href="${wooBase}/?p=${li.product_id}" target="_blank" rel="noopener"
+           onclick="event.stopPropagation();"
+           style="margin-left:4px; color:var(--success); text-decoration:none; font-size:11px; opacity:0.85;"
+           title="🛒 在店铺前台打开商品页(客户视角)">🛒</a>
+      ` : '';
       
       // SKU 可点击(主操作 - 跳 Shopify 后台)
       const tipBackend = li.product_id ? '点击打开 Shopify 后台产品页' : '点击搜索 Shopify 后台 SKU';
       const skuClickable = li.sku 
         ? hasShopifyProduct
           ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();openShopifyProductInBrowser('${o.id}','${liId}','admin'); return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="${tipBackend}">${escapeHtml(li.sku)}</a>`
-          : `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${skuEsc}'); return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击查看本地产品档案">${escapeHtml(li.sku)}</a>`
+          : isWoo && li.product_id
+            ? `<a href="${wooBase}/wp-admin/post.php?post=${li.product_id}&action=edit" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击打开 WordPress 后台产品页">${escapeHtml(li.sku)}</a>`
+            : `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${skuEsc}'); return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击查看本地产品档案">${escapeHtml(li.sku)}</a>`
         : '';
       
       // 后台 + 前台 + 本地 三个跳转图标
@@ -1777,7 +1793,7 @@ function renderShopifyOrders() {
             ${imgUrl ? `<img loading="lazy" class="so-prod-img" src="${escapeHtml(imgUrl)}" data-fullsrc="${escapeHtml(imgUrl)}" onclick="openImgLightbox(this.dataset.fullsrc)" alt="">` : `<div class="so-prod-noimg">📷</div>`}
           </div>
           <div class="so-prod-info">
-            ${li.sku ? `<div class="so-prod-sku">SKU: ${skuClickable}${shopifyIcons}${localProductIcon}${hasPo ? ' · <span style="color:var(--success)">✓ 已开 PO</span>' : ''}</div>` : ''}
+            ${li.sku ? `<div class="so-prod-sku">SKU: ${skuClickable}${shopifyIcons}${wooIcons}${localProductIcon}${hasPo ? ' · <span style="color:var(--success)">✓ 已开 PO</span>' : ''}</div>` : ''}
             <div class="so-prod-name">${titleClickable}${nameCn ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(li.title || '')}</span>` : ''}</div>
             ${variant ? `<div class="so-prod-variant">${escapeHtml(variant)}</div>` : ''}
           </div>
@@ -1892,6 +1908,30 @@ function renderShopifyOrders() {
               <div><span class="so-amount-big">${o.total_price ? parseFloat(o.total_price).toFixed(2) : '0.00'}</span><span class="so-amount-cur">${o.currency || ''}</span></div>
               <div class="so-amount-sub">${totalQty} 件 · ${items.length} 行</div>
             </div>
+            ${(() => {
+              // V28i: woo 专属订单详情(支付/运费/税/发票/后台链接)
+              if (o.platform !== 'woo') return '';
+              const rp = o.raw_payload || {};
+              const wooBase = 'https://' + String(o.shop_domain || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+              const pay = rp.payment_method_title || rp.payment_method || '';
+              const ship = parseFloat(rp.shipping_total || 0);
+              const tax = parseFloat(rp.total_tax || 0);
+              const invoice = rp.wpo_wcpdf_invoice_number || '';
+              const cur = o.currency || '';
+              const rows = [];
+              if (pay) rows.push(`💳 ${escapeHtml(pay)}`);
+              rows.push(`🚚 运费 ${cur} ${ship.toFixed(2)}${ship > 0 ? ' <span style="color:var(--accent);">(快速)</span>' : ' <span style="color:var(--text-tertiary);">(免/标准)</span>'}`);
+              if (tax > 0) rows.push(`🧾 税 ${cur} ${tax.toFixed(2)}`);
+              if (invoice) rows.push(`📄 发票号 ${escapeHtml(invoice)}`);
+              return `<div style="font-size:11px; color:var(--text-secondary); line-height:1.7; padding:8px; background:rgba(124,58,237,0.05); border-radius:6px; border:1px solid rgba(124,58,237,0.12);">
+                <div style="font-weight:600; color:#7c3aed; margin-bottom:3px;">🌐 WooCommerce 详情</div>
+                ${rows.map(r => `<div>${r}</div>`).join('')}
+                <div style="margin-top:5px; padding-top:5px; border-top:1px dashed var(--border-subtle); display:flex; gap:8px; flex-wrap:wrap;">
+                  <a href="${wooBase}/wp-admin/post.php?post=${o.wp_order_id}&action=edit" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-size:11px;" title="在 WP 后台打开此订单">🔧 后台订单</a>
+                  ${invoice ? `<a href="${wooBase}/wp-admin/post.php?post=${o.wp_order_id}&action=edit" target="_blank" rel="noopener" style="color:var(--success); text-decoration:none; font-size:11px;" title="发票在订单页下载">📄 发票</a>` : ''}
+                </div>
+              </div>`;
+            })()}
           </div>
         </div>
         ${splitInfoHtml}
