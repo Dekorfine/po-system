@@ -433,7 +433,8 @@ function shopifyInstall(domain) {
 function populateFetchShopDropdown() {
   const sel = document.getElementById('salesFetchShop');
   if (!sel) return;
-  const connected = SHOPIFY._stores.filter(s => s.connected);
+  // V28h3: connected 的店 + 所有 woo 平台店(woo 一定纳入 · 防时机问题漏掉)
+  const connected = SHOPIFY._stores.filter(s => s.connected || s.platform === 'woo');
   const current = sel.value;
   sel.innerHTML = '<option value="">— 选择店铺 —</option>' +
     connected.map(s => `<option value="${s.domain}">${escapeHtml(s.display_name)} (${s.site_code})</option>`).join('');
@@ -470,7 +471,21 @@ function shopifyQuickFetchFromCard(domain) {
     }
     // 隐藏 select 也设值(为了后续手动拉单时知道是哪家店)
     const sel = document.getElementById('salesFetchShop');
-    if (sel) sel.value = domain;
+    if (sel) {
+      // V28h3: 确保下拉有这个 option(woo 店可能因时机问题没进下拉 · 动态补上)
+      let opt = [...sel.options].find(o => o.value === domain);
+      if (!opt) {
+        const meta = SHOPIFY._stores.find(s => s.domain === domain) 
+                  || SHOPIFY.STORES_META.find(s => s.domain === domain);
+        if (meta) {
+          opt = document.createElement('option');
+          opt.value = domain;
+          opt.textContent = `${meta.display_name || domain} (${meta.site_code})`;
+          sel.appendChild(opt);
+        }
+      }
+      sel.value = domain;
+    }
   }, alreadyOnSales ? 0 : 50);  // 已在 sales tab 时 0ms · 跨 tab 才需 50ms 等待 DOM
 }
 
@@ -496,8 +511,23 @@ async function shopifyFetchOrders() {
     return;
   }
   
-  const shop = document.getElementById('salesFetchShop').value;
-  if (!shop) { toast('请先选择店铺', 'warn'); return; }
+  // V28h2: 下拉为空时 · 回退用上面 chip 选中的单店(修"已选店铺仍提示选店铺"的 bug)
+  let shop = document.getElementById('salesFetchShop').value;
+  if (!shop && SHOPIFY_SEARCH?.shops?.size === 1) {
+    shop = [...SHOPIFY_SEARCH.shops][0];
+    // 顺便把下拉也设上 · 视觉同步
+    const sel = document.getElementById('salesFetchShop');
+    if (sel) {
+      const opt = [...sel.options].find(o => o.value === shop);
+      if (opt) sel.value = shop;
+    }
+  }
+  if (!shop) {
+    toast(SHOPIFY_SEARCH?.shops?.size > 1 
+      ? '上方选中了多家店 · 请在下拉里指定一家来同步' 
+      : '请先选择店铺(下拉或上方店铺标签)', 'warn', 3000);
+    return;
+  }
   
   // V20260528b: 检测是否 woo 平台 · 走 wooSyncOrders 分支
   const storeMeta = SHOPIFY.STORES_META.find(s => s.domain === shop);
