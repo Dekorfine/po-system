@@ -166,82 +166,102 @@ function inspRenderEditModal() {
   const body = document.getElementById('inspEditBody');
   if (!body) return;
 
-  const field = (label, html) => `<div style="margin-bottom:12px;"><label style="display:block; font-size:12.5px; font-weight:600; color:var(--text-secondary); margin-bottom:5px;">${label}</label>${html}</div>`;
-  const inp = (key, ph = '', type = 'text') => `<input type="${type}" value="${escapeHtml(d[key] ?? '')}" oninput="inspSetField('${key}', this.value)" placeholder="${ph}" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px;">`;
+  const field = (label, html, req) => `<div style="margin-bottom:14px;"><label style="display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">${label}${req ? ' <span style="color:var(--danger);">*</span>' : ''}</label>${html}</div>`;
+  const inpStyle = 'width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:7px; font-size:13px; box-sizing:border-box; background:var(--bg-card);';
+  const inp = (key, ph = '', type = 'text') => `<input type="${type}" value="${escapeHtml(d[key] ?? '')}" oninput="inspSetField('${key}', this.value)" placeholder="${ph}" style="${inpStyle}">`;
+  const sectionStyle = 'background:var(--bg-elevated); border:1px solid var(--border-subtle); border-radius:10px; padding:16px; margin-bottom:14px;';
+  const sectionTitle = (icon, t) => `<div style="font-size:13px; font-weight:700; color:var(--text-primary); margin-bottom:14px; display:flex; align-items:center; gap:6px;">${icon} ${t}</div>`;
 
   // 国家下拉(可手填)
   const countryOpts = INSP_COUNTRIES.map(c => `<option value="${c}" ${d.country === c ? 'selected' : ''}>${c}</option>`).join('');
   const stdOpts = INSP_STANDARDS.map(s => `<option value="${s}" ${d.standard === s ? 'selected' : ''}>${s}</option>`).join('');
-  const statusOpts = Object.entries(INSP_STATUS).map(([k, v]) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${v.icon} ${v.label}</option>`).join('');
+
+  // 状态做成按钮组
+  const statusBtns = Object.entries(INSP_STATUS).map(([k, v]) => `
+    <button onclick="inspSetField('status','${k}'); inspRenderEditModal();"
+      style="flex:1; padding:9px; border-radius:8px; cursor:pointer; font-size:12.5px; font-weight:600; border:1.5px solid ${d.status === k ? v.color : 'var(--border)'};
+             background:${d.status === k ? v.color + '15' : 'var(--bg-card)'}; color:${d.status === k ? v.color : 'var(--text-secondary)'};">
+      ${v.icon} ${v.label}
+    </button>`).join('');
 
   const imgs = Array.isArray(d.images) ? d.images : [];
   const imgCells = imgs.map((im, i) => im._uploading
-    ? `<div style="width:80px;height:80px;border-radius:8px;background:var(--bg-elevated);display:flex;align-items:center;justify-content:center;">⏳</div>`
-    : `<div style="position:relative;width:80px;height:80px;">
-         <img src="${escapeHtml(im.url)}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;cursor:zoom-in;" onclick="window.open('${escapeHtml(im.url)}','_blank')">
+    ? `<div style="width:84px;height:84px;border-radius:8px;background:var(--bg-card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;">⏳</div>`
+    : `<div style="position:relative;width:84px;height:84px;">
+         <img src="${escapeHtml(im.url)}" style="width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:zoom-in;" onclick="window.open('${escapeHtml(im.url)}','_blank')">
          <button onclick="inspRemoveImg(${i})" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:var(--danger);color:#fff;border:0;font-size:11px;cursor:pointer;line-height:1;">✕</button>
        </div>`
   ).join('');
 
+  const chk = (key, label) => `
+    <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-size:13px; padding:9px 14px; border-radius:8px; border:1.5px solid ${d[key] ? 'var(--accent)' : 'var(--border)'}; background:${d[key] ? 'var(--accent)10' : 'var(--bg-card)'}; flex:1;">
+      <input type="checkbox" ${d[key] ? 'checked' : ''} onchange="inspSetField('${key}', this.checked); inspRenderEditModal();" style="width:15px;height:15px;"> ${label}
+    </label>`;
+
   body.innerHTML = `
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-      ${field('订单编号', inp('order_no', '如 AL-1032'))}
-      ${field('订单数量', inp('order_qty', '如 55', 'number'))}
-    </div>
+    <!-- 状态 · 顶部按钮组 -->
+    <div style="display:flex; gap:8px; margin-bottom:16px;">${statusBtns}</div>
 
-    ${field('供应商', `
-      <div style="position:relative;">
-        <input type="text" id="inspSupplierInput" value="${escapeHtml(d.supplier_name || '')}"
-               oninput="inspSupplierSearch(this.value)" placeholder="输入供应商名(从供应商库搜索 · 也可自定义)"
-               style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px;"
-               autocomplete="off">
-        <div id="inspSupplierDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:50; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; max-height:200px; overflow-y:auto; box-shadow:0 4px 16px rgba(0,0,0,0.12); margin-top:2px;"></div>
+    <!-- 区1:基础信息 -->
+    <div style="${sectionStyle}">
+      ${sectionTitle('📋', '基础信息')}
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+        ${field('订单编号', inp('order_no', '如 AL-1032'), true)}
+        ${field('订单数量', inp('order_qty', '如 55', 'number'))}
       </div>
-    `)}
-
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-      ${field('目的国家', `<select onchange="inspSetField('country', this.value)" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px;">
-        ${countryOpts}
-        <option value="__custom__">+ 自定义国家</option>
-      </select>
-      <input type="text" id="inspCustomCountry" value="${INSP_COUNTRIES.includes(d.country) ? '' : escapeHtml(d.country || '')}"
-             oninput="inspSetField('country', this.value)" placeholder="自定义国家名"
-             style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; margin-top:6px; ${INSP_COUNTRIES.includes(d.country) ? 'display:none;' : ''}">`)}
-      ${field('标准', `<select onchange="inspSetField('standard', this.value)" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px;">${stdOpts}<option value="__custom__">+ 自定义</option></select>`)}
+      ${field('供应商', `
+        <div style="position:relative;">
+          <input type="text" id="inspSupplierInput" value="${escapeHtml(d.supplier_name || '')}"
+                 oninput="inspSupplierSearch(this.value)" placeholder="输入供应商名(从供应商库搜索 · 也可自定义)"
+                 style="${inpStyle}" autocomplete="off">
+          <div id="inspSupplierDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:50; background:var(--bg-card); border:1px solid var(--border); border-radius:7px; max-height:200px; overflow-y:auto; box-shadow:0 4px 16px rgba(0,0,0,0.12); margin-top:2px;"></div>
+        </div>
+      `, true)}
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:0;">
+        ${field('目的国家', `<select onchange="inspSetField('country', this.value)" style="${inpStyle}">
+          ${countryOpts}<option value="__custom__">+ 自定义国家</option>
+        </select>
+        <input type="text" id="inspCustomCountry" value="${INSP_COUNTRIES.includes(d.country) ? '' : escapeHtml(d.country || '')}"
+               oninput="inspSetField('country', this.value)" placeholder="自定义国家名"
+               style="${inpStyle} margin-top:6px; ${INSP_COUNTRIES.includes(d.country) ? 'display:none;' : ''}">`)}
+        ${field('标准', `<select onchange="inspSetField('standard', this.value)" style="${inpStyle}">${stdOpts}<option value="__custom__">+ 自定义</option></select>`)}
+      </div>
     </div>
 
-    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;">
-      ${field('电压', inp('voltage', '如 220V'))}
-      ${field('色温', inp('color_temp', '如 3000K'))}
-      ${field('光源', inp('light_source', '如 LED'))}
+    <!-- 区2:规格要求 -->
+    <div style="${sectionStyle}">
+      ${sectionTitle('⚡', '规格要求')}
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:0;">
+        ${field('电压', inp('voltage', '如 220V'))}
+        ${field('色温', inp('color_temp', '如 3000K'))}
+        ${field('光源', inp('light_source', '如 LED'))}
+      </div>
     </div>
 
-    ${field('要求 / 标签', `<textarea oninput="inspSetField('label_req', this.value)" rows="2" placeholder="如:产品标 QC · 地线标 LN · 箱唛标" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; resize:vertical;">${escapeHtml(d.label_req || '')}</textarea>`)}
-
-    <div style="display:flex; gap:24px; margin-bottom:12px;">
-      <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
-        <input type="checkbox" ${d.need_sample ? 'checked' : ''} onchange="inspSetField('need_sample', this.checked)"> 要做首样
-      </label>
-      <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
-        <input type="checkbox" ${d.need_manual_en ? 'checked' : ''} onchange="inspSetField('need_manual_en', this.checked)"> 放英文说明书
-      </label>
+    <!-- 区3:验货要求 -->
+    <div style="${sectionStyle}">
+      ${sectionTitle('✅', '验货要求')}
+      ${field('要求 / 标签', `<textarea oninput="inspSetField('label_req', this.value)" rows="2" placeholder="如:产品标 QC · 地线标 LN · 箱唛标" style="${inpStyle} resize:vertical;">${escapeHtml(d.label_req || '')}</textarea>`)}
+      <div style="display:flex; gap:12px; margin-bottom:14px;">
+        ${chk('need_sample', '📐 要做首样')}
+        ${chk('need_manual_en', '📄 放英文说明书')}
+      </div>
+      ${field('纸箱打包数量', inp('packing_method', '如 10+10+10+10+10+5'))}
+      ${field('客户其他要求', `<textarea oninput="inspSetField('other_req', this.value)" rows="2" placeholder="如:电线外漏2米 · 弹簧卡扣底盘需要白色的" style="${inpStyle} resize:vertical; margin-bottom:0;">${escapeHtml(d.other_req || '')}</textarea>`)}
     </div>
 
-    ${field('纸箱打包数量', inp('packing_method', '如 10+10+10+10+10+5'))}
-    ${field('客户其他要求', `<textarea oninput="inspSetField('other_req', this.value)" rows="2" placeholder="如:电线外漏2米 · 弹簧卡扣底盘需要白色的" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; resize:vertical;">${escapeHtml(d.other_req || '')}</textarea>`)}
-
-    ${field('状态', `<select onchange="inspSetField('status', this.value)" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px;">${statusOpts}</select>`)}
-
-    ${field('灯具图片(支持复制粘贴 / 上传多张)', `
+    <!-- 区4:灯具图片 -->
+    <div style="${sectionStyle} margin-bottom:0;">
+      ${sectionTitle('💡', '灯具图片(支持复制粘贴 / 上传多张)')}
       <div id="inspImgArea" tabindex="0" onpaste="inspPasteImg(event)"
-           style="border:1px dashed var(--border); border-radius:8px; padding:12px; outline:none;">
-        <div style="display:flex; flex-wrap:wrap; gap:8px;">${imgCells}</div>
-        <div style="display:flex; align-items:center; gap:8px; margin-top:${imgs.length ? '10px' : '0'};">
-          <label class="btn small" style="cursor:pointer;">+ 上传图片(可多选)<input type="file" accept="image/*" multiple style="display:none;" onchange="inspPickImgs(this)"></label>
-          <span style="font-size:11px; color:var(--text-tertiary);">或直接 Ctrl+V 粘贴截图(在此弹窗内任意位置都可)· 支持多张</span>
+           style="border:1.5px dashed var(--border); border-radius:8px; padding:14px; outline:none; background:var(--bg-card);">
+        ${imgs.length ? `<div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">${imgCells}</div>` : ''}
+        <div style="display:flex; align-items:center; gap:10px; justify-content:center; ${imgs.length ? '' : 'padding:8px 0;'}">
+          <label class="btn small primary" style="cursor:pointer;">📎 上传图片(可多选)<input type="file" accept="image/*" multiple style="display:none;" onchange="inspPickImgs(this)"></label>
+          <span style="font-size:11.5px; color:var(--text-tertiary);">或直接 Ctrl+V 粘贴截图 · 支持多张</span>
         </div>
       </div>
-    `)}
+    </div>
   `;
 
   document.getElementById('inspEditTitle').textContent = isEdit ? '✏️ 编辑验货单' : '➕ 新建验货单';
@@ -304,8 +324,10 @@ window.inspPickSupplier = inspPickSupplier;
 // ─────────────── 图片上传(复用 po-screenshots 桶) ───────────────
 async function _inspUploadImg(file) {
   const compressed = await _inspCompress(file);
-  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-  const path = `inspection/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const ext = (compressed.type && compressed.type.includes('png')) ? 'png' : 'jpg';
+  // V28o2: 用跟 issues 一致的路径前缀(CURRENT_USER_ID/)· 绕过 po-screenshots 桶的 RLS
+  const uid = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) ? CURRENT_USER_ID : 'inspection';
+  const path = `${uid}/insp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const { error } = await sb.storage.from('po-screenshots').upload(path, compressed, { upsert: false, contentType: compressed.type });
   if (error) throw error;
   const { data: { publicUrl } } = sb.storage.from('po-screenshots').getPublicUrl(path);
