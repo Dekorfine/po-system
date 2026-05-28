@@ -25,8 +25,13 @@ const SHOPIFY = {
     { domain: 'mooijane.myshopify.com',       site_code: 'MJ', legacyOnly: true },
     { domain: 'decormote.myshopify.com',      site_code: 'RS' },
     { domain: 'janedecor.myshopify.com',      site_code: 'JD' },
+    // V20260528b: WooCommerce 接入 · mooielight 是 WordPress + WooCommerce(不是 Shopify)
+    // platform='woo' 走 woo-api Edge Function · 不走 shopify-api
+    { domain: 'mooielight.com', site_code: 'ML', platform: 'woo', woo_store_id: 'mooielight', display_name: 'Mooielight' },
   ],
   FN_URL: 'https://pyfmuknvjqfwcqvbrsvw.supabase.co/functions/v1/shopify-api',
+  // V20260528b: woo-api Edge Function URL · 用 anon key 调(已 --no-verify-jwt 部署)
+  WOO_FN_URL: 'https://pyfmuknvjqfwcqvbrsvw.supabase.co/functions/v1/woo-api',
   _stores: [],
   _orders: [],
   _autoSyncTimer: null,
@@ -47,6 +52,23 @@ const SHOPIFY = {
     return json;
   },
 
+  // V20260528b: 调 woo-api Edge Function · 用 anon key(已 --no-verify-jwt)
+  async callWoo(action, params = {}, wooStoreId = 'mooielight') {
+    const body = { store_id: wooStoreId, action, params };
+    const res = await fetch(this.WOO_FN_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+    if (!json.ok) throw new Error(json.error || JSON.stringify(json));
+    return json;  // { ok: true, data: ..., status: 200 }
+  },
+
   async loadStores() {
     const { data, error } = await sb.from('shopify_stores').select('*').order('site_code');
     if (error) throw error;
@@ -54,6 +76,18 @@ const SHOPIFY = {
     (data || []).forEach(s => { byDomain[s.shop_domain] = s; });
     this._stores = this.STORES_META.map(meta => {
       const row = byDomain[meta.domain];
+      // V20260528b: woo 平台不在 shopify_stores 表 · 直接当作已连接(Edge Function 配置)
+      if (meta.platform === 'woo') {
+        return {
+          ...meta,
+          connected: true,
+          id: meta.domain,
+          display_name: meta.display_name || meta.domain.replace(/\..*$/, ''),
+          last_sync_at: null,
+          auto_sync_enabled: true,
+          auto_sync_minutes: 5,
+        };
+      }
       return {
         ...meta,
         connected: !!row && row.is_active,
@@ -436,6 +470,13 @@ function setSalesDefaultDates() {
 async function shopifyFetchOrders() {
   const shop = document.getElementById('salesFetchShop').value;
   if (!shop) { toast('请先选择店铺', 'warn'); return; }
+  
+  // V20260528b: 检测是否 woo 平台 · 走 wooSyncOrders 分支
+  const storeMeta = SHOPIFY.STORES_META.find(s => s.domain === shop);
+  if (storeMeta?.platform === 'woo') {
+    return await wooSyncOrders(storeMeta);
+  }
+  
   const from = document.getElementById('salesFetchFrom').value;
   const to = document.getElementById('salesFetchTo').value;
   const status = document.getElementById('salesFetchStatus').value;
@@ -463,6 +504,184 @@ async function shopifyFetchOrders() {
     btn.classList.remove('loading');
   }
 }
+
+// ============================================================
+// V20260528b: WooCommerce 接入 · 同步 woo 订单到本地 shopify_orders 表
+// ============================================================
+async function wooSyncOrders(storeMeta) {
+  const btn = document.querySelector('#salesFetchCard .btn.primary');
+  const hint = document.getElementById('salesFetchHint');
+  if (btn) btn.classList.add('loading');
+  if (hint) hint.textContent = '正在同步 WooCommerce…';
+  
+  const from = document.getElementById('salesFetchFrom')?.value;
+  const to = document.getElementById('salesFetchTo')?.value;
+  const status = document.getElementById('salesFetchStatus')?.value;
+  
+  try {
+    // 构造 WC list_orders 参数
+    const params = { per_page: 100 };
+    // WC status 跟 Shopify 不一样 · 转换:
+    // Shopify 'any/open/closed' → WC 默认 processing,completed,on-hold
+    if (status && status !== 'any') {
+      // 简单映射 · Shopify 'unfulfilled' → WC processing(待发货)
+      if (status === 'open' || status === 'unfulfilled') {
+        params.status = 'processing,on-hold';
+      } else if (status === 'closed' || status === 'fulfilled') {
+        params.status = 'completed';
+      }
+    } else {
+      params.status = 'processing,completed,on-hold';
+    }
+    // WC 用 ISO 8601 时间(after/before)
+    if (from) params.after = from + 'T00:00:00';
+    if (to) params.before = to + 'T23:59:59';
+    
+    // 1. 调 Edge Function 拉订单
+    const result = await SHOPIFY.callWoo('list_orders', params, storeMeta.woo_store_id);
+    const orders = Array.isArray(result.data) ? result.data : [];
+    
+    if (orders.length === 0) {
+      if (hint) hint.textContent = '当前条件下无新订单 · ' + new Date().toLocaleTimeString();
+      toast(`「${storeMeta.display_name}」无新订单`, 'info');
+      return;
+    }
+    
+    // 2. 转格式 + upsert 到 shopify_orders
+    let saved = 0, failed = 0;
+    const failedOrders = [];
+    for (const wo of orders) {
+      try {
+        const normalized = wooNormalizeOrder(wo, storeMeta);
+        const { error } = await sb.from('shopify_orders')
+          .upsert(normalized, { onConflict: 'shopify_order_id' });
+        if (error) throw error;
+        saved++;
+      } catch (e) {
+        failed++;
+        failedOrders.push({ id: wo.id, error: e.message || String(e) });
+        console.error('upsert woo order failed:', wo.id, e);
+      }
+    }
+    
+    // 3. 提示 + 刷新
+    let msg = `「${storeMeta.display_name}」同步完成 · 共 ${orders.length} 单 · 入库 ${saved}`;
+    if (failed > 0) msg += ` · 失败 ${failed}`;
+    if (hint) hint.textContent = msg + ' · ' + new Date().toLocaleTimeString();
+    toast(msg, failed > 0 ? 'warn' : 'success');
+    if (failed > 0) console.warn('Failed woo orders:', failedOrders);
+    
+    await shopifyReloadOrdersAndRender(true);
+  } catch (e) {
+    console.error('wooSyncOrders failed:', e);
+    if (hint) hint.textContent = '同步失败:' + (e.message || e);
+    toast(`同步「${storeMeta.display_name}」失败:${e.message || e}`, 'err', 5000);
+  } finally {
+    if (btn) btn.classList.remove('loading');
+  }
+}
+
+// WC 订单格式 → shopify_orders 表结构
+function wooNormalizeOrder(wo, storeMeta) {
+  const billing = wo.billing || {};
+  const shipping = wo.shipping || {};
+  const fullName = (n) => ((n.first_name || '') + ' ' + (n.last_name || '')).trim();
+  
+  // 状态映射 · WC → Shopify-ish(便于复用展示逻辑)
+  // WC: pending / processing / on-hold / completed / cancelled / refunded / failed
+  // financial_status: paid / pending / refunded / voided
+  // fulfillment_status: fulfilled / unfulfilled
+  let financial = 'pending', fulfillment = null;
+  switch (wo.status) {
+    case 'completed':  financial = 'paid';     fulfillment = 'fulfilled'; break;
+    case 'processing': financial = 'paid';     fulfillment = null;        break;  // 已付未发
+    case 'on-hold':    financial = 'pending';  fulfillment = null;        break;
+    case 'pending':    financial = 'pending';  fulfillment = null;        break;
+    case 'refunded':   financial = 'refunded'; fulfillment = null;        break;
+    case 'cancelled':  financial = 'voided';   fulfillment = null;        break;
+    case 'failed':     financial = 'voided';   fulfillment = null;        break;
+  }
+  
+  // 行项目转 line_items
+  const lineItems = (wo.line_items || []).map(li => {
+    // WC 的变体规格在 meta_data 里(attribute_pa_xxx 之类)
+    const variantMeta = (li.meta_data || [])
+      .filter(m => m.key && !m.key.startsWith('_') && m.display_value)
+      .map(m => `${m.display_key || m.key}: ${m.display_value}`)
+      .join(' / ');
+    
+    return {
+      sku: li.sku || '',
+      title: li.name || '',
+      qty: li.quantity || 1,
+      price: parseFloat(li.price || 0),
+      total: parseFloat(li.total || 0),
+      variant: variantMeta || '',
+      image: li.image?.src || '',
+      product_id: li.product_id || null,
+      variation_id: li.variation_id || null,
+    };
+  });
+  
+  const totalPrice = parseFloat(wo.total || 0);
+  const shippingPrice = parseFloat(wo.shipping_total || 0);
+  const taxPrice = parseFloat(wo.total_tax || 0);
+  
+  return {
+    // ⚠️ 关键:用 woo- 前缀防与 Shopify 数字 ID 冲突
+    shopify_order_id: `woo-${storeMeta.woo_store_id}-${wo.id}`,
+    shopify_order_number: String(wo.number || wo.id),
+    wp_order_id: Number(wo.id),
+    platform: 'woo',
+    shop_domain: storeMeta.domain,
+    site_code: storeMeta.site_code,
+    
+    // 客户
+    customer_name: fullName(billing) || fullName(shipping) || '(无名)',
+    customer_email: billing.email || null,
+    customer_phone: billing.phone || null,
+    
+    // 状态
+    financial_status: financial,
+    fulfillment_status: fulfillment,
+    local_status: fulfillment === 'fulfilled' ? 'completed' : 'processing',  // 本地状态
+    
+    // 金额
+    total_price: totalPrice,
+    subtotal_price: totalPrice - shippingPrice - taxPrice,
+    total_shipping: shippingPrice,
+    total_tax: taxPrice,
+    currency: wo.currency || 'USD',
+    
+    // 行项目 + 地址
+    line_items: lineItems,
+    shipping_address: {
+      name: fullName(shipping),
+      address1: shipping.address_1 || '',
+      address2: shipping.address_2 || '',
+      city: shipping.city || '',
+      province: shipping.state || '',
+      country: shipping.country || '',
+      country_code: shipping.country || '',
+      zip: shipping.postcode || '',
+      phone: billing.phone || shipping.phone || '',
+    },
+    
+    // 时间(优先用 GMT)· shopify_orders 表的订单创建时间字段叫 shopify_created_at
+    shopify_created_at: wo.date_created_gmt ? wo.date_created_gmt + 'Z' 
+                      : wo.date_created || new Date().toISOString(),
+    shopify_updated_at: wo.date_modified_gmt ? wo.date_modified_gmt + 'Z'
+                      : wo.date_modified || new Date().toISOString(),
+    imported_at: new Date().toISOString(),
+    
+    // 客户备注
+    customer_note: wo.customer_note || null,
+    
+    // 原始数据(备查 · 包括 PDF Invoice 号码等)
+    raw_payload: wo,
+  };
+}
+
 
 async function shopifyReloadOrdersAndRender(force = false) {
   const shop = document.getElementById('salesFetchShop')?.value || '';
