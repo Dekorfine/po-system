@@ -919,21 +919,68 @@ function getShippingMethod(o) {
 function getPaymentTime(o) {
   return (o && o.raw_payload && o.raw_payload.processed_at) || null;
 }
-// V28d: 提取运费金额(兼容 Shopify shipping_lines + WooCommerce shipping_total)
+// V28k: 提取运费金额(多来源 fallback · 兼容 Shopify 各种字段 + WooCommerce)
 function getShippingFee(o) {
-  const raw = o && o.raw_payload;
-  // WooCommerce:raw.shipping_total
-  if (o && o.platform === 'woo') {
-    if (raw && raw.shipping_total !== undefined) return parseFloat(raw.shipping_total) || 0;
+  if (!o) return 0;
+  const raw = o.raw_payload || {};
+
+  // ── WooCommerce ──
+  if (o.platform === 'woo') {
+    if (raw.shipping_total !== undefined) return parseFloat(raw.shipping_total) || 0;
     return Number(o.total_shipping || 0);
   }
-  // Shopify:shipping_lines[].price 求和
-  if (raw && Array.isArray(raw.shipping_lines)) {
-    return raw.shipping_lines.reduce((s, line) => s + (parseFloat(line.price) || 0), 0);
+
+  // ── Shopify 多来源(按可靠度排序)──
+  // 1. total_shipping_price_set.shop_money.amount(Shopify 标准运费字段 · 最准)
+  const setAmt = raw.total_shipping_price_set?.shop_money?.amount
+              ?? raw.total_shipping_price_set?.presentment_money?.amount;
+  if (setAmt !== undefined && setAmt !== null) return parseFloat(setAmt) || 0;
+
+  // 2. shipping_lines[].price / discounted_price 求和
+  if (Array.isArray(raw.shipping_lines) && raw.shipping_lines.length > 0) {
+    return raw.shipping_lines.reduce((s, line) => {
+      const p = line.discounted_price ?? line.price ?? 0;
+      return s + (parseFloat(p) || 0);
+    }, 0);
   }
-  // 兜底:normalized 字段
-  return Number((o && o.total_shipping) || 0);
+
+  // 3. normalized 字段
+  if (o.total_shipping !== undefined && o.total_shipping !== null && o.total_shipping !== '') {
+    return Number(o.total_shipping) || 0;
+  }
+
+  // 4. 间接算:total - subtotal - tax(都从 raw 拿 · 兜底)
+  const total = parseFloat(raw.total_price ?? o.total_price ?? 0);
+  const subtotal = parseFloat(raw.subtotal_price ?? raw.current_subtotal_price ?? 0);
+  const tax = parseFloat(raw.total_tax ?? raw.current_total_tax ?? 0);
+  if (total > 0 && subtotal > 0) {
+    const diff = total - subtotal - tax;
+    if (diff > 0.01) return diff;
+  }
+
+  return 0;
 }
+
+// V28k: 诊断命令 · 控制台跑 diagShipping() 看前 5 单运费来源
+window.diagShipping = function() {
+  const orders = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) ? SHOPIFY._orders.slice(0, 8) : [];
+  if (orders.length === 0) { console.log('没有订单 · 先同步'); return; }
+  console.log('=== 运费诊断(前 8 单)===');
+  orders.forEach(o => {
+    const raw = o.raw_payload || {};
+    console.log({
+      订单: o.shopify_order_number || o.shopify_order_id,
+      平台: o.platform || 'shopify',
+      'getShippingFee结果': getShippingFee(o),
+      '①set金额': raw.total_shipping_price_set?.shop_money?.amount,
+      '②shipping_lines': Array.isArray(raw.shipping_lines) ? raw.shipping_lines.map(l => l.price) : '无',
+      '③total_shipping字段': o.total_shipping,
+      'raw有没有数据': Object.keys(raw).length > 0 ? `有(${Object.keys(raw).length}字段)` : '空!',
+      'raw顶层key样例': Object.keys(raw).slice(0, 15),
+    });
+  });
+  console.log('=== 如果都是 "raw空!" · 说明同步没存 raw_payload · 需要重新同步或改 Edge Function ===');
+};
 
 // 判断是否快速运输
 // V28d 改:用户定义 · 付了运费 = 快速运输 · 免运费 = 标准运输
