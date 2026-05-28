@@ -867,6 +867,7 @@ const ALL_MODULES = [
   { key: 'consolidation', label: '🧊 合箱' },
   { key: 'performance', label: '📊 绩效' },
   { key: 'photoreq', label: '📨 拍摄需求' },
+  { key: 'inspection', label: '🔍 验货单' },
 ];
 const ALL_MODULE_KEYS = ALL_MODULES.map(m => m.key);
 
@@ -2161,6 +2162,16 @@ function loadAllData() {
         // 产品图加载完后，如果当前在催单/售后 tab，刷新一次让图显示出来
         if (CURRENT_TAB === 'orders' && typeof renderOrders === 'function') renderOrders();
         if (CURRENT_TAB === 'aftersales' && typeof renderAftersales === 'function') renderAftersales();
+        // V28L: 修"刷新后要重新点同步才有数据"· 预加载完兜底重渲 sales(防 DOM 未就绪时首渲被 if(!body)return 丢掉)
+        if (typeof shopifyRefreshCounts === 'function') shopifyRefreshCounts();
+        if (typeof shopifyRefreshRuleCounts === 'function') shopifyRefreshRuleCounts();
+        if (CURRENT_TAB === 'sales') {
+          setTimeout(() => {
+            if (typeof renderShopifyOrders === 'function') renderShopifyOrders();
+            if (typeof renderSalesStats === 'function') renderSalesStats();
+            if (typeof shopifyRefreshCounts === 'function') shopifyRefreshCounts();
+          }, 350);
+        }
       })
       .catch(e => console.warn('销售单预加载失败:', e));
   }
@@ -2235,6 +2246,7 @@ function renderActiveTab() {
   else if (CURRENT_TAB === 'finance') { if (typeof renderFinance === 'function') renderFinance(); }
   else if (CURRENT_TAB === 'products') { if (typeof renderProducts === 'function') renderProducts(); }
   else if (CURRENT_TAB === 'inventory') { if (typeof renderInventory === 'function') renderInventory(); }
+  else if (CURRENT_TAB === 'inspection') { if (typeof renderInspection === 'function') renderInspection(); }
   else if (CURRENT_TAB === 'analytics') { 
     renderAnalytics();
     // V20260527j: 售后汇总已移到 analytics tab 顶部 · 切到此 tab 时触发渲染
@@ -2573,6 +2585,7 @@ const TAB_LAYOUT_DEFAULT = {
   performance:   'side',
   analytics:     'side',
   photoreq:      'side',
+  inspection:    'side',
 };
 const TAB_META = {
   sales:         { icon: '📥', label: '销售单',     badgeId: 'badgeSales' },
@@ -2591,6 +2604,7 @@ const TAB_META = {
   analytics:     { icon: '📈', label: '数据',       badgeId: null },
   performance:   { icon: '📊', label: '绩效',       badgeId: 'badgePerformance' },
   photoreq:      { icon: '📨', label: '拍摄需求',   badgeId: null },
+  inspection:    { icon: '🔍', label: '验货单',     badgeId: null },
 };
 
 function getTabLayout() {
