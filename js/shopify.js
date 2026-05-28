@@ -588,14 +588,24 @@ async function wooSyncOrders(storeMeta) {
     for (const wo of orders) {
       try {
         const normalized = wooNormalizeOrder(wo, storeMeta);
-        const { error } = await sb.from('shopify_orders')
+        // V28e3: 先试 upsert · 若无唯一约束失败 → 降级为 查→insert/update
+        let { error } = await sb.from('shopify_orders')
           .upsert(normalized, { onConflict: 'shopify_order_id' });
+        if (error && /ON CONFLICT|unique or exclusion/i.test(error.message || '')) {
+          // 降级:手动 查存在→update / 不存在→insert
+          const { data: existing } = await sb.from('shopify_orders')
+            .select('id').eq('shopify_order_id', normalized.shopify_order_id).maybeSingle();
+          if (existing) {
+            ({ error } = await sb.from('shopify_orders').update(normalized).eq('id', existing.id));
+          } else {
+            ({ error } = await sb.from('shopify_orders').insert(normalized));
+          }
+        }
         if (error) throw error;
         saved++;
       } catch (e) {
         failed++;
         if (!firstError) {
-          // Supabase error 对象有 message/details/hint/code
           firstError = e.message || e.details || e.hint || JSON.stringify(e);
         }
         failedOrders.push({ id: wo.id, error: e.message || String(e) });
