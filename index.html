@@ -20,12 +20,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260528f"></script>
+<script src="js/core.js?v=20260528L"></script>
 <script src="js/utils.js?v=20260527m"></script>
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260528j"></script>
-<script src="js/help.js?v=20260528k"></script>
+<script src="js/help.js?v=20260528m"></script>
 <script src="js/dateFilter.js?v=20260526p"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
@@ -35,11 +35,11 @@
 <script src="js/aftersales.js?v=20260527j"></script>
 <script src="js/missing.js?v=20260527i"></script>
 <script src="js/orders.js?v=20260526q"></script>
-<script src="js/shopify.js?v=20260528k"></script>
+<script src="js/shopify.js?v=20260528L"></script>
 <script src="js/po.js?v=20260527x"></script>
 <script src="js/inventory.js?v=20260528f"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script src="js/cross-dept.js?v=20260528k"></script>
+<script src="js/cross-dept.js?v=20260528m"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
 <script src="js/translator.js?v=20260525z"></script>
@@ -6263,6 +6263,19 @@ body.has-side-tabs .section-block {
 
         <label>关联引用</label>
         <input type="text" id="cdmNewRelRef" placeholder="订单号 / SKU / URL...(可空)">
+
+        <label>📷 图片附件(可粘贴 / 上传 · 发给对方部门)</label>
+        <div id="cdmNewImgArea" tabindex="0" onpaste="cdmNewPasteImage(event)"
+             style="border:1px dashed var(--border); border-radius:8px; padding:10px; min-height:54px; outline:none;">
+          <div id="cdmNewImgList" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+          <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+            <label class="btn" style="font-size:12px; cursor:pointer;">
+              + 上传图片
+              <input type="file" accept="image/*" multiple style="display:none;" onchange="cdmNewPickImages(this)">
+            </label>
+            <span style="font-size:11px; color:var(--text-tertiary);">或点这里后 Ctrl+V 粘贴截图</span>
+          </div>
+        </div>
       </div>
     </div>
     <div class="cdm-modal-foot">
