@@ -68,7 +68,7 @@ const SHOPIFY = {
     const body = { store_id: wooStoreId, action, params };
     // V28d: 45 秒超时
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
     try {
       const res = await fetch(this.WOO_FN_URL, {
         method: 'POST',
@@ -84,7 +84,7 @@ const SHOPIFY = {
       if (!json.ok) throw new Error(json.error || JSON.stringify(json));
       return json;
     } catch (e) {
-      if (e.name === 'AbortError') throw new Error('WooCommerce 同步超时(45秒)· 请缩小日期范围重试');
+      if (e.name === 'AbortError') throw new Error('WooCommerce 同步超时(90秒)· 请缩小日期范围重试');
       throw e;
     } finally {
       clearTimeout(timeoutId);
@@ -553,79 +553,37 @@ async function wooSyncOrders(storeMeta) {
   const status = document.getElementById('salesFetchStatus')?.value;
   
   try {
-    // 构造 WC list_orders 参数
+    // V28e4: 用 sync_orders · 后端 service_role 拉单+写库(绕过 RLS)
     const params = { per_page: 100 };
-    // WC status 跟 Shopify 不一样 · 转换:
-    // Shopify 'any/open/closed' → WC 默认 processing,completed,on-hold
     if (status && status !== 'any') {
-      // 简单映射 · Shopify 'unfulfilled' → WC processing(待发货)
-      if (status === 'open' || status === 'unfulfilled') {
-        params.status = 'processing,on-hold';
-      } else if (status === 'closed' || status === 'fulfilled') {
-        params.status = 'completed';
-      }
+      if (status === 'open' || status === 'unfulfilled') params.status = 'processing,on-hold';
+      else if (status === 'closed' || status === 'fulfilled') params.status = 'completed';
     } else {
       params.status = 'processing,completed,on-hold';
     }
-    // WC 用 ISO 8601 时间(after/before)
     if (from) params.after = from + 'T00:00:00';
     if (to) params.before = to + 'T23:59:59';
-    
-    // 1. 调 Edge Function 拉订单
-    const result = await SHOPIFY.callWoo('list_orders', params, storeMeta.woo_store_id);
-    const orders = Array.isArray(result.data) ? result.data : [];
-    
-    if (orders.length === 0) {
+
+    const result = await SHOPIFY.callWoo('sync_orders', params, storeMeta.woo_store_id);
+    const count = result.count || 0;
+    const saved = result.saved || 0;
+
+    if (count === 0) {
       if (hint) hint.textContent = '当前条件下无新订单 · ' + new Date().toLocaleTimeString();
       toast(`「${storeMeta.display_name}」无新订单`, 'info');
       return;
     }
-    
-    // 2. 转格式 + upsert 到 shopify_orders
-    let saved = 0, failed = 0;
-    const failedOrders = [];
-    let firstError = null;  // V28e2: 记第一个错误的完整信息
-    for (const wo of orders) {
-      try {
-        const normalized = wooNormalizeOrder(wo, storeMeta);
-        // V28e3: 先试 upsert · 若无唯一约束失败 → 降级为 查→insert/update
-        let { error } = await sb.from('shopify_orders')
-          .upsert(normalized, { onConflict: 'shopify_order_id' });
-        if (error && /ON CONFLICT|unique or exclusion/i.test(error.message || '')) {
-          // 降级:手动 查存在→update / 不存在→insert
-          const { data: existing } = await sb.from('shopify_orders')
-            .select('id').eq('shopify_order_id', normalized.shopify_order_id).maybeSingle();
-          if (existing) {
-            ({ error } = await sb.from('shopify_orders').update(normalized).eq('id', existing.id));
-          } else {
-            ({ error } = await sb.from('shopify_orders').insert(normalized));
-          }
-        }
-        if (error) throw error;
-        saved++;
-      } catch (e) {
-        failed++;
-        if (!firstError) {
-          firstError = e.message || e.details || e.hint || JSON.stringify(e);
-        }
-        failedOrders.push({ id: wo.id, error: e.message || String(e) });
-        console.error('upsert woo order failed:', wo.id, 'message=', e.message, 'details=', e.details, 'hint=', e.hint, 'code=', e.code);
-      }
-    }
-    
-    // 3. 提示 + 刷新
-    let msg = `「${storeMeta.display_name}」同步完成 · 共 ${orders.length} 单 · 入库 ${saved}`;
-    if (failed > 0) msg += ` · 失败 ${failed}`;
-    if (hint) hint.textContent = msg + ' · ' + new Date().toLocaleTimeString();
-    // V28e2: 失败时把真实数据库错误显示出来(关键!)
-    if (failed > 0 && firstError) {
-      toast(`同步失败原因:${firstError}`, 'err', 9000);
-      if (hint) hint.textContent = `❌ ${firstError}`;
+
+    let msg = `「${storeMeta.display_name}」同步完成 · 共 ${count} 单 · 入库 ${saved}`;
+    if (result.error) {
+      msg += ` · 部分失败:${result.error}`;
+      if (hint) hint.textContent = '❌ ' + (result.error || '');
+      toast(msg, 'warn', 6000);
     } else {
-      toast(msg, failed > 0 ? 'warn' : 'success');
+      if (hint) hint.textContent = msg + ' · ' + new Date().toLocaleTimeString();
+      toast(msg, 'success');
     }
-    if (failed > 0) console.warn('Failed woo orders:', failedOrders);
-    
+
     await shopifyReloadOrdersAndRender(true);
   } catch (e) {
     console.error('wooSyncOrders failed:', e);
