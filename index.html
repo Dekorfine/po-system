@@ -20,12 +20,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260527w"></script>
+<script src="js/core.js?v=20260528f"></script>
 <script src="js/utils.js?v=20260527m"></script>
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260526o"></script>
-<script src="js/help.js?v=20260528e"></script>
+<script src="js/help.js?v=20260528f"></script>
 <script src="js/dateFilter.js?v=20260526p"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
@@ -37,6 +37,7 @@
 <script src="js/orders.js?v=20260526q"></script>
 <script src="js/shopify.js?v=20260528e"></script>
 <script src="js/po.js?v=20260527x"></script>
+<script src="js/inventory.js?v=20260528f"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script src="js/cross-dept.js?v=20260526m"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
@@ -4149,7 +4150,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 /* ============ 批次 4 新增弹窗 overlay（修复位置 bug） ============ */
 /* 6 个新弹窗的 .modal 不能用原系统的卡片样式，要 reset 成全屏遮罩 */
 #poFormModal, #suppliersModal, #supplierEditModal,
-#masterBindModal, #multiSupplierConfirm, #poPrintModal, #internalNoteModal, #genericPromptModal, #customOrderModal, #customPoModal, #shopifyAddStoreModal, #productEditModal, #photoReqNewModal, #photoReqConfigModal, #supplierStatementModal, #photoReqEditModal, #photoReqBatchModal {
+#masterBindModal, #multiSupplierConfirm, #poPrintModal, #internalNoteModal, #genericPromptModal, #customOrderModal, #customPoModal, #shopifyAddStoreModal, #productEditModal, #photoReqNewModal, #photoReqConfigModal, #supplierStatementModal, #photoReqEditModal, #photoReqBatchModal, #inventoryEditModal, #inventoryAdjustModal {
   position: fixed !important; inset: 0 !important;
   background: rgba(28,25,23,0.5) !important;
   /* backdrop-filter removed for performance */
@@ -4163,7 +4164,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 #genericPromptModal { z-index: 9500 !important; }  /* 在其他 modal 之上 */
 #poFormModal[style*="flex"], #suppliersModal[style*="flex"], #supplierEditModal[style*="flex"],
-#masterBindModal[style*="flex"], #multiSupplierConfirm[style*="flex"], #poPrintModal[style*="flex"], #internalNoteModal[style*="flex"], #genericPromptModal[style*="flex"], #customOrderModal[style*="flex"], #customPoModal[style*="flex"], #shopifyAddStoreModal[style*="flex"], #productEditModal[style*="flex"], #photoReqNewModal[style*="flex"], #photoReqConfigModal[style*="flex"], #supplierStatementModal[style*="flex"], #photoReqEditModal[style*="flex"], #photoReqBatchModal[style*="flex"] {
+#masterBindModal[style*="flex"], #multiSupplierConfirm[style*="flex"], #poPrintModal[style*="flex"], #internalNoteModal[style*="flex"], #genericPromptModal[style*="flex"], #customOrderModal[style*="flex"], #customPoModal[style*="flex"], #shopifyAddStoreModal[style*="flex"], #productEditModal[style*="flex"], #photoReqNewModal[style*="flex"], #photoReqConfigModal[style*="flex"], #supplierStatementModal[style*="flex"], #photoReqEditModal[style*="flex"], #photoReqBatchModal[style*="flex"], #inventoryEditModal[style*="flex"], #inventoryAdjustModal[style*="flex"] {
   display: flex !important;
 }
 .modal-content {
@@ -4185,7 +4186,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
 #poFormModal .modal-close, #suppliersModal .modal-close, #supplierEditModal .modal-close,
-#masterBindModal .modal-close, #multiSupplierConfirm .modal-close, #poPrintModal .modal-close, #internalNoteModal .modal-close, #genericPromptModal .modal-close, #customOrderModal .modal-close, #customPoModal .modal-close, #shopifyAddStoreModal .modal-close, #productEditModal .modal-close, #photoReqNewModal .modal-close, #photoReqConfigModal .modal-close, #supplierStatementModal .modal-close, #photoReqEditModal .modal-close, #photoReqBatchModal .modal-close {
+#masterBindModal .modal-close, #multiSupplierConfirm .modal-close, #poPrintModal .modal-close, #internalNoteModal .modal-close, #genericPromptModal .modal-close, #customOrderModal .modal-close, #customPoModal .modal-close, #shopifyAddStoreModal .modal-close, #productEditModal .modal-close, #photoReqNewModal .modal-close, #photoReqConfigModal .modal-close, #supplierStatementModal .modal-close, #photoReqEditModal .modal-close, #photoReqBatchModal .modal-close, #inventoryEditModal .modal-close, #inventoryAdjustModal .modal-close {
   position: static !important; top: auto !important; right: auto !important;
   width: 30px; height: 30px;
   background: transparent; border: none; cursor: pointer;
@@ -4193,7 +4194,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   border-radius: 6px;
 }
 #poFormModal .modal-close:hover, #suppliersModal .modal-close:hover, #supplierEditModal .modal-close:hover,
-#masterBindModal .modal-close:hover, #multiSupplierConfirm .modal-close:hover, #poPrintModal .modal-close:hover, #internalNoteModal .modal-close:hover, #genericPromptModal .modal-close:hover, #customOrderModal .modal-close:hover, #customPoModal .modal-close:hover, #shopifyAddStoreModal .modal-close:hover, #productEditModal .modal-close:hover, #photoReqNewModal .modal-close:hover, #photoReqConfigModal .modal-close:hover, #supplierStatementModal .modal-close:hover, #photoReqEditModal .modal-close:hover, #photoReqBatchModal .modal-close:hover {
+#masterBindModal .modal-close:hover, #multiSupplierConfirm .modal-close:hover, #poPrintModal .modal-close:hover, #internalNoteModal .modal-close:hover, #genericPromptModal .modal-close:hover, #customOrderModal .modal-close:hover, #customPoModal .modal-close:hover, #shopifyAddStoreModal .modal-close:hover, #productEditModal .modal-close:hover, #photoReqNewModal .modal-close:hover, #photoReqConfigModal .modal-close:hover, #supplierStatementModal .modal-close:hover, #photoReqEditModal .modal-close:hover, #photoReqBatchModal .modal-close:hover, #inventoryEditModal .modal-close:hover, #inventoryAdjustModal .modal-close:hover {
   background: var(--bg-elevated); color: var(--text-primary);
 }
 .modal-body {
@@ -5122,6 +5123,7 @@ body.has-side-tabs .section-block {
     <div class="tab-item" data-tab="issues" onclick="switchTab('issues')">⚠ 供应商问题 <span class="badge zero" id="badgeIssues">0</span><a href="?tab=issues" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="finance" onclick="switchTab('finance')">✓ 财务收货 <span class="badge zero" id="badgeFinance">0</span><a href="?tab=finance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="products" onclick="switchTab('products')">📚 产品 <span class="badge zero" id="badgeProducts">0</span><a href="?tab=products" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="inventory" onclick="switchTab('inventory')">📦 库存 <span class="badge zero" id="badgeInventory">0</span><a href="?tab=inventory" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="cross_dept" onclick="switchTab('cross_dept')">📨 跨部门 <span class="badge zero" id="badgeCrossDept">0</span><a href="?tab=cross_dept" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="feedback" onclick="switchTab('feedback')">💬 反馈 <span class="badge zero" id="badgeFeedback">0</span><a href="?tab=feedback" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="consolidation" onclick="switchTab('consolidation')">🧊 合箱<a href="?tab=consolidation" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
@@ -5857,6 +5859,36 @@ body.has-side-tabs .section-block {
   </div>
 </div>
 
+<!-- V20260528f: 库存录入/编辑 modal -->
+<div id="inventoryEditModal" class="modal fixed-overlay" style="display:none;">
+  <div class="modal-content" style="max-width: 640px; max-height: 92vh;">
+    <div class="modal-header">
+      <h3>📦 库存产品</h3>
+      <button class="modal-close" onclick="invCloseEdit()">✕</button>
+    </div>
+    <div class="modal-body" id="inventoryEditBody" style="overflow-y: auto; padding: 16px 20px;"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="invCloseEdit()">取消</button>
+      <button class="btn primary" onclick="invSaveEdit()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- V20260528f: 库存快速调整 modal -->
+<div id="inventoryAdjustModal" class="modal fixed-overlay" style="display:none;">
+  <div class="modal-content" style="max-width: 420px;">
+    <div class="modal-header">
+      <h3>± 调整库存</h3>
+      <button class="modal-close" onclick="invCloseAdjust()">✕</button>
+    </div>
+    <div class="modal-body" id="inventoryAdjustBody" style="padding: 16px 20px;"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="invCloseAdjust()">取消</button>
+      <button class="btn primary" onclick="invSaveAdjust()">💾 确认</button>
+    </div>
+  </div>
+</div>
+
 <!-- V20260527z: 拍摄需求 · 编辑 modal(v3 #4 协作编辑) -->
 <div id="photoReqEditModal" class="modal fixed-overlay" style="display:none;">
   <div class="modal-content" style="max-width: 720px; max-height: 92vh;">
@@ -6093,6 +6125,15 @@ body.has-side-tabs .section-block {
         </select>
       </div>
       <div id="financeListBody" style="margin-top: 14px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAB: 库存仓库 (V28f) ============ -->
+<div class="tab-content" data-tab="inventory">
+  <div class="section-block">
+    <div id="inventoryBody">
+      <div style="padding:32px; text-align:center; color:var(--text-tertiary);">加载中...</div>
     </div>
   </div>
 </div>
