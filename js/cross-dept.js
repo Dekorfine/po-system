@@ -69,8 +69,8 @@ async function cdmPublishMyStaff(updatedBy) {
     console.log(`[CDM] 已发布 ${rows.length} 个跟单人员到共享目录`);
     return rows.length;
   } catch (e) {
-    console.warn('[CDM] 发布人员失败:', e.message);
-    return 0;
+    console.warn('[CDM] 发布人员失败:', e.message, e);
+    return -1;  // V28k2: -1 = 错误(区分于 0 = 没人)
   }
 }
 
@@ -317,17 +317,36 @@ async function cdmInit() {
     await Promise.all([cdmLoadShopOwners(), cdmLoadTimeoutConfig(), cdmLoadOrgDirectory()]);
     cdmSubscribeRealtime();
     CDM_INITIALIZED = true;
-    // V28g (v5):主管/管理员进 tab 时自动发布本系统人员到共享目录(不阻塞)
-    if (typeof IS_ADMIN !== 'undefined' && IS_ADMIN) {
-      const me = _cdmGetCurrentUser();
-      cdmPublishMyStaff(me.name).then(n => {
-        if (n > 0) cdmLoadOrgDirectory();  // 发布后刷新目录
-      });
-    }
+    // V28k2:进 tab 必发布跟单人员到共享目录(不卡 IS_ADMIN · 发布的是全员通讯录 · 无权限风险)
+    const me = _cdmGetCurrentUser();
+    cdmPublishMyStaff(me.name).then(n => {
+      if (n > 0) {
+        console.log(`[CDM] ✓ 已发布 ${n} 个跟单人员到共享目录`);
+        cdmLoadOrgDirectory();  // 发布后刷新
+      } else if (n < 0) {
+        console.warn('[CDM] 发布跟单人员失败 · 见上方报错');
+      }
+    });
   }
   await cdmLoadMessages();
 }
 function cdmOnTabActivate() { cdmInit(); }
+
+// V28k2:手动同步人员到共享目录(给个明确按钮 · 带 toast 反馈)
+async function cdmManualPublishStaff() {
+  const me = _cdmGetCurrentUser();
+  toast('正在同步跟单人员到共享目录…', 'info', 1500);
+  const n = await cdmPublishMyStaff(me.name);
+  if (n > 0) {
+    await cdmLoadOrgDirectory();
+    toast(`✓ 已发布 ${n} 个跟单人员到共享目录 · 美工/客服现在能选到你们了`, 'success', 4000);
+  } else if (n === 0) {
+    toast('没有可发布的人员(CONFIG.agents 为空?)', 'warn');
+  } else {
+    toast('发布失败 · 见控制台报错 · 检查 org_directory 表权限', 'err', 5000);
+  }
+}
+window.cdmManualPublishStaff = cdmManualPublishStaff;
 
 // ─────────────── Realtime ───────────────
 function cdmSubscribeRealtime() {
@@ -769,6 +788,7 @@ function cdmRenderAdminButtons() {
   el.innerHTML = `
     <button class="btn" onclick="cdmOpenTimeoutSettings()" title="设置每个分类+优先级的超时天数">⏰ 超时阈值</button>
     <button class="btn" onclick="cdmOpenShopOwnersManager()" title="维护本部门员工与网站的负责关系">🌐 店铺负责人 (${mineCount})</button>
+    <button class="btn" onclick="cdmManualPublishStaff()" title="把跟单团队发布到共享人员目录 · 让美工/客服发工单时能选到你们">👥 同步人员到共享目录</button>
   `;
 }
 

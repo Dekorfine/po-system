@@ -10,6 +10,28 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260528k',
+    date: '2026-05-28',
+    type: 'fix',
+    title: '🐛 跨部门人员目录发布修复 + 运费筛选多来源',
+    notes: [
+      '🔴 美工反馈:跟单的人没出现在共享目录 · 因为 28g 发布卡在 IS_ADMIN 判断 + 静默失败',
+      '✅ 修法:',
+      '   · 进跨部门 tab 必发布跟单人员(不卡 IS_ADMIN · 发的是全员通讯录无权限风险)',
+      '   · 加「👥 同步人员到共享目录」按钮(带 toast 反馈 · 能确认成功)',
+      '   · cdmPublishMyStaff 失败 return -1(区分错误 vs 0 人)· 不再静默',
+      '',
+      '🔧 运费筛选(快速/标准)多来源 fallback:',
+      '   · 之前只读 shipping_lines · 漏了 Shopify 主运费字段 → 全判成标准',
+      '   · 现在 4 来源:total_shipping_price_set → shipping_lines → total_shipping → 间接算',
+      '   · 加 diagShipping() 诊断命令(控制台跑 · 看运费来源)',
+      '',
+      '📋 shop_owners(店铺负责人)仍需手动录:涉及"谁负责哪店"· 用「店铺负责人」按钮批量加',
+      '',
+      '🔒 升 cross-dept.js / help.js → v20260528k',
+    ],
+  },
+  {
     v: '20260528j',
     date: '2026-05-28',
     type: 'fix',
