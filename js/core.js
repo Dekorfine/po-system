@@ -863,6 +863,7 @@ const ALL_MODULES = [
   { key: 'issues', label: '⚠ 供应商问题' },
   { key: 'finance', label: '✓ 财务收货' },
   { key: 'products', label: '📚 产品' },
+  { key: 'inventory', label: '📦 库存' },
   { key: 'consolidation', label: '🧊 合箱' },
   { key: 'performance', label: '📊 绩效' },
   { key: 'photoreq', label: '📨 拍摄需求' },
@@ -2233,6 +2234,7 @@ function renderActiveTab() {
   }
   else if (CURRENT_TAB === 'finance') { if (typeof renderFinance === 'function') renderFinance(); }
   else if (CURRENT_TAB === 'products') { if (typeof renderProducts === 'function') renderProducts(); }
+  else if (CURRENT_TAB === 'inventory') { if (typeof renderInventory === 'function') renderInventory(); }
   else if (CURRENT_TAB === 'analytics') { 
     renderAnalytics();
     // V20260527j: 售后汇总已移到 analytics tab 顶部 · 切到此 tab 时触发渲染
@@ -2560,6 +2562,7 @@ const TAB_LAYOUT_DEFAULT = {
   orders:        'top',
   aftersales:    'top',
   products:      'top',
+  inventory:     'side',
   // 不常用 — 显示在左侧栏(图标 only)
   missing:       'side',
   purchases:     'side',
@@ -2581,6 +2584,7 @@ const TAB_META = {
   issues:        { icon: '⚠',  label: '供应商问题', badgeId: 'badgeIssues' },
   finance:       { icon: '✓',  label: '财务收货',   badgeId: 'badgeFinance' },
   products:      { icon: '📚', label: '产品',       badgeId: 'badgeProducts' },
+  inventory:     { icon: '📦', label: '库存',       badgeId: 'badgeInventory' },
   cross_dept:    { icon: '📨', label: '跨部门',     badgeId: 'badgeCrossDept' },
   feedback:      { icon: '💬', label: '反馈',       badgeId: 'badgeFeedback' },
   consolidation: { icon: '🧊', label: '合箱',       badgeId: null },
