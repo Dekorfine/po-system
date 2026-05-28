@@ -481,34 +481,59 @@ window.inspCloseEdit = inspCloseEdit;
 // ─────────────── 导出(图片 / PDF) ───────────────
 // 生成验货单的标准 HTML(图片版和 PDF 共用)
 function _inspBuildExportHtml(it) {
-  const st = INSP_STATUS[it.status] || INSP_STATUS.ordered;
   const imgs = Array.isArray(it.images) ? it.images : [];
-  const row = (label, val) => `<tr><td style="border:1px solid #333; padding:8px 12px; background:#f5f5f5; font-weight:600; width:130px; white-space:nowrap;">${label}</td><td style="border:1px solid #333; padding:8px 12px;">${val || '—'}</td></tr>`;
+  const st = INSP_STATUS[it.status] || INSP_STATUS.ordered;
+  const row = (label, val, highlight) => `
+    <tr>
+      <td style="border:1px solid #333; padding:11px 14px; background:#f0f0f0; font-weight:700; width:140px; white-space:nowrap; font-size:14px;">${label}</td>
+      <td style="border:1px solid #333; padding:11px 14px; font-size:14px; ${highlight ? 'color:#c0392b; font-weight:600;' : ''}">${val || '—'}</td>
+    </tr>`;
+
+  // 图片区:1 张占满 · 2-4 张网格 · 更多滚动
+  const imgGrid = imgs.length === 0
+    ? '<div style="color:#999; text-align:center; padding:80px 20px; border:1px dashed #ccc; border-radius:6px;">暂无灯具图片</div>'
+    : imgs.length === 1
+      ? `<img src="${escapeHtml(imgs[0].url)}" crossorigin="anonymous" style="width:100%; border:1px solid #ccc; border-radius:6px; display:block;">`
+      : `<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+           ${imgs.map(im => `<img src="${escapeHtml(im.url)}" crossorigin="anonymous" style="width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #ccc; border-radius:6px; display:block;">`).join('')}
+         </div>`;
+
   return `
-    <div style="font-family:'Microsoft YaHei',sans-serif; width:760px; padding:24px; background:#fff; color:#222;">
-      <div style="display:flex; gap:16px;">
-        <div style="flex:1;">
-          <h2 style="text-align:center; margin:0 0 14px; font-size:18px; border:1px solid #333; padding:8px; background:#eee;">批量订单注意事项</h2>
-          <table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <div style="font-family:'Microsoft YaHei',sans-serif; width:820px; padding:32px; background:#fff; color:#1a1a1a; box-sizing:border-box;">
+      <!-- 标题 -->
+      <div style="text-align:center; margin-bottom:20px; padding-bottom:16px; border-bottom:3px double #333;">
+        <div style="font-size:24px; font-weight:800; letter-spacing:2px;">批量订单验货单</div>
+        <div style="font-size:13px; color:#666; margin-top:6px;">工厂验货标准 · 请严格按此执行 &nbsp;|&nbsp; 状态:${st.label}</div>
+      </div>
+
+      <div style="display:flex; gap:24px; align-items:flex-start;">
+        <!-- 左:信息表 -->
+        <div style="flex:1.15; min-width:0;">
+          <div style="font-size:16px; font-weight:700; margin-bottom:10px; padding:8px 0; border-bottom:2px solid #333;">📋 订单注意事项</div>
+          <table style="width:100%; border-collapse:collapse;">
             ${row('订单号', escapeHtml(it.order_no || ''))}
             ${row('供应商', escapeHtml(it.supplier_name || ''))}
-            ${row('订单数量', it.order_qty || '')}
-            ${row('国家', escapeHtml(it.country || ''))}
+            ${row('订单数量', it.order_qty ? it.order_qty + ' 件' : '')}
+            ${row('目的国家', escapeHtml(it.country || ''))}
             ${row('标准', escapeHtml(it.standard || ''))}
-            ${row('光源/色温/电压', `${escapeHtml(it.voltage || '')} / ${escapeHtml(it.color_temp || '')} / ${escapeHtml(it.light_source || '')}`)}
-            ${row('要求/标签', escapeHtml(it.label_req || ''))}
-            ${row('是否要做首样', it.need_sample ? '是' : '否')}
-            ${row('放英文说明书', it.need_manual_en ? '是' : '否')}
+            ${row('光源 / 色温 / 电压', [it.light_source, it.color_temp, it.voltage].filter(Boolean).join(' / '))}
+            ${row('要求 / 标签', escapeHtml(it.label_req || ''))}
+            ${row('是否做首样', it.need_sample ? '✅ 是' : '否', it.need_sample)}
+            ${row('放英文说明书', it.need_manual_en ? '✅ 是' : '否', it.need_manual_en)}
             ${row('纸箱打包数量', escapeHtml(it.packing_method || ''))}
-            ${row('客户其他要求', escapeHtml(it.other_req || ''))}
+            ${row('客户其他要求', escapeHtml(it.other_req || ''), !!it.other_req)}
           </table>
-          <div style="margin-top:10px; font-size:12px;">跟单:_______　产线:_______</div>
-        </div>
-        <div style="width:280px;">
-          <h2 style="text-align:center; margin:0 0 14px; font-size:18px; border:1px solid #333; padding:8px; background:#eee;">灯具图片</h2>
-          <div style="display:flex; flex-direction:column; gap:8px;">
-            ${imgs.map(im => `<img src="${escapeHtml(im.url)}" crossorigin="anonymous" style="width:100%; border:1px solid #ccc; border-radius:4px;">`).join('') || '<div style="color:#999; text-align:center; padding:40px;">无图片</div>'}
+          <div style="margin-top:24px; display:flex; gap:40px; font-size:14px; color:#333;">
+            <div>跟单:________________</div>
+            <div>产线:________________</div>
           </div>
+          <div style="margin-top:8px; font-size:12px; color:#999;">制表日期:${new Date(it.created_at || Date.now()).toLocaleDateString('zh-CN')}</div>
+        </div>
+
+        <!-- 右:灯具图片 -->
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:16px; font-weight:700; margin-bottom:10px; padding:8px 0; border-bottom:2px solid #333;">💡 灯具图片</div>
+          ${imgGrid}
         </div>
       </div>
     </div>
@@ -516,22 +541,114 @@ function _inspBuildExportHtml(it) {
 }
 
 // V28o:预览验货单(弹 modal 显示效果 · 里面放导出按钮)
+let _inspPreviewId = null;
+let _inspPreviewPasteHandler = null;
+
 function inspPreview(id) {
   const it = INSPECTION._list.find(x => x.id === id);
   if (!it) return;
   const modal = document.getElementById('inspPreviewModal');
-  const body = document.getElementById('inspPreviewBody');
-  if (!modal || !body) return;
-  body.innerHTML = _inspBuildExportHtml(it);
+  if (!modal) return;
+  _inspPreviewId = id;
   modal.dataset.sheetId = id;
+  inspRenderPreview();
   modal.classList.add('show');
+  // V28o4:预览里也能粘贴加图(全局监听 · modal 开着时生效)
+  _inspPreviewPasteHandler = (e) => {
+    const m = document.getElementById('inspPreviewModal');
+    if (!m || !m.classList.contains('show')) return;
+    inspPreviewPaste(e);
+  };
+  document.addEventListener('paste', _inspPreviewPasteHandler);
 }
 window.inspPreview = inspPreview;
 
+function inspRenderPreview() {
+  const it = INSPECTION._list.find(x => x.id === _inspPreviewId);
+  const body = document.getElementById('inspPreviewBody');
+  if (!it || !body) return;
+  const imgs = Array.isArray(it.images) ? it.images : [];
+  // 图片管理条(预览顶部 · 可加/删图)
+  const thumbStrip = `
+    <div style="width:100%; max-width:820px; margin:0 auto 14px; background:#fff; border-radius:8px; padding:12px; box-sizing:border-box;">
+      <div style="font-size:12px; color:#666; margin-bottom:8px; font-weight:600;">📷 灯具图片(直接 Ctrl+V 粘贴 / 上传 · 实时保存)</div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+        ${imgs.map((im, i) => im._uploading
+          ? `<div style="width:64px;height:64px;border-radius:6px;background:#eee;display:flex;align-items:center;justify-content:center;">⏳</div>`
+          : `<div style="position:relative;width:64px;height:64px;">
+               <img src="${escapeHtml(im.url)}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #ddd;">
+               <button onclick="inspPreviewRemoveImg(${i})" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#dc2626;color:#fff;border:0;font-size:11px;cursor:pointer;line-height:1;">✕</button>
+             </div>`).join('')}
+        <label style="width:64px;height:64px;border:1.5px dashed #bbb;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;font-size:11px;color:#888;gap:2px;">
+          <span style="font-size:18px;">+</span>上传
+          <input type="file" accept="image/*" multiple style="display:none;" onchange="inspPreviewPickImgs(this)">
+        </label>
+      </div>
+    </div>`;
+  body.innerHTML = thumbStrip + _inspBuildExportHtml(it);
+}
+
 function inspClosePreview() {
   document.getElementById('inspPreviewModal')?.classList.remove('show');
+  _inspPreviewId = null;
+  if (_inspPreviewPasteHandler) { document.removeEventListener('paste', _inspPreviewPasteHandler); _inspPreviewPasteHandler = null; }
 }
 window.inspClosePreview = inspClosePreview;
+
+// 预览里上传/粘贴/删图 · 直接存库
+async function _inspPreviewAddImg(file) {
+  const it = INSPECTION._list.find(x => x.id === _inspPreviewId);
+  if (!it) return;
+  if (!Array.isArray(it.images)) it.images = [];
+  const ph = { url: '', name: file.name, _uploading: true };
+  it.images.push(ph);
+  inspRenderPreview();
+  try {
+    const att = await _inspUploadImg(file);
+    const idx = it.images.indexOf(ph);
+    if (idx >= 0) it.images[idx] = att;
+    // 实时存库
+    await sb.from('inspection_sheets').update({ images: it.images.filter(im => im.url), updated_at: new Date().toISOString() }).eq('id', it.id);
+    toast('✓ 图片已加并保存', 'success', 1500);
+  } catch (err) {
+    const idx = it.images.indexOf(ph);
+    if (idx >= 0) it.images.splice(idx, 1);
+    toast('上传失败:' + (err.message || err), 'err', 4000);
+  }
+  inspRenderPreview();
+}
+
+async function inspPreviewPickImgs(input) {
+  const files = [...(input.files || [])];
+  input.value = '';
+  for (const f of files) { if (f.type.startsWith('image/')) await _inspPreviewAddImg(f); }
+}
+window.inspPreviewPickImgs = inspPreviewPickImgs;
+
+async function inspPreviewPaste(e) {
+  const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+  if (!items) return;
+  for (const it of items) {
+    if (it.type && it.type.startsWith('image/')) {
+      e.preventDefault();
+      const f = it.getAsFile();
+      if (f) await _inspPreviewAddImg(f);
+      return;
+    }
+  }
+}
+window.inspPreviewPaste = inspPreviewPaste;
+
+async function inspPreviewRemoveImg(i) {
+  const it = INSPECTION._list.find(x => x.id === _inspPreviewId);
+  if (!it || !Array.isArray(it.images)) return;
+  it.images.splice(i, 1);
+  inspRenderPreview();
+  try {
+    await sb.from('inspection_sheets').update({ images: it.images.filter(im => im.url), updated_at: new Date().toISOString() }).eq('id', it.id);
+  } catch (e) { toast('保存失败', 'err'); }
+}
+window.inspPreviewRemoveImg = inspPreviewRemoveImg;
 
 async function inspExportImage(id) {
   const it = INSPECTION._list.find(x => x.id === id);
