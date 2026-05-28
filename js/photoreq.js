@@ -1456,8 +1456,79 @@ function _photoReqBatchEmptyRow() {
     applicable_shops: [],
     urgency: '',  // 空 = 用默认
     reason: '',
+    product_image: '',  // V28h: 每行支持图片(上传/粘贴)
+    _uploading: false,
   };
 }
+
+// V28h: 批量行 · 通用单图上传(压缩 + 传 storage · 返回 publicUrl)
+async function _photoReqBatchUploadOne(file) {
+  const client = _photoReqClient();
+  if (!client) throw new Error('Supabase 未初始化');
+  const compressed = await _photoReqCompressImage(file);
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+  const path = `cs-requests/batch-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+  const { error } = await client.storage.from('attachments')
+    .upload(path, compressed, { upsert: false, contentType: compressed.type });
+  if (error) throw error;
+  const { data: { publicUrl } } = client.storage.from('attachments').getPublicUrl(path);
+  return publicUrl;
+}
+
+// V28h: 批量行 · 选文件上传
+async function _photoReqBatchPickImage(rowId, fileInput) {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  const r = PHOTOREQ_BATCH?.rows.find(x => x._id === rowId);
+  if (!r) return;
+  r._uploading = true;
+  _photoReqRenderBatch();
+  try {
+    r.product_image = await _photoReqBatchUploadOne(file);
+    toast('✓ 图片已上传', 'success', 1500);
+  } catch (e) {
+    toast('上传失败:' + (e.message || e), 'err');
+  } finally {
+    r._uploading = false;
+    _photoReqRenderBatch();
+  }
+}
+window._photoReqBatchPickImage = _photoReqBatchPickImage;
+
+// V28h: 批量行 · 粘贴图片(Ctrl+V)
+async function _photoReqBatchPasteImage(rowId, e) {
+  const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+  if (!items) return;
+  for (const it of items) {
+    if (it.type && it.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = it.getAsFile();
+      if (!file) continue;
+      const r = PHOTOREQ_BATCH?.rows.find(x => x._id === rowId);
+      if (!r) return;
+      r._uploading = true;
+      _photoReqRenderBatch();
+      try {
+        r.product_image = await _photoReqBatchUploadOne(file);
+        toast('✓ 粘贴图片已上传', 'success', 1500);
+      } catch (err) {
+        toast('上传失败:' + (err.message || err), 'err');
+      } finally {
+        r._uploading = false;
+        _photoReqRenderBatch();
+      }
+      return;
+    }
+  }
+}
+window._photoReqBatchPasteImage = _photoReqBatchPasteImage;
+
+// V28h: 批量行 · 清除图片
+function _photoReqBatchClearImage(rowId) {
+  const r = PHOTOREQ_BATCH?.rows.find(x => x._id === rowId);
+  if (r) { r.product_image = ''; _photoReqRenderBatch(); }
+}
+window._photoReqBatchClearImage = _photoReqBatchClearImage;
 
 function _photoReqRenderBatch() {
   const s = PHOTOREQ_BATCH;
@@ -1483,7 +1554,8 @@ function _photoReqRenderBatch() {
     </div>
     
     <!-- 表格 header -->
-    <div style="display:grid; grid-template-columns: 1.6fr 1fr 2fr 90px 1.8fr 36px; gap:6px; padding:8px 10px; background:var(--bg-elevated); font-size:10.5px; font-weight:600; color:var(--text-tertiary); border-radius:6px 6px 0 0; text-transform:uppercase;">
+    <div style="display:grid; grid-template-columns: 56px 1.5fr 0.9fr 1.6fr 84px 1.6fr 32px; gap:6px; padding:8px 10px; background:var(--bg-elevated); font-size:10.5px; font-weight:600; color:var(--text-tertiary); border-radius:6px 6px 0 0; text-transform:uppercase;">
+      <div>图片</div>
       <div>产品名 *</div>
       <div>SKU</div>
       <div>店铺</div>
@@ -1517,8 +1589,23 @@ function _photoReqBatchRowHtml(r, idx) {
   const shopsLabel = r.applicable_shops.length > 0 
     ? r.applicable_shops.join(' · ') 
     : '<span style="color:var(--text-tertiary);">未选</span>';
+  // V28h: 图片单元格(上传/粘贴/预览)
+  const imgCell = r._uploading
+    ? `<div style="width:48px; height:48px; border-radius:5px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--text-tertiary);">⏳</div>`
+    : r.product_image
+      ? `<div style="position:relative; width:48px; height:48px;">
+           <img src="${escapeHtml(r.product_image)}" style="width:48px; height:48px; object-fit:cover; border-radius:5px; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(r.product_image)}')">
+           <button onclick="_photoReqBatchClearImage('${r._id}')" style="position:absolute; top:-6px; right:-6px; width:16px; height:16px; border-radius:50%; background:var(--danger); color:white; border:0; font-size:10px; cursor:pointer; line-height:1; padding:0;" title="移除">✕</button>
+         </div>`
+      : `<label tabindex="0" onpaste="_photoReqBatchPasteImage('${r._id}', event)" title="点击上传 · 或选中后 Ctrl+V 粘贴"
+              style="width:48px; height:48px; border:1px dashed var(--border); border-radius:5px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; font-size:9px; color:var(--text-tertiary); gap:1px; outline:none;">
+           <span style="font-size:15px;">📷</span>
+           <span style="font-size:8px;">贴/传</span>
+           <input type="file" accept="image/*" style="display:none;" onchange="_photoReqBatchPickImage('${r._id}', this)">
+         </label>`;
   return `
-    <div style="display:grid; grid-template-columns: 1.6fr 1fr 2fr 90px 1.8fr 36px; gap:6px; padding:6px 10px; border-top:${idx > 0 ? '1px solid var(--border-subtle)' : '0'}; align-items:center;">
+    <div style="display:grid; grid-template-columns: 56px 1.5fr 0.9fr 1.6fr 84px 1.6fr 32px; gap:6px; padding:6px 10px; border-top:${idx > 0 ? '1px solid var(--border-subtle)' : '0'}; align-items:center;">
+      <div>${imgCell}</div>
       <input type="text" value="${escapeHtml(r.product_name)}" oninput="_photoReqBatchSetField('${r._id}','product_name',this.value); _photoReqBatchUpdateCount()"
              placeholder="必填..."
              style="padding:6px 8px; font-size:12px; border:1px solid ${r.product_name.trim() ? 'var(--border)' : 'rgba(245,158,11,0.4)'}; border-radius:4px;">
@@ -1637,6 +1724,7 @@ async function photoReqSubmitBatch() {
       id: crypto.randomUUID(),
       product_name: r.product_name.trim(),
       sku: (r.sku || '').trim() || null,
+      product_image: (r.product_image || '').trim() || null,
       applicable_shops: r.applicable_shops || [],
       product_type: '跟单需求',
       status: 'draft',
