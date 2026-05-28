@@ -338,7 +338,7 @@ function _renderOrderCard(o, i) {
   const um = urgentMeta[urgentLevel] || null;
   
   return `
-    <div class="as-card ${urgentLevel ? 'urgent urgent-' + urgentLevel : ''} ${isDone ? 'done' : ''}" onclick="openOrder('${o._id}')">
+    <div class="as-card ${urgentLevel ? 'urgent urgent-' + urgentLevel : ''} ${isDone ? 'done' : ''}" onclick="openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')">
       <div class="cover ${coverCls}">
         ${coverHTML}
         <span class="status-badge" style="background:${statusMeta.bg}; color:${statusMeta.color};">${statusMeta.label}</span>
