@@ -127,8 +127,7 @@ function inspCardHtml(it) {
         ${reqBadges.length > 0 ? `<div style="display:flex; gap:6px; flex-wrap:wrap;">${reqBadges.map(b => `<span style="font-size:11px; padding:2px 7px; border-radius:6px; background:var(--bg-elevated); color:var(--text-secondary);">${b}</span>`).join('')}</div>` : ''}
       </div>
       <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end; flex-shrink:0;">
-        <button class="btn small" onclick="event.stopPropagation(); inspExportImage('${it.id}')" title="导出图片发工厂">🖼 导出图</button>
-        <button class="btn small" onclick="event.stopPropagation(); inspExportPDF('${it.id}')" title="导出 PDF">📄 PDF</button>
+        <button class="btn small primary" onclick="event.stopPropagation(); inspPreview('${it.id}')" title="预览验货单 · 可导出">👁 预览/导出</button>
       </div>
     </div>
   `;
@@ -149,7 +148,15 @@ function inspOpenEdit(id) {
   };
   inspRenderEditModal();
   document.getElementById('inspEditModal')?.classList.add('show');
+  // V28o:挂全局粘贴监听(modal 打开时 · 整个 modal 内 Ctrl+V 都能贴图 · 不用先点聚焦)
+  _inspPasteHandler = (e) => {
+    const modal = document.getElementById('inspEditModal');
+    if (!modal || !modal.classList.contains('show')) return;
+    inspPasteImg(e);
+  };
+  document.addEventListener('paste', _inspPasteHandler);
 }
+let _inspPasteHandler = null;
 window.inspOpenEdit = inspOpenEdit;
 
 function inspRenderEditModal() {
@@ -225,13 +232,13 @@ function inspRenderEditModal() {
 
     ${field('状态', `<select onchange="inspSetField('status', this.value)" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px;">${statusOpts}</select>`)}
 
-    ${field('灯具图片(可粘贴 / 上传多张)', `
+    ${field('灯具图片(支持复制粘贴 / 上传多张)', `
       <div id="inspImgArea" tabindex="0" onpaste="inspPasteImg(event)"
            style="border:1px dashed var(--border); border-radius:8px; padding:12px; outline:none;">
         <div style="display:flex; flex-wrap:wrap; gap:8px;">${imgCells}</div>
         <div style="display:flex; align-items:center; gap:8px; margin-top:${imgs.length ? '10px' : '0'};">
-          <label class="btn small" style="cursor:pointer;">+ 上传图片<input type="file" accept="image/*" multiple style="display:none;" onchange="inspPickImgs(this)"></label>
-          <span style="font-size:11px; color:var(--text-tertiary);">或点这里后 Ctrl+V 粘贴 · 支持多张</span>
+          <label class="btn small" style="cursor:pointer;">+ 上传图片(可多选)<input type="file" accept="image/*" multiple style="display:none;" onchange="inspPickImgs(this)"></label>
+          <span style="font-size:11px; color:var(--text-tertiary);">或直接 Ctrl+V 粘贴截图(在此弹窗内任意位置都可)· 支持多张</span>
         </div>
       </div>
     `)}
@@ -444,6 +451,8 @@ window.inspDelete = inspDelete;
 function inspCloseEdit() {
   document.getElementById('inspEditModal')?.classList.remove('show');
   INSPECTION._editing = null;
+  // V28o:卸载全局粘贴监听
+  if (_inspPasteHandler) { document.removeEventListener('paste', _inspPasteHandler); _inspPasteHandler = null; }
 }
 window.inspCloseEdit = inspCloseEdit;
 
@@ -483,6 +492,24 @@ function _inspBuildExportHtml(it) {
     </div>
   `;
 }
+
+// V28o:预览验货单(弹 modal 显示效果 · 里面放导出按钮)
+function inspPreview(id) {
+  const it = INSPECTION._list.find(x => x.id === id);
+  if (!it) return;
+  const modal = document.getElementById('inspPreviewModal');
+  const body = document.getElementById('inspPreviewBody');
+  if (!modal || !body) return;
+  body.innerHTML = _inspBuildExportHtml(it);
+  modal.dataset.sheetId = id;
+  modal.classList.add('show');
+}
+window.inspPreview = inspPreview;
+
+function inspClosePreview() {
+  document.getElementById('inspPreviewModal')?.classList.remove('show');
+}
+window.inspClosePreview = inspClosePreview;
 
 async function inspExportImage(id) {
   const it = INSPECTION._list.find(x => x.id === id);
