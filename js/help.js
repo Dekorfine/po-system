@@ -10,6 +10,27 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260528e',
+    date: '2026-05-28',
+    type: 'fix',
+    title: '🐛 修 Mooielight 同步 upsert 全失败(status 400)· 字段不匹配',
+    notes: [
+      '🔍 现象:WC 拉到 7 单 · 但全部 upsert failed (400) · 入库 0',
+      '🔍 根因:wooNormalizeOrder 写入了 shopify_orders 表里不存在的列',
+      '   · site_code / subtotal_price / total_shipping / total_tax / shopify_updated_at',
+      '   · Postgres 拒绝未知列 → 400',
+      '',
+      '✅ 修法 1:只保留确认存在的字段(对齐自定义订单 insert 模板)',
+      '   · 删掉 5 个可疑列 · 运费/税挪进 raw_payload(getShippingFee 从那读)',
+      '',
+      '✅ 修法 2:line_items 内部字段名对齐前端渲染',
+      '   · qty → quantity · variant → variant_title · image → image_url',
+      '   · 否则 woo 订单卡片显示不出数量/变体/图片',
+      '',
+      '🔒 升 shopify.js / help.js → v20260528e',
+    ],
+  },
+  {
     v: '20260528d',
     date: '2026-05-28',
     type: 'fix',

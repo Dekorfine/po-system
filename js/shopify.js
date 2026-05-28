@@ -648,19 +648,17 @@ function wooNormalizeOrder(wo, storeMeta) {
     return {
       sku: li.sku || '',
       title: li.name || '',
-      qty: li.quantity || 1,
+      quantity: li.quantity || 1,        // 前端读 quantity(不是 qty)
       price: parseFloat(li.price || 0),
       total: parseFloat(li.total || 0),
-      variant: variantMeta || '',
-      image: li.image?.src || '',
+      variant_title: variantMeta || '',  // 前端读 variant_title(不是 variant)
+      image_url: li.image?.src || '',    // 前端读 image_url(不是 image)
       product_id: li.product_id || null,
       variation_id: li.variation_id || null,
     };
   });
   
   const totalPrice = parseFloat(wo.total || 0);
-  const shippingPrice = parseFloat(wo.shipping_total || 0);
-  const taxPrice = parseFloat(wo.total_tax || 0);
   
   return {
     // ⚠️ 关键:用 woo- 前缀防与 Shopify 数字 ID 冲突
@@ -669,7 +667,6 @@ function wooNormalizeOrder(wo, storeMeta) {
     wp_order_id: Number(wo.id),
     platform: 'woo',
     shop_domain: storeMeta.domain,
-    site_code: storeMeta.site_code,
     
     // 客户
     customer_name: fullName(billing) || fullName(shipping) || '(无名)',
@@ -679,13 +676,10 @@ function wooNormalizeOrder(wo, storeMeta) {
     // 状态
     financial_status: financial,
     fulfillment_status: fulfillment,
-    local_status: fulfillment === 'fulfilled' ? 'completed' : 'processing',  // 本地状态
+    local_status: fulfillment === 'fulfilled' ? 'completed' : 'processing',
     
-    // 金额
+    // 金额(只用确认存在的 total_price + currency · 运费/税挪进 raw_payload)
     total_price: totalPrice,
-    subtotal_price: totalPrice - shippingPrice - taxPrice,
-    total_shipping: shippingPrice,
-    total_tax: taxPrice,
     currency: wo.currency || 'USD',
     
     // 行项目 + 地址
@@ -702,17 +696,15 @@ function wooNormalizeOrder(wo, storeMeta) {
       phone: billing.phone || shipping.phone || '',
     },
     
-    // 时间(优先用 GMT)· shopify_orders 表的订单创建时间字段叫 shopify_created_at
+    // 时间(订单创建时间字段叫 shopify_created_at)
     shopify_created_at: wo.date_created_gmt ? wo.date_created_gmt + 'Z' 
                       : wo.date_created || new Date().toISOString(),
-    shopify_updated_at: wo.date_modified_gmt ? wo.date_modified_gmt + 'Z'
-                      : wo.date_modified || new Date().toISOString(),
     imported_at: new Date().toISOString(),
     
     // 客户备注
     customer_note: wo.customer_note || null,
     
-    // 原始数据(备查 · 包括 PDF Invoice 号码等)
+    // 原始数据(运费/税/PDF Invoice 号等都在这 · getShippingFee 从这读)
     raw_payload: wo,
   };
 }
