@@ -6,8 +6,12 @@
 
 const INSPECTION = {
   _list: [],
-  _filter: 'all',        // all / ordered / pending / done
-  _editing: null,        // 当前编辑的验货单(草稿)
+  _filter: 'all',        // all / ordered / pending / done / archived
+  _search: '',           // 订单号/供应商 搜索
+  _datePreset: 'all',    // all / week / month / quarter / year / custom
+  _dateFrom: '',
+  _dateTo: '',
+  _editing: null,
   _loaded: false,
 };
 
@@ -18,6 +22,7 @@ const INSP_STATUS = {
   ordered: { label: '已下单', color: '#3b82f6', icon: '📝' },
   pending: { label: '待验货', color: '#f59e0b', icon: '⏳' },
   done:    { label: '已完成验货', color: '#10b981', icon: '✅' },
+  archived:{ label: '已存档', color: '#6b7280', icon: '📦' },
 };
 
 // ─────────────── 加载 + 渲染 ───────────────
@@ -48,22 +53,69 @@ async function inspLoadAll() {
 function inspRenderList() {
   const tab = document.getElementById('inspectionBody');
   if (!tab) return;
+
+  // ── 智能过滤:状态 + 日期 + 搜索 ──
+  let list = INSPECTION._list.slice();
+
+  // 日期筛选
+  const dp = INSPECTION._datePreset;
+  if (dp !== 'all') {
+    const now = Date.now();
+    let cutoff = 0, until = now + 86400000;
+    if (dp === 'week') cutoff = now - 7 * 86400000;
+    else if (dp === 'month') cutoff = now - 30 * 86400000;
+    else if (dp === 'quarter') cutoff = now - 90 * 86400000;
+    else if (dp === 'year') cutoff = now - 365 * 86400000;
+    else if (dp === 'custom') {
+      cutoff = INSPECTION._dateFrom ? new Date(INSPECTION._dateFrom + 'T00:00:00').getTime() : 0;
+      until = INSPECTION._dateTo ? new Date(INSPECTION._dateTo + 'T23:59:59').getTime() : now + 86400000;
+    }
+    list = list.filter(x => {
+      const t = new Date(x.created_at || 0).getTime();
+      return t >= cutoff && t <= until;
+    });
+  }
+
+  // 状态筛选
   const f = INSPECTION._filter;
-  const list = f === 'all' ? INSPECTION._list : INSPECTION._list.filter(x => x.status === f);
+  if (f !== 'all') list = list.filter(x => x.status === f);
+  // 非存档视图默认隐藏已存档(除非专门看存档)
+  if (f !== 'archived' && f === 'all') list = list.filter(x => x.status !== 'archived');
+
+  // 智能搜索(订单号/供应商/国家/SKU关键词 · 模糊)
+  const q = (INSPECTION._search || '').trim().toLowerCase();
+  if (q) {
+    const terms = q.split(/[\s,，]+/).filter(Boolean);
+    list = list.filter(x => {
+      const hay = [x.order_no, x.supplier_name, x.country, x.standard, x.label_req, x.other_req]
+        .filter(Boolean).join(' ').toLowerCase();
+      return terms.every(t => hay.includes(t));
+    });
+  }
+
+  // 计数(基于全量 · 不受当前筛选影响)
+  const all = INSPECTION._list;
   const counts = {
-    all: INSPECTION._list.length,
-    ordered: INSPECTION._list.filter(x => x.status === 'ordered').length,
-    pending: INSPECTION._list.filter(x => x.status === 'pending').length,
-    done: INSPECTION._list.filter(x => x.status === 'done').length,
+    all: all.filter(x => x.status !== 'archived').length,
+    ordered: all.filter(x => x.status === 'ordered').length,
+    pending: all.filter(x => x.status === 'pending').length,
+    done: all.filter(x => x.status === 'done').length,
+    archived: all.filter(x => x.status === 'archived').length,
   };
 
   const subTab = (key, label) => `
-    <button onclick="inspSetFilter('${key}')" class="insp-subtab ${f === key ? 'active' : ''}"
+    <button onclick="inspSetFilter('${key}')"
       style="padding:7px 14px; border-radius:8px; border:1px solid ${f === key ? 'var(--accent)' : 'var(--border)'};
              background:${f === key ? 'var(--accent)' : 'var(--bg-card)'}; color:${f === key ? '#fff' : 'var(--text-secondary)'};
-             cursor:pointer; font-size:13px; font-weight:500;">
+             cursor:pointer; font-size:13px; font-weight:500; white-space:nowrap;">
       ${label} <span style="opacity:0.7;">${counts[key]}</span>
     </button>`;
+
+  const dateBtn = (key, label) => `
+    <button onclick="inspSetDatePreset('${key}')"
+      style="padding:6px 12px; border-radius:7px; border:1px solid ${dp === key ? 'var(--accent)' : 'var(--border)'};
+             background:${dp === key ? 'var(--accent)15' : 'var(--bg-card)'}; color:${dp === key ? 'var(--accent)' : 'var(--text-secondary)'};
+             cursor:pointer; font-size:12px; font-weight:500; white-space:nowrap;">${label}</button>`;
 
   tab.innerHTML = `
     <div style="max-width:1200px; margin:0 auto; padding:16px;">
@@ -75,26 +127,70 @@ function inspRenderList() {
         <button class="btn primary" onclick="inspOpenEdit()" style="font-size:13px;">➕ 新建验货单</button>
       </div>
 
-      <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+      <!-- 状态 sub-tab -->
+      <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
         ${subTab('all', '全部')}
         ${subTab('ordered', '📝 已下单')}
         ${subTab('pending', '⏳ 待验货')}
         ${subTab('done', '✅ 已完成')}
+        ${subTab('archived', '📦 已存档')}
+      </div>
+
+      <!-- 搜索 + 日期筛选 -->
+      <div style="display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
+        <div style="position:relative; flex:1; min-width:220px;">
+          <input type="text" id="inspSearchInput" value="${escapeHtml(INSPECTION._search)}"
+                 oninput="inspSetSearch(this.value)" placeholder="🔎 搜订单号 / 供应商 / 国家(支持多关键词空格分隔)"
+                 style="width:100%; padding:8px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px; box-sizing:border-box;">
+          ${INSPECTION._search ? `<button onclick="inspSetSearch('')" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); border:0; background:transparent; cursor:pointer; color:var(--text-tertiary);">✕</button>` : ''}
+        </div>
+      </div>
+      <div style="display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
+        <span style="font-size:12px; color:var(--text-tertiary); margin-right:2px;">📅</span>
+        ${dateBtn('all', '全部时间')}
+        ${dateBtn('week', '最近一周')}
+        ${dateBtn('month', '最近一月')}
+        ${dateBtn('quarter', '最近三月')}
+        ${dateBtn('year', '最近一年')}
+        ${dateBtn('custom', '自定义')}
+        ${dp === 'custom' ? `
+          <input type="date" value="${INSPECTION._dateFrom}" onchange="inspSetCustomDate('from', this.value)" style="padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
+          <span style="font-size:12px; color:var(--text-tertiary);">至</span>
+          <input type="date" value="${INSPECTION._dateTo}" onchange="inspSetCustomDate('to', this.value)" style="padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px;">
+        ` : ''}
+        <span style="margin-left:auto; font-size:12px; color:var(--text-tertiary);">共 ${list.length} 张</span>
       </div>
 
       ${list.length === 0
         ? `<div style="padding:60px; text-align:center; color:var(--text-tertiary);">
              <div style="font-size:40px; margin-bottom:12px;">🔍</div>
-             <div>暂无验货单 · 点「➕ 新建验货单」开始</div>
+             <div>${INSPECTION._search || dp !== 'all' || f !== 'all' ? '没有符合条件的验货单' : '暂无验货单 · 点「➕ 新建验货单」开始'}</div>
            </div>`
         : `<div style="display:grid; gap:12px;">${list.map(inspCardHtml).join('')}</div>`
       }
     </div>
   `;
+
+  // 保持搜索框焦点
+  const si = document.getElementById('inspSearchInput');
+  if (si && INSPECTION._search) { si.focus(); si.setSelectionRange(si.value.length, si.value.length); }
 }
 
 function inspSetFilter(f) { INSPECTION._filter = f; inspRenderList(); }
 window.inspSetFilter = inspSetFilter;
+
+function inspSetSearch(v) { INSPECTION._search = v; inspRenderList(); }
+window.inspSetSearch = inspSetSearch;
+
+function inspSetDatePreset(p) { INSPECTION._datePreset = p; inspRenderList(); }
+window.inspSetDatePreset = inspSetDatePreset;
+
+function inspSetCustomDate(which, v) {
+  if (which === 'from') INSPECTION._dateFrom = v;
+  else INSPECTION._dateTo = v;
+  inspRenderList();
+}
+window.inspSetCustomDate = inspSetCustomDate;
 
 function inspCardHtml(it) {
   const st = INSP_STATUS[it.status] || INSP_STATUS.ordered;
@@ -123,15 +219,40 @@ function inspCardHtml(it) {
         </div>
         <div style="font-size:13px; color:var(--text-secondary); margin-bottom:6px;">
           🏭 ${escapeHtml(it.supplier_name || '—')} · 📦 ${it.order_qty || '?'} 件 · 🌍 ${escapeHtml(it.country || '—')}
+          ${it.created_at ? ` · <span style="color:var(--text-tertiary);">📅 ${new Date(it.created_at).toLocaleDateString('zh-CN')}</span>` : ''}
         </div>
         ${reqBadges.length > 0 ? `<div style="display:flex; gap:6px; flex-wrap:wrap;">${reqBadges.map(b => `<span style="font-size:11px; padding:2px 7px; border-radius:6px; background:var(--bg-elevated); color:var(--text-secondary);">${b}</span>`).join('')}</div>` : ''}
       </div>
       <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end; flex-shrink:0;">
         <button class="btn small primary" onclick="event.stopPropagation(); inspPreview('${it.id}')" title="预览验货单 · 可导出">👁 预览/导出</button>
+        ${it.status === 'archived'
+          ? `<button class="btn small" onclick="event.stopPropagation(); inspToggleArchive('${it.id}', false)" title="取消存档">↩ 取消存档</button>`
+          : `<button class="btn small" onclick="event.stopPropagation(); inspToggleArchive('${it.id}', true)" title="存档(归档留底 · 不在常规列表显示)">📦 存档</button>`
+        }
       </div>
     </div>
   `;
 }
+
+// 存档 / 取消存档
+async function inspToggleArchive(id, archive) {
+  const it = INSPECTION._list.find(x => x.id === id);
+  if (!it) return;
+  // 存档前记住原状态 · 取消存档时恢复
+  const newStatus = archive ? 'archived' : (it._prevStatus || 'done');
+  const update = { status: newStatus, updated_at: new Date().toISOString() };
+  if (archive) update.inspect_note = (it.inspect_note || '') + ` [存档前状态:${it.status}]`;
+  try {
+    const { error } = await sb.from('inspection_sheets').update(update).eq('id', id);
+    if (error) throw error;
+    it.status = newStatus;
+    toast(archive ? '✓ 已存档' : '✓ 已取消存档', 'success', 1500);
+    inspRenderList();
+  } catch (e) {
+    toast('操作失败:' + (e.message || e), 'err');
+  }
+}
+window.inspToggleArchive = inspToggleArchive;
 
 // ─────────────── 新建/编辑 modal ───────────────
 function inspOpenEdit(id) {
