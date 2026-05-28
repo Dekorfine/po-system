@@ -10,6 +10,28 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260528j',
+    date: '2026-05-28',
+    type: 'fix',
+    title: '🐛 加急修复 · 新建供应商问题粘贴图片跳到上一个问题',
+    notes: [
+      '🔴 现象:新建供应商问题 modal 里粘贴截图 · 图片跑到上一个已建问题(嘉世)· 还跳转过去',
+      '🔍 根因:addIssue() 设了 _issueDraft 但没清 _currentItemId',
+      '   · utils.js 粘贴分发判断 draft 模式用 `_issueDraft && !_currentItemId`',
+      '   · 上一个编辑过的问题 id 残留 → 判断走"已保存模式" → persistCurrentIssue 写到上一个问题',
+      '✅ 修法:addIssue() 开头 _currentItemId = null + _newScreenshots_fu = []',
+      '   · 新建:_currentItemId=null + _issueDraft={} → 粘贴进 draft ✓',
+      '   · 编辑:_currentItemId=id + _issueDraft=null → 粘贴进该问题 ✓',
+      '',
+      '📋 图4 跨部门看不到跟单对接人:不是 bug · 是跟单部还没在「店铺负责人管理」录入自己人',
+      '   · 列表渲染不过滤部门(美工/客服/跟单都显示)· 现在只有美工录了',
+      '   · 解决:跟单主管用「店铺负责人管理」→ 批量添加 录入跟单团队 × 负责店铺',
+      '   · v5 org_directory(发工单选人)是另一套 · 已在 28g 做好',
+      '',
+      '🔒 升 issues.js / help.js → v20260528j',
+    ],
+  },
+  {
     v: '20260528i',
     date: '2026-05-28',
     type: 'feature',

@@ -496,6 +496,9 @@ let _issueDraft = null;
 function addIssue() {
   const me = CONFIG.agents.find(a => a.name === CURRENT_AGENT);
   const defaultSite = (me && me.sites && me.sites.length > 0) ? me.sites[0] : '';
+  // V28j 修:必须清空 _currentItemId · 否则粘贴图片会判定为"编辑模式"写到上一个问题
+  if (typeof _currentItemId !== 'undefined') _currentItemId = null;
+  _newScreenshots_fu = [];
   _issueDraft = {
     site: defaultSite,
     supplier: '',
