@@ -42,31 +42,53 @@ const SHOPIFY = {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) throw new Error('未登录');
     const body = { shop, action, params };
-    const res = await fetch(this.FN_URL, {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json.ok) throw new Error(json.error || ('HTTP ' + res.status));
-    return json;
+    // V28d: 加 45 秒超时 · 避免卡死无限转圈(用户以为坏了狂点)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    try {
+      const res = await fetch(this.FN_URL, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.error || ('HTTP ' + res.status));
+      return json;
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('同步超时(45秒)· 店铺订单可能太多 · 请缩小日期范围重试');
+      throw e;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 
   // V20260528b: 调 woo-api Edge Function · 用 anon key(已 --no-verify-jwt)
   async callWoo(action, params = {}, wooStoreId = 'mooielight') {
     const body = { store_id: wooStoreId, action, params };
-    const res = await fetch(this.WOO_FN_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + SUPABASE_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
-    if (!json.ok) throw new Error(json.error || JSON.stringify(json));
-    return json;  // { ok: true, data: ..., status: 200 }
+    // V28d: 45 秒超时
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    try {
+      const res = await fetch(this.WOO_FN_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + SUPABASE_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+      if (!json.ok) throw new Error(json.error || JSON.stringify(json));
+      return json;
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('WooCommerce 同步超时(45秒)· 请缩小日期范围重试');
+      throw e;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 
   async loadStores() {
@@ -468,6 +490,12 @@ function setSalesDefaultDates() {
 }
 
 async function shopifyFetchOrders() {
+  // V28d: 防重复点击 · 同步中再点直接忽略(避免并发请求互相拖慢)
+  if (SHOPIFY._syncing) {
+    toast('正在同步中 · 请稍候…', 'info', 1500);
+    return;
+  }
+  
   const shop = document.getElementById('salesFetchShop').value;
   if (!shop) { toast('请先选择店铺', 'warn'); return; }
   
@@ -482,7 +510,9 @@ async function shopifyFetchOrders() {
   const status = document.getElementById('salesFetchStatus').value;
 
   const btn = document.querySelector('#salesFetchCard .btn.primary');
+  SHOPIFY._syncing = true;
   btn.classList.add('loading');
+  btn.disabled = true;  // V28d: 同步期间禁用按钮
   const hint = document.getElementById('salesFetchHint');
   hint.textContent = '正在同步…';
 
@@ -498,10 +528,12 @@ async function shopifyFetchOrders() {
     toast(msg);
     await shopifyReloadOrdersAndRender(true);  // force=true 跳过缓存
   } catch (e) {
-    toast('同步失败：' + (e.message || e), 'err');
-    hint.textContent = '同步失败';
+    toast('同步失败：' + (e.message || e), 'err', 4000);
+    hint.textContent = '同步失败:' + (e.message || e);
   } finally {
+    SHOPIFY._syncing = false;
     btn.classList.remove('loading');
+    btn.disabled = false;
   }
 }
 
@@ -509,9 +541,11 @@ async function shopifyFetchOrders() {
 // V20260528b: WooCommerce 接入 · 同步 woo 订单到本地 shopify_orders 表
 // ============================================================
 async function wooSyncOrders(storeMeta) {
+  if (SHOPIFY._syncing) { toast('正在同步中 · 请稍候…', 'info', 1500); return; }
   const btn = document.querySelector('#salesFetchCard .btn.primary');
   const hint = document.getElementById('salesFetchHint');
-  if (btn) btn.classList.add('loading');
+  SHOPIFY._syncing = true;
+  if (btn) { btn.classList.add('loading'); btn.disabled = true; }
   if (hint) hint.textContent = '正在同步 WooCommerce…';
   
   const from = document.getElementById('salesFetchFrom')?.value;
@@ -577,7 +611,8 @@ async function wooSyncOrders(storeMeta) {
     if (hint) hint.textContent = '同步失败:' + (e.message || e);
     toast(`同步「${storeMeta.display_name}」失败:${e.message || e}`, 'err', 5000);
   } finally {
-    if (btn) btn.classList.remove('loading');
+    SHOPIFY._syncing = false;
+    if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
   }
 }
 
@@ -883,8 +918,29 @@ function getShippingMethod(o) {
 function getPaymentTime(o) {
   return (o && o.raw_payload && o.raw_payload.processed_at) || null;
 }
-// 判断是否快速运输(模糊匹配多种关键词,大小写不敏感)
+// V28d: 提取运费金额(兼容 Shopify shipping_lines + WooCommerce shipping_total)
+function getShippingFee(o) {
+  const raw = o && o.raw_payload;
+  // WooCommerce:raw.shipping_total
+  if (o && o.platform === 'woo') {
+    if (raw && raw.shipping_total !== undefined) return parseFloat(raw.shipping_total) || 0;
+    return Number(o.total_shipping || 0);
+  }
+  // Shopify:shipping_lines[].price 求和
+  if (raw && Array.isArray(raw.shipping_lines)) {
+    return raw.shipping_lines.reduce((s, line) => s + (parseFloat(line.price) || 0), 0);
+  }
+  // 兜底:normalized 字段
+  return Number((o && o.total_shipping) || 0);
+}
+
+// 判断是否快速运输
+// V28d 改:用户定义 · 付了运费 = 快速运输 · 免运费 = 标准运输
+// (兼顾原有的运输方式名关键词作为兜底)
 function isExpressShipping(o) {
+  const fee = getShippingFee(o);
+  if (fee > 0) return true;   // 付了运费 → 快速
+  // 免运费 · 但运输方式名明确写 express/priority 的也归快速(兜底)
   const m = getShippingMethod(o).toLowerCase();
   if (!m) return false;
   return /express|expedit|priority|overnight|快速|fast|2[\s-]?day|3[\s-]?day|next[\s-]?day/i.test(m);
@@ -1030,11 +1086,9 @@ function _orderMatchesRule(o, rule) {
       });
     }
     // V5-W3-2026-05-25: 运输方式快筛(纯 ADD)
+    // V28d 改:快速=付了运费 · 标准=免运费(不再要求有 method 名)
     case 'express_shipping': return isExpressShipping(o);
-    case 'standard_shipping': {
-      const m = getShippingMethod(o);
-      return !!m && !isExpressShipping(o);
-    }
+    case 'standard_shipping': return !isExpressShipping(o);
     default: return true;
   }
 }
