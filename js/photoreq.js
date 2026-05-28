@@ -61,6 +61,64 @@ const PHOTOREQ_SHOPS = [
   'Lumioshine', 'Rayonshine', '阿里巴巴 · Radilum INC', '其他'
 ];
 
+// ============================================================
+// V28c (v4 仓库适配):拍摄仓库相关 helpers
+// ============================================================
+const PHOTOREQ_WAREHOUSE_REASONS = {
+  '无货':         { emoji: '📦', notify: true },
+  '供应商缺料':   { emoji: '🏭', notify: true },
+  '维修中':       { emoji: '🔧', notify: false },
+  '客户取消':     { emoji: '❌', notify: false },
+  '等下批货':     { emoji: '🚚', notify: true },
+  '样品丢失':     { emoji: '❓', notify: true },
+  '质量问题':     { emoji: '⚠️', notify: true },
+  '其他':         { emoji: '📋', notify: false },
+};
+
+function _photoReqIsWarehoused(log) {
+  return !!(log && log.warehouse_info);
+}
+function _photoReqGetWarehouseAge(log) {
+  const w = log?.warehouse_info;
+  if (!w?.at_ms) return null;
+  return Math.floor((Date.now() - w.at_ms) / (24 * 3600 * 1000));
+}
+function _photoReqDaysAgoText(ms) {
+  if (!ms) return '';
+  const days = Math.floor((Date.now() - ms) / (24 * 3600 * 1000));
+  if (days === 0) return '今天入库';
+  if (days === 1) return '昨天入库';
+  if (days < 7) return `入库 ${days} 天`;
+  if (days < 30) return `入库 ${Math.floor(days / 7)} 周`;
+  return `入库 ${Math.floor(days / 30)} 月`;
+}
+function _photoReqShouldNotifyCustomer(reason) {
+  return PHOTOREQ_WAREHOUSE_REASONS[reason]?.notify === true;
+}
+function _photoReqWarehouseBadge(log) {
+  if (!_photoReqIsWarehoused(log)) return '';
+  const w = log.warehouse_info;
+  return `<span title="入库人:${escapeHtml(w.by_name || '?')} · 原因:${escapeHtml(w.reason || '?')}" style="display:inline-flex; align-items:center; padding:2px 7px; font-size:10px; border-radius:8px; background:rgba(245,158,11,0.15); color:#92400e; font-weight:700; border:1px solid rgba(245,158,11,0.4);">📦 ${escapeHtml(_photoReqDaysAgoText(w.at_ms))}</span>`;
+}
+
+// V28c: 客户通知话术(复制到剪贴板)
+function photoReqCopyCustomerNotice(logId) {
+  const log = (PHOTOREQ._allLogs || []).find(l => l.id === logId);
+  if (!log || !_photoReqIsWarehoused(log)) return;
+  const w = log.warehouse_info;
+  const detail = w.reason_detail ? `\n预计 ${w.reason_detail} 可恢复拍摄。` : '\n预计回货时间请等拍摄部反馈。';
+  const txt = `您好,关于您咨询的「${log.product_name}」,我们这边目前${w.reason}。${detail}\n我们会持续跟进 · 一有进展立刻告诉您 · 非常抱歉给您带来不便。`;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(txt).then(
+      () => toast('✓ 通知话术已复制 · 粘贴给客户即可', 'success', 2500),
+      () => toast('复制失败 · 浏览器不支持', 'err')
+    );
+  } else {
+    prompt('复制以下话术给客户:', txt);
+  }
+}
+window.photoReqCopyCustomerNotice = photoReqCopyCustomerNotice;
+
 // ─────────────── V27y: 来源徽章配置 ───────────────
 const PHOTOREQ_SOURCE_BADGES = {
   '客服':  { emoji: '📨', label: '客服', bg: 'rgba(37,99,235,0.1)',  fg: '#1e40af' },
@@ -141,6 +199,7 @@ async function renderPhotoReq() {
         { k: 'urgent',         label: '🚨 加急' },
         { k: 'in-progress',    label: '⏳ 进行中' },
         { k: 'done',           label: '✅ 已完成' },
+        { k: 'warehouse',      label: '📦 仓库' },
       ].map(f => `
         <button onclick="photoReqSetFilter('${f.k}')" class="photoreq-filter-chip ${PHOTOREQ._filter === f.k ? 'active' : ''}" 
                 style="padding:6px 12px; font-size:12px; border:1px solid ${PHOTOREQ._filter === f.k ? 'var(--accent)' : 'var(--border)'}; border-radius:18px; background:${PHOTOREQ._filter === f.k ? 'var(--accent)' : 'var(--bg-card)'}; color:${PHOTOREQ._filter === f.k ? 'white' : 'var(--text-secondary)'}; cursor:pointer; font-weight:${PHOTOREQ._filter === f.k ? '600' : '400'};">
@@ -290,7 +349,8 @@ function _photoReqApplyFilterAndRender() {
   let list = all;
   switch (tab) {
     case 'all-activities':
-      // 不过滤 · 显示全部
+      // V28c (v4 #2.1): 默认隐藏仓库中的(它们暂停了 · 不影响活跃判断)
+      list = all.filter(l => !_photoReqIsWarehoused(l));
       break;
     case 'mine':
       list = all.filter(l => l.external_request?.from_user_id === myId);
@@ -299,18 +359,80 @@ function _photoReqApplyFilterAndRender() {
       list = all.filter(l => 
         (l.priority === 'urgent' || l.external_request?.urgency === 'urgent') 
         && l.status !== 'done'
+        && !_photoReqIsWarehoused(l)  // V28c: 在仓库的不算加急
       );
       break;
     case 'in-progress':
-      list = all.filter(l => ['shooting', 'shot', 'editing', 'edited', 'uploading'].includes(l.status));
+      list = all.filter(l => 
+        ['shooting', 'shot', 'editing', 'edited', 'uploading'].includes(l.status)
+        && !_photoReqIsWarehoused(l)  // V28c: 在仓库的不算进行中
+      );
       break;
     case 'done':
-      list = all.filter(l => l.status === 'done');
+      list = all.filter(l => l.status === 'done' && !_photoReqIsWarehoused(l));
+      break;
+    case 'warehouse':
+      // V28c (v4 #2.2): 只看仓库中的
+      list = all.filter(l => _photoReqIsWarehoused(l))
+              .sort((a, b) => (b.warehouse_info?.at_ms || 0) - (a.warehouse_info?.at_ms || 0));
       break;
   }
   
   PHOTOREQ._list = list;
+  _photoReqRenderWarehouseBanner();  // V28c: 渲染"我提的入库中"横幅
   _photoReqRenderList(list);
+}
+
+// V28c (v4 #3.2):个人首页"我提的入库中"提示横幅
+function _photoReqRenderWarehouseBanner() {
+  const container = document.getElementById('photoReqList');
+  if (!container) return;
+  
+  const myId = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) ? String(CURRENT_USER_ID) 
+             : (typeof CURRENT_AGENT !== 'undefined' ? String(CURRENT_AGENT) : '');
+  
+  const myWarehoused = (PHOTOREQ._allLogs || []).filter(l => 
+    _photoReqIsWarehoused(l) 
+    && l.external_request?.from_user_id === myId
+  );
+  
+  // 移除旧 banner(如果有)
+  const oldBanner = document.getElementById('photoReqWarehouseBanner');
+  if (oldBanner) oldBanner.remove();
+  
+  if (myWarehoused.length === 0) return;
+  if (PHOTOREQ._filter === 'warehouse') return;  // 已经在仓库 tab 不重复提示
+  
+  // 排序:入库时间倒序 · 取前 3
+  const top3 = myWarehoused
+    .sort((a, b) => (b.warehouse_info?.at_ms || 0) - (a.warehouse_info?.at_ms || 0))
+    .slice(0, 3);
+  
+  const banner = document.createElement('div');
+  banner.id = 'photoReqWarehouseBanner';
+  banner.style.cssText = 'padding:12px 14px; background:rgba(254,243,199,0.6); border:1px solid rgba(245,158,11,0.3); border-left:4px solid #f59e0b; border-radius:6px; margin-bottom:10px; font-size:12.5px;';
+  banner.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+      <div style="color:#92400e; font-weight:600;">
+        📦 你提的 ${myWarehoused.length} 条需求当前在拍摄仓库 · 等货回来
+      </div>
+      <button onclick="photoReqSetFilter('warehouse')" class="btn small" style="font-size:11px; padding:3px 10px;">查看全部仓库</button>
+    </div>
+    <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px;">
+      ${top3.map(l => {
+        const w = l.warehouse_info;
+        const daysText = _photoReqDaysAgoText(w.at_ms);
+        const emoji = PHOTOREQ_WAREHOUSE_REASONS[w.reason]?.emoji || '📋';
+        return `<div style="font-size:11.5px; color:var(--text-secondary); line-height:1.5;">
+          · ${escapeHtml(l.product_name || '(无名)')}(${emoji} ${escapeHtml(w.reason || '?')} · ${daysText})${l.sku ? ` <span style="font-family:monospace; color:var(--text-tertiary);">${escapeHtml(l.sku)}</span>` : ''}
+        </div>`;
+      }).join('')}
+      ${myWarehoused.length > 3 ? `<div style="font-size:11px; color:var(--text-tertiary); margin-top:2px;">… 还有 ${myWarehoused.length - 3} 条</div>` : ''}
+    </div>
+  `;
+  
+  // 插入到 photoReqList 之前
+  container.parentNode.insertBefore(banner, container);
 }
 
 function _photoReqRenderList(list) {
@@ -362,27 +484,39 @@ function _photoReqCardHtmlList(log) {
   // 摘要状态行(最多 2 个 sub-state · 不全显示避免高度爆炸)
   const compactStatus = statusLines.slice(0, 2).join(' · ');
   
+  // V28c (v4): 仓库判断
+  const inWarehouse = _photoReqIsWarehoused(log);
+  const whInfo = log.warehouse_info;
+  const leftBorder = inWarehouse ? '#f59e0b' : (urgent ? 'var(--danger)' : statusMeta.fg);
+  const cardBg = inWarehouse ? 'rgba(254,243,199,0.4)' : 'var(--bg-card)';
+  
   return `
-    <div style="display:grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap:12px; padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-left:4px solid ${urgent ? 'var(--danger)' : statusMeta.fg}; border-radius:6px; margin-bottom:6px; align-items:center;">
+    <div style="display:grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap:12px; padding:10px 14px; background:${cardBg}; border:1px solid var(--border); border-left:4px solid ${leftBorder}; border-radius:6px; margin-bottom:6px; align-items:center;">
       <!-- 图 -->
       <div>
         ${log.product_image 
-          ? `<img src="${escapeHtml(log.product_image)}" style="width:64px; height:64px; object-fit:cover; border-radius:5px; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
+          ? `<img src="${escapeHtml(log.product_image)}" style="width:64px; height:64px; object-fit:cover; border-radius:5px; cursor:zoom-in; ${inWarehouse ? 'opacity:0.7;' : ''}" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
           : `<div style="width:64px; height:64px; background:var(--bg-elevated); border-radius:5px; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:22px;">📷</div>`}
       </div>
       <!-- 主信息 · 3 行 -->
       <div style="min-width:0;">
         <!-- 行 1:徽章 · 状态 · 产品名 · SKU(单行 truncate)-->
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px; flex-wrap:nowrap; overflow:hidden;">
-          ${urgent ? `<span style="background:var(--danger); color:white; padding:1px 6px; border-radius:8px; font-size:9.5px; font-weight:700; flex-shrink:0;">🚨</span>` : ''}
+          ${urgent && !inWarehouse ? `<span style="background:var(--danger); color:white; padding:1px 6px; border-radius:8px; font-size:9.5px; font-weight:700; flex-shrink:0;">🚨</span>` : ''}
+          ${inWarehouse ? _photoReqWarehouseBadge(log) : ''}
           <span style="flex-shrink:0;">${sourceBadge}</span>
           ${isMine && source !== '自发' ? `<span style="color:var(--accent); font-size:10px; font-weight:600; flex-shrink:0;">↳ 我提</span>` : ''}
-          <span style="background:${statusMeta.color}; color:${statusMeta.fg}; padding:1px 7px; border-radius:8px; font-size:10.5px; font-weight:600; flex-shrink:0;">${statusMeta.emoji} ${statusMeta.text}</span>
-          <span style="font-size:13px; font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;">${escapeHtml(log.product_name || '(未填)')}</span>
+          ${!inWarehouse ? `<span style="background:${statusMeta.color}; color:${statusMeta.fg}; padding:1px 7px; border-radius:8px; font-size:10.5px; font-weight:600; flex-shrink:0;">${statusMeta.emoji} ${statusMeta.text}</span>` : ''}
+          <span style="font-size:13px; font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; ${inWarehouse ? 'color:var(--text-secondary);' : ''}">${escapeHtml(log.product_name || '(未填)')}</span>
           ${log.sku ? `<span style="font-size:11px; color:var(--text-tertiary); font-family:monospace; flex-shrink:0;">${escapeHtml(log.sku)}</span>` : ''}
         </div>
+        ${inWarehouse ? `
+        <!-- 仓库信息行 -->
+        <div style="font-size:11px; color:#92400e; margin-bottom:3px; line-height:1.4;">
+          ${PHOTOREQ_WAREHOUSE_REASONS[whInfo.reason]?.emoji || '📋'} ${escapeHtml(whInfo.reason || '原因未知')}${whInfo.by_name ? ' · 操作人 ' + escapeHtml(whInfo.by_name) : ''}${whInfo.reason_detail ? ' · ' + escapeHtml(whInfo.reason_detail) : ''}
+        </div>` : ''}
         <!-- 行 2:原因(单行 truncate)-->
-        ${ext.reason ? `
+        ${ext.reason && !inWarehouse ? `
         <div style="font-size:11.5px; color:var(--text-secondary); margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.4;" title="${escapeHtml(ext.reason)}">
           ${escapeHtml(ext.reason)}
         </div>` : ''}
@@ -390,13 +524,16 @@ function _photoReqCardHtmlList(log) {
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:10.5px; color:var(--text-tertiary); line-height:1.4;">
           ${shops.length > 0 ? `<span>🏪 ${shops.map(escapeHtml).join('·')}</span>` : ''}
           ${attachments.length > 0 ? `<span>📎 ${attachments.length}</span>` : ''}
-          ${compactStatus ? `<span style="color:var(--text-secondary);">${compactStatus}</span>` : ''}
+          ${compactStatus && !inWarehouse ? `<span style="color:var(--text-secondary);">${compactStatus}</span>` : ''}
+          ${inWarehouse && isMine && _photoReqShouldNotifyCustomer(whInfo.reason) ? `<button onclick="photoReqCopyCustomerNotice('${escapeHtml(log.id)}')" style="font-size:10px; padding:2px 7px; border-radius:3px; border:1px solid #fda4af; background:rgba(254,205,211,0.3); color:#9f1239; cursor:pointer;" title="复制通知客户的话术">💬 复制话术</button>` : ''}
         </div>
       </div>
       <!-- 右:时间 + ✏ -->
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
         <span style="font-size:10.5px; color:var(--text-tertiary); white-space:nowrap;">${ageStr}</span>
-        <button onclick="photoReqOpenEdit('${escapeHtml(log.id)}')" class="btn small" style="font-size:10.5px; padding:2px 8px;" title="编辑">✏ 编辑</button>
+        ${inWarehouse 
+          ? `<button class="btn small" disabled style="font-size:10.5px; padding:2px 8px; opacity:0.4; cursor:not-allowed;" title="在仓库 · 暂停编辑 · 等拍摄部唤醒后才能改">✏ 编辑</button>`
+          : `<button onclick="photoReqOpenEdit('${escapeHtml(log.id)}')" class="btn small" style="font-size:10.5px; padding:2px 8px;" title="编辑">✏ 编辑</button>`}
       </div>
     </div>
   `;
@@ -420,17 +557,24 @@ function _photoReqCardHtmlGrid(log) {
              : (typeof CURRENT_AGENT !== 'undefined' ? String(CURRENT_AGENT) : '');
   const isMine = ext.from_user_id === myId;
   
+  // V28c (v4): 仓库判断
+  const inWarehouse = _photoReqIsWarehoused(log);
+  const whInfo = log.warehouse_info;
+  const topBorder = inWarehouse ? '#f59e0b' : (urgent ? 'var(--danger)' : statusMeta.fg);
+  const cardBg = inWarehouse ? 'rgba(254,243,199,0.4)' : 'var(--bg-card)';
+  
   return `
-    <div style="display:flex; flex-direction:column; background:var(--bg-card); border:1px solid var(--border); border-top:4px solid ${urgent ? 'var(--danger)' : statusMeta.fg}; border-radius:8px; overflow:hidden; transition:transform 0.15s, box-shadow 0.15s; height:100%;"
+    <div style="display:flex; flex-direction:column; background:${cardBg}; border:1px solid var(--border); border-top:4px solid ${topBorder}; border-radius:8px; overflow:hidden; transition:transform 0.15s, box-shadow 0.15s; height:100%;"
          onmouseenter="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';"
          onmouseleave="this.style.transform=''; this.style.boxShadow='';">
       
       <!-- V28aa: 大图区 · aspect-ratio + contain 保留完整图 -->
       <div style="position:relative; background:var(--bg-elevated); aspect-ratio: 4/3; overflow:hidden;">
         ${log.product_image 
-          ? `<img src="${escapeHtml(log.product_image)}" style="width:100%; height:100%; object-fit:contain; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
+          ? `<img src="${escapeHtml(log.product_image)}" style="width:100%; height:100%; object-fit:contain; cursor:zoom-in; ${inWarehouse ? 'opacity:0.6;' : ''}" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
           : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:48px;">📷</div>`}
-        ${urgent ? `<span style="position:absolute; top:8px; left:8px; background:var(--danger); color:white; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,0.15);">🚨 加急</span>` : ''}
+        ${urgent && !inWarehouse ? `<span style="position:absolute; top:8px; left:8px; background:var(--danger); color:white; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,0.15);">🚨 加急</span>` : ''}
+        ${inWarehouse ? `<span style="position:absolute; top:8px; left:8px;">${_photoReqWarehouseBadge(log)}</span>` : ''}
         <span style="position:absolute; top:8px; right:8px;">${sourceBadge}</span>
       </div>
       
@@ -438,12 +582,12 @@ function _photoReqCardHtmlGrid(log) {
       <div style="padding:12px; display:flex; flex-direction:column; gap:6px; flex:1; min-width:0;">
         <!-- 状态徽章 -->
         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-          <span style="background:${statusMeta.color}; color:${statusMeta.fg}; padding:2px 9px; border-radius:10px; font-size:10.5px; font-weight:600;">${statusMeta.emoji} ${statusMeta.text}</span>
+          ${!inWarehouse ? `<span style="background:${statusMeta.color}; color:${statusMeta.fg}; padding:2px 9px; border-radius:10px; font-size:10.5px; font-weight:600;">${statusMeta.emoji} ${statusMeta.text}</span>` : `<span style="background:rgba(245,158,11,0.15); color:#92400e; padding:2px 9px; border-radius:10px; font-size:10.5px; font-weight:600; border:1px solid rgba(245,158,11,0.3);">${PHOTOREQ_WAREHOUSE_REASONS[whInfo.reason]?.emoji || '📋'} ${escapeHtml(whInfo.reason || '在仓库')}</span>`}
           ${isMine && source !== '自发' ? `<span style="color:var(--accent); font-size:10px; font-weight:600;">↳ 我提</span>` : ''}
         </div>
         
         <!-- 产品名 + SKU -->
-        <div style="font-size:13.5px; font-weight:600; color:var(--text-primary); line-height:1.4; word-break:break-word; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">
+        <div style="font-size:13.5px; font-weight:600; color:${inWarehouse ? 'var(--text-secondary)' : 'var(--text-primary)'}; line-height:1.4; word-break:break-word; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">
           ${escapeHtml(log.product_name || '(未填产品名)')}
         </div>
         ${log.sku ? `<div style="font-size:11px; color:var(--text-tertiary); font-family:monospace;">${escapeHtml(log.sku)}</div>` : ''}
@@ -451,22 +595,29 @@ function _photoReqCardHtmlGrid(log) {
         <!-- 店铺 -->
         ${shops.length > 0 ? `<div style="font-size:10.5px; color:var(--text-tertiary); line-height:1.4;">🏪 ${shops.map(escapeHtml).join(' · ')}</div>` : ''}
         
-        <!-- 原因(最多 2 行)-->
-        ${ext.reason ? `
+        <!-- 仓库详情 / 或 原因 -->
+        ${inWarehouse ? `
+        <div style="font-size:11px; color:#92400e; line-height:1.5; padding:6px 8px; background:rgba(245,158,11,0.08); border-radius:4px;">
+          ${whInfo.by_name ? `📦 ${escapeHtml(whInfo.by_name)} 入库` : '📦 已入库'}
+          ${whInfo.reason_detail ? `<br>💬 ${escapeHtml(whInfo.reason_detail)}` : ''}
+        </div>` : ext.reason ? `
         <div style="font-size:11.5px; color:var(--text-secondary); line-height:1.5; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;" title="${escapeHtml(ext.reason)}">
           ${escapeHtml(ext.reason)}
         </div>` : ''}
         
         <!-- 状态行(最多 2 行)-->
-        ${statusLines.length > 0 ? `
+        ${statusLines.length > 0 && !inWarehouse ? `
         <div style="margin-top:auto; padding-top:8px; border-top:1px dashed var(--border-subtle); display:flex; flex-direction:column; gap:3px;">
           ${statusLines.slice(0, 3).map(line => `<div style="font-size:10.5px; color:var(--text-secondary); line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${line}</div>`).join('')}
         </div>` : '<div style="margin-top:auto;"></div>'}
         
         <!-- 底部:时间 + 编辑 -->
-        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:6px; border-top:1px solid var(--border-subtle);">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:6px; border-top:1px solid var(--border-subtle); gap:6px; flex-wrap:wrap;">
           <span style="font-size:10.5px; color:var(--text-tertiary);">${ageStr}${attachments.length > 0 ? ` · 📎 ${attachments.length}` : ''}</span>
-          <button onclick="photoReqOpenEdit('${escapeHtml(log.id)}')" class="btn small" style="font-size:10.5px; padding:2px 8px;" title="编辑">✏ 编辑</button>
+          ${inWarehouse && isMine && _photoReqShouldNotifyCustomer(whInfo.reason) ? `<button onclick="photoReqCopyCustomerNotice('${escapeHtml(log.id)}')" style="font-size:10px; padding:2px 7px; border-radius:3px; border:1px solid #fda4af; background:rgba(254,205,211,0.3); color:#9f1239; cursor:pointer;" title="复制通知客户的话术">💬 话术</button>` : ''}
+          ${inWarehouse 
+            ? `<button class="btn small" disabled style="font-size:10.5px; padding:2px 8px; opacity:0.4; cursor:not-allowed;" title="在仓库 · 暂停编辑">✏ 编辑</button>`
+            : `<button onclick="photoReqOpenEdit('${escapeHtml(log.id)}')" class="btn small" style="font-size:10.5px; padding:2px 8px;" title="编辑">✏ 编辑</button>`}
         </div>
       </div>
     </div>
@@ -918,8 +1069,21 @@ function _photoReqOnRealtimeEvent(payload) {
         PHOTOREQ._lastToastAt = now;
       }
     } else if (eventType === 'UPDATE' && newRow?.external_request?.from_user_id === myId) {
-      // 自己提的 · 状态变化才弹
-      if (oldRow && oldRow.status !== newRow.status) {
+      // V28c (v4 #3.1):入库事件 · 自己提的被入库
+      const wasWarehoused = !!oldRow?.warehouse_info;
+      const isWarehoused = !!newRow?.warehouse_info;
+      
+      if (!wasWarehoused && isWarehoused) {
+        // 入库
+        const w = newRow.warehouse_info;
+        toast(`📦 你提的「${newRow.product_name}」已入库 · 原因:${w.reason || '?'}${w.by_name ? ' · 操作人:' + w.by_name : ''}`, 'warn', 8000);
+        PHOTOREQ._lastToastAt = now;
+      } else if (wasWarehoused && !isWarehoused) {
+        // 唤醒
+        toast(`✨ 你提的「${newRow.product_name}」已唤醒出库 · 货到位了 · 拍摄部继续跟进`, 'success', 8000);
+        PHOTOREQ._lastToastAt = now;
+      } else if (oldRow && oldRow.status !== newRow.status) {
+        // 普通状态变化(不在仓库 · 仓库变化已在上面处理)
         const statusMap = {
           shooting:  '📷 拍摄部已接',
           shot:      '✓ 已拍完',
@@ -966,6 +1130,12 @@ const PHOTOREQ_EDITABLE_FIELDS = [
 function photoReqOpenEdit(logId) {
   const log = (PHOTOREQ._allLogs || []).find(l => l.id === logId);
   if (!log) { toast('找不到该需求 · 可能刚被删除', 'warn'); return; }
+  
+  // V28c (v4 #2.4):仓库中的不能编辑
+  if (_photoReqIsWarehoused(log)) {
+    toast(`📦 此记录在仓库中 · 等拍摄部唤醒后才能改`, 'warn', 3000);
+    return;
+  }
   
   const myId = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) ? String(CURRENT_USER_ID) 
              : (typeof CURRENT_AGENT !== 'undefined' ? String(CURRENT_AGENT) : 'anon');
