@@ -13,6 +13,84 @@ const cdmClient = window.supabase.createClient(MESSAGEBUS_URL, MESSAGEBUS_KEY, {
 });
 const CDM_MY_SYSTEM = 'po';
 
+// ============================================================================
+// V28g (v5):共享人员目录 org_directory · 三系统(design/cs/po)互相能选具体人
+// ============================================================================
+let CDM_ORG_DIRECTORY = [];  // 缓存全量共享目录
+
+// 读共享目录(用 cdmClient · org_directory 在 MessageBus 库)
+async function cdmLoadOrgDirectory() {
+  try {
+    const { data, error } = await cdmClient
+      .from('org_directory')
+      .select('*')
+      .order('sort_order', { ascending: true });
+    if (error) throw error;
+    CDM_ORG_DIRECTORY = (data || []).map(r => ({
+      id: r.id, staffId: r.staff_id, name: r.name, system: r.system,
+      role: r.role, department: r.department, active: r.active !== false,
+      sortOrder: r.sort_order || 0,
+    }));
+    return CDM_ORG_DIRECTORY;
+  } catch (e) {
+    console.warn('[CDM] 读共享目录失败(org_directory 表存在吗?):', e.message);
+    CDM_ORG_DIRECTORY = [];
+    return [];
+  }
+}
+
+// 发布本系统(跟单 po)人员到共享目录
+async function cdmPublishMyStaff(updatedBy) {
+  try {
+    const agents = (typeof CONFIG !== 'undefined' && Array.isArray(CONFIG.agents)) ? CONFIG.agents : [];
+    if (agents.length === 0) return 0;
+    const rows = agents.map((a, i) => {
+      // 角色:老板 > 管理员 > 跟单专员
+      const role = a.isBoss ? '老板' : a.isAdmin ? '跟单主管' : '跟单专员';
+      // staff_id 用 _userId(稳定 · 不变)
+      const staffId = a._userId || a.name;
+      return {
+        id: `po_${staffId}`,
+        staff_id: staffId,
+        name: a.name,
+        system: 'po',
+        role: role,
+        department: '跟单部',
+        active: a.active !== false,
+        sort_order: i,
+        updated_at: new Date().toISOString(),
+        updated_by: updatedBy || 'system',
+      };
+    });
+    const { error } = await cdmClient
+      .from('org_directory')
+      .upsert(rows, { onConflict: 'id' });
+    if (error) throw error;
+    console.log(`[CDM] 已发布 ${rows.length} 个跟单人员到共享目录`);
+    return rows.length;
+  } catch (e) {
+    console.warn('[CDM] 发布人员失败:', e.message);
+    return 0;
+  }
+}
+
+// 取某部门的接收人候选(system==目标 && active)
+function cdmGetRecipientOptions(targetSystem) {
+  return CDM_ORG_DIRECTORY
+    .filter(p => p.system === targetSystem && p.active)
+    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+}
+
+// 显示"谁在处理"
+function cdmRenderAssignee(msg) {
+  if (!msg.to_user_id) return '📢 整个部门';
+  const person = CDM_ORG_DIRECTORY.find(p => p.staffId === msg.to_user_id && p.system === msg.to_system);
+  if (person) return `👤 ${person.name}${person.role ? '(' + person.role + ')' : ''}`;
+  return `👤 ${msg.to_user_name || msg.to_user_id}`;
+}
+window.cdmLoadOrgDirectory = cdmLoadOrgDirectory;
+window.cdmPublishMyStaff = cdmPublishMyStaff;
+
 // ─────────────── 11 分类(v22-CW)───────────────
 const CDM_CATEGORIES = [
   { id: 'product_fix',    label: '🛠 修改产品',    color: '#92400e', bg: 'rgba(254,243,199,0.6)', desc: '颜色/尺寸/字母/参数/SKU/视频/图片/可控硅调光 等错误',  defaultTimeout: { urgent: 1, high: 2, normal: 5, low: 14 } },
@@ -236,9 +314,16 @@ async function cdmLoadTimeoutConfig() {
 async function cdmInit() {
   if (!CDM_INITIALIZED) {
     cdmRequestNotificationPermission();
-    await Promise.all([cdmLoadShopOwners(), cdmLoadTimeoutConfig()]);
+    await Promise.all([cdmLoadShopOwners(), cdmLoadTimeoutConfig(), cdmLoadOrgDirectory()]);
     cdmSubscribeRealtime();
     CDM_INITIALIZED = true;
+    // V28g (v5):主管/管理员进 tab 时自动发布本系统人员到共享目录(不阻塞)
+    if (typeof IS_ADMIN !== 'undefined' && IS_ADMIN) {
+      const me = _cdmGetCurrentUser();
+      cdmPublishMyStaff(me.name).then(n => {
+        if (n > 0) cdmLoadOrgDirectory();  // 发布后刷新目录
+      });
+    }
   }
   await cdmLoadMessages();
 }
@@ -742,6 +827,38 @@ function cdmPopulateShopDropdown() {
     `).join('') +
     `<option value="__other__">📝 其他(手填备注)</option>`;
 }
+// V28g (v5):部门变化时 · 填充"指定接收人"下拉 + 原有逻辑
+function cdmOnToSystemChange() {
+  cdmPopulateRecipientDropdown();
+  cdmUpdateSuggestedReceiver();
+}
+window.cdmOnToSystemChange = cdmOnToSystemChange;
+
+// V28g (v5):选了具体接收人 · 高亮提示
+function cdmOnToUserChange() {
+  const sel = document.getElementById('cdmNewToUser');
+  const hintEl = document.getElementById('cdmSuggestedReceiverHint');
+  if (sel && sel.value && hintEl) {
+    const opt = sel.options[sel.selectedIndex];
+    hintEl.innerHTML = `<span style="font-size:12px; color:var(--success);">✓ 已指定 <b>${escapeHtml(opt.textContent.trim())}</b> 处理</span>`;
+  }
+}
+window.cdmOnToUserChange = cdmOnToUserChange;
+
+// V28g (v5):填充"指定接收人"下拉(从共享目录取目标部门的人)
+function cdmPopulateRecipientDropdown() {
+  const toSys = document.getElementById('cdmNewToSystem')?.value || '';
+  const sel = document.getElementById('cdmNewToUser');
+  if (!sel) return;
+  const people = toSys ? cdmGetRecipientOptions(toSys) : [];
+  sel.innerHTML = `<option value="">— 整个部门(不指定)—</option>` +
+    people.map(p => `<option value="${escapeHtml(p.staffId)}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}${p.role ? ' · ' + escapeHtml(p.role) : ''}</option>`).join('');
+  if (people.length === 0 && toSys) {
+    sel.innerHTML += `<option value="" disabled>(该部门暂无共享人员 · 让对方主管同步)</option>`;
+  }
+}
+window.cdmPopulateRecipientDropdown = cdmPopulateRecipientDropdown;
+
 function cdmUpdateSuggestedReceiver() {
   const shop = document.getElementById('cdmNewRelatedShop')?.value || '';
   const toSys = document.getElementById('cdmNewToSystem')?.value || '';
@@ -844,6 +961,14 @@ async function cdmSubmitNew() {
     const primary = candidates.find(c => c.role === 'primary') || candidates.find(c => c.role === 'manager') || candidates[0];
     if (primary) { toUserId = primary.userId; toUserName = primary.userName; }
   }
+  
+  // V28g (v5):手动指定的接收人优先(覆盖自动建议)
+  const manualSel = document.getElementById('cdmNewToUser');
+  if (manualSel && manualSel.value) {
+    toUserId = manualSel.value;
+    const opt = manualSel.options[manualSel.selectedIndex];
+    toUserName = opt?.getAttribute('data-name') || opt?.textContent?.split('·')[0]?.trim() || toUserId;
+  }
 
   const row = {
     from_system: 'po', from_user_id: me.id, from_user_name: me.name,
@@ -931,7 +1056,7 @@ function cdmRenderDetail(m) {
       </div>
       <h2 style="font-size:18px; font-weight:600; margin:0 0 10px; color:var(--text-primary);">${escapeHtml(m.title || '')}</h2>
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--text-secondary); flex-wrap:wrap; gap:8px;">
-        <span><b>${escapeHtml(m.from_user_name || m.from_user_id || '')}</b> · <span style="color:${fromSys.color};">${fromSys.label}</span> → <span style="color:${toSys.color};">${toSys.label}</span></span>
+        <span><b>${escapeHtml(m.from_user_name || m.from_user_id || '')}</b> · <span style="color:${fromSys.color};">${fromSys.label}</span> → <span style="color:${toSys.color};">${toSys.label}</span>${m.to_user_id ? ` · <b style="color:${toSys.color};">${escapeHtml(cdmRenderAssignee(m))}</b>` : ' · 📢 整部门'}</span>
         <span style="font-family:'JetBrains Mono',monospace;">${dt.toLocaleString()}${!overdue && m.status !== 'done' && m.status !== 'cancelled' ? ` · 截止 ${new Date(dueAt).toLocaleDateString()} (${dueDays <= 0 ? '今天' : `还剩 ${dueDays} 天`})` : ''}</span>
       </div>
       ${m.assigned_to_name ? `<div style="margin-top:10px; padding:8px 12px; background:rgba(37,99,235,0.08); border-radius:6px; font-size:12.5px; color:#1e40af;">📌 已分派给 <b>${escapeHtml(m.assigned_to_name)}</b> · 由 ${escapeHtml(m.assigned_by_name || '')} · ${m.assigned_at_ms ? new Date(m.assigned_at_ms).toLocaleString() : ''}</div>` : ''}
