@@ -20,12 +20,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/core.js?v=20260528n"></script>
+<script src="js/core.js?v=20260528t"></script>
 <script src="js/utils.js?v=20260527m"></script>
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260528j"></script>
-<script src="js/help.js?v=20260528s"></script>
+<script src="js/help.js?v=20260528t"></script>
 <script src="js/dateFilter.js?v=20260526p"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
@@ -35,8 +35,8 @@
 <script src="js/aftersales.js?v=20260528s"></script>
 <script src="js/missing.js?v=20260527i"></script>
 <script src="js/orders.js?v=20260528p"></script>
-<script src="js/shopify.js?v=20260528L"></script>
-<script src="js/po.js?v=20260528r"></script>
+<script src="js/shopify.js?v=20260528t"></script>
+<script src="js/po.js?v=20260528t"></script>
 <script src="js/inventory.js?v=20260528f"></script>
 <script src="js/inspection.js?v=20260528o5"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
@@ -6346,18 +6346,20 @@ body.has-side-tabs .section-block {
 </div>
 
 <!-- ============ V5-W3-2026-05-26: 销售单批量开 PO Modal ============ -->
-<div id="batchPoModal" class="modal" style="display:none; max-width:1100px;">
+<div class="modal-bg" id="batchPoModalBg" style="display:none;">
+<div id="batchPoModal" class="modal" style="max-width:1100px; max-height:90vh; display:flex; flex-direction:column; padding:0;">
   <div class="modal-head" style="padding:14px 18px; border-bottom:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
     <h3 style="margin:0; font-size:15px;">📦 批量开 PO · 一次性给同一供应商下单</h3>
     <button class="cdm-modal-close" onclick="closeBatchPoModal()">✕</button>
   </div>
-  <div class="modal-body" id="batchPoBody" style="padding:16px 18px; max-height:75vh; overflow-y:auto;">
+  <div class="modal-body" id="batchPoBody" style="padding:16px 18px; max-height:75vh; overflow-y:auto; flex:1;">
     <!-- 由 renderBatchPoModal() 动态填充 -->
   </div>
   <div class="modal-foot" style="padding:12px 18px; border-top:1px solid var(--border-subtle); display:flex; justify-content:flex-end; gap:8px;">
     <button class="btn" onclick="closeBatchPoModal()">取消</button>
     <button class="btn primary" onclick="batchPoSubmit()">🚀 生成 PO</button>
   </div>
+</div>
 </div>
 
 <!-- ============ V5-W3-2026-05-26 v22-CW: 店铺负责人管理 Modal ============ -->
