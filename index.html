@@ -25,7 +25,7 @@
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
 <script src="js/issues.js?v=20260528u"></script>
-<script src="js/help.js?v=20260528w"></script>
+<script src="js/help.js?v=20260528x"></script>
 <script src="js/dateFilter.js?v=20260526p"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
@@ -35,7 +35,7 @@
 <script src="js/aftersales.js?v=20260528s"></script>
 <script src="js/missing.js?v=20260527i"></script>
 <script src="js/orders.js?v=20260528p"></script>
-<script src="js/shopify.js?v=20260528w"></script>
+<script src="js/shopify.js?v=20260528x"></script>
 <script src="js/po.js?v=20260528t"></script>
 <script src="js/inventory.js?v=20260528f"></script>
 <script src="js/inspection.js?v=20260528o5"></script>
@@ -5649,17 +5649,18 @@ body.has-side-tabs .section-block {
         <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
           <span style="font-size: 12px; color: var(--text-secondary); font-weight: 600; min-width: 64px;">订单规则:</span>
           <button class="rule-chip active" data-rule="all" onclick="shopifySetRule('all')">📋 全部</button>
-          <button class="rule-chip" data-rule="has_note" onclick="shopifySetRule('has_note')">💬 有备注 <span class="cnt-mini" id="ruleCnt_has_note">0</span></button>
-          <button class="rule-chip" data-rule="has_internal" onclick="shopifySetRule('has_internal')">📝 有内部备注 <span class="cnt-mini" id="ruleCnt_has_internal">0</span></button>
-          <button class="rule-chip" data-rule="refunded" onclick="shopifySetRule('refunded')">💸 退款单 <span class="cnt-mini" id="ruleCnt_refunded">0</span></button>
-          <button class="rule-chip" data-rule="big_amount" onclick="shopifySetRule('big_amount')">💰 大额 ≥¥3000 <span class="cnt-mini" id="ruleCnt_big_amount">0</span></button>
-          <button class="rule-chip" data-rule="big_qty" onclick="shopifySetRule('big_qty')">📦 高数量 ≥5件 <span class="cnt-mini" id="ruleCnt_big_qty">0</span></button>
-          <button class="rule-chip" data-rule="overdue" onclick="shopifySetRule('overdue')">⏰ 超时未发 ≥7天 <span class="cnt-mini" id="ruleCnt_overdue">0</span></button>
+          <button class="rule-chip rule-customizable" data-rule="has_note" onclick="shopifySetRule('has_note')">💬 有备注 <span class="cnt-mini" id="ruleCnt_has_note">0</span></button>
+          <button class="rule-chip rule-customizable" data-rule="has_internal" onclick="shopifySetRule('has_internal')">📝 有内部备注 <span class="cnt-mini" id="ruleCnt_has_internal">0</span></button>
+          <button class="rule-chip rule-customizable" data-rule="refunded" onclick="shopifySetRule('refunded')">💸 退款单 <span class="cnt-mini" id="ruleCnt_refunded">0</span></button>
+          <button class="rule-chip rule-customizable" data-rule="big_amount" onclick="shopifySetRule('big_amount')">💰 大额 ≥¥3000 <span class="cnt-mini" id="ruleCnt_big_amount">0</span></button>
+          <button class="rule-chip rule-customizable" data-rule="big_qty" onclick="shopifySetRule('big_qty')">📦 高数量 ≥5件 <span class="cnt-mini" id="ruleCnt_big_qty">0</span></button>
+          <button class="rule-chip rule-customizable" data-rule="overdue" onclick="shopifySetRule('overdue')">⏰ 超时未发 ≥7天 <span class="cnt-mini" id="ruleCnt_overdue">0</span></button>
           <!-- V5-W3-2026-05-25: 运输方式快筛(纯 ADD)-->
-          <button class="rule-chip" data-rule="express_shipping" onclick="shopifySetRule('express_shipping')" title="客户付了快速运输费(express/expedited/priority/overnight)">⚡ 快速运输 <span class="cnt-mini" id="ruleCnt_express_shipping">0</span></button>
-          <button class="rule-chip" data-rule="standard_shipping" onclick="shopifySetRule('standard_shipping')" title="客户选了标准运输">🚚 标准运输 <span class="cnt-mini" id="ruleCnt_standard_shipping">0</span></button>
-          <button class="rule-chip" data-rule="manual" onclick="shopifySetRule('manual')">✍ 自定义订单 <span class="cnt-mini" id="ruleCnt_manual">0</span></button>
-          <button class="rule-chip" data-rule="unknown_sku" onclick="shopifySetRule('unknown_sku')">❓ 未配对 SKU <span class="cnt-mini" id="ruleCnt_unknown_sku">0</span></button>
+          <button class="rule-chip rule-customizable" data-rule="express_shipping" onclick="shopifySetRule('express_shipping')" title="按运输方式名关键词识别(可在⚙ 自定义)">⚡ 快速运输 <span class="cnt-mini" id="ruleCnt_express_shipping">0</span></button>
+          <button class="rule-chip rule-customizable" data-rule="standard_shipping" onclick="shopifySetRule('standard_shipping')" title="客户选了标准运输">🚚 标准运输 <span class="cnt-mini" id="ruleCnt_standard_shipping">0</span></button>
+          <button class="rule-chip rule-customizable" data-rule="manual" onclick="shopifySetRule('manual')">✍ 自定义订单 <span class="cnt-mini" id="ruleCnt_manual">0</span></button>
+          <button class="rule-chip rule-customizable" data-rule="unknown_sku" onclick="shopifySetRule('unknown_sku')">❓ 未配对 SKU <span class="cnt-mini" id="ruleCnt_unknown_sku">0</span></button>
+          <button class="rule-chip" onclick="openRuleConfig()" style="margin-left:auto; background:#ede9fe; color:#7c3aed; border-color:#c4b5fd;" title="自定义显示哪些规则(每个人独立配置)">⚙ 自定义</button>
         </div>
         <!-- 搜索类型 chips -->
         <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
@@ -6363,6 +6364,36 @@ body.has-side-tabs .section-block {
 </div>
 </div>
 
+<!-- V28x:订单规则自定义 Modal · 每个人独立配置(localStorage) -->
+<div class="modal-bg" id="ruleConfigModal">
+  <div class="modal" style="max-width:560px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="margin:0; font-size:16px;">⚙ 自定义订单规则显示</h3>
+      <button class="modal-close" onclick="closeRuleConfig()">✕</button>
+    </div>
+    <div style="font-size:12.5px; color:var(--text-tertiary); margin-bottom:12px;">
+      勾选要显示的规则筛选 · 不勾的会从快筛栏隐藏 · 配置只对你自己生效
+    </div>
+    <div id="ruleConfigBody" style="display:flex; flex-direction:column; gap:8px;"></div>
+    <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border); display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
+      <label style="font-size:12.5px; color:var(--text-secondary); flex:1; min-width:200px;">
+        <div style="font-weight:600; margin-bottom:4px;">⚡ 快速运输关键词(逗号分隔)</div>
+        <input id="ruleConfigExpressKw" type="text" placeholder="express,priority,DHL Express,加急..." 
+          style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:4px; font-size:12px;">
+      </label>
+      <label style="font-size:12.5px; color:var(--text-secondary); flex:1; min-width:200px;">
+        <div style="font-weight:600; margin-bottom:4px;">🚚 标准运输关键词</div>
+        <input id="ruleConfigStdKw" type="text" placeholder="standard,economy,ground,free,标准..." 
+          style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:4px; font-size:12px;">
+      </label>
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+      <button class="btn" onclick="resetRuleConfig()">重置默认</button>
+      <button class="btn" onclick="closeRuleConfig()">取消</button>
+      <button class="btn primary" onclick="saveRuleConfig()">💾 保存</button>
+    </div>
+  </div>
+</div>
 <!-- ============ V5-W3-2026-05-26 v22-CW: 店铺负责人管理 Modal ============ -->
 <div class="modal-bg" id="cdmShopOwnersModal">
   <div class="cdm-modal" style="max-width: 880px;">
