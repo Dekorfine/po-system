@@ -123,12 +123,33 @@ const SHOPIFY = {
     return this._stores;
   },
 
+  // V28x:真正的秒开 · localStorage 缓存订单 · 打开立即渲染 · 后台异步刷新
   async loadOrdersFromDB(force = false, opts = {}) {
     const CACHE_MS = 60 * 1000;
     const cacheKey = JSON.stringify({ shop: opts.shop || '', from: opts.from || '', to: opts.to || '' });
+    // ① in-memory 缓存(同 session 内)
     if (!force && this._ordersCacheKey === cacheKey && this._ordersLoadedAt && (Date.now() - this._ordersLoadedAt < CACHE_MS) && this._orders.length > 0) {
       return this._orders;
     }
+    // ② V28x:localStorage 缓存(跨 session 秒开)· 立即返回 + 后台异步刷新
+    if (!force) {
+      try {
+        const cacheRaw = localStorage.getItem('shopify_orders_cache_v1');
+        if (cacheRaw) {
+          const cache = JSON.parse(cacheRaw);
+          if (cache && cache.byKey && cache.byKey[cacheKey] && Array.isArray(cache.byKey[cacheKey].data)) {
+            this._orders = cache.byKey[cacheKey].data;
+            this._ordersLoadedAt = cache.byKey[cacheKey].ts || Date.now();
+            this._ordersCacheKey = cacheKey;
+            // 后台异步拉新数据 · 不阻塞 · 拉完更新缓存 + 重渲
+            this._bgRefreshFromSupabase(opts, cacheKey);
+            console.log(`[订单 ⚡秒开] localStorage 缓存命中 · ${this._orders.length} 单 · 后台正在异步同步…`);
+            return this._orders;
+          }
+        }
+      } catch (e) { console.warn('[订单缓存] 读取失败:', e); }
+    }
+    // ③ 无缓存 / force / 缓存失效 → 同步从 supabase 拉
     let q = sb.from('shopify_orders').select('*').is('deleted_at', null);
     if (opts.shop) q = q.eq('shop_domain', opts.shop);
     if (opts.from) q = q.gte('shopify_created_at', opts.from + 'T00:00:00Z');
@@ -139,9 +160,70 @@ const SHOPIFY = {
     this._orders = data || [];
     this._ordersLoadedAt = Date.now();
     this._ordersCacheKey = cacheKey;
+    this._persistOrdersCache(cacheKey);
     return this._orders;
   },
-  invalidateOrders() { this._ordersLoadedAt = 0; this._ordersCacheKey = null; },
+
+  // V28x:后台异步刷新 · 不阻塞 UI
+  async _bgRefreshFromSupabase(opts, cacheKey) {
+    try {
+      let q = sb.from('shopify_orders').select('*').is('deleted_at', null);
+      if (opts.shop) q = q.eq('shop_domain', opts.shop);
+      if (opts.from) q = q.gte('shopify_created_at', opts.from + 'T00:00:00Z');
+      if (opts.to)   q = q.lte('shopify_created_at', opts.to + 'T23:59:59Z');
+      q = q.order('shopify_created_at', { ascending: false }).limit(500);
+      const { data, error } = await q;
+      if (error) { console.warn('[订单] 后台刷新失败:', error); return; }
+      // 比对是否有更新(数量或最新订单 id 变了 → 重渲)
+      const old = this._orders || [];
+      const fresh = data || [];
+      const changed = old.length !== fresh.length || (fresh[0] && old[0] && fresh[0].id !== old[0].id);
+      this._orders = fresh;
+      this._ordersLoadedAt = Date.now();
+      this._ordersCacheKey = cacheKey;
+      this._persistOrdersCache(cacheKey);
+      if (changed) {
+        console.log(`[订单 🔄后台同步] 数据已更新 · ${fresh.length} 单`);
+        if (typeof renderShopifyOrders === 'function') renderShopifyOrders();
+        if (typeof renderSalesStats === 'function') renderSalesStats();
+        if (typeof shopifyRefreshCounts === 'function') shopifyRefreshCounts();
+        if (typeof shopifyRefreshRuleCounts === 'function') shopifyRefreshRuleCounts();
+      }
+    } catch (e) { console.warn('[订单后台同步] 异常:', e); }
+  },
+
+  // V28x:持久化订单缓存到 localStorage(可能撑爆 · try-catch 保护)
+  _persistOrdersCache(cacheKey) {
+    try {
+      let cacheRaw = localStorage.getItem('shopify_orders_cache_v1');
+      let cache = cacheRaw ? JSON.parse(cacheRaw) : { byKey: {} };
+      if (!cache.byKey) cache.byKey = {};
+      // 瘦身:line_items 保留(渲染要) · raw_payload 大头 · 留着否则运费/税废了
+      // 限制最多缓存 3 个 key(防止历史 key 累积撑爆)
+      const keys = Object.keys(cache.byKey);
+      if (keys.length > 3) {
+        // 删最旧的
+        const oldest = keys.sort((a, b) => (cache.byKey[a].ts || 0) - (cache.byKey[b].ts || 0))[0];
+        delete cache.byKey[oldest];
+      }
+      cache.byKey[cacheKey] = { data: this._orders, ts: Date.now() };
+      localStorage.setItem('shopify_orders_cache_v1', JSON.stringify(cache));
+    } catch (e) {
+      // localStorage 满了 · 清空重写
+      if (e.name === 'QuotaExceededError' || /quota|storage/i.test(e.message || '')) {
+        try {
+          localStorage.removeItem('shopify_orders_cache_v1');
+          localStorage.setItem('shopify_orders_cache_v1', JSON.stringify({ byKey: { [cacheKey]: { data: this._orders, ts: Date.now() } } }));
+        } catch (_) { /* 还是写不进 · 放弃 */ }
+      }
+    }
+  },
+
+  invalidateOrders() {
+    this._ordersLoadedAt = 0;
+    this._ordersCacheKey = null;
+    try { localStorage.removeItem('shopify_orders_cache_v1'); } catch (_) {}
+  },
 
   async loadProductImageMap(skus) {
     if (!skus || skus.length === 0) return {};
@@ -1008,16 +1090,23 @@ window.diagShipping = function() {
   console.log('=== 如果都是 "raw空!" · 说明同步没存 raw_payload · 需要重新同步或改 Edge Function ===');
 };
 
-// 判断是否快速运输
-// V28d 改:用户定义 · 付了运费 = 快速运输 · 免运费 = 标准运输
-// (兼顾原有的运输方式名关键词作为兜底)
+// V28x:店小秘式快速运输识别(关键词优先 · 付费 fallback)
+// 用户可在 localStorage 自定义关键词:shopify_express_keywords / shopify_standard_keywords
 function isExpressShipping(o) {
+  const method = getShippingMethod(o).toLowerCase();
+  // 默认快速关键词(店小秘同款 · 用户可改)
+  const EXPRESS_KW = (localStorage.getItem('shopify_express_keywords') || 
+    'express,expedit,priority,overnight,快速,加急,fast,2-day,2 day,3-day,3 day,next-day,next day,dhl express,fedex priority,ups next,顺丰').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+  const STD_KW = (localStorage.getItem('shopify_standard_keywords') ||
+    'standard,economy,ground,saver,free,普通,标准,经济,平邮,usps ground').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+
+  // 1) 运输方式名包含快速关键词 → 快速
+  if (method && EXPRESS_KW.some(kw => method.includes(kw))) return true;
+  // 2) 运输方式名包含标准关键词 → 标准
+  if (method && STD_KW.some(kw => method.includes(kw))) return false;
+  // 3) 没运输方式名 / 关键词都没命中 → 按付费判断
   const fee = getShippingFee(o);
-  if (fee > 0) return true;   // 付了运费 → 快速
-  // 免运费 · 但运输方式名明确写 express/priority 的也归快速(兜底)
-  const m = getShippingMethod(o).toLowerCase();
-  if (!m) return false;
-  return /express|expedit|priority|overnight|快速|fast|2[\s-]?day|3[\s-]?day|next[\s-]?day/i.test(m);
+  return fee > 0;
 }
 // 格式化 ISO 时间为 "MM-DD HH:mm"(下单/付款时间用)
 function fmtShortDateTime(iso) {
@@ -1041,6 +1130,81 @@ function shopifySetSearchType(t) {
   document.querySelectorAll('.search-type-chip').forEach(el => el.classList.toggle('active', el.dataset.searchType === t));
   shopifyDoSearch();
 }
+
+// V28x:订单规则自定义(每个跟单独立配置 · 存 localStorage)
+const RULE_DEFS = [
+  { key: 'has_note',          label: '💬 有备注' },
+  { key: 'has_internal',      label: '📝 有内部备注' },
+  { key: 'refunded',          label: '💸 退款单' },
+  { key: 'big_amount',        label: '💰 大额 ≥¥3000' },
+  { key: 'big_qty',           label: '📦 高数量 ≥5件' },
+  { key: 'overdue',           label: '⏰ 超时未发 ≥7天' },
+  { key: 'express_shipping',  label: '⚡ 快速运输' },
+  { key: 'standard_shipping', label: '🚚 标准运输' },
+  { key: 'manual',            label: '✍ 自定义订单' },
+  { key: 'unknown_sku',       label: '❓ 未配对 SKU' },
+];
+function _getHiddenRules() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem('shopify_hidden_rules') || '[]'));
+  } catch (_) { return new Set(); }
+}
+function openRuleConfig() {
+  const body = document.getElementById('ruleConfigBody');
+  if (!body) return;
+  const hidden = _getHiddenRules();
+  body.innerHTML = RULE_DEFS.map(r => `
+    <label style="display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--border); border-radius:6px; cursor:pointer; font-size:13px;">
+      <input type="checkbox" data-rule-config="${r.key}" ${hidden.has(r.key) ? '' : 'checked'} style="width:16px; height:16px;">
+      <span>${r.label}</span>
+    </label>
+  `).join('');
+  document.getElementById('ruleConfigExpressKw').value = localStorage.getItem('shopify_express_keywords') || '';
+  document.getElementById('ruleConfigStdKw').value = localStorage.getItem('shopify_standard_keywords') || '';
+  document.getElementById('ruleConfigModal').classList.add('show');
+}
+window.openRuleConfig = openRuleConfig;
+function closeRuleConfig() {
+  document.getElementById('ruleConfigModal').classList.remove('show');
+}
+window.closeRuleConfig = closeRuleConfig;
+function saveRuleConfig() {
+  const hidden = [];
+  document.querySelectorAll('[data-rule-config]').forEach(cb => {
+    if (!cb.checked) hidden.push(cb.dataset.ruleConfig);
+  });
+  localStorage.setItem('shopify_hidden_rules', JSON.stringify(hidden));
+  const exp = (document.getElementById('ruleConfigExpressKw').value || '').trim();
+  const std = (document.getElementById('ruleConfigStdKw').value || '').trim();
+  if (exp) localStorage.setItem('shopify_express_keywords', exp);
+  else localStorage.removeItem('shopify_express_keywords');
+  if (std) localStorage.setItem('shopify_standard_keywords', std);
+  else localStorage.removeItem('shopify_standard_keywords');
+  applyHiddenRules();
+  closeRuleConfig();
+  if (typeof shopifyRefreshRuleCounts === 'function') shopifyRefreshRuleCounts();
+  if (typeof renderShopifyOrders === 'function') renderShopifyOrders();
+  if (typeof toast === 'function') toast('✓ 配置已保存', 'success', 1500);
+}
+window.saveRuleConfig = saveRuleConfig;
+function resetRuleConfig() {
+  if (!confirm('重置为默认?(显示所有规则 + 清空关键词)')) return;
+  localStorage.removeItem('shopify_hidden_rules');
+  localStorage.removeItem('shopify_express_keywords');
+  localStorage.removeItem('shopify_standard_keywords');
+  openRuleConfig();
+}
+window.resetRuleConfig = resetRuleConfig;
+function applyHiddenRules() {
+  const hidden = _getHiddenRules();
+  document.querySelectorAll('.rule-chip.rule-customizable').forEach(el => {
+    el.style.display = hidden.has(el.dataset.rule) ? 'none' : '';
+  });
+}
+window.applyHiddenRules = applyHiddenRules;
+// 页面加载时应用一次
+setTimeout(applyHiddenRules, 500);
+setTimeout(applyHiddenRules, 1500);  // 兜底
 
 function shopifySetSort(s) {
   SHOPIFY_SEARCH.sortBy = s;
