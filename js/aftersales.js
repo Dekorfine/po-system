@@ -406,7 +406,7 @@ function _renderAftersaleCard(a, i) {
   const product = a.product || a.productName || '';
   
   return `
-    <div class="as-card ${urgent ? 'urgent' : ''} ${expressUrgent ? 'express-urgent' : ''} ${isDone ? 'done' : ''}" onclick="openAftersales('${a._id}')" ${expressUrgent ? 'style="box-shadow:0 0 0 2px #ef4444, 0 4px 12px rgba(239,68,68,0.25);"' : ''}>
+    <div class="as-card ${urgent ? 'urgent' : ''} ${expressUrgent ? 'express-urgent' : ''} ${isDone ? 'done' : ''}" onclick="openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}')" ${expressUrgent ? 'style="box-shadow:0 0 0 2px #ef4444, 0 4px 12px rgba(239,68,68,0.25);"' : ''}>
       <div class="cover ${coverCls}">
         ${coverHTML}
         <span class="status-badge" style="background:${statusMeta.bg}; color:${statusMeta.color};">${statusMeta.label}</span>
