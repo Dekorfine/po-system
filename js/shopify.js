@@ -1787,16 +1787,25 @@ function renderShopifyOrders() {
       const hasShopifyProduct = li.sku && o.shop_domain && o.shop_domain !== 'manual' && !isWoo;
       
       // V28i: woo 产品链接(WP 后台 + 前台 · 公开 URL · 直接 target=_blank)
+      // V28L: 前台优先用 variation_id(精确到变体)· 或用 SKU 搜索(最准定位客户买的款)
       const wooBase = isWoo ? ('https://' + String(o.shop_domain || '').replace(/^https?:\/\//, '').replace(/\/$/, '')) : '';
-      const wooIcons = (isWoo && li.product_id) ? `
-        <a href="${wooBase}/wp-admin/post.php?post=${li.product_id}&action=edit" target="_blank" rel="noopener"
-           onclick="event.stopPropagation();"
+      // 前台链接:有 variation_id → 变体页;否则 product_id 页;再带 SKU 搜索兜底
+      const wooFrontUrl = isWoo
+        ? (li.variation_id
+            ? `${wooBase}/?p=${li.variation_id}`            // 变体 id 直达
+            : li.sku
+              ? `${wooBase}/?s=${encodeURIComponent(li.sku)}&post_type=product`  // SKU 搜索(精确到款)
+              : li.product_id ? `${wooBase}/?p=${li.product_id}` : '')
+        : '';
+      // 后台链接:变体在父产品页编辑 · 用 product_id
+      const wooAdminUrl = isWoo && li.product_id ? `${wooBase}/wp-admin/post.php?post=${li.product_id}&action=edit` : '';
+      const wooIcons = isWoo ? `
+        ${wooAdminUrl ? `<a href="${wooAdminUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation();"
            style="margin-left:6px; color:var(--accent); text-decoration:none; font-size:11px; opacity:0.85;"
-           title="🔧 在 WordPress 后台打开此产品(编辑/库存/价格)">🔧</a>
-        <a href="${wooBase}/?p=${li.product_id}" target="_blank" rel="noopener"
-           onclick="event.stopPropagation();"
+           title="🔧 在 WordPress 后台打开此产品(编辑/库存/价格)">🔧</a>` : ''}
+        ${wooFrontUrl ? `<a href="${wooFrontUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation();"
            style="margin-left:4px; color:var(--success); text-decoration:none; font-size:11px; opacity:0.85;"
-           title="🛒 在店铺前台打开商品页(客户视角)">🛒</a>
+           title="🛒 在店铺前台打开商品页(客户视角${li.variation_id ? ' · 精确到变体' : li.sku ? ' · 按SKU搜索' : ''})">🛒</a>` : ''}
       ` : '';
       
       // SKU 可点击(主操作 - 跳 Shopify 后台)
@@ -1804,8 +1813,8 @@ function renderShopifyOrders() {
       const skuClickable = li.sku 
         ? hasShopifyProduct
           ? `<a href="#" onclick="event.preventDefault();event.stopPropagation();openShopifyProductInBrowser('${o.id}','${liId}','admin'); return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="${tipBackend}">${escapeHtml(li.sku)}</a>`
-          : isWoo && li.product_id
-            ? `<a href="${wooBase}/wp-admin/post.php?post=${li.product_id}&action=edit" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击打开 WordPress 后台产品页">${escapeHtml(li.sku)}</a>`
+          : isWoo && wooAdminUrl
+            ? `<a href="${wooAdminUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击打开 WordPress 后台产品页">${escapeHtml(li.sku)}</a>`
             : `<a href="#" onclick="event.preventDefault();event.stopPropagation();gotoProductBySku('${skuEsc}'); return false;" style="color:var(--accent); text-decoration:none; cursor:pointer;" title="点击查看本地产品档案">${escapeHtml(li.sku)}</a>`
         : '';
       
@@ -2424,7 +2433,7 @@ async function shopifyBatchOpenPo() {
     globalNote: '',
   };
   
-  document.getElementById('batchPoModal').style.display = 'flex';
+  document.getElementById('batchPoModalBg').style.display = 'flex';
   renderBatchPoModal();
 }
 
@@ -2526,16 +2535,16 @@ function renderBatchPoModal() {
                       ${l.variant ? `<div style="color:var(--text-tertiary); font-size:10.5px;">${escapeHtml(l.variant)}</div>` : ''}
                     </td>
                     <td style="padding:5px;">
-                      <input type="number" min="1" max="${l.originalQty}" value="${l.qty}" oninput="batchPoSetLine(${gi}, ${li}, 'qty', this.value)" 
+                      <input type="number" min="1" max="${l.originalQty}" value="${l.qty}" onchange="batchPoSetLine(${gi}, ${li}, 'qty', this.value)" 
                         style="width:100%; padding:4px 6px; font-size:12px; text-align:center; border:1px solid var(--border); border-radius:4px;">
                     </td>
                     <td style="padding:5px;">
-                      <input type="number" min="0" step="0.01" value="${l.price}" oninput="batchPoSetLine(${gi}, ${li}, 'price', this.value)" 
+                      <input type="number" min="0" step="0.01" value="${l.price}" onchange="batchPoSetLine(${gi}, ${li}, 'price', this.value)" 
                         style="width:100%; padding:4px 6px; font-size:12px; text-align:right; border:1px solid var(--border); border-radius:4px;">
                     </td>
                     <td style="padding:5px; text-align:right; font-family:monospace; font-weight:500;">¥ ${(Number(l.qty) * Number(l.price)).toFixed(2)}</td>
                     <td style="padding:5px;">
-                      <input type="text" value="${escapeHtml(l.note)}" oninput="batchPoSetLine(${gi}, ${li}, 'note', this.value)" placeholder="尺寸/色温/特殊要求"
+                      <input type="text" value="${escapeHtml(l.note)}" onchange="batchPoSetLine(${gi}, ${li}, 'note', this.value)" placeholder="尺寸/色温/特殊要求"
                         style="width:100%; padding:4px 6px; font-size:11px; border:1px solid var(--border); border-radius:4px;">
                     </td>
                   </tr>
@@ -2598,7 +2607,7 @@ function batchPoApplyPriceAll() {
 }
 
 function closeBatchPoModal() {
-  document.getElementById('batchPoModal').style.display = 'none';
+  document.getElementById('batchPoModalBg').style.display = 'none';
   BATCH_PO_STATE = null;
 }
 

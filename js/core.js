@@ -1722,6 +1722,12 @@ function showMainApp() {
   document.getElementById('loadingScreen').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('mainApp').style.display = 'block';
+  // V28t:登录后把 type=password 的字段从 DOM 移除 · Chrome 不再误判为登录表单弹保存密码
+  setTimeout(() => {
+    document.querySelectorAll('#loginScreen input[type="password"]').forEach(el => {
+      el.type = 'text'; el.value = ''; el.removeAttribute('name'); el.removeAttribute('id');
+    });
+  }, 100);
   // V5-W3-2026-05-26: 显示主应用后立刻应用用户的 tab 布局
   setTimeout(() => { if (typeof applyTabLayout === 'function') applyTabLayout(); }, 50);
   // V20260526q: 登录后加一条 appEntry 历史 · 用户点返回时能被 popstate 监听到 · 不会直接跳出应用

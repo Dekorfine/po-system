@@ -1214,6 +1214,33 @@ function renderPoForm() {
         <input type="date" id="poFormPromisedDate" class="form-control" value="${new Date().toISOString().slice(0, 10)}">
       </div>
       <div style="grid-column: 1/-1;">
+        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">
+          下单标准 ⚡ <span style="color:var(--text-tertiary); font-weight:normal;">(默认按客户国家自动选 · 可手动改 · 比如美客户在欧洲用→选欧规)</span>
+        </label>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          ${(() => {
+            const presets = ['美规110V电压','欧规220V电压','英规220V电压','澳规220V电压','中规220V电压','日规100V电压','韩规220V电压','巴标220V电压'];
+            const auto = (typeof getElectricalStandard === 'function')
+              ? (getElectricalStandard(PO_FORM_STATE._coCode, PO_FORM_STATE.salesOrder?.shipping_address?.country || '') || '')
+              : '';
+            const cur = (PO_FORM_STATE.electricalStandard !== undefined && PO_FORM_STATE.electricalStandard !== null)
+              ? PO_FORM_STATE.electricalStandard : auto;
+            const isCustom = cur && !presets.includes(cur);
+            return `
+              <select id="poFormStdSelect" onchange="poFormSetStd(this.value)"
+                style="flex:1; min-width:180px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px;">
+                ${presets.map(p => `<option value="${p}" ${cur === p ? 'selected' : ''}>${p}${p === auto ? ' (默认按国家)' : ''}</option>`).join('')}
+                <option value="__custom__" ${isCustom ? 'selected' : ''}>+ 自定义…</option>
+              </select>
+              <input type="text" id="poFormStdCustom" placeholder="自定义如:美规220V特殊电压"
+                value="${isCustom ? escapeHtml(cur) : ''}"
+                oninput="PO_FORM_STATE.electricalStandard = this.value"
+                style="flex:1.2; min-width:160px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; ${isCustom ? '' : 'display:none;'}">
+            `;
+          })()}
+        </div>
+      </div>
+      <div style="grid-column: 1/-1;">
         <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">订单备注 (会写在纸箱上，供应商对单用) *</label>
         <input type="text" id="poFormBoxNote" class="form-control" value="${escapeHtml(PO_FORM_STATE.boxNote || autoNote)}" placeholder="自动生成"
           oninput="PO_FORM_STATE.boxNote = this.value; PO_FORM_STATE.boxNoteManuallyEdited = true;">
@@ -1260,6 +1287,20 @@ function poFormSetLineNote(liid, val) {
   PO_FORM_STATE.lineNotes[liid] = val;
   PO_FORM_STATE.lineNotesManuallyEdited[liid] = true;
 }
+
+// V28t:手动选/输入下单标准(美客户在欧洲用→可改欧规)
+function poFormSetStd(v) {
+  const customInput = document.getElementById('poFormStdCustom');
+  if (v === '__custom__') {
+    if (customInput) { customInput.style.display = ''; customInput.focus(); }
+    PO_FORM_STATE.electricalStandard = customInput?.value || '';
+  } else {
+    if (customInput) customInput.style.display = 'none';
+    PO_FORM_STATE.electricalStandard = v;
+  }
+  PO_FORM_STATE.electricalStandardManuallyEdited = true;
+}
+window.poFormSetStd = poFormSetStd;
 
 // V28q:一键 AI 翻译本行备注(把残留英文规格翻成中文)
 async function poFormTranslateLine(liid) {
@@ -1568,6 +1609,20 @@ function closePoForm() {
 }
 
 async function poFormSave() {
+  // V28t:防双击/重复保存(避免出现 2 张相同 PO)
+  if (poFormSave._busy) return;
+  poFormSave._busy = true;
+  const _saveBtn = document.getElementById('poFormSaveBtn');
+  if (_saveBtn) { _saveBtn.disabled = true; _saveBtn.textContent = '保存中…'; }
+  try {
+    return await _poFormSaveInner();
+  } finally {
+    poFormSave._busy = false;
+    if (_saveBtn) { _saveBtn.disabled = false; _saveBtn.textContent = '保存采购单'; }
+  }
+}
+
+async function _poFormSaveInner() {
   const so = PO_FORM_STATE.salesOrder;
   const selected = Object.entries(PO_FORM_STATE.lineItemSelections).filter(([_, sel]) => sel.checked && sel.qty > 0);
   const customLines = (PO_FORM_STATE.customLines || []).filter(cl => cl.qty > 0);
@@ -1691,7 +1746,9 @@ async function poFormDoSave(groups, common) {
     // V5-W3-2026-05-26: 在 PO 层面计算电气标准(从销售订单的国家)
     // 后续每个 liData 都会带上这个 standard(per-line 字段,future 合箱时可不同)
     const _coCode = (so.shipping_address && (so.shipping_address.country_code || so.shipping_address.country)) || so.shipping_country || '';
-    const _poStandard = getElectricalStandard(_coCode, so.shipping_address?.country || so.shipping_country) || '';
+    const _poStandard = (PO_FORM_STATE.electricalStandardManuallyEdited && PO_FORM_STATE.electricalStandard)
+      ? PO_FORM_STATE.electricalStandard
+      : (getElectricalStandard(_coCode, so.shipping_address?.country || so.shipping_country) || '');
 
     for (const g of groups) {
       // 生成 PO 编号
@@ -4676,7 +4733,7 @@ function poOpenPrint(poId) {
           <th width="44" style="text-align:center;">数量</th>
           <th width="68" style="text-align:right;">单价</th>
           <th width="76" style="text-align:right;">小计</th>
-          <th width="110" style="background:#fffdf7;">备注</th>
+          <th width="180" style="background:#fffdf7;">备注</th>
         </tr></thead>
         <tbody>
           ${items.map((li, i) => {
@@ -4744,7 +4801,7 @@ async function _loadHtml2Canvas() {
 async function _captureAndCopy(el, filename) {
   const canvas = await window.html2canvas(el, {
     backgroundColor: '#ffffff',
-    scale: 2, useCORS: true, logging: false,
+    scale: 3, useCORS: true, logging: false,
   });
   return new Promise((resolve) => {
     canvas.toBlob(async (blob) => {
@@ -4818,7 +4875,7 @@ async function poQuickCopyImage(poId) {
           <th width="44" style="text-align:center;">数量</th>
           <th width="68" style="text-align:right;">单价</th>
           <th width="76" style="text-align:right;">小计</th>
-          <th width="110" style="background:#fffdf7;">备注</th>
+          <th width="180" style="background:#fffdf7;">备注</th>
         </tr></thead>
         <tbody>
           ${items.map((li, i) => {
@@ -4966,7 +5023,7 @@ function _buildSinglePoExportNode(po, includeImages) {
           <th width="44" style="text-align:center;">数量</th>
           <th width="68" style="text-align:right;">单价</th>
           <th width="76" style="text-align:right;">小计</th>
-          <th width="110" style="background:#fffdf7;">备注</th>
+          <th width="180" style="background:#fffdf7;">备注</th>
         </tr></thead>
         <tbody>
           ${items.map((li, i) => {
