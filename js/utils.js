@@ -388,9 +388,25 @@ function attachScreenshot(dataURL, target) {
       _issueDraft.screenshots.push(dataURL);
       _renderIssueModal({ isDraft: true });
     } else {
-      // 已保存模式 — 用 persistCurrentIssue 写
-      persistCurrentIssue(it => { if (!it.screenshots) it.screenshots = []; it.screenshots.push(dataURL); }, true);
-      _renderIssueModal({ isDraft: false });
+      // V28u:已保存模式 — 直接 await 写库 · 确保不会丢图
+      const agent = window._currentItemAgent || CURRENT_AGENT;
+      const arr = DATA.getIssues(agent);
+      const idx = arr.findIndex(i => i._id === _currentItemId);
+      if (idx >= 0) {
+        if (!arr[idx].screenshots) arr[idx].screenshots = [];
+        arr[idx].screenshots.push(dataURL);
+        DATA.saveIssues(agent, arr);
+        loadAllData();
+        _renderIssueModal({ isDraft: false });
+        // 直接 await update 单条 · 不等其它字段全量同步 · 立即落库
+        if (typeof sb !== 'undefined' && _currentItemId && !String(_currentItemId).startsWith('I')) {
+          sb.from('issues').update({ screenshots: arr[idx].screenshots }).eq('id', _currentItemId)
+            .then(({ error }) => {
+              if (error) { console.error('[issue 图片同步失败]', error); toast('图片同步失败:' + (error.message || error) + ' · 关闭前请重试', 'err', 6000); }
+              else { console.log('[issue 图片已落库]', arr[idx].screenshots.length, '张'); }
+            });
+        }
+      }
     }
   } else if (target === 'missing_orig') {
     const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
@@ -430,12 +446,33 @@ function attachScreenshot(dataURL, target) {
 }
 
 function renderTempThumbs(elId, list, type) {
-  document.getElementById(elId).innerHTML = list.map((s, i) => `
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.innerHTML = list.map((s, i) => `
     <div class="drop-zone-thumb">
       <img src="${s}" onclick="viewImage('${s}')">
       <button class="rm" onclick="rmTempThumb('${elId}', ${i})">×</button>
     </div>
   `).join('');
+  // V28u:供应商问题沟通区有暂存图时 · 显眼提示 · 防止用户关闭丢图
+  if (elId === 'ismFuThumbs') {
+    const hint = document.getElementById('ismFuHint');
+    const count = document.getElementById('ismFuHintCount');
+    const btn = document.getElementById('ismAddFuBtn');
+    if (hint) hint.style.display = list.length > 0 ? '' : 'none';
+    if (count) count.textContent = list.length;
+    if (btn) {
+      if (list.length > 0) {
+        btn.style.background = '#dc2626';
+        btn.style.animation = 'pulse 1.2s infinite';
+        btn.textContent = `+ 添加 (${list.length}图)`;
+      } else {
+        btn.style.background = '';
+        btn.style.animation = '';
+        btn.textContent = '+ 添加';
+      }
+    }
+  }
 }
 
 function rmTempThumb(elId, i) {

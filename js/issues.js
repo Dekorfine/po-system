@@ -728,7 +728,10 @@ function _renderIssueModal({ isDraft }) {
         <div class="ism-fu-input-row">
           <input type="date" id="ismNewDate" value="${new Date().toISOString().slice(0,10)}">
           <textarea id="ismNewNote" placeholder="本次沟通了什么？对方答复？下一步？ · 可 Ctrl+V 粘贴截图" rows="2" data-paste-target="issue_fu"></textarea>
-          <button class="btn primary" onclick="addIssueFollowup()" style="flex-shrink:0; align-self:stretch;">+ 添加</button>
+          <button class="btn primary" id="ismAddFuBtn" onclick="addIssueFollowup()" style="flex-shrink:0; align-self:stretch;">+ 添加</button>
+        </div>
+        <div id="ismFuHint" style="display:none; margin-top:6px; padding:8px 10px; background:#fef3c7; border:1px solid #f59e0b; border-radius:6px; font-size:12px; color:#92400e;">
+          ⚠️ 有 <b id="ismFuHintCount">0</b> 张图未保存 · 请点上面 <b>「+ 添加」</b>(可不填文字)· 关闭弹窗会丢图
         </div>
         <div style="margin-top:6px; display:flex; align-items:center; gap:8px;">
           <button type="button" class="btn small" onclick="document.getElementById('ismFuFileInput').click()">📷 上传图片</button>
@@ -768,7 +771,7 @@ function _renderIssueModal({ isDraft }) {
     : `
       <div class="ism-hint">字段修改会自动同步</div>
       <button class="btn danger" onclick="deleteCurrentIssue()">🗑 删除</button>
-      <button class="btn primary" onclick="closeModal('issueModal')">关闭</button>
+      <button class="btn primary" onclick="closeIssueModal()">关闭</button>
     `;
   
   modal.innerHTML = `
@@ -912,6 +915,16 @@ function deleteCurrentIssue() {
   updateIssueStats();
   toast('已移入回收站');
 }
+
+// V28u:关闭供应商问题 modal 前 · 检查暂存沟通图片(防丢图)
+function closeIssueModal() {
+  if (Array.isArray(_newScreenshots_fu) && _newScreenshots_fu.length > 0) {
+    if (!confirm(`沟通区还有 ${_newScreenshots_fu.length} 张图未保存!\n\n点"确定"关闭(图会丢)· 点"取消"先去点 [+ 添加] 保存`)) return;
+    _newScreenshots_fu = [];
+  }
+  closeModal('issueModal');
+}
+window.closeIssueModal = closeIssueModal;
 
 function addIssueFollowup() {
   const noteEl = document.getElementById('ismNewNote');
