@@ -961,6 +961,32 @@ function getShippingFee(o) {
   return 0;
 }
 
+// V28w: WooCommerce 变体 URL 诊断 · 控制台跑 diagWooVariant() 看每行的 meta_data 结构
+window.diagWooVariant = function() {
+  const orders = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) ? SHOPIFY._orders.filter(o => o.platform === 'woo').slice(0, 5) : [];
+  if (orders.length === 0) { console.log('没有 woo 订单 · 先同步 mooielight'); return; }
+  console.log('=== Woo 变体 URL 诊断(前 5 单)===');
+  orders.forEach(o => {
+    const raw = o.raw_payload || {};
+    const rawLis = Array.isArray(raw.line_items) ? raw.line_items : [];
+    console.log(`%c订单 ${o.shopify_order_number}`, 'color:#10b981;font-weight:bold');
+    rawLis.forEach((li, i) => {
+      const attrs = (li.meta_data || []).filter(m => m.key && !m.key.startsWith('_'));
+      console.log(`  行${i+1}: ${li.name}`);
+      console.log(`    product_id=${li.product_id} variation_id=${li.variation_id} sku=${li.sku}`);
+      console.log(`    meta_data(${attrs.length}个):`, attrs.map(m => `${m.key}=${m.value || m.display_value}`));
+      // 生成测试 URL
+      const params = attrs.map(m => {
+        const k = m.key.startsWith('pa_') ? 'attribute_' + m.key : 'attribute_' + m.key;
+        return k + '=' + encodeURIComponent(m.value || m.display_value || '');
+      }).filter(Boolean);
+      const url = `https://${o.shop_domain}/?p=${li.product_id}${params.length ? '&' + params.join('&') : ''}`;
+      console.log(`    %c前台 URL: ${url}`, 'color:#7c3aed');
+    });
+  });
+  console.log('=== 复制 URL 打开看是否精确到变体 ===');
+};
+
 // V28k: 诊断命令 · 控制台跑 diagShipping() 看前 5 单运费来源
 window.diagShipping = function() {
   const orders = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) ? SHOPIFY._orders.slice(0, 8) : [];
@@ -1786,17 +1812,38 @@ function renderShopifyOrders() {
       const isWoo = o.platform === 'woo';  // V28i: woo 平台
       const hasShopifyProduct = li.sku && o.shop_domain && o.shop_domain !== 'manual' && !isWoo;
       
-      // V28i: woo 产品链接(WP 后台 + 前台 · 公开 URL · 直接 target=_blank)
-      // V28L: 前台优先用 variation_id(精确到变体)· 或用 SKU 搜索(最准定位客户买的款)
+      // V28w:WooCommerce 变体 URL 深度修复
+      //   旧 bug:?p=variation_id 会 404(variation 是隐藏子产品,不能直接 ?p=)
+      //   新方案:?p=product_id(主产品·WP 会 301 到 /product/slug/)+ 从 raw_payload 提取 attribute 参数精准到变体
+      //   WC 标准变体 URL 格式:/product/slug/?attribute_pa_color=walnut&attribute_pa_plug=us
       const wooBase = isWoo ? ('https://' + String(o.shop_domain || '').replace(/^https?:\/\//, '').replace(/\/$/, '')) : '';
-      // 前台链接:有 variation_id → 变体页;否则 product_id 页;再带 SKU 搜索兜底
-      const wooFrontUrl = isWoo
-        ? (li.variation_id
-            ? `${wooBase}/?p=${li.variation_id}`            // 变体 id 直达
-            : li.sku
-              ? `${wooBase}/?s=${encodeURIComponent(li.sku)}&post_type=product`  // SKU 搜索(精确到款)
-              : li.product_id ? `${wooBase}/?p=${li.product_id}` : '')
-        : '';
+      let wooFrontUrl = '';
+      let wooFrontHint = '';
+      if (isWoo && li.product_id) {
+        // 1) 主产品 URL(用 ?p=product_id · WP 301 跳转到 /product/slug/)
+        const baseUrl = `${wooBase}/?p=${li.product_id}`;
+        // 2) 从 raw_payload 找这一行的 meta_data · 提取 attribute_pa_xxx 参数
+        const rawLis = (o.raw_payload && Array.isArray(o.raw_payload.line_items)) ? o.raw_payload.line_items : [];
+        const rawLi = rawLis.find(rl => rl.variation_id === li.variation_id && rl.product_id === li.product_id) 
+                   || rawLis.find(rl => rl.product_id === li.product_id);
+        const attrParams = [];
+        if (rawLi && Array.isArray(rawLi.meta_data)) {
+          for (const m of rawLi.meta_data) {
+            // WC 标准:全局属性 key 形如 "pa_color" / 本地属性 "Color"
+            //         订单 meta_data 里 m.key 是属性 key · m.value 是 slug(用于 URL)
+            if (!m.key || m.key.startsWith('_')) continue;  // 跳过私有 meta(_开头)
+            const k = m.key.startsWith('pa_') ? 'attribute_' + m.key : 'attribute_' + m.key;
+            const v = (m.value || m.display_value || '').toString();
+            if (v) attrParams.push(k + '=' + encodeURIComponent(v));
+          }
+        }
+        wooFrontUrl = attrParams.length > 0 ? `${baseUrl}&${attrParams.join('&')}` : baseUrl;
+        wooFrontHint = attrParams.length > 0 ? ' · 精确到变体' : (li.variation_id ? ' · 主产品页(变体属性未抓到)' : '');
+      } else if (isWoo && li.sku) {
+        // 没 product_id · 退回 SKU 搜索
+        wooFrontUrl = `${wooBase}/?s=${encodeURIComponent(li.sku)}&post_type=product`;
+        wooFrontHint = ' · 按SKU搜索';
+      }
       // 后台链接:变体在父产品页编辑 · 用 product_id
       const wooAdminUrl = isWoo && li.product_id ? `${wooBase}/wp-admin/post.php?post=${li.product_id}&action=edit` : '';
       const wooIcons = isWoo ? `
@@ -1805,7 +1852,7 @@ function renderShopifyOrders() {
            title="🔧 在 WordPress 后台打开此产品(编辑/库存/价格)">🔧</a>` : ''}
         ${wooFrontUrl ? `<a href="${wooFrontUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation();"
            style="margin-left:4px; color:var(--success); text-decoration:none; font-size:11px; opacity:0.85;"
-           title="🛒 在店铺前台打开商品页(客户视角${li.variation_id ? ' · 精确到变体' : li.sku ? ' · 按SKU搜索' : ''})">🛒</a>` : ''}
+           title="🛒 在店铺前台打开商品页(客户视角${wooFrontHint})">🛒</a>` : ''}
       ` : '';
       
       // SKU 可点击(主操作 - 跳 Shopify 后台)

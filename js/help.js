@@ -10,6 +10,29 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260528w',
+    date: '2026-05-28',
+    type: 'fix',
+    title: '🐛 修 Mooielight 前台变体 URL 404 + 精准到变体',
+    notes: [
+      '🔴 现象:点 mooielight 订单的 🛒 跳前台 → 404 错误 · 也不精确到变体',
+      '🔍 根因:WooCommerce 跟 Shopify 完全不同',
+      '   · Shopify:/products/handle?variant=ID(标准变体 URL)',
+      '   · WC:variation 是隐藏子产品 · ?p=variation_id 直接 404!',
+      '   · WC 标准变体 URL:/product/slug/?attribute_pa_color=walnut&attribute_pa_plug=us',
+      '',
+      '✅ 修法:',
+      '   1) URL 用 ?p=product_id(主产品 · WP 自动 301 到 /product/slug/)→ 不再 404',
+      '   2) 从 raw_payload.line_items[].meta_data 提取属性 → 拼 attribute_pa_* 参数',
+      '   3) 拼出标准 WC 变体 URL · 客户视角精确到买的那个款',
+      '',
+      '🔍 诊断命令:控制台跑 diagWooVariant() 看 meta_data 结构 + 生成的 URL',
+      '   · 如果 meta_data 为空 → raw_payload 没存全 · 需要重新同步',
+      '',
+      '🔒 升 shopify.js / help.js → v20260528w',
+    ],
+  },
+  {
     v: '20260528v',
     date: '2026-05-28',
     type: 'fix',
