@@ -1727,6 +1727,10 @@ function showMainApp() {
     document.querySelectorAll('#loginScreen input[type="password"]').forEach(el => {
       el.type = 'text'; el.value = ''; el.removeAttribute('name'); el.removeAttribute('id');
     });
+    // V28v:注入诱饵字段 · Chrome 自动填充会去填诱饵 · 真实业务字段不被填
+    if (typeof _injectAutofillDecoys === 'function') _injectAutofillDecoys();
+    // 把所有现有 input 应用一遍最强防御
+    if (typeof _disableAutofillOnFields === 'function') _disableAutofillOnFields(document.getElementById('mainApp'));
   }, 100);
   // V5-W3-2026-05-26: 显示主应用后立刻应用用户的 tab 布局
   setTimeout(() => { if (typeof applyTabLayout === 'function') applyTabLayout(); }, 50);
@@ -3001,27 +3005,73 @@ window.purchasesOnDateChange = purchasesOnDateChange;
 //   5. data-form-type="other"       — 1Password 忽略
 //   6. data-1p-ignore="true"        — 1Password 旧版兼容
 // 跳过:登录页(#loginScreen 内) · type=password · 已显式设过 autocomplete 的字段
+// V28v:终极禁用 Chrome 自动填充/记住密码(最强组合)
+// 核心招数:
+//   1. 在 body 顶部插 2 个 hidden 诱饵字段(username + password)· Chrome 会去填诱饵 · 真字段不填
+//   2. 真字段加 readonly · onfocus 时移除 readonly · Chrome 不识别 readonly 字段为可填
+//   3. 真字段随机 name 属性 · 防 Chrome 按 name 匹配历史
+//   4. autocomplete="new-password" + role="presentation" + 各种密码管理器 ignore 属性
+// 跳过:#loginScreen 内的字段(登录需要正常 autocomplete)· type=password 不动
+function _injectAutofillDecoys() {
+  // 已经注入过就不重复
+  if (document.getElementById('__autofill_decoy_wrap__')) return;
+  const wrap = document.createElement('div');
+  wrap.id = '__autofill_decoy_wrap__';
+  wrap.setAttribute('aria-hidden', 'true');
+  // 视觉完全隐藏 · 但 Chrome 能"看到"(不能 display:none · Chrome 会忽略 display:none 的字段)
+  wrap.style.cssText = 'position:absolute; left:-9999px; top:-9999px; width:1px; height:1px; opacity:0; pointer-events:none;';
+  wrap.innerHTML = `
+    <input type="text" name="username" autocomplete="username" tabindex="-1" value="">
+    <input type="password" name="password" autocomplete="current-password" tabindex="-1" value="">
+  `;
+  // 必须插在 body 第一个位置 · Chrome 优先匹配前面的字段
+  (document.body || document.documentElement).insertBefore(wrap, document.body.firstChild);
+}
+
 function _disableAutofillOnFields(root) {
   if (!root || !root.querySelectorAll) return;
   const fields = root.querySelectorAll('input, textarea');
   fields.forEach(el => {
-    // 登录页保留默认 autocomplete(email / current-password)
+    // 跳过登录页
     if (el.closest('#loginScreen')) return;
-    // 密码字段不动
+    // 跳过诱饵
+    if (el.closest('#__autofill_decoy_wrap__')) return;
+    // 跳过密码字段(用户主动设的密码)
     if (el.type === 'password') return;
-    // 已显式设过 autocomplete 的不覆盖(防止意外破坏)
-    if (el.hasAttribute('autocomplete') && el.getAttribute('autocomplete') !== '' && el.getAttribute('autocomplete') !== 'new-password') return;
-    
-    // 主拦截
-    el.setAttribute('autocomplete', 'new-password');
-    // V27n: 叠加防御层
+    // 已被处理过
+    if (el.dataset.autofillFixed === '1') return;
+    el.dataset.autofillFixed = '1';
+
+    // 1) autocomplete="new-password"(主拦截)
+    if (!el.hasAttribute('autocomplete') || el.getAttribute('autocomplete') === '' || el.getAttribute('autocomplete') === 'on') {
+      el.setAttribute('autocomplete', 'new-password');
+    }
+    // 2) 各类密码管理器 ignore
     if (!el.hasAttribute('role')) el.setAttribute('role', 'presentation');
     if (!el.hasAttribute('aria-autocomplete')) el.setAttribute('aria-autocomplete', 'none');
     if (!el.hasAttribute('data-lpignore')) el.setAttribute('data-lpignore', 'true');
     if (!el.hasAttribute('data-form-type')) el.setAttribute('data-form-type', 'other');
     if (!el.hasAttribute('data-1p-ignore')) el.setAttribute('data-1p-ignore', 'true');
-    
-    // 兜底 · 给 textarea 加 spellcheck off 避免分心(可选)
+
+    // 3) 随机 name(防 Chrome 按 name 匹配历史保存的账号)
+    // 如果没 name · 给一个随机 name · 让 Chrome 找不到匹配
+    if (!el.hasAttribute('name')) {
+      el.setAttribute('name', 'f_' + Math.random().toString(36).slice(2, 10));
+    }
+
+    // 4) readonly + 点击/聚焦解锁(关键招 · Chrome 不识别 readonly 字段)
+    // 但只对 type=text/email/tel 等文本框做 · number/date/file 不要 readonly trick
+    const t = (el.type || '').toLowerCase();
+    if (el.tagName === 'INPUT' && ['text', 'email', 'tel', 'url', 'search', ''].includes(t)) {
+      el.setAttribute('readonly', 'readonly');
+      // 用户点击或聚焦 → 移除 readonly 变可编辑
+      const unlock = function() { this.removeAttribute('readonly'); };
+      el.addEventListener('focus', unlock);
+      el.addEventListener('mousedown', unlock);
+      el.addEventListener('touchstart', unlock, { passive: true });
+    }
+
+    // textarea spellcheck off
     if (el.tagName === 'TEXTAREA' && !el.hasAttribute('spellcheck')) {
       el.setAttribute('spellcheck', 'false');
     }
