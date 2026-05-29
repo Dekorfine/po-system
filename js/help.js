@@ -10,6 +10,31 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260528y',
+    date: '2026-05-28',
+    type: 'fix',
+    title: '🐛 修切店铺 chip 还要手动同步才显示订单(严重 bug)',
+    notes: [
+      '🔴 现象:Sales 选了 Pinlighting chip · 显示 0 单 · 必须点同步才出来',
+      '🔍 根因(连环):',
+      '   · loadOrdersFromDB 拉数据时带了 shop 参数 → 只拉当前选中那个店',
+      '   · localStorage 缓存按 shop 分桶 → 切店 cacheKey 变 · 本地没数据',
+      '   · 切 chip 又只做本地过滤 → 本地无数据 → 显示 0',
+      '',
+      '✅ 修法(架构改成店小秘式):',
+      '   · loadOrdersFromDB 永远拉「全部店」的订单(不传 shop 参数)',
+      '   · localStorage 缓存只按 from/to 分桶(不再按 shop)',
+      '   · 切 chip → 纯本地过滤(瞬间生效 · 跟店小秘一样)',
+      '   · 缓存键从 v1 → v2 · 旧缓存自动失效',
+      '',
+      '💡 效果:',
+      '   · 切任何店 chip → 立即显示该店订单 · 不用同步',
+      '   · 切日期范围才需要拉新数据',
+      '',
+      '🔒 升 shopify.js / help.js → v20260528y',
+    ],
+  },
+  {
     v: '20260528x',
     date: '2026-05-28',
     type: 'feature',
