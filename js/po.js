@@ -732,22 +732,56 @@ function extractVariantInfo(variantTitle) {
 
   // 颜色中英对照（含修饰词）
   const COLOR_MAP = {
-    // 多词组合（必须排前面，避免被单词分割）
+    // 多词组合(必须排前面 · 避免被单词分割)
     'rose gold': '玫瑰金', 'champagne gold': '香槟金', 'antique brass': '复古黄铜',
-    'matte black': '哑光黑', 'matte white': '哑光白', 'polished chrome': '抛光铬',
-    'brushed nickel': '拉丝镍', 'satin nickel': '缎面镍',
-    'natural wood': '原木色',
+    'aged brass': '复古黄铜', 'antique gold': '复古金', 'aged gold': '复古金',
+    'matte black': '哑光黑', 'matte white': '哑光白', 'matte gold': '哑光金',
+    'matte brass': '哑光黄铜', 'matte brown': '哑光棕', 'matte gray': '哑光灰', 'matte grey': '哑光灰',
+    'polished chrome': '抛光铬', 'polished brass': '抛光黄铜', 'polished nickel': '抛光镍',
+    'brushed nickel': '拉丝镍', 'brushed brass': '拉丝黄铜', 'brushed gold': '拉丝金',
+    'brushed chrome': '拉丝铬', 'brushed steel': '拉丝钢',
+    'satin nickel': '缎面镍', 'satin brass': '缎面黄铜', 'satin gold': '缎面金',
+    'satin black': '缎面黑', 'satin chrome': '缎面铬',
+    'natural wood': '原木色', 'natural brass': '原色黄铜',
+    'smoky gray': '烟灰色', 'smoky grey': '烟灰色',
+    'smokey gray': '烟灰色', 'smokey grey': '烟灰色',  // 常见拼写错误
+    'smoke gray': '烟灰色', 'smoke grey': '烟灰色',
+    'oil rubbed bronze': '油擦青铜', 'oil-rubbed bronze': '油擦青铜',
+    'dark walnut': '深胡桃木色', 'light walnut': '浅胡桃木色',
+    'warm white': '暖白', 'cool white': '冷白', 'pure white': '纯白', 'off white': '米白',
+    'sky blue': '天蓝', 'navy blue': '海军蓝', 'royal blue': '宝蓝色',
+    'forest green': '森林绿', 'mint green': '薄荷绿', 'sage green': '鼠尾草绿',
+    'olive green': '橄榄绿', 'army green': '军绿', 'dark green': '深绿',
+    'wine red': '酒红', 'burgundy red': '勃艮第红', 'dark red': '深红',
     // 单词颜色
     black: '黑色', white: '白色', gray: '灰色', grey: '灰色',
     brown: '棕色', red: '红色', blue: '蓝色', green: '绿色',
     yellow: '黄色', pink: '粉色', orange: '橙色', purple: '紫色',
     silver: '银色', gold: '金色', beige: '米色', cream: '奶油色',
     ivory: '象牙白', navy: '海军蓝', champagne: '香槟色',
-    charcoal: '炭灰色', chrome: '铬', graphite: '石墨色',
-    nickel: '镍',
+    charcoal: '炭灰色', chrome: '铬色', graphite: '石墨色',
+    nickel: '镍色',
+    // 烟灰色系(灯具常见 · 含多种拼写)
+    smoky: '烟灰色', smokey: '烟灰色', smoke: '烟灰色', smoked: '烟灰色',
+    // 灰色系细分
+    taupe: '灰褐色', slate: '石板灰', ash: '灰白色',
+    // 暖色系
+    coral: '珊瑚色', salmon: '三文鱼色', peach: '蜜桃色',
+    terracotta: '陶土色', rust: '铁锈色', amber: '琥珀色',
+    // 自然色
+    sage: '鼠尾草绿', mint: '薄荷绿', olive: '橄榄绿', emerald: '翡翠绿',
+    teal: '蓝绿色', turquoise: '青绿色', burgundy: '勃艮第红',
+    maroon: '栗色', mauve: '淡紫色', lavender: '薰衣草紫',
+    // 木色
+    walnut: '胡桃木色', oak: '橡木色', mahogany: '红木色', cherry: '樱桃木色',
+    teak: '柚木色', ebony: '乌木色',
     // 修饰词
     matte: '哑光', polished: '抛光', glossy: '亮光', satin: '缎面',
-    antique: '复古', brushed: '拉丝',
+    antique: '复古', brushed: '拉丝', aged: '复古', distressed: '做旧',
+    // 灯具常用颜色名(易错拼写)
+    bronze: '青铜色', copper: '铜色',
+    transparent: '透明', translucent: '半透明', opaque: '不透明',
+    frosted: '磨砂', textured: '纹理',
   };
 
   // 英寸 → cm 整数（保留 1 位小数显示 .0）
@@ -4749,7 +4783,7 @@ function poOpenPrint(poId) {
             <tr>
               <td style="text-align:center;">${i+1}</td>
               <td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}">` : '<span style="color:#aaa;">—</span>'}</td>
-              <td>${cleanTitle ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(cleanTitle)}</div>` : ''}${cleanSpecs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(cleanSpecs)}</div>` : (cleanTitle ? '' : '<span style="color:#888;">—</span>')}</td>
+              <td class="spec-cell">${cleanTitle ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(cleanTitle)}</div>` : ''}${cleanSpecs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(cleanSpecs)}</div>` : (cleanTitle ? '' : '<span style="color:#888;">—</span>')}</td>
               <td style="text-align:center; background:#fef9f3; padding:4px 3px; vertical-align:middle; word-break:keep-all;">${lineStd ? `<b style="color:#c2410c; font-family:monospace; font-size:11px; font-weight:600; line-height:1.3; display:inline-block;">${escapeHtml(lineStd)}</b>` : '<span style="color:#aaa;">—</span>'}</td>
               <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px; display:inline-block;">${li.qty}</span>` : li.qty}</td>
               <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
@@ -4779,7 +4813,152 @@ function poOpenPrint(poId) {
     </div>
   `;
   document.getElementById('poPrintModal').style.display = 'flex';
+  // V28z:扫描产品规格残留英文 · 提示拼写问题 + 一键 AI 翻译
+  setTimeout(() => _scanPoPrintEnglishResidue(po), 150);
 }
+
+// V28z:扫描 PO 打印里的英文残留(可能是拼写错误或词典缺失)
+function _scanPoPrintEnglishResidue(po) {
+  const wrap = document.getElementById('poPrintBody');
+  if (!wrap) return;
+  // 找所有产品规格 cell · class 加在那个 td 上
+  const cells = wrap.querySelectorAll('.spec-cell');
+  const issues = [];   // [{liid, sku, originalSpec, englishWords}]
+  cells.forEach((cell, idx) => {
+    const txt = cell.innerText || '';
+    // 提取**连续英文单词**(2 字母以上 · 排除尺寸单位/电压等数字旁缩写)
+    // 排除常见正确缩写:cm, mm, kg, W, V, K, LED, USD, EUR, IP, AC, DC, US, EU, UK, AU
+    const SAFE = /^(cm|mm|kg|g|w|v|k|led|usd|eur|ip|ac|dc|us|eu|uk|au|jp|kr|cn|ce|ul|hz|lm|cri|ra|set|pcs?|pack|kit|fcc|rohs|etl|sku|d|h|x|to|in|of|or|and|by|for)$/i;
+    const englishWords = [...txt.matchAll(/\b[a-zA-Z]{2,}\b/g)]
+      .map(m => m[0])
+      .filter(w => !SAFE.test(w))
+      .filter((w, i, a) => a.indexOf(w) === i);  // 去重
+    if (englishWords.length > 0) {
+      issues.push({ idx, sku: po.line_items?.[idx]?.sku || '', text: txt, words: englishWords });
+    }
+  });
+
+  if (issues.length === 0) return;  // 完全无英文残留 · 不打扰
+
+  // 显眼警告条 · 插在打印内容上方
+  const printContent = document.getElementById('poPrintContent');
+  if (!printContent) return;
+  const allWords = [...new Set(issues.flatMap(i => i.words))];
+  const warnId = '__poEnglishWarn__';
+  document.getElementById(warnId)?.remove();
+  const warn = document.createElement('div');
+  warn.id = warnId;
+  warn.className = 'no-print';   // 打印时不显示这个警告条
+  warn.style.cssText = 'background:#fffbeb; border:1.5px solid #f59e0b; border-radius:8px; padding:12px 14px; margin-bottom:10px; font-size:13px;';
+  warn.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;">
+      <div style="font-weight:600; color:#92400e;">
+        ⚠️ 检测到 ${issues.length} 行产品规格有未翻译的英文(共 ${allWords.length} 个词)· 可能是美工 SKU 拼写错或词典缺词
+      </div>
+      <button onclick="_dismissPoEngWarn()" style="background:transparent; border:0; color:#92400e; cursor:pointer; font-size:18px; line-height:1;">✕</button>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
+      ${allWords.map(w => {
+        const suggestion = _suggestSpelling(w);
+        return `<span title="${suggestion ? '可能是:' + suggestion : '词典未收录'}"
+          style="padding:3px 8px; background:#fef3c7; border:1px solid #fbbf24; border-radius:4px; font-family:monospace; font-size:12px;">
+          <b>${escapeHtml(w)}</b>${suggestion ? ' → <span style="color:#15803d;">' + suggestion + '</span>' : ''}
+        </span>`;
+      }).join('')}
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button onclick="_autoTranslatePoEng('${po.id}')" 
+        style="padding:6px 14px; background:#7c3aed; color:#fff; border:0; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600;">
+        🌐 AI 一键翻译所有英文
+      </button>
+      <button onclick="_copyEngWordsForArtist(${JSON.stringify(allWords).replace(/"/g, '&quot;')})"
+        style="padding:6px 14px; background:#fff; color:#7c3aed; border:1.5px solid #7c3aed; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600;">
+        📋 复制给美工(让他改 SKU)
+      </button>
+      <span style="font-size:11px; color:#78716c; align-self:center;">建议:把残留的英文翻好 · 或让美工把 SKU 的英文规格写完整</span>
+    </div>
+  `;
+  printContent.parentNode.insertBefore(warn, printContent);
+}
+
+function _dismissPoEngWarn() { document.getElementById('__poEnglishWarn__')?.remove(); }
+window._dismissPoEngWarn = _dismissPoEngWarn;
+
+// 简易拼写建议(基于词典里的已知词 · Levenshtein 距离)
+function _suggestSpelling(word) {
+  const KNOWN = ['Smoky', 'Smokey', 'Smoke', 'Smoked', 'Black', 'White', 'Gray', 'Grey', 'Brown', 'Walnut', 'Brass', 'Gold',
+    'Silver', 'Bronze', 'Chrome', 'Nickel', 'Wood', 'Glass', 'Marble', 'Crystal', 'Matte', 'Polished', 'Brushed',
+    'Antique', 'Satin', 'Champagne', 'Charcoal', 'Beige', 'Ivory', 'Navy', 'Coral', 'Mint', 'Sage', 'Olive',
+    'Burgundy', 'Lavender', 'Hydrographics', 'Stainless', 'Steel', 'Frosted', 'Smoked'];
+  const lower = word.toLowerCase();
+  // 完全相等已经在词典里(理论上不该到这)
+  // 找编辑距离 ≤ 2 的最相近词
+  let best = null, bestDist = 3;
+  for (const k of KNOWN) {
+    const d = _levenshtein(lower, k.toLowerCase());
+    if (d > 0 && d < bestDist) { best = k; bestDist = d; }
+  }
+  return best;
+}
+
+function _levenshtein(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const m = [];
+  for (let i = 0; i <= b.length; i++) m[i] = [i];
+  for (let j = 0; j <= a.length; j++) m[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      m[i][j] = b[i - 1] === a[j - 1]
+        ? m[i - 1][j - 1]
+        : Math.min(m[i - 1][j - 1] + 1, m[i][j - 1] + 1, m[i - 1][j] + 1);
+    }
+  }
+  return m[b.length][a.length];
+}
+
+// AI 一键翻译 PO 打印里所有残留英文
+async function _autoTranslatePoEng(poId) {
+  const cells = document.querySelectorAll('#poPrintBody .spec-cell');
+  if (!cells.length) return;
+  toast('AI 正在翻译…', 'info', 2000);
+  for (const cell of cells) {
+    const txt = cell.innerText || '';
+    if (!/[a-zA-Z]{3,}/.test(txt)) continue;
+    try {
+      const translated = await _aiTranslateSpec(txt);
+      if (translated && translated.trim()) {
+        // 不破坏 HTML 结构 · 直接换文字
+        cell.innerHTML = escapeHtml(translated).replace(/\n/g, '<br>');
+      }
+    } catch (e) { console.warn('翻译失败:', e); }
+  }
+  _dismissPoEngWarn();
+  toast('✓ AI 翻译完成 · 可截图发工厂', 'success', 2500);
+}
+window._autoTranslatePoEng = _autoTranslatePoEng;
+
+// 复制给美工的提示(他要去改 SKU)
+async function _copyEngWordsForArtist(words) {
+  const lines = words.map(w => {
+    const sug = _suggestSpelling(w);
+    return `${w}${sug ? ' (可能想写:' + sug + ')' : ''}`;
+  });
+  const text = `美工你好,下面这些英文在跟单系统翻译失败,可能是 SKU 规格里拼写有问题,麻烦核对下并修正:\n\n${lines.join('\n')}\n\n如果是新词,我们这边会加进词典 · 谢谢!`;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('✓ 已复制 · 粘贴发给美工', 'success', 2000);
+  } catch (e) {
+    // 降级:文本框选中
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    toast('✓ 已复制', 'success', 2000);
+  }
+}
+window._copyEngWordsForArtist = _copyEngWordsForArtist;
+
 function closePoPrint() { document.getElementById('poPrintModal').style.display = 'none'; }
 function poPrintNow() { window.print(); }
 
@@ -5038,7 +5217,7 @@ function _buildSinglePoExportNode(po, includeImages) {
             <tr>
               <td style="text-align:center;">${i+1}</td>
               ${includeImages ? `<td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}" crossorigin="anonymous">` : '<span style="color:#aaa;">—</span>'}</td>` : ''}
-              <td>${cleanTitle ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(cleanTitle)}</div>` : ''}${cleanSpecs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(cleanSpecs)}</div>` : ''}</td>
+              <td class="spec-cell">${cleanTitle ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(cleanTitle)}</div>` : ''}${cleanSpecs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(cleanSpecs)}</div>` : ''}</td>
               <td style="text-align:center; background:#fef9f3; padding:4px 3px; vertical-align:middle; word-break:keep-all;">${lineStd ? `<b style="color:#c2410c; font-family:monospace; font-size:11px; font-weight:600; line-height:1.3; display:inline-block;">${escapeHtml(lineStd)}</b>` : '<span style="color:#aaa;">—</span>'}</td>
               <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px;">${li.qty}</span>` : li.qty}</td>
               <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
