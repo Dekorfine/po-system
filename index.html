@@ -21,11 +21,11 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/core.js?v=20260528t"></script>
-<script src="js/utils.js?v=20260527m"></script>
+<script src="js/utils.js?v=20260528u"></script>
 <script src="js/reset-system.js"></script>
 <script src="js/settings.js?v=20260525z"></script>
-<script src="js/issues.js?v=20260528j"></script>
-<script src="js/help.js?v=20260528t"></script>
+<script src="js/issues.js?v=20260528u"></script>
+<script src="js/help.js?v=20260528u"></script>
 <script src="js/dateFilter.js?v=20260526p"></script>
 <script src="js/feedback.js?v=20260525z"></script>
 <script src="js/performance.js"></script>
@@ -1407,6 +1407,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .as-card.urgent-nuclear { border-color: #7f1d1d; border-width: 3px; box-shadow: 0 2px 16px rgba(127,29,29,0.25); }
 .as-card.urgent-nuclear .urgent-badge { background: linear-gradient(135deg, #b91c1c, #7f1d1d); color: white; box-shadow: 0 2px 12px rgba(127,29,29,0.6); animation: pulse-critical 1.2s ease-in-out infinite; font-weight: 800; }
 @keyframes pulse-critical { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.05); } }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.6); } 50% { box-shadow: 0 0 0 6px rgba(220,38,38,0); } }
 /* 图片上显眼的承诺日期(只在 urgent 状态下显示) */
 .as-card .promised-badge {
   position: absolute;
