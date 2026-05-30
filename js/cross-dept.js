@@ -27,7 +27,13 @@ async function cdmLoadOrgDirectory() {
       .order('sort_order', { ascending: true });
     if (error) throw error;
     CDM_ORG_DIRECTORY = (data || []).map(r => ({
-      id: r.id, staffId: r.staff_id, name: r.name, system: r.system,
+      id: r.id, staffId: r.staff_id,
+      name: r.name,
+      // V28ν:接收三系统共享的中英名
+      chineseName: r.chinese_name || '',
+      englishName: r.english_name || '',
+      displayName: r.display_name || r.name,
+      system: r.system,
       role: r.role, department: r.department, active: r.active !== false,
       sortOrder: r.sort_order || 0,
     }));
@@ -49,10 +55,17 @@ async function cdmPublishMyStaff(updatedBy) {
       const role = a.isBoss ? '老板' : a.isAdmin ? '跟单主管' : '跟单专员';
       // staff_id 用 _userId(稳定 · 不变)
       const staffId = a._userId || a.name;
+      // V28ν:中英名 + display_name(三系统统一格式)
+      const en = a.englishName || a.name;
+      const cn = a.chineseName || '';
+      const displayName = (en && cn && en !== cn) ? `${en}(${cn})` : (en || cn || a.name);
       return {
         id: `po_${staffId}`,
         staff_id: staffId,
         name: a.name,
+        chinese_name: cn,
+        english_name: en,
+        display_name: displayName,
         system: 'po',
         role: role,
         department: '跟单部',
@@ -66,11 +79,11 @@ async function cdmPublishMyStaff(updatedBy) {
       .from('org_directory')
       .upsert(rows, { onConflict: 'id' });
     if (error) throw error;
-    console.log(`[CDM] 已发布 ${rows.length} 个跟单人员到共享目录`);
+    console.log(`[CDM] 已发布 ${rows.length} 个跟单人员到共享目录(含中英名)`);
     return rows.length;
   } catch (e) {
     console.warn('[CDM] 发布人员失败:', e.message, e);
-    return -1;  // V28k2: -1 = 错误(区分于 0 = 没人)
+    return -1;
   }
 }
 
@@ -85,7 +98,11 @@ function cdmGetRecipientOptions(targetSystem) {
 function cdmRenderAssignee(msg) {
   if (!msg.to_user_id) return '📢 整个部门';
   const person = CDM_ORG_DIRECTORY.find(p => p.staffId === msg.to_user_id && p.system === msg.to_system);
-  if (person) return `👤 ${person.name}${person.role ? '(' + person.role + ')' : ''}`;
+  if (person) {
+    // V28ν:优先用 displayName(三系统统一)
+    const shown = person.displayName || person.name;
+    return `👤 ${shown}${person.role ? '(' + person.role + ')' : ''}`;
+  }
   return `👤 ${msg.to_user_name || msg.to_user_id}`;
 }
 window.cdmLoadOrgDirectory = cdmLoadOrgDirectory;
