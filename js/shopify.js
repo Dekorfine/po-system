@@ -801,6 +801,97 @@ function wooNormalizeOrder(wo, storeMeta) {
   };
 }
 
+// V28θ:订单形状归一(Edge Function 可能返回 Shopify/WC 原始 或 表行 · 统一成表行)
+// 给客服侧也参考用 · 调用方拿到的 order 总是统一形状
+window.normalizeOrderShape = function(raw, shopDomain) {
+  if (!raw) return null;
+  // 已是表行
+  if (raw.shopify_order_number !== undefined && raw.shop_domain !== undefined) return raw;
+  // WC 原始(有 number + billing/shipping)
+  if (raw.number !== undefined && (raw.billing || raw.shipping)) {
+    const billing = raw.billing || {}, shipping = raw.shipping || {};
+    const fullName = n => ((n.first_name || '') + ' ' + (n.last_name || '')).trim();
+    return {
+      shopify_order_number: raw.number || String(raw.id),
+      shopify_order_id: raw.id,
+      shop_domain: shopDomain || 'mooielight.com',
+      platform: 'woo',
+      customer_name: fullName(billing) || fullName(shipping),
+      customer_email: billing.email || '',
+      customer_phone: billing.phone || shipping.phone || '',
+      total_price: raw.total,
+      currency: raw.currency,
+      financial_status: ['completed', 'processing'].includes(raw.status) ? 'paid' : 'pending',
+      shipping_address: {
+        name: fullName(shipping) || fullName(billing),
+        company: shipping.company || billing.company || '',
+        address1: shipping.address_1 || billing.address_1 || '',
+        address2: shipping.address_2 || billing.address_2 || '',
+        city: shipping.city || billing.city || '',
+        province: shipping.state || billing.state || '',
+        province_code: shipping.state || billing.state || '',
+        country: shipping.country || billing.country || '',
+        country_code: shipping.country || billing.country || '',
+        zip: shipping.postcode || billing.postcode || '',
+        phone: billing.phone || shipping.phone || '',
+      },
+      line_items: (raw.line_items || []).map(li => ({
+        sku: li.sku || '', title: li.name || '',
+        variant_title: (li.meta_data || [])
+          .filter(m => m.key && !m.key.startsWith('_') && m.display_value)
+          .map(m => `${m.display_key || m.key}: ${m.display_value}`).join(' / '),
+        quantity: li.quantity || 1, price: li.price || 0,
+        product_id: li.product_id, variation_id: li.variation_id,
+      })),
+      shopify_created_at: raw.date_created_gmt ? raw.date_created_gmt + 'Z' : raw.date_created,
+      customer_note: raw.customer_note || raw.note || null,
+      note: raw.customer_note || raw.note || null,
+      raw_payload: raw,
+    };
+  }
+  // Shopify REST 原始(有 name 带 # / customer / shipping_address 直出)
+  if (raw.name !== undefined || raw.order_number !== undefined) {
+    const sa = raw.shipping_address || raw.billing_address || {};
+    const customer = raw.customer || {};
+    return {
+      shopify_order_number: (raw.name || '').replace(/^#/, '') || String(raw.order_number || raw.id),
+      shopify_order_id: raw.id,
+      shop_domain: shopDomain || raw.shop_domain || '',
+      platform: 'shopify',
+      customer_name: sa.name || ((customer.first_name || '') + ' ' + (customer.last_name || '')).trim(),
+      customer_email: raw.email || customer.email || '',
+      customer_phone: sa.phone || raw.phone || customer.phone || '',
+      total_price: raw.total_price,
+      currency: raw.currency,
+      financial_status: raw.financial_status,
+      fulfillment_status: raw.fulfillment_status,
+      shipping_address: {
+        name: sa.name || '', company: sa.company || '',
+        address1: sa.address1 || '', address2: sa.address2 || '',
+        city: sa.city || '', province: sa.province || '',
+        province_code: sa.province_code || '',
+        country: sa.country || '', country_code: sa.country_code || '',
+        zip: sa.zip || '', phone: sa.phone || '',
+      },
+      line_items: (raw.line_items || []).map(li => ({
+        sku: li.sku || '', title: li.title || li.name || '',
+        variant_title: li.variant_title || '',
+        quantity: li.quantity || 1, price: li.price || 0,
+        product_id: li.product_id, variant_id: li.variant_id,
+        properties: li.properties || [],
+        image_url: li.image?.src || li.image_url || '',
+      })),
+      shopify_created_at: raw.created_at,
+      processed_at: raw.processed_at,
+      customer_note: raw.note, note: raw.note,
+      note_attributes: raw.note_attributes || [],
+      raw_payload: raw,
+    };
+  }
+  console.warn('[normalizeOrderShape] 未识别的形状', raw);
+  return raw;
+};
+
 // V28ζ:实时单查订单(策略 B:先查本地 · 未命中才拉 Shopify · 不入库批量)
 //
 // 通用 API · 客服系统/发票系统/其它模块都能调:
@@ -864,7 +955,8 @@ window.lookupOrderByName = async function(orderNo, shopDomain = null, opts = {})
         auto_save: !!opts.autoSave,  // 默认不入库 · 调用方明确要才入
       }, shopDomain);
       if (r && r.count > 0 && Array.isArray(r.orders) && r.orders.length > 0) {
-        const order = r.orders[0];
+        // V28θ:无论 Edge Function 返回什么形状 · 统一 normalize
+        const order = window.normalizeOrderShape(r.orders[0], shopDomain);
         if (!noStore) window._orderLookupCache[cacheKey] = { ts: Date.now(), order };
         return { ok: true, source: 'shopify', order, saved: r.saved };
       }
