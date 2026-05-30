@@ -801,6 +801,80 @@ function wooNormalizeOrder(wo, storeMeta) {
   };
 }
 
+// V28ε:按订单号补拉历史订单 · 客服查不到的老订单一键补
+window.openFetchByOrderNo = async function() {
+  const modal = document.getElementById('fetchByOrderNoModal');
+  if (!modal) return;
+  const sel = document.getElementById('fetchByOrderNoShop');
+  if (sel) {
+    sel.innerHTML = '<option value="">选店铺...</option>';
+    const stores = SHOPIFY._stores || [];
+    stores.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.shop_domain || s.domain || '';
+      opt.textContent = `${s.site_code || s.code || ''} · ${opt.value}`;
+      sel.appendChild(opt);
+    });
+  }
+  document.getElementById('fetchByOrderNoList').value = '';
+  document.getElementById('fetchByOrderNoResult').style.display = 'none';
+  modal.classList.add('show');
+};
+
+window.doFetchByOrderNo = async function() {
+  const shop = document.getElementById('fetchByOrderNoShop').value;
+  const rawList = document.getElementById('fetchByOrderNoList').value || '';
+  const orderNos = rawList.split(/[\n,,;;\s]+/).map(s => s.trim()).filter(Boolean);
+  if (!shop) { toast('请选店铺', 'warn'); return; }
+  if (orderNos.length === 0) { toast('请输入至少 1 个订单号', 'warn'); return; }
+
+  const btn = document.getElementById('fetchByOrderNoBtn');
+  const resultEl = document.getElementById('fetchByOrderNoResult');
+  btn.disabled = true; btn.textContent = '拉取中…';
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = '<div style="color:#6366f1;">🔄 开始拉取 ' + orderNos.length + ' 个订单…</div>';
+
+  let successCount = 0;
+  const results = [];
+  for (const orderNo of orderNos) {
+    let found = false;
+    let lastErr = '';
+    // 试两种格式:不带 # 和带 #
+    for (const name of [orderNo, '#' + orderNo]) {
+      try {
+        const r = await SHOPIFY.call('list_orders', {
+          name,
+          status: 'any',
+          limit: 5,
+          auto_save: true,
+        }, shop);
+        if (r && r.count > 0) {
+          successCount++;
+          results.push({ orderNo, ok: true, msg: `✓ 找到 ${r.count} 单 · 入库 ${r.saved || r.count}` });
+          found = true;
+          break;
+        }
+        lastErr = '未找到';
+      } catch (e) {
+        lastErr = e.message || String(e);
+      }
+    }
+    if (!found) {
+      results.push({ orderNo, ok: false, msg: '✗ ' + (lastErr || '未在 Shopify 找到 · 确认订单号 + 店铺是否对应') });
+    }
+    resultEl.innerHTML = results.map(r => 
+      `<div style="color:${r.ok ? '#16a34a' : '#dc2626'};">${r.orderNo}: ${r.msg}</div>`
+    ).join('');
+  }
+
+  btn.disabled = false; btn.textContent = '🚀 一键补拉';
+  resultEl.innerHTML += `<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border); font-weight:600;">完成:成功 ${successCount} / ${orderNos.length}</div>`;
+  if (successCount > 0) {
+    toast(`✓ 已补拉 ${successCount} 个订单 · 客服可重试`, 'ok', 4000);
+    if (typeof shopifyReloadOrdersAndRender === 'function') await shopifyReloadOrdersAndRender(true);
+  }
+};
+
 // V28β:跟单常用日期快筛 · 今天/昨天/本周/本月/未下完
 window.shopifyQuickRange = async function(kind) {
   const today = new Date();
