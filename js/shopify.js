@@ -1246,42 +1246,68 @@ window.diagWooVariant = function() {
 
 // V28k: 诊断命令 · 控制台跑 diagShipping() 看前 5 单运费来源
 window.diagShipping = function() {
-  const orders = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) ? SHOPIFY._orders.slice(0, 8) : [];
+  const orders = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) ? SHOPIFY._orders : [];
   if (orders.length === 0) { console.log('没有订单 · 先同步'); return; }
-  console.log('=== 运费诊断(前 8 单)===');
+  
+  // V28η:统计概览(全量)
+  let paid = 0, free = 0, rawEmpty = 0;
+  const sample = { paid: [], free: [], rawEmpty: [] };
   orders.forEach(o => {
     const raw = o.raw_payload || {};
-    console.log({
-      订单: o.shopify_order_number || o.shopify_order_id,
+    const rawHasData = Object.keys(raw).length > 0;
+    const fee = getShippingFee(o);
+    if (!rawHasData) {
+      rawEmpty++;
+      if (sample.rawEmpty.length < 3) sample.rawEmpty.push(o.shopify_order_number);
+    } else if (fee > 0) {
+      paid++;
+      if (sample.paid.length < 3) sample.paid.push({ no: o.shopify_order_number, fee, title: getShippingMethod(o) });
+    } else {
+      free++;
+      if (sample.free.length < 3) sample.free.push({ no: o.shopify_order_number, title: getShippingMethod(o) });
+    }
+  });
+  console.log('%c=== 运费诊断概览 ===', 'font-size:14px;color:#0d9488;font-weight:bold');
+  console.log(`总订单: ${orders.length}`);
+  console.log(`%c✅ 付费运输(快速): ${paid} 单`, 'color:#16a34a;font-weight:bold');
+  if (sample.paid.length) console.log('  样本:', sample.paid);
+  console.log(`%c⚪ 免运费(标准): ${free} 单`, 'color:#6b7280;font-weight:bold');
+  if (sample.free.length) console.log('  样本:', sample.free);
+  console.log(`%c⚠ raw_payload 空: ${rawEmpty} 单 ${rawEmpty > 0 ? '← 这些订单运费判断不了!' : ''}`, rawEmpty > 0 ? 'color:#dc2626;font-weight:bold' : 'color:#666');
+  if (sample.rawEmpty.length) console.log('  样本:', sample.rawEmpty);
+  console.log('');
+  console.log('=== 前 5 单详细字段(看 raw_payload 结构是否对)===');
+  orders.slice(0, 5).forEach(o => {
+    const raw = o.raw_payload || {};
+    console.log(`%c${o.shopify_order_number}`, 'font-weight:bold', {
       平台: o.platform || 'shopify',
       'getShippingFee结果': getShippingFee(o),
-      '①set金额': raw.total_shipping_price_set?.shop_money?.amount,
-      '②shipping_lines': Array.isArray(raw.shipping_lines) ? raw.shipping_lines.map(l => l.price) : '无',
+      'getShippingMethod结果': getShippingMethod(o),
+      'isExpress判断': isExpressShipping(o) ? '🚀 快速' : '🚚 标准',
+      '①total_shipping_price_set.shop_money.amount': raw.total_shipping_price_set?.shop_money?.amount,
+      '②shipping_lines样例': Array.isArray(raw.shipping_lines) ? raw.shipping_lines.map(l => ({ title: l.title, price: l.price, discounted: l.discounted_price })) : '无',
       '③total_shipping字段': o.total_shipping,
-      'raw有没有数据': Object.keys(raw).length > 0 ? `有(${Object.keys(raw).length}字段)` : '空!',
-      'raw顶层key样例': Object.keys(raw).slice(0, 15),
+      'raw顶层key': Object.keys(raw).slice(0, 12),
     });
   });
-  console.log('=== 如果都是 "raw空!" · 说明同步没存 raw_payload · 需要重新同步或改 Edge Function ===');
+  if (rawEmpty > orders.length * 0.3) {
+    console.log('%c⚠️ raw_payload 缺失率高 · 需重新同步(F12 → 销售单 → 同步 拉新数据)', 'color:#dc2626;font-size:13px;font-weight:bold');
+  }
 };
 
-// V28x:店小秘式快速运输识别(关键词优先 · 付费 fallback)
-// 用户可在 localStorage 自定义关键词:shopify_express_keywords / shopify_standard_keywords
+// V28η:回归用户原始口径 · 付了运费 = 快速运输 · 不管 shipping title 叫啥
+// 之前 V28x 让 STD 关键词命中(如 title="Standard Shipping")直接归标准 → 即使付了费
+// 用户反馈:"客户支付了运费的订单还是无法筛选" → 改回按费用主判断
 function isExpressShipping(o) {
-  const method = getShippingMethod(o).toLowerCase();
-  // 默认快速关键词(店小秘同款 · 用户可改)
-  const EXPRESS_KW = (localStorage.getItem('shopify_express_keywords') || 
-    'express,expedit,priority,overnight,快速,加急,fast,2-day,2 day,3-day,3 day,next-day,next day,dhl express,fedex priority,ups next,顺丰').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
-  const STD_KW = (localStorage.getItem('shopify_standard_keywords') ||
-    'standard,economy,ground,saver,free,普通,标准,经济,平邮,usps ground').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
-
-  // 1) 运输方式名包含快速关键词 → 快速
-  if (method && EXPRESS_KW.some(kw => method.includes(kw))) return true;
-  // 2) 运输方式名包含标准关键词 → 标准
-  if (method && STD_KW.some(kw => method.includes(kw))) return false;
-  // 3) 没运输方式名 / 关键词都没命中 → 按付费判断
+  // 主逻辑:付了运费 = 快速运输(用户口径)
   const fee = getShippingFee(o);
-  return fee > 0;
+  if (fee > 0) return true;
+  // 兜底:免运费但 method 含明确快递关键词(如客户用满减券免运费但选了 DHL Express)
+  const method = getShippingMethod(o).toLowerCase();
+  if (!method) return false;
+  const EXPRESS_KW = (localStorage.getItem('shopify_express_keywords') || 
+    'express,priority,overnight,加急,dhl express,fedex priority,ups next').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+  return EXPRESS_KW.some(kw => method.includes(kw));
 }
 // 格式化 ISO 时间为 "MM-DD HH:mm"(下单/付款时间用)
 function fmtShortDateTime(iso) {
