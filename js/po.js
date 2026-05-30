@@ -3875,9 +3875,8 @@ function renderPoList() {
             ${prev ? `<button class="so-action-btn" onclick="poRevert('${p.id}', '${prev.value}', '${prev.label}')" title="退回上一步">↩ 退回</button>` : ''}
             ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditPrices('${p.id}')" title="修改 PO 内每个产品的数量和单价">✏️ 改价</button>` : ''}
             ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditDescription('${p.id}')" title="修改产品中文名/英文名/规格/备注（不改数量和价格）">📝 改描述</button>` : ''}
-            <button class="so-action-btn" onclick="poPreviewImage('${p.id}')" title="预览订单图（不下载、不复制）｜确认无误后再点复制订单图">👁 预览</button>
-            <button class="so-action-btn primary" onclick="poQuickCopyImage('${p.id}')" title="一键生成订单图，直接复制到剪贴板，粘贴到供应商群">📋 复制订单图</button>
-            <button class="so-action-btn" onclick="poOpenPrint('${p.id}')" title="预览 + 打印（少数订单需要纸质单据）">🖨 打印</button>
+            <button class="so-action-btn primary" onclick="poQuickCopyImage('${p.id}')" title="一键生成订单图,直接复制到剪贴板,粘贴到供应商群">📋 复制订单图</button>
+            <button class="so-action-btn" onclick="poOpenPrint('${p.id}')" title="预览 + 打印 PO(纸质单据 / 也是预览效果最准的方式)">🖨 打印</button>
             ${!isCancelled ? `<button class="so-action-btn danger" onclick="poCancel('${p.id}')">⊘ 取消</button>` : ''}
           </div>
         </div>

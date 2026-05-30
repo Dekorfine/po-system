@@ -601,7 +601,8 @@ window.inspCloseEdit = inspCloseEdit;
 
 // ─────────────── 导出(图片 / PDF) ───────────────
 // 生成验货单的标准 HTML(图片版和 PDF 共用)
-function _inspBuildExportHtml(it) {
+function _inspBuildExportHtml(it, opts = {}) {
+  const editable = opts.editable;  // V28κ:预览模式下让图片区可编辑(粘贴/上传/删)
   const imgs = Array.isArray(it.images) ? it.images : [];
   const st = INSP_STATUS[it.status] || INSP_STATUS.ordered;
   const row = (label, val, highlight) => `
@@ -610,14 +611,46 @@ function _inspBuildExportHtml(it) {
       <td style="border:1px solid #333; padding:11px 14px; font-size:14px; ${highlight ? 'color:#c0392b; font-weight:600;' : ''}">${val || '—'}</td>
     </tr>`;
 
-  // 图片区:1 张占满 · 2-4 张网格 · 更多滚动
-  const imgGrid = imgs.length === 0
-    ? '<div style="color:#999; text-align:center; padding:80px 20px; border:1px dashed #ccc; border-radius:6px;">暂无灯具图片</div>'
-    : imgs.length === 1
-      ? `<img src="${escapeHtml(imgs[0].url)}" crossorigin="anonymous" style="width:100%; border:1px solid #ccc; border-radius:6px; display:block;">`
-      : `<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-           ${imgs.map(im => `<img src="${escapeHtml(im.url)}" crossorigin="anonymous" style="width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #ccc; border-radius:6px; display:block;">`).join('')}
-         </div>`;
+  // V28κ:WYSIWYG 图片区 · 编辑模式下每张图带 ✕ + 末尾追加 + 占位
+  const renderImg = (im, i) => {
+    const tile = imgs.length === 1
+      ? `<img src="${escapeHtml(im.url)}" crossorigin="anonymous" style="width:100%; border:1px solid #ccc; border-radius:6px; display:block;">`
+      : `<img src="${escapeHtml(im.url)}" crossorigin="anonymous" style="width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #ccc; border-radius:6px; display:block;">`;
+    if (!editable) return tile;
+    return `<div style="position:relative;">
+      ${tile}
+      <button onclick="inspPreviewRemoveImg(${i})" class="insp-edit-only" 
+              style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:#dc2626;color:#fff;border:2px solid #fff;font-size:14px;cursor:pointer;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,0.2);">✕</button>
+    </div>`;
+  };
+  
+  const addTile = editable ? `
+    <label class="insp-edit-only" style="aspect-ratio:1; border:2px dashed #94a3b8; border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; color:#64748b; gap:6px; transition:background 0.15s; background:#f8fafc;"
+           onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f8fafc'"
+           ondrop="event.preventDefault(); inspPreviewDrop(event)" ondragover="event.preventDefault(); this.style.background='#dbeafe'" ondragleave="this.style.background='#f8fafc'">
+      <span style="font-size:28px; line-height:1;">+</span>
+      <span style="font-size:11px;">上传 / 粘贴 / 拖入</span>
+      <input type="file" accept="image/*" multiple style="display:none;" onchange="inspPreviewPickImgs(this)">
+    </label>` : '';
+
+  let imgGrid;
+  if (imgs.length === 0 && !editable) {
+    imgGrid = '<div style="color:#999; text-align:center; padding:80px 20px; border:1px dashed #ccc; border-radius:6px;">暂无灯具图片</div>';
+  } else if (imgs.length === 0 && editable) {
+    imgGrid = `<div class="insp-edit-only" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      ${addTile}
+      <div style="aspect-ratio:1; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:11.5px; padding:10px; text-align:center; border:1px dashed #cbd5e1; border-radius:6px; line-height:1.5;">
+        💡 Ctrl+V<br>粘贴截图直接进来
+      </div>
+    </div>`;
+  } else if (imgs.length === 1 && !editable) {
+    imgGrid = renderImg(imgs[0], 0);
+  } else {
+    imgGrid = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      ${imgs.map((im, i) => renderImg(im, i)).join('')}
+      ${addTile}
+    </div>`;
+  }
 
   return `
     <div style="font-family:'Microsoft YaHei',sans-serif; width:820px; padding:32px; background:#fff; color:#1a1a1a; box-sizing:border-box;">
@@ -653,7 +686,7 @@ function _inspBuildExportHtml(it) {
 
         <!-- 右:灯具图片 -->
         <div style="flex:1; min-width:0;">
-          <div style="font-size:16px; font-weight:700; margin-bottom:10px; padding:8px 0; border-bottom:2px solid #333;">💡 灯具图片</div>
+          <div style="font-size:16px; font-weight:700; margin-bottom:10px; padding:8px 0; border-bottom:2px solid #333;">💡 灯具图片${editable ? ' <span class="insp-edit-only" style="font-size:11px; color:#94a3b8; font-weight:normal;">(可粘贴/上传/拖入)</span>' : ''}</div>
           ${imgGrid}
         </div>
       </div>
@@ -688,26 +721,19 @@ function inspRenderPreview() {
   const it = INSPECTION._list.find(x => x.id === _inspPreviewId);
   const body = document.getElementById('inspPreviewBody');
   if (!it || !body) return;
-  const imgs = Array.isArray(it.images) ? it.images : [];
-  // 图片管理条(预览顶部 · 可加/删图)
-  const thumbStrip = `
-    <div style="width:100%; max-width:820px; margin:0 auto 14px; background:#fff; border-radius:8px; padding:12px; box-sizing:border-box;">
-      <div style="font-size:12px; color:#666; margin-bottom:8px; font-weight:600;">📷 灯具图片(直接 Ctrl+V 粘贴 / 上传 · 实时保存)</div>
-      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-        ${imgs.map((im, i) => im._uploading
-          ? `<div style="width:64px;height:64px;border-radius:6px;background:#eee;display:flex;align-items:center;justify-content:center;">⏳</div>`
-          : `<div style="position:relative;width:64px;height:64px;">
-               <img src="${escapeHtml(im.url)}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #ddd;">
-               <button onclick="inspPreviewRemoveImg(${i})" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#dc2626;color:#fff;border:0;font-size:11px;cursor:pointer;line-height:1;">✕</button>
-             </div>`).join('')}
-        <label style="width:64px;height:64px;border:1.5px dashed #bbb;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;font-size:11px;color:#888;gap:2px;">
-          <span style="font-size:18px;">+</span>上传
-          <input type="file" accept="image/*" multiple style="display:none;" onchange="inspPreviewPickImgs(this)">
-        </label>
-      </div>
-    </div>`;
-  body.innerHTML = thumbStrip + _inspBuildExportHtml(it);
+  // V28κ:删掉顶部 thumb strip · 让验货单本身的图片区可编辑(WYSIWYG)
+  body.innerHTML = _inspBuildExportHtml(it, { editable: true });
 }
+
+// V28κ:拖拽文件直接进图片区
+window.inspPreviewDrop = async function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const files = [...(e.dataTransfer?.files || [])];
+  for (const f of files) {
+    if (f.type.startsWith('image/')) await _inspPreviewAddImg(f);
+  }
+};
 
 function inspClosePreview() {
   document.getElementById('inspPreviewModal')?.classList.remove('show');
