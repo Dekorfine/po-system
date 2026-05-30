@@ -484,6 +484,11 @@ function renderOrders() {
       const overdueCount = items.filter(o => getOrderEffStatus(o) === 'overdue').length;
       const allMine = !IS_ADMIN; // 主管视角下不显示批量催单（因为可能跨多个跟单员）
       const totalChase = canChase.reduce((s, o) => s + (o.followups || []).filter(f => f.type === 'chase').length, 0);
+      // V28δ:分组视图也尊重网格/列表切换 · 不再硬编码 renderOrderRow
+      const renderFn = (_ordersViewMode === 'grid') ? _renderOrderCard : renderOrderRow;
+      const bodyHtml = (_ordersViewMode === 'grid')
+        ? `<div class="as-grid" style="padding:10px;">${items.map((o, i) => renderFn(o, i)).join('')}</div>`
+        : items.map((o, i) => renderFn(o, i)).join('');
       return `
         <div class="supplier-group">
           <div class="supplier-group-head">
@@ -499,7 +504,7 @@ function renderOrders() {
             </div>
           </div>
           <div class="supplier-group-body">
-            ${items.map((o, i) => renderOrderRow(o, i)).join('')}
+            ${bodyHtml}
           </div>
         </div>
       `;

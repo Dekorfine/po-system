@@ -10,6 +10,31 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260528δ',
+    date: '2026-05-28',
+    type: 'fix',
+    title: '🐛 修催单网格/列表失效 + PDF 去底部水印',
+    notes: [
+      '🔴 1) 催单列表/网格切换失效 · 两种模式看一样',
+      '   根因:按供应商分组视图(supplier_grouped)硬编码用 renderOrderRow',
+      '         · 完全忽略 _ordersViewMode',
+      '         · 切到"网格"按钮没用',
+      '   修法:分组视图也按 _ordersViewMode 切换',
+      '         · grid 模式用 _renderOrderCard + .as-grid 包裹',
+      '         · list 模式用 renderOrderRow',
+      '',
+      '🔴 2) PDF 导出底部"Dekorfine 跟单工作台·自动生成于..."删掉',
+      '   · 用户要求不要这行 · 直接去掉 footer',
+      '',
+      '🔧 回退 V28β 的 export 列表 CSS 紧凑化',
+      '   · 列宽改回 36/92/1fr/180 (原始尺寸 · 不再太挤)',
+      '   · 网格模式 PDF 仍保持紧凑 2 列',
+      '   · 普通列表 PDF 恢复舒展',
+      '',
+      '🔒 升 orders.js / utils.js / help.js → v20260528δ',
+    ],
+  },
+  {
     v: '20260528γ',
     date: '2026-05-28',
     type: 'feature',

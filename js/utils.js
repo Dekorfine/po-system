@@ -1444,21 +1444,21 @@ async function renderSales() {
     }
     .export-print-card {
       display: grid;
-      grid-template-columns: 30px 70px auto 130px;
-      gap: 10px;
+      grid-template-columns: 36px 92px 1fr 180px;
+      gap: 14px;
       align-items: stretch;
-      padding: 10px 12px;
+      padding: 14px 16px;
       border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      margin-bottom: 6px;
+      border-radius: 10px;
+      margin-bottom: 10px;
       background: white;
       page-break-inside: avoid;
     }
-    /* V28β:网格模式 · 2 列布局 · 更紧凑 */
+    /* V28β:网格模式 · 2 列布局 · 紧凑 */
     .export-print-page.grid-mode .export-print-card {
-      grid-template-columns: 24px 60px 1fr;
-      gap: 8px;
-      padding: 8px 10px;
+      grid-template-columns: 24px 64px 1fr;
+      gap: 10px;
+      padding: 10px 12px;
       margin-bottom: 0;
     }
     .export-print-page.grid-mode .epc-side {
@@ -1471,7 +1471,7 @@ async function renderSales() {
       justify-content: space-between !important;
     }
     .export-print-page.grid-mode .epc-img-wrap {
-      width: 60px !important; height: 60px !important;
+      width: 64px !important; height: 64px !important;
     }
     .export-print-page.grid-mode .epc-num { font-size: 14px; }
     .export-print-page.grid-mode .epc-body { font-size: 11.5px; }
@@ -1486,13 +1486,13 @@ async function renderSales() {
       opacity: 0.85;
     }
     .epc-num {
-      font-size: 16px; font-weight: 700;
+      font-size: 18px; font-weight: 700;
       color: #6b7280;
       display: flex; align-items: center; justify-content: center;
     }
     .epc-img-wrap {
-      width: 64px; height: 64px;
-      border-radius: 6px;
+      width: 80px; height: 80px;
+      border-radius: 8px;
       overflow: hidden;
       background: #f3f4f6;
       border: 1px solid #e5e7eb;
@@ -1901,9 +1901,6 @@ async function _buildExportPageAndPreview(opts) {
       </div>
       <div class="export-print-body" style="${bodyStyle}">
         ${cardsHtml}
-      </div>
-      <div class="export-print-footer">
-        — Dekorfine 跟单工作台 · 自动生成于 ${dateStr} ${timeStr} —
       </div>
     </div>
   `;
