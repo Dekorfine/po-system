@@ -23,17 +23,17 @@
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
 <link rel="preload" href="js/core.js?v=20260528v" as="script">
-<link rel="preload" href="js/utils.js?v=20260528u" as="script">
-<link rel="preload" href="js/shopify.js?v=20260528y" as="script">
+<link rel="preload" href="js/utils.js?v=20260528beta" as="script">
+<link rel="preload" href="js/shopify.js?v=20260528beta" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="js/core.js?v=20260528v"></script>
-<script defer src="js/utils.js?v=20260528u"></script>
+<script defer src="js/utils.js?v=20260528beta"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
 <script defer src="js/issues.js?v=20260528u"></script>
-<script defer src="js/help.js?v=20260528alpha"></script>
+<script defer src="js/help.js?v=20260528beta"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -43,12 +43,12 @@
 <script defer src="js/aftersales.js?v=20260528s"></script>
 <script defer src="js/missing.js?v=20260527i"></script>
 <script defer src="js/orders.js?v=20260528p"></script>
-<script defer src="js/shopify.js?v=20260528y"></script>
-<script defer src="js/po.js?v=20260528z"></script>
+<script defer src="js/shopify.js?v=20260528beta"></script>
+<script defer src="js/po.js?v=20260528beta"></script>
 <script defer src="js/inventory.js?v=20260528f"></script>
 <script defer src="js/inspection.js?v=20260528o5"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
-<script defer src="js/cross-dept.js?v=20260528m"></script>
+<script defer src="js/cross-dept.js?v=20260528beta"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
 <script defer src="js/translator.js?v=20260525z"></script>
@@ -5653,6 +5653,18 @@ if ('serviceWorker' in navigator) {
         </select>
         <button class="btn" onclick="shopifyReloadOrdersAndRender(true)" title="只从本地读取（毫秒级）">📂 本地</button>
         <button class="btn primary" onclick="shopifyFetchOrders()" title="拉 Shopify 最新数据">🔄 同步</button>
+      </div>
+      <!-- V28β:跟单常用快筛 · 今天/昨天/本周/本月/昨天未下完 -->
+      <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; align-items:center;">
+        <span style="font-size:12px; color:var(--text-secondary); font-weight:600;">🚀 快筛:</span>
+        <button class="btn small" onclick="shopifyQuickRange('today')" title="今天下的单">📅 今天</button>
+        <button class="btn small" onclick="shopifyQuickRange('yesterday')" title="昨天下的单(继续昨晚没下完的)">📅 昨天</button>
+        <button class="btn small" onclick="shopifyQuickRange('week')" title="本周(周一开始)">📅 本周</button>
+        <button class="btn small" onclick="shopifyQuickRange('month')" title="本月">📅 本月</button>
+        <span style="border-left:1px solid var(--border-subtle); height:18px; margin:0 4px;"></span>
+        <button class="btn small" onclick="shopifyQuickRange('yesterday_pending')" style="background:#fef3c7; color:#92400e; border-color:#fbbf24;" title="昨天的订单 + 还没下PO的(继续昨晚没下完)">⏰ 昨天没下完</button>
+        <button class="btn small" onclick="shopifyQuickRange('today_pending')" style="background:#fef3c7; color:#92400e; border-color:#fbbf24;" title="今天的订单 + 还没下PO的">⏰ 今天没下完</button>
+        <span id="salesQuickRangeHint" style="margin-left:8px; font-size:11.5px; color:var(--text-tertiary);"></span>
       </div>
 
       <div class="sales-subtabs" id="salesSubtabs" style="margin-top: 14px;">
