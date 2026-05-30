@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
 <script defer src="js/issues.js?v=20260528gamma"></script>
-<script defer src="js/help.js?v=20260528xi"></script>
+<script defer src="js/help.js?v=20260528xi2"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -5160,6 +5160,7 @@ if ('serviceWorker' in navigator) {
     <div class="tab-item" data-tab="performance" onclick="switchTab('performance')">📊 绩效 <span class="badge zero" id="badgePerformance">0</span><a href="?tab=performance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="photoreq" onclick="switchTab('photoreq')">📨 拍摄需求<a href="?tab=photoreq" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="inspection" onclick="switchTab('inspection')">🔍 验货单<a href="?tab=inspection" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="quotation" onclick="switchTab('quotation')">📄 报价单<a href="?tab=quotation" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块(独立工具 · 美工/客服共用同一数据)">↗</a></div>
   </div>
 </div>
 
@@ -6281,6 +6282,23 @@ if ('serviceWorker' in navigator) {
     <iframe id="consolidationFrame" src="consolidation.html"
       style="width:100%; height: 800px; border: none; background: transparent; border-radius: 12px; display: block; transition: height 0.2s ease;"
       scrolling="no"
+      loading="lazy">
+    </iframe>
+  </div>
+</div>
+
+<!-- V28ξ:报价单工具(iframe 嵌入 worktrack-kpi 的 quotation.html · 与美工/客服共享同一份 quotes 表) -->
+<div class="tab-content" data-tab="quotation">
+  <div class="section-block" style="padding: 0;">
+    <div style="padding: 10px 14px; background:linear-gradient(90deg, #fef3c7, #fff); border-radius:12px 12px 0 0; border-bottom:1px solid var(--border-subtle); font-size:12px; color:#92400e;">
+      📄 <b>报价单工具</b> · 与美工/客服共用同一云端数据(Supabase quotes 表)· 支持 Quotation / PO / PI / Packing List · 7 种语言 / 货币 / 运输方式
+      &nbsp;&nbsp;
+      <a href="https://dekorfine.github.io/worktrack-kpi/quotation.html" target="_blank" rel="noopener" style="color:#92400e; text-decoration:underline; font-weight:600;">↗ 在新窗口打开(全屏更好用)</a>
+    </div>
+    <iframe id="quotationFrame" src="https://dekorfine.github.io/worktrack-kpi/quotation.html"
+      style="width:100%; height: calc(100vh - 200px); min-height: 700px; border: none; background: transparent; border-radius: 0 0 12px 12px; display: block;"
+      title="报价单 / Quotation"
+      allow="clipboard-write"
       loading="lazy">
     </iframe>
   </div>
