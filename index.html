@@ -32,8 +32,8 @@
 <script defer src="js/utils.js?v=20260528beta"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
-<script defer src="js/issues.js?v=20260528u"></script>
-<script defer src="js/help.js?v=20260528beta"></script>
+<script defer src="js/issues.js?v=20260528gamma"></script>
+<script defer src="js/help.js?v=20260528gamma"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -7011,177 +7011,214 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
-<!-- 催单详情 Modal -->
+<!-- 催单详情 Modal · V28γ 重设计:2 列宽屏 · 一屏可见 -->
 <div class="modal-bg" id="orderModal">
-  <div class="modal" style="width: 740px;">
+  <div class="modal" style="width: 1180px; max-width: 96vw; max-height: 92vh; padding: 20px 24px;">
     <button class="modal-close" onclick="closeModal('orderModal')">✕</button>
-    <h2>📋 催单详情</h2>
-    <p class="desc">编辑订单信息、记录催单进度、记录沟通历史</p>
-    <div class="od-header" id="omHeader"></div>
-    <div class="od-section">
-      <div class="od-section-title">基本信息</div>
-      <div class="form-row col-2">
-        <div class="form-group" style="margin-bottom: 0;"><label>📍 所属网站 *</label>
-          <select class="form-control mono" id="omSite" onchange="onOrderField('site', this.value)">
-            <option value="">选择网站...</option>
-          </select>
+    <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
+      <h2 style="margin:0;">📋 催单详情</h2>
+      <p class="desc" style="margin:0; font-size:12px;">编辑订单信息 · 记录催单进度 · 沟通历史</p>
+    </div>
+    <div class="od-header" id="omHeader" style="margin-bottom:10px;"></div>
+    
+    <!-- 顶部一行:基本信息 5 列横排 -->
+    <div style="display:grid; grid-template-columns: 160px 1fr 1fr 1fr 1.5fr; gap:10px; margin-bottom:12px; padding:12px; background:var(--bg-elevated); border-radius:8px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label style="font-size:11px;">📍 网站 *</label>
+        <select class="form-control mono" id="omSite" onchange="onOrderField('site', this.value)" style="padding:6px 8px; font-size:13px;">
+          <option value="">选...</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label style="font-size:11px;">订单号 *</label>
+        <input type="text" class="form-control mono" id="omOrderNo" placeholder="K114176" oninput="onOrderField('orderNo', this.value)" style="padding:6px 8px; font-size:13px;">
+        <div id="omOrderNoHint" style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px; display: none;"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label style="font-size:11px;">产品 / SKU</label>
+        <input type="text" class="form-control" id="omProduct" placeholder="吊灯A型 x2" oninput="onOrderField('product', this.value)" style="padding:6px 8px; font-size:13px;">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label style="font-size:11px;">供应商</label>
+        <input type="text" class="form-control" id="omSupplier" placeholder="广州X厂" list="oSuppliersList" oninput="onOrderField('supplier', this.value)" style="padding:6px 8px; font-size:13px;">
+        <datalist id="oSuppliersList"></datalist>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label style="font-size:11px;">订单备注</label>
+        <input type="text" class="form-control" id="omNotes" placeholder="加急 / 特殊要求" oninput="onOrderField('notes', this.value)" style="padding:6px 8px; font-size:13px;">
+      </div>
+    </div>
+    
+    <!-- 状态 + 日期:横向一行 -->
+    <div style="display:grid; grid-template-columns: 2fr 3fr; gap:12px; margin-bottom:12px;">
+      <div style="padding:10px 12px; background:var(--bg-elevated); border-radius:8px;">
+        <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:6px;">当前状态</div>
+        <div class="status-grid cols-5" style="gap:4px;">
+          <div class="status-pill s-pending" data-st="pending" onclick="setOrderStatus('pending')" style="padding:5px 6px; font-size:11.5px;">待下采购</div>
+          <div class="status-pill s-producing" data-st="producing" onclick="setOrderStatus('producing')" style="padding:5px 6px; font-size:11.5px;">生产中</div>
+          <div class="status-pill s-shipped" data-st="shipped" onclick="setOrderStatus('shipped')" style="padding:5px 6px; font-size:11.5px;">已发货</div>
+          <div class="status-pill s-arrived" data-st="arrived" onclick="setOrderStatus('arrived')" style="padding:5px 6px; font-size:11.5px;">已到货</div>
+          <div class="status-pill s-cancelled" data-st="cancelled" onclick="setOrderStatus('cancelled')" style="padding:5px 6px; font-size:11.5px;">取消</div>
         </div>
-        <div class="form-group" style="margin-bottom: 0;"><label>订单号 *</label>
-          <input type="text" class="form-control mono" id="omOrderNo" placeholder="先选网站" oninput="onOrderField('orderNo', this.value)">
-          <div id="omOrderNoHint" style="font-size: 10.5px; color: var(--text-tertiary); margin-top: 3px; display: none;"></div>
+      </div>
+      <div style="padding:10px 12px; background:var(--bg-elevated); border-radius:8px;">
+        <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:6px;">关键日期</div>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
+          <div class="date-field"><label style="font-size:10.5px;">下单日期</label><input type="date" id="omOrderDate" onchange="onOrderField('orderDate', this.value)" style="padding:5px 6px; font-size:12px;"></div>
+          <div class="date-field"><label style="font-size:10.5px;">📅 承诺发货 *</label><input type="date" id="omPromisedDate" onchange="onOrderField('promisedDate', this.value)" style="padding:5px 6px; font-size:12px;"></div>
+          <div class="date-field"><label style="font-size:10.5px;">🔔 下次跟进</label><input type="date" id="omNextFollow" class="next-follow" onchange="onOrderField('nextFollow', this.value)" style="padding:5px 6px; font-size:12px;"></div>
         </div>
       </div>
-      <div class="form-row col-2" style="margin-top: 10px;">
-        <div class="form-group" style="margin-bottom: 0;"><label>产品 / SKU</label><input type="text" class="form-control" id="omProduct" placeholder="吊灯A型 x2 + 配件" oninput="onOrderField('product', this.value)"></div>
-        <div class="form-group" style="margin-bottom: 0;"><label>供应商</label><input type="text" class="form-control" id="omSupplier" placeholder="广州X厂" list="oSuppliersList" oninput="onOrderField('supplier', this.value)"><datalist id="oSuppliersList"></datalist></div>
-      </div>
-      <div class="form-group" style="margin-top: 10px; margin-bottom: 0;">
-        <label>订单备注</label>
-        <input type="text" class="form-control" id="omNotes" placeholder="加急 / 特殊要求" oninput="onOrderField('notes', this.value)">
-      </div>
     </div>
-    <div class="od-section">
-      <div class="od-section-title">当前状态</div>
-      <div class="status-grid cols-5">
-        <div class="status-pill s-pending" data-st="pending" onclick="setOrderStatus('pending')">待下采购</div>
-        <div class="status-pill s-producing" data-st="producing" onclick="setOrderStatus('producing')">生产中</div>
-        <div class="status-pill s-shipped" data-st="shipped" onclick="setOrderStatus('shipped')">已发货</div>
-        <div class="status-pill s-arrived" data-st="arrived" onclick="setOrderStatus('arrived')">已到货</div>
-        <div class="status-pill s-cancelled" data-st="cancelled" onclick="setOrderStatus('cancelled')">取消</div>
-      </div>
-    </div>
-    <div class="od-section">
-      <div class="od-section-title">关键日期</div>
-      <div class="date-grid" style="grid-template-columns: repeat(3, 1fr);">
-        <div class="date-field"><label>下单日期</label><input type="date" id="omOrderDate" onchange="onOrderField('orderDate', this.value)"></div>
-        <div class="date-field"><label>📅 供应商承诺发货 *</label><input type="date" id="omPromisedDate" onchange="onOrderField('promisedDate', this.value)"></div>
-        <div class="date-field"><label>🔔 下次跟进日</label><input type="date" id="omNextFollow" class="next-follow" onchange="onOrderField('nextFollow', this.value)"></div>
-      </div>
-      <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 8px; line-height: 1.5;">💡 填了"承诺发货"日期，到期之前不会出现在催单提醒里。供应商告知发货后，直接把状态切到"已发货"即可（不用填具体发货日期）。</div>
-    </div>
-    <div class="od-section">
-      <div class="od-section-title">📎 凭证截图（可选）<span class="count" id="omOrigCount">0 张</span></div>
-      <div class="drop-zone-thumbs" id="omOrigThumbs"></div>
-      <div class="drop-zone" id="omOrigDropZone"><input type="file" id="omOrigFileInput" accept="image/*" multiple>📎 拖拽 / Ctrl+V 粘贴 / <a style="color: var(--accent);" href="#" onclick="event.preventDefault(); document.getElementById('omOrigFileInput').click();">点击选择</a></div>
-    </div>
-    <div class="od-section">
-      <div class="od-section-title">催单 / 沟通时间线<span class="count" id="omTimelineCount">0 条</span></div>
-      <div class="timeline" id="omTimeline"></div>
-    </div>
-    <div class="od-section">
-      <div class="od-section-title">+ 添加沟通记录</div>
-      <div class="fu-add-area">
-        <div class="type-select-row" id="omTypeRow">
-          <button class="fu-type-btn selected" data-type="chase" onclick="setOmFuType('chase')">💬 催单</button>
-          <button class="fu-type-btn" data-type="response" onclick="setOmFuType('response')">📨 供应商反馈</button>
-          <button class="fu-type-btn" data-type="ship" onclick="setOmFuType('ship')">🚚 发货通知</button>
-          <button class="fu-type-btn" data-type="arrive" onclick="setOmFuType('arrive')">📦 到货</button>
-          <button class="fu-type-btn" data-type="other" onclick="setOmFuType('other')">📌 其他</button>
+    
+    <!-- 底部 2 列:左截图+时间线 / 右添加沟通 -->
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; max-height:46vh; overflow:hidden;">
+      <!-- 左:凭证 + 时间线 -->
+      <div style="display:flex; flex-direction:column; gap:10px; min-height:0;">
+        <div style="padding:8px 10px; background:var(--bg-elevated); border-radius:8px;">
+          <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:5px;">📎 凭证截图 <span id="omOrigCount" style="color:var(--text-tertiary); font-weight:normal;">(0)</span></div>
+          <div class="drop-zone-thumbs" id="omOrigThumbs" style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:5px;"></div>
+          <div class="drop-zone" id="omOrigDropZone" style="padding:8px; font-size:11.5px;"><input type="file" id="omOrigFileInput" accept="image/*" multiple>📎 拖拽 / Ctrl+V / <a style="color:var(--accent);" href="#" onclick="event.preventDefault(); document.getElementById('omOrigFileInput').click();">点击选择</a></div>
         </div>
-        <textarea class="form-control" id="omNewNote" data-paste-target="order_fu" placeholder="跟进内容，例如：催问生产进度，供应商承诺周五前发货 / 货已到仓 ..."></textarea>
-        <div class="drop-zone" id="omFuDropZone" style="margin-top: 10px;"><input type="file" id="omFuFileInput" accept="image/*" multiple>📎 截图（可选，拖拽/粘贴/选择）</div>
-        <div class="drop-zone-thumbs" id="omFuThumbs"></div>
-        <div class="fu-add-bottom">
-          <div class="date-input">📅 <input type="date" id="omNewDate"></div>
+        <div style="flex:1; padding:8px 10px; background:var(--bg-elevated); border-radius:8px; overflow-y:auto; min-height:120px;">
+          <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:5px; position:sticky; top:-8px; background:var(--bg-elevated); padding-top:4px;">💬 沟通时间线 <span id="omTimelineCount" style="color:var(--text-tertiary); font-weight:normal;">(0)</span></div>
+          <div class="timeline" id="omTimeline"></div>
+        </div>
+      </div>
+      <!-- 右:添加沟通 -->
+      <div style="padding:10px 12px; background:rgba(13,148,136,0.04); border:1px solid rgba(13,148,136,0.15); border-radius:8px; display:flex; flex-direction:column; gap:8px; overflow-y:auto;">
+        <div style="font-size:11.5px; color:#0d9488; font-weight:600;">+ 添加沟通记录</div>
+        <div class="type-select-row" id="omTypeRow" style="display:flex; gap:4px; flex-wrap:wrap;">
+          <button class="fu-type-btn selected" data-type="chase" onclick="setOmFuType('chase')" style="padding:4px 8px; font-size:11.5px;">💬 催单</button>
+          <button class="fu-type-btn" data-type="response" onclick="setOmFuType('response')" style="padding:4px 8px; font-size:11.5px;">📨 供应商反馈</button>
+          <button class="fu-type-btn" data-type="ship" onclick="setOmFuType('ship')" style="padding:4px 8px; font-size:11.5px;">🚚 发货通知</button>
+          <button class="fu-type-btn" data-type="arrive" onclick="setOmFuType('arrive')" style="padding:4px 8px; font-size:11.5px;">📦 到货</button>
+          <button class="fu-type-btn" data-type="other" onclick="setOmFuType('other')" style="padding:4px 8px; font-size:11.5px;">📌 其他</button>
+        </div>
+        <textarea class="form-control" id="omNewNote" data-paste-target="order_fu" placeholder="跟进内容,例如:催问生产进度,供应商承诺周五前发货..." rows="3" style="font-size:12.5px; resize:none;"></textarea>
+        <div class="drop-zone" id="omFuDropZone" style="padding:6px; font-size:11px;"><input type="file" id="omFuFileInput" accept="image/*" multiple>📎 截图(可选,拖拽/粘贴)</div>
+        <div class="drop-zone-thumbs" id="omFuThumbs" style="display:flex; flex-wrap:wrap; gap:4px;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:auto; padding-top:4px;">
+          <div style="display:flex; align-items:center; gap:6px; font-size:11.5px;">📅 <input type="date" id="omNewDate" style="padding:4px 6px; font-size:12px;"></div>
           <button class="btn primary sm" onclick="addOrderFollowup()">✓ 保存跟进</button>
         </div>
       </div>
     </div>
-    <div class="modal-actions">
-      <button class="btn danger-text" onclick="deleteCurrentOrder()">🗑 删除此订单</button>
+    
+    <div class="modal-actions" style="margin-top:12px; padding-top:10px;">
+      <button class="btn danger-text" onclick="deleteCurrentOrder()" style="font-size:12px;">🗑 删除此订单</button>
       <button class="btn primary" onclick="closeModal('orderModal')">完成</button>
     </div>
   </div>
 </div>
 
-<!-- 售后详情 Modal -->
+<!-- 售后详情 Modal · V28γ 重设计:2 列宽屏 -->
 <div class="modal-bg" id="aftersalesModal">
-  <div class="modal" style="width: 720px;">
+  <div class="modal" style="width: 1180px; max-width: 96vw; max-height: 92vh; padding: 20px 24px;">
     <button class="modal-close" onclick="closeModal('aftersalesModal')">✕</button>
-    <h2>🔧 售后单详情</h2>
-    <p class="desc">记录售后原因、跟进处理过程、保留沟通证据</p>
-    <div class="od-header" id="asmHeader"></div>
-    <div class="od-section">
-      <div class="od-section-title">基本信息</div>
-      <div class="form-row col-2">
-        <div class="form-group" style="margin-bottom: 0;"><label>📍 所属网站 *</label>
-          <select class="form-control mono" id="asmSite" onchange="onAfterField('site', this.value)">
-            <option value="">选择网站...</option>
-          </select>
+    <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
+      <h2 style="margin:0;">🔧 售后单详情</h2>
+      <p class="desc" style="margin:0; font-size:12px;">记录售后原因 · 跟进处理过程 · 保留沟通证据</p>
+    </div>
+    <div class="od-header" id="asmHeader" style="margin-bottom:10px;"></div>
+    
+    <!-- 顶部:基本信息横排 -->
+    <div style="display:grid; grid-template-columns: 160px 1fr 1fr 1fr 1fr; gap:10px; margin-bottom:10px; padding:12px; background:var(--bg-elevated); border-radius:8px;">
+      <div class="form-group" style="margin-bottom:0;">
+        <label style="font-size:11px;">📍 网站 *</label>
+        <select class="form-control mono" id="asmSite" onchange="onAfterField('site', this.value)" style="padding:6px 8px; font-size:13px;">
+          <option value="">选...</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label style="font-size:11px;">订单号 *</label>
+        <input type="text" class="form-control mono" id="asmOrderNo" placeholder="先选网站" oninput="onAfterField('orderNo', this.value)" style="padding:6px 8px; font-size:13px;">
+        <div id="asmOrderNoHint" style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px; display: none;"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:0; display:none;">
+        <label style="font-size:11px;">产品 / SKU</label>
+        <input type="text" class="form-control" id="asmProduct" placeholder="吊灯A型" oninput="onAfterField('product', this.value)" style="padding:6px 8px; font-size:13px;">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label style="font-size:11px;">供应商</label>
+        <input type="text" class="form-control" id="asmSupplier" placeholder="广州X厂" list="asSuppliersList" oninput="onAfterField('supplier', this.value)" style="padding:6px 8px; font-size:13px;">
+        <datalist id="asSuppliersList"></datalist>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label style="font-size:11px;">📅 发起日期</label>
+        <input type="date" class="form-control mono" id="asmCreatedDate" onchange="onAfterField('createdDate', this.value)" style="padding:6px 8px; font-size:13px;">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label style="font-size:11px;">🚨 加急</label>
+        <div id="asmUrgentToggle"></div>
+      </div>
+    </div>
+    
+    <!-- 售后原因 + 状态 + 日期 一行 -->
+    <div style="display:grid; grid-template-columns: 2fr 1.5fr; gap:10px; margin-bottom:10px;">
+      <div style="padding:10px 12px; background:var(--bg-elevated); border-radius:8px;">
+        <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:6px;">售后原因 * <span style="font-weight:400;color:var(--text-tertiary);">支持多选</span></div>
+        <div class="status-grid cols-4" id="asmReasonGrid" style="gap:4px;">
+          <div class="status-pill" data-r="产品瑕疵" onclick="toggleAfterReason('产品瑕疵')" style="padding:4px 6px; font-size:11px;">⚠ 产品瑕疵</div>
+          <div class="status-pill" data-r="给错货物" onclick="toggleAfterReason('给错货物')" style="padding:4px 6px; font-size:11px;">🔄 给错货物</div>
+          <div class="status-pill" data-r="缺配件" onclick="toggleAfterReason('缺配件')" style="padding:4px 6px; font-size:11px;">🧩 缺配件</div>
+          <div class="status-pill" data-r="功能故障" onclick="toggleAfterReason('功能故障')" style="padding:4px 6px; font-size:11px;">⚡ 功能故障</div>
+          <div class="status-pill" data-r="物流损坏" onclick="toggleAfterReason('物流损坏')" style="padding:4px 6px; font-size:11px;">📦 物流损坏</div>
+          <div class="status-pill" data-r="安装问题" onclick="toggleAfterReason('安装问题')" style="padding:4px 6px; font-size:11px;">🔧 安装问题</div>
+          <div class="status-pill" data-r="不符预期" onclick="toggleAfterReason('不符预期')" style="padding:4px 6px; font-size:11px;">😕 不符预期</div>
+          <div class="status-pill" data-r="其他" onclick="toggleAfterReason('其他')" style="padding:4px 6px; font-size:11px;">📌 其他</div>
         </div>
-        <div class="form-group" style="margin-bottom: 0;"><label>订单号 *</label>
-          <input type="text" class="form-control mono" id="asmOrderNo" placeholder="先选网站" oninput="onAfterField('orderNo', this.value)">
-          <div id="asmOrderNoHint" style="font-size: 10.5px; color: var(--text-tertiary); margin-top: 3px; display: none;"></div>
+        <div id="asmSubReasonWrap" style="margin-top: 6px; display: none;">
+          <div style="font-size: 10.5px; color: var(--text-tertiary); margin-bottom: 4px;">具体类型(可选)· 每个主原因可选一个</div>
+          <div id="asmSubReasonGrid"></div>
         </div>
       </div>
-      <div class="form-row col-2" style="margin-top: 10px;">
-        <!-- V5-W3-2026-05-25: SKU 字段隐藏(订单号+凭证截图已能定位产品)
-             用 display:none 保留 DOM,避免 aftersales.js 读取报错 -->
-        <div class="form-group" style="margin-bottom: 0; display: none;"><label>产品 / SKU</label><input type="text" class="form-control" id="asmProduct" placeholder="吊灯A型" oninput="onAfterField('product', this.value)"></div>
-        <div class="form-group" style="margin-bottom: 0; grid-column: 1 / -1;"><label>供应商</label><input type="text" class="form-control" id="asmSupplier" placeholder="广州X厂" list="asSuppliersList" oninput="onAfterField('supplier', this.value)"><datalist id="asSuppliersList"></datalist></div>
-      </div>
-      <div class="form-group" style="margin-top: 10px; margin-bottom: 0;"><label>📅 售后发起日期</label><input type="date" class="form-control mono" id="asmCreatedDate" onchange="onAfterField('createdDate', this.value)"></div>
-    </div>
-    <div class="od-section">
-      <div class="od-section-title">🚨 加急标记</div>
-      <div id="asmUrgentToggle"></div>
-    </div>
-    <div class="od-section">
-      <div class="od-section-title">售后原因 * <span style="font-size:11px;font-weight:400;color:var(--text-tertiary);margin-left:8px;">支持多选 · 点击切换</span></div>
-      <div class="status-grid cols-4" id="asmReasonGrid">
-        <div class="status-pill" data-r="产品瑕疵" onclick="toggleAfterReason('产品瑕疵')">⚠ 产品瑕疵</div>
-        <div class="status-pill" data-r="给错货物" onclick="toggleAfterReason('给错货物')">🔄 给错货物</div>
-        <div class="status-pill" data-r="缺配件" onclick="toggleAfterReason('缺配件')">🧩 缺配件</div>
-        <div class="status-pill" data-r="功能故障" onclick="toggleAfterReason('功能故障')">⚡ 功能故障</div>
-        <div class="status-pill" data-r="物流损坏" onclick="toggleAfterReason('物流损坏')">📦 物流损坏</div>
-        <div class="status-pill" data-r="安装问题" onclick="toggleAfterReason('安装问题')">🔧 安装问题</div>
-        <div class="status-pill" data-r="不符预期" onclick="toggleAfterReason('不符预期')">😕 不符预期</div>
-        <div class="status-pill" data-r="其他" onclick="toggleAfterReason('其他')">📌 其他</div>
-      </div>
-      <!-- V20260527d: 子原因区按每个已选主原因分组展开(由 aftersales.js 动态渲染) -->
-      <div id="asmSubReasonWrap" style="margin-top: 12px; display: none;">
-        <div style="font-size: 11.5px; color: var(--text-tertiary); margin-bottom: 8px;">具体类型(可选,选了便于统计)· 每个主原因可单独选一个子类</div>
-        <div id="asmSubReasonGrid"></div>
-      </div>
-      <textarea class="form-control" id="asmReasonDetail" data-paste-target="after_orig" placeholder="详细描述售后情况（如：客户反馈灯罩有 2cm 长的裂痕）" style="margin-top: 10px;" oninput="onAfterField('reasonDetail', this.value)"></textarea>
-    </div>
-    <div class="od-section">
-      <div class="od-section-title">当前处理状态</div>
-      <div class="status-grid cols-5">
-        <div class="status-pill s-pending" data-st="pending" onclick="setAfterStatus('pending')">待处理</div>
-        <div class="status-pill s-contacting" data-st="contacting" onclick="setAfterStatus('contacting')">沟通中</div>
-        <div class="status-pill s-repairing" data-st="repairing" onclick="setAfterStatus('repairing')">返修中</div>
-        <div class="status-pill s-resolved" data-st="resolved" onclick="setAfterStatus('resolved')">已解决</div>
-        <div class="status-pill s-cancelled" data-st="cancelled" onclick="setAfterStatus('cancelled')">已取消</div>
-      </div>
-      <div class="form-row col-2" style="margin-top: 12px;">
-        <div class="form-group" style="margin-bottom: 0;"><label>🔔 下次跟进日</label><input type="date" class="form-control mono" id="asmNextFollow" onchange="onAfterField('nextFollow', this.value)"></div>
-        <div class="form-group" style="margin-bottom: 0;"><label>📅 解决日期</label><input type="date" class="form-control mono" id="asmResolvedDate" onchange="onAfterField('resolvedDate', this.value)"></div>
+      <div style="padding:10px 12px; background:var(--bg-elevated); border-radius:8px;">
+        <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:6px;">当前状态</div>
+        <div class="status-grid cols-5" style="gap:4px; margin-bottom:8px;">
+          <div class="status-pill s-pending" data-st="pending" onclick="setAfterStatus('pending')" style="padding:4px 6px; font-size:11px;">待处理</div>
+          <div class="status-pill s-contacting" data-st="contacting" onclick="setAfterStatus('contacting')" style="padding:4px 6px; font-size:11px;">沟通中</div>
+          <div class="status-pill s-repairing" data-st="repairing" onclick="setAfterStatus('repairing')" style="padding:4px 6px; font-size:11px;">返修中</div>
+          <div class="status-pill s-resolved" data-st="resolved" onclick="setAfterStatus('resolved')" style="padding:4px 6px; font-size:11px;">已解决</div>
+          <div class="status-pill s-cancelled" data-st="cancelled" onclick="setAfterStatus('cancelled')" style="padding:4px 6px; font-size:11px;">已取消</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+          <div class="form-group" style="margin-bottom:0;"><label style="font-size:10.5px;">🔔 下次跟进</label><input type="date" class="form-control mono" id="asmNextFollow" onchange="onAfterField('nextFollow', this.value)" style="padding:4px 6px; font-size:12px;"></div>
+          <div class="form-group" style="margin-bottom:0;"><label style="font-size:10.5px;">📅 解决日</label><input type="date" class="form-control mono" id="asmResolvedDate" onchange="onAfterField('resolvedDate', this.value)" style="padding:4px 6px; font-size:12px;"></div>
+        </div>
       </div>
     </div>
-    <div class="od-section">
-      <div class="od-section-title">📎 凭证截图（可选）<span class="count" id="asmOrigCount">0 张</span></div>
-      <div class="drop-zone-thumbs" id="asmOrigThumbs"></div>
-      <div class="drop-zone" id="asmOrigDropZone"><input type="file" id="asmOrigFileInput" accept="image/*" multiple>📎 客户反馈照片、质量问题图片等</div>
-    </div>
-    <div class="od-section">
-      <div class="od-section-title">处理时间线<span class="count" id="asmTimelineCount">0 条</span></div>
-      <div class="timeline" id="asmTimeline"></div>
-    </div>
-    <div class="od-section">
-      <div class="od-section-title">+ 添加处理记录</div>
-      <div class="fu-add-area">
-        <textarea class="form-control" id="asmNewNote" data-paste-target="after_fu" placeholder="处理进展，如：已联系供应商，安排返修 / 司机已取走问题件 / 客户已收到换货 ..."></textarea>
-        <div class="drop-zone" id="asmFuDropZone" style="margin-top: 10px;"><input type="file" id="asmFuFileInput" accept="image/*" multiple>📎 截图（可选）</div>
-        <div class="drop-zone-thumbs" id="asmFuThumbs"></div>
-        <div class="fu-add-bottom">
-          <div class="date-input">📅 <input type="date" id="asmNewDate"></div>
+    
+    <!-- 详细描述 -->
+    <textarea class="form-control" id="asmReasonDetail" data-paste-target="after_orig" placeholder="详细描述售后情况(如:客户反馈灯罩有 2cm 长的裂痕)" rows="2" style="margin-bottom:10px; font-size:12.5px;" oninput="onAfterField('reasonDetail', this.value)"></textarea>
+    
+    <!-- 底部 2 列:左截图+时间线 / 右添加记录 -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; max-height:38vh; overflow:hidden;">
+      <div style="display:flex; flex-direction:column; gap:8px; min-height:0;">
+        <div style="padding:8px 10px; background:var(--bg-elevated); border-radius:8px;">
+          <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:5px;">📎 凭证截图 <span id="asmOrigCount" style="color:var(--text-tertiary); font-weight:normal;">(0)</span></div>
+          <div class="drop-zone-thumbs" id="asmOrigThumbs" style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:5px;"></div>
+          <div class="drop-zone" id="asmOrigDropZone" style="padding:8px; font-size:11px;"><input type="file" id="asmOrigFileInput" accept="image/*" multiple>📎 客户反馈/质量问题图</div>
+        </div>
+        <div style="flex:1; padding:8px 10px; background:var(--bg-elevated); border-radius:8px; overflow-y:auto; min-height:100px;">
+          <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:5px; position:sticky; top:-8px; background:var(--bg-elevated); padding-top:4px;">💬 处理时间线 <span id="asmTimelineCount" style="color:var(--text-tertiary); font-weight:normal;">(0)</span></div>
+          <div class="timeline" id="asmTimeline"></div>
+        </div>
+      </div>
+      <div style="padding:10px 12px; background:rgba(13,148,136,0.04); border:1px solid rgba(13,148,136,0.15); border-radius:8px; display:flex; flex-direction:column; gap:8px; overflow-y:auto;">
+        <div style="font-size:11.5px; color:#0d9488; font-weight:600;">+ 添加处理记录</div>
+        <textarea class="form-control" id="asmNewNote" data-paste-target="after_fu" placeholder="处理进展,如:已联系供应商,安排返修 / 客户已收到换货..." rows="4" style="font-size:12.5px; resize:none;"></textarea>
+        <div class="drop-zone" id="asmFuDropZone" style="padding:6px; font-size:11px;"><input type="file" id="asmFuFileInput" accept="image/*" multiple>📎 截图(可选)</div>
+        <div class="drop-zone-thumbs" id="asmFuThumbs" style="display:flex; flex-wrap:wrap; gap:4px;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:auto; padding-top:4px;">
+          <div style="display:flex; align-items:center; gap:6px; font-size:11.5px;">📅 <input type="date" id="asmNewDate" style="padding:4px 6px; font-size:12px;"></div>
           <button class="btn primary sm" onclick="addAfterFollowup()">✓ 保存</button>
         </div>
       </div>
     </div>
-    <div class="modal-actions">
-      <button class="btn danger-text" onclick="deleteCurrentAfter()">🗑 删除</button>
+    
+    <div class="modal-actions" style="margin-top:12px; padding-top:10px;">
+      <button class="btn danger-text" onclick="deleteCurrentAfter()" style="font-size:12px;">🗑 删除</button>
       <button class="btn primary" onclick="closeModal('aftersalesModal')">完成</button>
     </div>
   </div>
