@@ -916,6 +916,54 @@ window.addEventListener('beforeunload', (e) => {
   }
 });
 
+// V28β:统一弹窗 UI(替换浏览器原生 confirm/alert)
+// 用法:const ok = await confirmDialog({ title, message, okText, cancelText, danger })
+//      const ok = await confirmDialog('确认删除？')
+window.confirmDialog = function(opts) {
+  if (typeof opts === 'string') opts = { message: opts };
+  const { title = '确认', message = '', okText = '确定', cancelText = '取消', danger = false, html = false } = opts;
+  return new Promise(resolve => {
+    let bg = document.getElementById('__confirmDialogBg__');
+    if (!bg) {
+      bg = document.createElement('div');
+      bg.id = '__confirmDialogBg__';
+      bg.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; z-index:99999; backdrop-filter:blur(2px);';
+      document.body.appendChild(bg);
+    }
+    const msgHtml = html ? message : String(message).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+    const cancelBtn = cancelText ? `<button id="__cd_cancel__" style="padding:7px 16px; border:1px solid #d4d4d8; background:#fff; color:#52525b; border-radius:6px; cursor:pointer; font-size:13px;">${cancelText}</button>` : '';
+    bg.innerHTML = `
+      <div style="background:#fff; border-radius:12px; padding:22px 24px; max-width:560px; min-width:320px; box-shadow:0 20px 60px rgba(0,0,0,0.25); animation:confirmFadeIn 0.15s ease-out;">
+        <div style="font-size:15px; font-weight:600; color:#111; margin-bottom:10px;">${title}</div>
+        <div style="font-size:13px; color:#444; line-height:1.6; white-space:pre-wrap; margin-bottom:18px; max-height:50vh; overflow-y:auto;">${msgHtml}</div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          ${cancelBtn}
+          <button id="__cd_ok__" style="padding:7px 16px; border:0; background:${danger ? '#dc2626' : '#0d9488'}; color:#fff; border-radius:6px; cursor:pointer; font-size:13px; font-weight:500;">${okText}</button>
+        </div>
+      </div>
+      <style>@keyframes confirmFadeIn{from{opacity:0;transform:scale(0.96);}to{opacity:1;transform:scale(1);}}</style>
+    `;
+    bg.style.display = 'flex';
+    const okBtn = bg.querySelector('#__cd_ok__');
+    const cancelEl = bg.querySelector('#__cd_cancel__');
+    const close = (v) => { bg.style.display = 'none'; document.removeEventListener('keydown', keyHandler); resolve(v); };
+    okBtn.onclick = () => close(true);
+    if (cancelEl) cancelEl.onclick = () => close(false);
+    bg.onclick = (e) => { if (e.target === bg && cancelText) close(false); };
+    setTimeout(() => okBtn.focus(), 50);
+    const keyHandler = (e) => {
+      if (e.key === 'Escape' && cancelText) close(false);
+      else if (e.key === 'Enter') close(true);
+    };
+    document.addEventListener('keydown', keyHandler);
+  });
+};
+// alert 单按钮版
+window.alertDialog = function(opts) {
+  if (typeof opts === 'string') opts = { message: opts };
+  return window.confirmDialog({ ...opts, cancelText: '', okText: opts.okText || '知道了' });
+};
+
 function toast(msg, type, duration) {
   const t = document.createElement('div');
   t.className = 'toast' + (type === 'err' ? ' err' : type === 'warn' ? ' warn' : type === 'info' ? ' info' : '');
@@ -1396,16 +1444,38 @@ async function renderSales() {
     }
     .export-print-card {
       display: grid;
-      grid-template-columns: 36px 92px 1fr 180px;
-      gap: 14px;
+      grid-template-columns: 30px 70px auto 130px;
+      gap: 10px;
       align-items: stretch;
-      padding: 14px 16px;
+      padding: 10px 12px;
       border: 1px solid #e5e7eb;
-      border-radius: 10px;
-      margin-bottom: 10px;
+      border-radius: 8px;
+      margin-bottom: 6px;
       background: white;
       page-break-inside: avoid;
     }
+    /* V28β:网格模式 · 2 列布局 · 更紧凑 */
+    .export-print-page.grid-mode .export-print-card {
+      grid-template-columns: 24px 60px 1fr;
+      gap: 8px;
+      padding: 8px 10px;
+      margin-bottom: 0;
+    }
+    .export-print-page.grid-mode .epc-side {
+      grid-column: 1 / -1;
+      flex-direction: row !important;
+      gap: 6px !important;
+      padding-top: 6px;
+      border-top: 1px dashed #e5e7eb;
+      margin-top: 4px;
+      justify-content: space-between !important;
+    }
+    .export-print-page.grid-mode .epc-img-wrap {
+      width: 60px !important; height: 60px !important;
+    }
+    .export-print-page.grid-mode .epc-num { font-size: 14px; }
+    .export-print-page.grid-mode .epc-body { font-size: 11.5px; }
+    .export-print-page.grid-mode .epc-row-title { font-size: 12.5px; }
     .export-print-card.overdue {
       border-left: 4px solid #dc2626;
       background: linear-gradient(to right, #fef2f2, white 12%);
@@ -1416,13 +1486,13 @@ async function renderSales() {
       opacity: 0.85;
     }
     .epc-num {
-      font-size: 18px; font-weight: 700;
+      font-size: 16px; font-weight: 700;
       color: #6b7280;
       display: flex; align-items: center; justify-content: center;
     }
     .epc-img-wrap {
-      width: 80px; height: 80px;
-      border-radius: 8px;
+      width: 64px; height: 64px;
+      border-radius: 6px;
       overflow: hidden;
       background: #f3f4f6;
       border: 1px solid #e5e7eb;
@@ -1813,9 +1883,14 @@ async function _buildExportPageAndPreview(opts) {
   const currentUser = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) || '';
   
   const cardsHtml = opts.items.map((item, i) => _renderExportCardHTML(item, i, opts.type)).join('');
+  // V28β:网格布局支持 + 紧凑(去多余空白)
+  const isGrid = opts.viewMode === 'grid';
+  const bodyStyle = isGrid 
+    ? 'display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;' 
+    : 'display:flex; flex-direction:column; gap:6px;';
   
   wrap.innerHTML = `
-    <div class="export-print-page">
+    <div class="export-print-page${isGrid ? ' grid-mode' : ''}">
       <div class="export-print-header">
         <div class="epp-title">${opts.title}</div>
         <div class="epp-meta">
@@ -1824,7 +1899,7 @@ async function _buildExportPageAndPreview(opts) {
           ${currentUser ? `<div>👤 ${currentUser}</div>` : ''}
         </div>
       </div>
-      <div class="export-print-body">
+      <div class="export-print-body" style="${bodyStyle}">
         ${cardsHtml}
       </div>
       <div class="export-print-footer">
@@ -2036,11 +2111,14 @@ async function exportOrdersPDF() {
   const items = (window._lastVisibleOrders && window._lastVisibleOrders.length > 0) 
     ? window._lastVisibleOrders 
     : ORDERS.filter(o => !o.deletedAt);
+  // V28β:导出布局跟随当前视图(网格/列表)
+  const viewMode = (typeof _ordersViewMode !== 'undefined') ? _ordersViewMode : (localStorage.getItem('orders_view_mode') || 'list');
   await _buildExportPageAndPreview({
     type: 'orders',
     items,
-    title: '📋 催单清单' + (window._lastVisibleOrders ? ` (已筛选 ${items.length} 条)` : ''),
-    fileName: `催单清单_${new Date().toISOString().slice(0,10)}.pdf`,
+    title: '📋 催单清单' + (window._lastVisibleOrders ? ` (已筛选 ${items.length} 条)` : '') + (viewMode === 'grid' ? ' · 网格视图' : ' · 列表视图'),
+    fileName: `催单清单_${viewMode === 'grid' ? '网格_' : ''}${new Date().toISOString().slice(0,10)}.pdf`,
+    viewMode,
   });
 }
 function exportOrdersExcel() {

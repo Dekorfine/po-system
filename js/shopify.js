@@ -801,6 +801,50 @@ function wooNormalizeOrder(wo, storeMeta) {
   };
 }
 
+// V28β:跟单常用日期快筛 · 今天/昨天/本周/本月/未下完
+window.shopifyQuickRange = async function(kind) {
+  const today = new Date();
+  const y = today.getFullYear(), m = today.getMonth(), d = today.getDate();
+  const fmt = (dt) => dt.toISOString().slice(0, 10);
+  let from = '', to = '';
+  let needPending = false;
+  switch (kind) {
+    case 'today':
+      from = to = fmt(new Date(y, m, d)); break;
+    case 'yesterday':
+      from = to = fmt(new Date(y, m, d - 1)); break;
+    case 'week': {
+      const dow = new Date(y, m, d).getDay() || 7;  // 周一=1
+      from = fmt(new Date(y, m, d - dow + 1));
+      to = fmt(new Date(y, m, d));
+      break;
+    }
+    case 'month':
+      from = fmt(new Date(y, m, 1));
+      to = fmt(new Date(y, m, d));
+      break;
+    case 'yesterday_pending':
+      from = to = fmt(new Date(y, m, d - 1));
+      needPending = true;
+      break;
+    case 'today_pending':
+      from = to = fmt(new Date(y, m, d));
+      needPending = true;
+      break;
+  }
+  const fromEl = document.getElementById('salesFetchFrom');
+  const toEl = document.getElementById('salesFetchTo');
+  if (fromEl) fromEl.value = from;
+  if (toEl) toEl.value = to;
+  if (typeof shopifyReloadOrdersAndRender === 'function') await shopifyReloadOrdersAndRender(false);
+  window._salesOnlyNoPo = needPending;
+  if (typeof renderShopifyOrders === 'function') renderShopifyOrders();
+  const hint = document.getElementById('salesQuickRangeHint');
+  if (hint) {
+    const labelMap = { today: '今天', yesterday: '昨天', week: '本周', month: '本月', yesterday_pending: '昨天未下完', today_pending: '今天未下完' };
+    hint.textContent = `已应用:${labelMap[kind]}(${from} → ${to})${needPending ? ' · 仅未下 PO' : ''}`;
+  }
+};
 
 async function shopifyReloadOrdersAndRender(force = false) {
   // V28y:不再按 shop 拉数据 · 始终拉全部店的订单 → 切 chip 纯本地过滤(瞬间)
@@ -1872,6 +1916,15 @@ function renderShopifyOrders() {
   // V20260526e: 应用日期筛选(基于 shopify_created_at)
   if (typeof SHOPIFY_DATE_PRESET !== 'undefined' && SHOPIFY_DATE_PRESET && SHOPIFY_DATE_PRESET !== 'all' && typeof isDateInRange === 'function') {
     orders = orders.filter(o => isDateInRange(o.shopify_created_at || o.created_at, SHOPIFY_DATE_PRESET));
+  }
+
+  // V28β:快筛"未下完" · 只显示没下 PO 的(po_progress < line_items 数量)
+  if (window._salesOnlyNoPo) {
+    orders = orders.filter(o => {
+      const totalLines = Array.isArray(o.line_items) ? o.line_items.length : 0;
+      const assigned = Number(o.po_progress || 0);
+      return totalLines > 0 && assigned < totalLines;
+    });
   }
 
   // 应用搜索过滤

@@ -4175,26 +4175,55 @@ async function poAdvance(poId, nextStatus, nextLabel) {
         console.warn('[Shopify 同步] 跳过：该销售单是手动创建的，没有 Shopify 订单 ID');
         toast(`ℹ 此销售单是手动创建（非 Shopify 同步），跳过备注同步`, 'warn', 5000);
       } else {
-        // 真正执行同步
-        console.log('[Shopify 同步] 准备调用 Edge Function update_order_note', {
+        // V28β:区分 Shopify 和 WooCommerce(mooielight 是 WC · 用 callWoo + 不同 action/字段)
+        const isWoo = so.platform === 'woo' || (so.shop_domain && so.shop_domain.includes('mooielight'));
+        console.log('[备注同步] 准备推送', {
+          platform: isWoo ? 'WooCommerce' : 'Shopify',
           order_id: so.shopify_order_id,
           shop: so.shop_domain,
         });
-        const result = await SHOPIFY.call('update_order_note', {
-          order_id: so.shopify_order_id,
-          shop: so.shop_domain,
-          append_text: appendText,
-        }, so.shop_domain);
-        console.log('%c[Shopify 同步] ✓ 成功', 'color:#16a34a;font-weight:bold', result);
-        toast(`✓ 已同步到 Shopify 后台备注（订单 ${so.shopify_order_number || so.shopify_order_id}）`, 'ok', 5000);
+        if (isWoo) {
+          // WC 用 update_order action · customer_note 字段
+          // 注意:WC append_text 逻辑要前端拼好(WC API 是覆盖式 update)
+          const oldNote = (so.raw_payload && so.raw_payload.customer_note) || '';
+          const newNote = oldNote ? `${oldNote}\n${appendText}` : appendText;
+          const wooStoreId = (so.shop_domain || '').replace(/^https?:\/\//, '').replace(/\..*$/, ''); // mooielight.com → mooielight
+          const result = await SHOPIFY.callWoo('update_order', {
+            id: so.shopify_order_id,
+            data: { customer_note: newNote },
+          }, wooStoreId);
+          console.log('%c[WC 同步] ✓ 成功', 'color:#16a34a;font-weight:bold', result);
+          toast(`✓ 已同步到 WooCommerce 后台备注(订单 ${so.shopify_order_number || so.shopify_order_id})`, 'ok', 5000);
+        } else {
+          const result = await SHOPIFY.call('update_order_note', {
+            order_id: so.shopify_order_id,
+            shop: so.shop_domain,
+            append_text: appendText,
+          }, so.shop_domain);
+          console.log('%c[Shopify 同步] ✓ 成功', 'color:#16a34a;font-weight:bold', result);
+          toast(`✓ 已同步到 Shopify 后台备注(订单 ${so.shopify_order_number || so.shopify_order_id})`, 'ok', 5000);
+        }
       }
     } catch (e) {
-      // 同步失败但不阻塞推进
+      // 同步失败但不阻塞推进 · V28β:用统一 UI · 不再原生 confirm
       console.error('%c[Shopify 同步] ✗ 失败', 'color:#dc2626;font-weight:bold', e);
-      if (!confirm('⚠️ 同步到 Shopify 失败：\n' + (e.message || e) + '\n\n排查清单：\n1. Edge Function 是否已部署最新版？\n   命令：supabase functions deploy shopify-api --project-ref pyfmuknvjqfwcqvbrsvw\n2. shopify_stores 表的 access_token 是否过期？\n3. F12 Console 看详细错误日志\n\n是否继续推进 PO 到"已完成入库"？')) return;
+      const errMsg = (e && (e.message || e.toString())) || '未知错误';
+      const ok = await window.confirmDialog({
+        title: '⚠️ 同步到 Shopify 失败',
+        message: `错误信息:\n${errMsg}\n\n🔍 排查清单:\n1. Edge Function 是否已部署最新版?\n   supabase functions deploy shopify-api --project-ref pyfmuknvjqfwcqvbrsvw\n2. shopify_stores 表的 access_token 是否过期?\n3. F12 Console 看详细错误日志\n\n是否继续推进 PO 到「已完成入库」?`,
+        okText: '继续推进',
+        cancelText: '取消 · 我先查',
+        danger: true,
+      });
+      if (!ok) return;
     }
   } else {
-    if (!confirm(`确认推进到「${nextLabel}」？`)) return;
+    const ok = await window.confirmDialog({
+      title: '推进 PO 状态',
+      message: `确认推进到「${nextLabel}」?`,
+      okText: '推进',
+    });
+    if (!ok) return;
   }
 
   try {
@@ -4205,7 +4234,13 @@ async function poAdvance(poId, nextStatus, nextLabel) {
 }
 
 async function poRevert(poId, prevStatus, prevLabel) {
-  if (!confirm(`确认退回到「${prevLabel}」？`)) return;
+  const ok = await window.confirmDialog({
+    title: '退回 PO',
+    message: `确认退回到「${prevLabel}」?`,
+    okText: '退回',
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await sb.from('orders').update({ status: prevStatus, updated_at: new Date().toISOString() }).eq('id', poId);
     toast(`已退回到「${prevLabel}」`);

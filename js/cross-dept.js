@@ -1182,6 +1182,24 @@ function cdmRenderDetail(m) {
         ${m.related_ref ? `<span class="cdm-chip" style="background:rgba(37,99,235,0.08); color:#2563eb; padding:2px 8px; font-size:12px; font-family:'JetBrains Mono',monospace;">${CDM_REL_TYPES[m.related_type] || '🔗'} ${escapeHtml(m.related_ref)}</span>` : ''}
       </div>
       <h2 style="font-size:18px; font-weight:600; margin:0 0 10px; color:var(--text-primary);">${escapeHtml(m.title || '')}</h2>
+      ${m.status === 'done' && isMine ? (() => {
+        // V28β:工单已完成 + 我是发起人 → 显眼按钮跳到附件区 + 给完成回复区
+        const atts = Array.isArray(m.attachments) ? m.attachments : [];
+        const lastReply = thread.length > 0 ? thread[thread.length - 1] : null;
+        const completer = m.completed_by_name || (lastReply && lastReply.user_name) || '对方';
+        const hasAtt = atts.length > 0;
+        return `
+        <div style="margin:10px 0; padding:12px 14px; background:linear-gradient(135deg,#ecfdf5,#d1fae5); border:1.5px solid #10b981; border-radius:8px; animation:confirmFadeIn 0.3s;">
+          <div style="font-size:13.5px; font-weight:600; color:#065f46; margin-bottom:8px;">
+            ✅ 工单已由 ${escapeHtml(completer)} 完成 · 请检查
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            ${hasAtt ? `<button class="btn primary" onclick="_cdmJumpToAttachments()" style="background:#10b981;">📎 查看附件(${atts.length})· 高亮显示</button>` : ''}
+            <button class="btn" onclick="_cdmJumpToThread()" style="background:#fff; border:1px solid #10b981; color:#065f46;">💬 看沟通记录(${thread.length})</button>
+            <button class="btn" onclick="_cdmReopenTicket('${m.id}')" style="background:#fff; border:1px solid #f59e0b; color:#92400e;">↩️ 不满意 · 退回重做</button>
+          </div>
+        </div>`;
+      })() : ''}
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--text-secondary); flex-wrap:wrap; gap:8px;">
         <span><b>${escapeHtml(m.from_user_name || m.from_user_id || '')}</b> · <span style="color:${fromSys.color};">${fromSys.label}</span> → <span style="color:${toSys.color};">${toSys.label}</span>${m.to_user_id ? ` · <b style="color:${toSys.color};">${escapeHtml(cdmRenderAssignee(m))}</b>` : ' · 📢 整部门'}</span>
         <span style="font-family:'JetBrains Mono',monospace;">${dt.toLocaleString()}${!overdue && m.status !== 'done' && m.status !== 'cancelled' ? ` · 截止 ${new Date(dueAt).toLocaleDateString()} (${dueDays <= 0 ? '今天' : `还剩 ${dueDays} 天`})` : ''}</span>
@@ -1299,6 +1317,64 @@ function cdmRenderDetail(m) {
     </div>
   `;
 }
+
+// V28β:已完成工单 · 跳到附件区高亮 / 跳沟通 / 退回重做
+window._cdmJumpToAttachments = function() {
+  const wrap = document.getElementById('cdmDetailBody');
+  if (!wrap) return;
+  // 找附件区(里面有图片或下载链接)
+  const blocks = wrap.querySelectorAll('div');
+  for (const b of blocks) {
+    if ((b.textContent || '').includes('📎 附件') || b.querySelector('img[onclick*="cdmPreview"]') || b.querySelector('a[download]')) {
+      b.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const orig = b.style.boxShadow;
+      b.style.transition = 'box-shadow 0.3s';
+      b.style.boxShadow = '0 0 0 3px #10b981';
+      setTimeout(() => { b.style.boxShadow = orig; }, 2500);
+      return;
+    }
+  }
+  if (typeof toast === 'function') toast('未找到附件区', 'warn');
+};
+window._cdmJumpToThread = function() {
+  const wrap = document.getElementById('cdmDetailBody');
+  if (!wrap) return;
+  const blocks = wrap.querySelectorAll('div');
+  for (const b of blocks) {
+    if ((b.textContent || '').includes('💬 沟通线程')) {
+      b.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+  }
+};
+window._cdmReopenTicket = async function(msgId) {
+  const ok = await window.confirmDialog({
+    title: '退回工单重做',
+    message: '工单将退回到「处理中」状态,美工/客服会重新看到 · 你的回复内容会作为退回原因 · 确认?',
+    okText: '退回',
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await sb.from('cross_dept_messages').update({ status: 'in_progress' }).eq('id', msgId);
+    // 自动加一条 thread 说明退回
+    const me = _cdmGetCurrentUser();
+    const reason = document.getElementById('cdmReplyText')?.value?.trim() || '(未填写原因)';
+    const tNote = {
+      ts: Date.now(),
+      system: 'po',
+      user_id: me.id,
+      user_name: me.shortName || me.name,
+      content: `↩️ 跟单退回重做:${reason}`,
+    };
+    const m = CDM_MESSAGES.find(x => x.id === msgId);
+    const thread = Array.isArray(m?.thread) ? [...m.thread, tNote] : [tNote];
+    await sb.from('cross_dept_messages').update({ thread }).eq('id', msgId);
+    if (typeof toast === 'function') toast('✓ 已退回重做', 'ok');
+  } catch (e) {
+    if (typeof toast === 'function') toast('退回失败:' + (e.message || e), 'err');
+  }
+};
 
 function cdmToggleAssignPicker() {
   const p = document.getElementById('cdmAssignPicker');
