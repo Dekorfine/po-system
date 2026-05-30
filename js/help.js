@@ -10,6 +10,25 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260528ξ',
+    date: '2026-05-28',
+    type: 'feature',
+    title: '🚀 采购单加日期快筛 chips · 跟销售单同款',
+    notes: [
+      '✨ 采购单顶部加 7 个 chip:',
+      '   📅 今天 / 昨天 / 本周 / 本月',
+      '   ⏰ 昨天没下完 / 今天没下完(只显示 待审批 / 待发供应商)',
+      '   ✕ 清除(回到全部)',
+      '',
+      '🔧 实现:',
+      '   · poQuickRange(kind) 复用 PO_DATE_FILTER 机制 · isDateInRange 已支持 today/yesterday/this_week/this_month',
+      '   · _poOnlyPending 标志在 renderPoList 里过滤 status 在 pending_approval/producing 的',
+      '   · 切到"没下完"时自动回到"📋 全部"子 tab',
+      '',
+      '🔒 升 po.js / help.js → v20260528ξ',
+    ],
+  },
+  {
     v: '20260528ν',
     date: '2026-05-28',
     type: 'feature',

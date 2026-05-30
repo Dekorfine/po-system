@@ -3373,6 +3373,50 @@ async function masterUnbindSelf() {
   } catch (e) { toast('失败', 'err'); }
 }
 
+// V28ξ:PO 快筛日期 · 今天/昨天/本周/本月/未下完
+window.poQuickRange = function(kind) {
+  const presetMap = {
+    today: 'today',
+    yesterday: 'yesterday',
+    week: 'this_week',
+    month: 'this_month',
+    yesterday_pending: 'yesterday',
+    today_pending: 'today',
+  };
+  const preset = presetMap[kind];
+  if (!preset) return;
+
+  PO_DATE_FILTER = { preset };
+  window._poOnlyPending = (kind === 'yesterday_pending' || kind === 'today_pending');
+  
+  // 切回 "全部" 子 tab(让"没下完"过滤生效·不受 active 的过滤限制)
+  if (window._poOnlyPending && typeof poShowFilter === 'function') {
+    PO_FILTER = 'all';
+    document.querySelectorAll('.sub-tab-btn[data-pofilter]').forEach(b => 
+      b.classList.toggle('active', b.dataset.pofilter === 'all')
+    );
+  }
+  
+  if (typeof renderPoList === 'function') renderPoList();
+  
+  const hint = document.getElementById('poQuickRangeHint');
+  if (hint) {
+    const labelMap = { 
+      today: '今天', yesterday: '昨天', week: '本周', month: '本月',
+      yesterday_pending: '昨天未下完', today_pending: '今天未下完' 
+    };
+    hint.textContent = `已应用:${labelMap[kind]}${window._poOnlyPending ? ' · 仅待审批/待发供应商' : ''}`;
+  }
+};
+
+window.poQuickRangeClear = function() {
+  PO_DATE_FILTER = null;
+  window._poOnlyPending = false;
+  if (typeof renderPoList === 'function') renderPoList();
+  const hint = document.getElementById('poQuickRangeHint');
+  if (hint) hint.textContent = '';
+};
+
 // ============ 采购单 tab ============
 let PO_LIST = [];
 let PO_FILTER = 'active';  // V20260526c: 默认从 'all' 改为 'active' (店小秘式待办)
@@ -3701,6 +3745,11 @@ function renderPoList() {
       list = list.filter(p => (p.created_at || '') >= cutoff);
     }
     if (PO_DATE_FILTER.creator) list = list.filter(p => p.creator_name === PO_DATE_FILTER.creator);
+  }
+
+  // V28ξ:快筛"没下完" · 只显示未到下单状态的(还在待审批/待发供应商)
+  if (window._poOnlyPending) {
+    list = list.filter(p => ['pending_approval', 'producing'].includes(p.status));
   }
 
   // V4：多维关键词搜索（PO 编号 / 供应商 / SKU / 产品名 / 备注 / 销售单号 / 创建人）
