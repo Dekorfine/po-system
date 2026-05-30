@@ -801,13 +801,87 @@ function wooNormalizeOrder(wo, storeMeta) {
   };
 }
 
-// V28ε:按订单号补拉历史订单 · 客服查不到的老订单一键补
+// V28ζ:实时单查订单(策略 B:先查本地 · 未命中才拉 Shopify · 不入库批量)
+//
+// 通用 API · 客服系统/发票系统/其它模块都能调:
+//   const r = await window.lookupOrderByName('PL3124', 'pinlighting.myshopify.com');
+//   r = { ok: true/false, source: 'local'|'shopify'|'cache', order: {...} | null, error?: 'xxx' }
+//
+// 调用方建议先用 shop=null 自动多店扫描:
+//   const r = await window.lookupOrderByName('PL3124');  // 会按域名前缀 PL→pinlighting 自动匹配
+window._orderLookupCache = window._orderLookupCache || {};  // 内存缓存 5 分钟 · key = `${shop}|${orderNo}`
+const _LOOKUP_CACHE_TTL = 5 * 60 * 1000;
+
+window.lookupOrderByName = async function(orderNo, shopDomain = null, opts = {}) {
+  if (!orderNo) return { ok: false, error: '订单号为空' };
+  orderNo = String(orderNo).replace(/^#/, '').trim();
+  const noStore = opts.noStore;    // 不写本地缓存
+  const forceRemote = opts.forceRemote;  // 跳过本地直接拉远端
+
+  // ① 内存缓存(5 分钟)
+  const cacheKey = (shopDomain || '*') + '|' + orderNo;
+  if (!forceRemote) {
+    const hit = window._orderLookupCache[cacheKey];
+    if (hit && (Date.now() - hit.ts < _LOOKUP_CACHE_TTL)) {
+      return { ok: true, source: 'cache', order: hit.order };
+    }
+  }
+
+  // ② 本地 supabase shopify_orders 表(已同步过的)
+  if (!forceRemote) {
+    try {
+      let q = sb.from('shopify_orders').select('*').is('deleted_at', null);
+      // 订单号在多个字段里:shopify_order_number / order_no / name
+      q = q.or(`shopify_order_number.eq.${orderNo},shopify_order_number.eq.#${orderNo}`);
+      if (shopDomain) q = q.eq('shop_domain', shopDomain);
+      const { data, error } = await q.limit(5);
+      if (!error && data && data.length > 0) {
+        const order = data[0];
+        if (!noStore) window._orderLookupCache[cacheKey] = { ts: Date.now(), order };
+        return { ok: true, source: 'local', order };
+      }
+    } catch (e) { console.warn('[lookupOrder 本地查询失败]', e); }
+  }
+
+  // ③ 远端 Shopify(未命中 → 调 Edge Function · auto_save:false 不入库批量数据)
+  if (!shopDomain) {
+    // 没指定店铺 · 试所有已连接店
+    const stores = (SHOPIFY._stores || []).filter(s => s.shop_domain || s.domain);
+    for (const s of stores) {
+      const sd = s.shop_domain || s.domain;
+      const r = await window.lookupOrderByName(orderNo, sd, { ...opts, _noRecurse: true });
+      if (r && r.ok) return r;
+    }
+    return { ok: false, error: `订单号 ${orderNo} 在已连接的 ${stores.length} 个店铺中都没找到 · 请确认订单号正确` };
+  }
+
+  try {
+    for (const tryName of [orderNo, '#' + orderNo]) {
+      const r = await SHOPIFY.call('list_orders', {
+        name: tryName,
+        status: 'any',
+        limit: 5,
+        auto_save: !!opts.autoSave,  // 默认不入库 · 调用方明确要才入
+      }, shopDomain);
+      if (r && r.count > 0 && Array.isArray(r.orders) && r.orders.length > 0) {
+        const order = r.orders[0];
+        if (!noStore) window._orderLookupCache[cacheKey] = { ts: Date.now(), order };
+        return { ok: true, source: 'shopify', order, saved: r.saved };
+      }
+    }
+    return { ok: false, error: `Shopify ${shopDomain} 中未找到 ${orderNo}` };
+  } catch (e) {
+    return { ok: false, error: 'Shopify 查询失败:' + (e.message || e) };
+  }
+};
+
+// V28ε:按订单号补拉历史订单 · UI 入口(沿用)· 内部改走 lookupOrderByName(B 策略)
 window.openFetchByOrderNo = async function() {
   const modal = document.getElementById('fetchByOrderNoModal');
   if (!modal) return;
   const sel = document.getElementById('fetchByOrderNoShop');
   if (sel) {
-    sel.innerHTML = '<option value="">选店铺...</option>';
+    sel.innerHTML = '<option value="">所有店铺(自动匹配)</option>';
     const stores = SHOPIFY._stores || [];
     stores.forEach(s => {
       const opt = document.createElement('option');
@@ -822,57 +896,38 @@ window.openFetchByOrderNo = async function() {
 };
 
 window.doFetchByOrderNo = async function() {
-  const shop = document.getElementById('fetchByOrderNoShop').value;
+  const shop = document.getElementById('fetchByOrderNoShop').value || null;
   const rawList = document.getElementById('fetchByOrderNoList').value || '';
   const orderNos = rawList.split(/[\n,,;;\s]+/).map(s => s.trim()).filter(Boolean);
-  if (!shop) { toast('请选店铺', 'warn'); return; }
   if (orderNos.length === 0) { toast('请输入至少 1 个订单号', 'warn'); return; }
 
   const btn = document.getElementById('fetchByOrderNoBtn');
   const resultEl = document.getElementById('fetchByOrderNoResult');
-  btn.disabled = true; btn.textContent = '拉取中…';
+  btn.disabled = true; btn.textContent = '查询中…';
   resultEl.style.display = 'block';
-  resultEl.innerHTML = '<div style="color:#6366f1;">🔄 开始拉取 ' + orderNos.length + ' 个订单…</div>';
+  resultEl.innerHTML = '<div style="color:#6366f1;">🔄 实时查询 ' + orderNos.length + ' 个订单…</div>';
 
-  let successCount = 0;
+  let okCount = 0;
   const results = [];
   for (const orderNo of orderNos) {
-    let found = false;
-    let lastErr = '';
-    // 试两种格式:不带 # 和带 #
-    for (const name of [orderNo, '#' + orderNo]) {
-      try {
-        const r = await SHOPIFY.call('list_orders', {
-          name,
-          status: 'any',
-          limit: 5,
-          auto_save: true,
-        }, shop);
-        if (r && r.count > 0) {
-          successCount++;
-          results.push({ orderNo, ok: true, msg: `✓ 找到 ${r.count} 单 · 入库 ${r.saved || r.count}` });
-          found = true;
-          break;
-        }
-        lastErr = '未找到';
-      } catch (e) {
-        lastErr = e.message || String(e);
-      }
-    }
-    if (!found) {
-      results.push({ orderNo, ok: false, msg: '✗ ' + (lastErr || '未在 Shopify 找到 · 确认订单号 + 店铺是否对应') });
+    // 跟单这边补拉:autoSave:true 入库(方便后续看)· 客服系统调时传 false
+    const r = await window.lookupOrderByName(orderNo, shop, { autoSave: true });
+    if (r.ok) {
+      okCount++;
+      const o = r.order;
+      const sourceLabel = { local: '🗄 本地', shopify: '🌐 Shopify(新)', cache: '⚡ 缓存' }[r.source] || r.source;
+      results.push({ ok: true, msg: `${orderNo} → ${sourceLabel} · ${o.shop_domain || '?'} · ${o.email || o.customer_email || '?'} · ¥${o.total_price || '?'}` });
+    } else {
+      results.push({ ok: false, msg: `${orderNo} → ✗ ${r.error}` });
     }
     resultEl.innerHTML = results.map(r => 
-      `<div style="color:${r.ok ? '#16a34a' : '#dc2626'};">${r.orderNo}: ${r.msg}</div>`
+      `<div style="color:${r.ok ? '#16a34a' : '#dc2626'}; line-height:1.6;">${r.msg}</div>`
     ).join('');
   }
 
-  btn.disabled = false; btn.textContent = '🚀 一键补拉';
-  resultEl.innerHTML += `<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border); font-weight:600;">完成:成功 ${successCount} / ${orderNos.length}</div>`;
-  if (successCount > 0) {
-    toast(`✓ 已补拉 ${successCount} 个订单 · 客服可重试`, 'ok', 4000);
-    if (typeof shopifyReloadOrdersAndRender === 'function') await shopifyReloadOrdersAndRender(true);
-  }
+  btn.disabled = false; btn.textContent = '🚀 查询';
+  resultEl.innerHTML += `<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border); font-weight:600;">完成:成功 ${okCount} / ${orderNos.length}</div>`;
+  if (okCount > 0) toast(`✓ 查到 ${okCount} 单`, 'ok', 3000);
 };
 
 // V28β:跟单常用日期快筛 · 今天/昨天/本周/本月/未下完
