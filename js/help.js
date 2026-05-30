@@ -10,10 +10,22 @@
 // ==========================================================
 const VERSION_LOG = [
   {
-    v: '20260528ξ',
-    date: '2026-05-28',
+    v: '20260528ξ-2',
+    date: '2026-05-30',
     type: 'feature',
-    title: '🚀 PO 日期快筛 + 跨部门工单 display_name 对齐',
+    title: '📄 集成报价单工具 · iframe 嵌入 worktrack-kpi',
+    notes: [
+      '✨ 在 tab 栏末尾加 [📄 报价单] tab',
+      '   · 内容是 iframe 指向 https://dekorfine.github.io/worktrack-kpi/quotation.html',
+      '   · 与美工 / 客服共用同一份 Supabase quotes 表 · 三系统数据互通',
+      '   · 支持 Quotation / PO / PI / Packing List 四种单据',
+      '   · 7 种语言 · 7 种货币 · 7 种运输方式',
+      '   · iframe 高度自适应(calc(100vh - 200px))· 也有"新窗口打开"链接',
+      '',
+      '🔒 升 help.js → v20260528ξ-2',
+    ],
+  },
+  {
     notes: [
       '✨ 采购单顶部加 7 个 chip:',
       '   📅 今天 / 昨天 / 本周 / 本月',
