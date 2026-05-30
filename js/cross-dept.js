@@ -78,7 +78,27 @@ async function cdmPublishMyStaff(updatedBy) {
     const { error } = await cdmClient
       .from('org_directory')
       .upsert(rows, { onConflict: 'id' });
-    if (error) throw error;
+    // V28ξ:列不存在自动降级(跟美工 v22-GJ 同款容错)
+    // 如果 chinese_name / english_name / display_name 列没加(SQL 还没跑) · PostgREST 会报错
+    // 摘掉这 3 列重试 · 让老 schema 也能写入
+    if (error) {
+      const msg = (error.message || '').toLowerCase();
+      const colMissing = msg.includes('chinese_name') || msg.includes('english_name') || msg.includes('display_name') || msg.includes("could not find the");
+      if (colMissing) {
+        console.warn('[CDM] org_directory 列不齐 · 降级写入(无双显名)');
+        const fallbackRows = rows.map(r => {
+          const { chinese_name, english_name, display_name, ...rest } = r;
+          return rest;
+        });
+        const { error: e2 } = await cdmClient
+          .from('org_directory')
+          .upsert(fallbackRows, { onConflict: 'id' });
+        if (e2) throw e2;
+        console.log(`[CDM] 已发布 ${fallbackRows.length} 个跟单人员(降级模式 · 跑 SQL 加列后可拿到双显名)`);
+        return fallbackRows.length;
+      }
+      throw error;
+    }
     console.log(`[CDM] 已发布 ${rows.length} 个跟单人员到共享目录(含中英名)`);
     return rows.length;
   } catch (e) {
@@ -229,23 +249,29 @@ let _CDM_NEW_WATCHERS = [];          // v22-CW 补丁: 新建消息时勾选的 
 // ─────────────── 用户工具 ───────────────
 function _cdmGetCurrentUser() {
   const me = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) || '';
-  let userId = me, userName = me;
+  let userId = me, userName = me, shortName = me, displayName = me;
   if (typeof CONFIG !== 'undefined' && CONFIG && Array.isArray(CONFIG.agents)) {
     const a = CONFIG.agents.find(x => x.name === me || x._userId === (typeof CURRENT_USER_ID !== 'undefined' ? CURRENT_USER_ID : null));
     if (a) {
-      userId = a.alias || a.code || a.name || me;
-      userName = a.alias ? `${a.name} (${a.alias})` : a.name;
+      // V28ν+:优先用 _userId(稳定 UUID) · 跨系统对齐
+      userId = a._userId || a.alias || a.code || a.name || me;
+      shortName = a.shortName || a.name;
+      // V28ξ:写工单时用 displayName("Aylin(李雪玲)")· 跟美工 v22-GJ 对齐
+      displayName = a.displayName || (a.englishName && a.chineseName && a.englishName !== a.chineseName 
+        ? `${a.englishName}(${a.chineseName})` 
+        : (a.englishName || a.chineseName || a.name));
+      userName = displayName;  // ⭐ from_user_name / to_user_name / thread.user_name 都用这个
     }
   }
   const role = (typeof IS_ADMIN !== 'undefined' && IS_ADMIN) ? 'admin' : 'normal';
-  return { id: userId || 'unknown', name: userName || userId || '未知', role };
+  return { id: userId || 'unknown', name: userName || userId || '未知', shortName, displayName, role };
 }
 function _cdmGetUsers() {
   if (typeof CONFIG !== 'undefined' && CONFIG && Array.isArray(CONFIG.agents)) {
     return CONFIG.agents.filter(a => a.name).map(a => ({
-      id: a.alias || a.code || a.name,
-      name: a.alias ? `${a.name} (${a.alias})` : a.name,
-      shortName: a.name,
+      id: a._userId || a.alias || a.code || a.name,
+      name: a.displayName || a.name,
+      shortName: a.shortName || a.name,
       role: a.role || 'normal',
     }));
   }
