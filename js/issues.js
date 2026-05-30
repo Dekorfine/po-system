@@ -775,88 +775,104 @@ function _renderIssueModal({ isDraft }) {
     `;
   
   modal.innerHTML = `
-    <div class="modal-card" style="max-width: 760px;">
-      <button class="modal-close" onclick="${isDraft ? 'closeDraftIssue()' : `closeModal('issueModal')`}">✕</button>
-      <h2 style="margin-top: 0;">${title}</h2>
+    <div class="modal-card" style="width: 1180px; max-width: 96vw; max-height: 92vh; padding: 20px 24px;">
+      <button class="modal-close" onclick="${isDraft ? 'closeDraftIssue()' : `closeIssueModal()`}">✕</button>
+      <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:10px;">
+        <h2 style="margin:0;">${title}</h2>
+      </div>
       
-      <div class="ism-section">
-        <div class="ism-section-title">基本信息</div>
-        <div class="ism-row">
-          <div class="ism-field" style="flex:0 0 140px;">
-            <label>所属网站</label>
-            <select id="ismSite" ${isDraft ? '' : `onchange="onIssueField('site', this.value)"`}>
-              ${SITES.map(s => `<option value="${s}" ${data.site === s ? 'selected' : ''}>${s || '— 通用 —'}</option>`).join('')}
-            </select>
-          </div>
-          <div class="ism-field">
-            <label>供应商 <span class="req">*</span></label>
-            <input type="text" id="ismSupplier" value="${escapeHtml(data.supplier || '')}" placeholder="如：光朗、3D打印、星沃"
-                   ${isDraft ? '' : `onchange="onIssueField('supplier', this.value.trim())"`}>
-          </div>
-          <div class="ism-field" style="flex:0 0 160px;">
-            <label>问题发起日期</label>
-            <input type="date" id="ismCreatedDate" value="${data.createdDate || new Date().toISOString().slice(0,10)}"
-                   ${isDraft ? '' : `onchange="onIssueField('createdDate', this.value)"`}>
-          </div>
+      <!-- 顶部:基本信息一行 -->
+      <div style="display:grid; grid-template-columns: 140px 1fr 1fr 160px; gap:10px; margin-bottom:12px; padding:12px; background:var(--bg-elevated); border-radius:8px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label style="font-size:11px;">所属网站</label>
+          <select id="ismSite" ${isDraft ? '' : `onchange="onIssueField('site', this.value)"`} style="padding:6px 8px; font-size:13px; width:100%;">
+            ${SITES.map(s => `<option value="${s}" ${data.site === s ? 'selected' : ''}>${s || '— 通用 —'}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label style="font-size:11px;">供应商 <span class="req">*</span></label>
+          <input type="text" id="ismSupplier" value="${escapeHtml(data.supplier || '')}" placeholder="如:光朗、3D打印、星沃"
+                 ${isDraft ? '' : `onchange="onIssueField('supplier', this.value.trim())"`}
+                 style="padding:6px 8px; font-size:13px; width:100%;">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label style="font-size:11px;">问题类型筛选</label>
+          <input type="text" placeholder="自动按下方选择" disabled style="padding:6px 8px; font-size:13px; width:100%; background:#f9fafb; color:#9ca3af;" value="${(data.subTags || []).join(', ') || '在下方选'}">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label style="font-size:11px;">问题发起日期</label>
+          <input type="date" id="ismCreatedDate" value="${data.createdDate || new Date().toISOString().slice(0,10)}"
+                 ${isDraft ? '' : `onchange="onIssueField('createdDate', this.value)"`}
+                 style="padding:6px 8px; font-size:13px; width:100%;">
         </div>
       </div>
       
-      <div class="ism-section">
-        <div class="ism-section-title">问题大类 <span class="req" style="color:#dc2626;">*</span></div>
-        <div class="ism-category-grid">${catGridHtml}</div>
+      <!-- 问题大类 + 状态 一行 -->
+      <div style="display:grid; grid-template-columns:2fr 1fr; gap:10px; margin-bottom:12px;">
+        <div style="padding:10px 12px; background:var(--bg-elevated); border-radius:8px;">
+          <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:6px;">问题大类 <span style="color:#dc2626;">*</span></div>
+          <div class="ism-category-grid" style="grid-template-columns:repeat(6, 1fr); gap:4px;">${catGridHtml}</div>
+        </div>
+        <div style="padding:10px 12px; background:var(--bg-elevated); border-radius:8px;">
+          <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:6px;">当前状态</div>
+          ${statusHtml.replace('<div class="ism-section">', '<div style="margin:0;">').replace('<div class="ism-section-title">当前状态</div>', '').replace(/<\/div>\s*$/, '</div>')}
+        </div>
       </div>
       
-      <div class="ism-section">
-        <div class="ism-section-title">具体类型（可多选）</div>
+      <!-- 具体类型(多选) -->
+      ${subTagsHtml ? `<div style="margin-bottom:10px; padding:8px 12px; background:var(--bg-elevated); border-radius:8px;">
+        <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:5px;">具体类型(可多选)</div>
         <div class="ism-subtag-grid">${subTagsHtml}</div>
-      </div>
+      </div>` : ''}
       
-      <div class="ism-section">
-        <div class="ism-section-title">详细描述</div>
-        <textarea id="ismDescription" rows="4" placeholder="详细描述问题或要求 · 可在此 Ctrl+V 粘贴截图"
-                  data-paste-target="issue_orig"
-                  style="width: 100%; padding: 10px 12px; border: 1px solid var(--border, #d1d5db); border-radius: 6px; font-size: 13px; box-sizing: border-box; font-family: inherit; resize: vertical;"
-                  ${isDraft ? '' : `onchange="onIssueField('description', this.value.trim())"`}>${escapeHtml(data.description || data.requirement || '')}</textarea>
-        
-        <!-- V22-CY+ 图片区:粘贴/上传/拖拽 -->
-        <div style="margin-top:8px;">
-          <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
-            <span style="font-size:11.5px; color:var(--text-secondary); font-weight:500;">📷 问题截图(可粘贴 / 上传 / 拖拽)</span>
-            <button type="button" class="btn small" onclick="document.getElementById('ismDescFileInput').click()">+ 上传图片</button>
-            <input type="file" id="ismDescFileInput" accept="image/*" multiple style="display:none;" onchange="onIssueDescFiles(this.files)">
+      <!-- 详细描述 + 图片 + 下次跟进 -->
+      <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:12px; margin-bottom:12px;">
+        <div style="padding:8px 12px; background:var(--bg-elevated); border-radius:8px;">
+          <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:5px;">详细描述</div>
+          <textarea id="ismDescription" rows="3" placeholder="详细描述问题或要求 · 可在此 Ctrl+V 粘贴截图"
+                    data-paste-target="issue_orig"
+                    style="width:100%; padding:8px 10px; border:1px solid var(--border, #d1d5db); border-radius:6px; font-size:12.5px; box-sizing:border-box; font-family:inherit; resize:vertical;"
+                    ${isDraft ? '' : `onchange="onIssueField('description', this.value.trim())"`}>${escapeHtml(data.description || data.requirement || '')}</textarea>
+          <div style="margin-top:6px;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+              <span style="font-size:11px; color:var(--text-secondary);">📷 问题截图</span>
+              <button type="button" class="btn small" onclick="document.getElementById('ismDescFileInput').click()" style="padding:3px 8px; font-size:11px;">+ 上传图片</button>
+              <input type="file" id="ismDescFileInput" accept="image/*" multiple style="display:none;" onchange="onIssueDescFiles(this.files)">
+            </div>
+            <div id="ismDescThumbs" class="ism-drop-zone" ondrop="onIssueDescDrop(event)" ondragover="event.preventDefault(); this.classList.add('dragging');" ondragleave="this.classList.remove('dragging');" style="max-height:120px; overflow-y:auto;">
+              ${(data.screenshots || []).length === 0 
+                ? '<div style="grid-column:1/-1; padding:10px; text-align:center; color:var(--text-tertiary); font-size:11.5px; border:1px dashed var(--border); border-radius:6px;">📭 还没图 · Ctrl+V 粘贴 / 拖入 / 点上方上传</div>'
+                : (data.screenshots || []).map((s, i) => `
+                  <div class="ism-photo-tile">
+                    <img src="${s}" onclick="viewImage('${s}')">
+                    <button class="rm" onclick="rmIssueScreenshot(${i})">×</button>
+                  </div>
+                `).join('')
+              }
+            </div>
           </div>
-          <div id="ismDescThumbs" class="ism-drop-zone" ondrop="onIssueDescDrop(event)" ondragover="event.preventDefault(); this.classList.add('dragging');" ondragleave="this.classList.remove('dragging');">
-            ${(data.screenshots || []).length === 0 
-              ? '<div style="grid-column:1/-1; padding:14px; text-align:center; color:var(--text-tertiary); font-size:12px; border:1px dashed var(--border); border-radius:6px;">📭 还没有图片 · 直接 Ctrl+V 粘贴 / 拖拽进来 / 点上方「+ 上传图片」</div>'
-              : (data.screenshots || []).map((s, i) => `
-                <div class="ism-photo-tile">
-                  <img src="${s}" onclick="viewImage('${s}')">
-                  ${isDraft ? '' : `<button class="rm" onclick="delIssueDescScreenshot(${i})" title="删除">×</button>`}
-                </div>
-              `).join('')
-            }
+        </div>
+        <div style="padding:8px 12px; background:var(--bg-elevated); border-radius:8px;">
+          <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:5px;">⏰ 下次跟进日期</div>
+          <div style="display:flex; gap:4px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">
+            <button type="button" class="btn small" onclick="setIssueFollowDate(3)" style="padding:3px 8px; font-size:11px;">3天后</button>
+            <button type="button" class="btn small" onclick="setIssueFollowDate(7)" style="padding:3px 8px; font-size:11px;">7天后</button>
+            <button type="button" class="btn small" onclick="setIssueFollowDate(15)" style="padding:3px 8px; font-size:11px;">15天后</button>
+            <input type="date" id="ismNextFollowDate" value="${data.nextFollowDate || ''}"
+                   style="padding:5px 8px; border:1px solid var(--border, #d1d5db); border-radius:6px; font-size:12px; flex:1; min-width:130px;"
+                   ${isDraft ? `onchange="_issueDraft.nextFollowDate = this.value"` : `onchange="onIssueField('nextFollowDate', this.value)"`}>
+            <button type="button" class="btn small" onclick="clearIssueFollowDate()" style="padding:3px 8px; font-size:11px; color:#6b7280;">清空</button>
           </div>
+          ${data.nextFollowDate ? `<div style="font-size:11.5px; color:${_isIssueOverdue(data) ? '#dc2626' : '#059669'}; font-weight:600;">${_isIssueOverdue(data) ? '⚠ 已逾期 ' + _issueOverdueDays(data) + ' 天' : '📅 距跟进还有 ' + _issueOverdueDays(data) * -1 + ' 天'}</div>` : ''}
         </div>
       </div>
       
-      <div class="ism-section">
-        <div class="ism-section-title">⏰ 下次跟进日期</div>
-        <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
-          <button type="button" class="btn small" onclick="setIssueFollowDate(3)">3 天后</button>
-          <button type="button" class="btn small" onclick="setIssueFollowDate(7)">7 天后</button>
-          <button type="button" class="btn small" onclick="setIssueFollowDate(15)">15 天后</button>
-          <input type="date" id="ismNextFollowDate" value="${data.nextFollowDate || ''}"
-                 style="padding: 6px 10px; border: 1px solid var(--border, #d1d5db); border-radius: 6px; font-size: 13px; flex: 1; max-width: 180px;"
-                 ${isDraft ? `onchange="_issueDraft.nextFollowDate = this.value"` : `onchange="onIssueField('nextFollowDate', this.value)"`}>
-          <button type="button" class="btn small" onclick="clearIssueFollowDate()" style="color: #6b7280;">清空</button>
-        </div>
-        ${data.nextFollowDate ? `<div style="margin-top: 6px; font-size: 12px; color: ${_isIssueOverdue(data) ? '#dc2626' : '#059669'}; font-weight: 600;">${_isIssueOverdue(data) ? '⚠ 已逾期 ' + _issueOverdueDays(data) + ' 天' : '📅 距跟进还有 ' + _issueOverdueDays(data) * -1 + ' 天'}</div>` : ''}
+      <!-- 沟通历史(满宽 · 限高) -->
+      <div style="max-height:30vh; overflow-y:auto; padding:8px 12px; background:var(--bg-elevated); border-radius:8px; margin-bottom:10px;">
+        ${timelineHtml.replace('<div class="ism-section">', '<div>').replace('</div>$', '</div>')}
       </div>
       
-      ${statusHtml}
-      ${timelineHtml}
-      
-      <div class="ism-footer">${footerHtml}</div>
+      <div class="ism-footer" style="margin-top:8px;">${footerHtml}</div>
     </div>
   `;
 }
