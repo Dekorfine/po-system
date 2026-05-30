@@ -732,7 +732,7 @@ function renderOrderRow(o, i) {
       <div class="row-num row-num-with-thumb">
         <span class="row-num-idx">${i + 1}</span>
         ${productImageHtml}
-        ${IS_ADMIN && o._agent ? `<div style="font-size:9px;color:var(--text-tertiary);">${escapeHtml(o._agent.slice(0,2))}</div>` : ''}
+        ${IS_ADMIN && o._agent ? `<div style="font-size:9px;color:var(--text-tertiary);" title="${escapeHtml(window.getAgentDisplay ? window.getAgentDisplay(o._agent) : o._agent)}">${escapeHtml(o._agent.slice(0,2))}</div>` : ''}
         ${daysHtml}
       </div>
       <div onclick="openOrderModal('${o._id}', '${escapeHtml(o._agent || '')}')" style="cursor:pointer;"><span class="status-pill s-${eff}">${ORDER_STATUS_LABELS[o.status] || '未知'}${eff === 'overdue' ? ' ⚠' : ''}</span></div>

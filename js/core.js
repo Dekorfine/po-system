@@ -65,8 +65,19 @@ const DATA = {
     this._cache.agents = (agentRows || []).map(a => ({
       _userId: a.user_id,
       name: a.name,
+      // V28ν:中英双显支持
+      chineseName: a.chinese_name || '',
+      englishName: a.english_name || '',
+      shortName: a.short_name || a.english_name || a.name,
+      // 主管视角下的显示名:"Aylin(李雪玲)" · 跟单员只看 name
+      displayName: (() => {
+        const en = a.english_name || a.name;
+        const cn = a.chinese_name || '';
+        if (en && cn && en !== cn) return `${en}(${cn})`;
+        return en || cn || a.name;
+      })(),
       isAdmin: a.is_admin,
-      isBoss: !!a.is_boss,       // V4-2026-05-24: 老板角色
+      isBoss: !!a.is_boss,
       sites: a.sites || [],
       modules: a.modules || [...ALL_MODULE_KEYS],
     }));
@@ -748,6 +759,26 @@ let CONFIG = DATA.getConfig();  // 空配置，bootstrap 后填充
 let CURRENT_AGENT = null;       // 字符串：当前账号姓名
 let IS_ADMIN = false;
 let IS_BOSS = false;            // V4-2026-05-24: 老板角色(比主管更高)
+
+// V28ν:中英双显工具 · 主管视角下显示"Aylin(李雪玲)" · 跟单员看到的还是英文
+// 用法:getAgentDisplay('Aylin') → 主管视角"Aylin(李雪玲)" · 跟单视角"Aylin"
+window.getAgentDisplay = function(agentName, opts = {}) {
+  if (!agentName) return '';
+  // 只在主管/老板视角下显示中英双名 · 跟单员保持简洁
+  const forceShowChinese = opts.forceShowChinese;
+  const isAdminView = (typeof IS_ADMIN !== 'undefined' && IS_ADMIN) || (typeof IS_BOSS !== 'undefined' && IS_BOSS);
+  if (!isAdminView && !forceShowChinese) return agentName;
+  const a = (CONFIG.agents || []).find(x => x.name === agentName || x.englishName === agentName);
+  if (!a) return agentName;
+  if (a.displayName && a.displayName !== a.name) return a.displayName;
+  return a.name;
+};
+// 只取英文短名(导出 / Header 紧凑场景用)
+window.getAgentShort = function(agentName) {
+  if (!agentName) return '';
+  const a = (CONFIG.agents || []).find(x => x.name === agentName || x.englishName === agentName);
+  return (a && a.shortName) || agentName;
+};
 
 // V5-2026-05-25: 视角切换(impersonation)系统
 // 老板可切换到任何账户视角；主管可切换到普通员工视角
@@ -1661,8 +1692,17 @@ function subscribeAgentsRealtime() {
         const fresh = agentRows.map(a => ({
           _userId: a.user_id,
           name: a.name,
+          chineseName: a.chinese_name || '',
+          englishName: a.english_name || '',
+          shortName: a.short_name || a.english_name || a.name,
+          displayName: (() => {
+            const en = a.english_name || a.name;
+            const cn = a.chinese_name || '';
+            if (en && cn && en !== cn) return `${en}(${cn})`;
+            return en || cn || a.name;
+          })(),
           isAdmin: a.is_admin,
-          isBoss: !!a.is_boss,       // V4-2026-05-24: 老板角色
+          isBoss: !!a.is_boss,
           sites: a.sites || [],
           modules: a.modules || [...ALL_MODULE_KEYS],
         }));
@@ -2027,10 +2067,14 @@ function openAgentSwitchModal() {
                                         : '<span class="agent-switch-role">👤 员工</span>';
       const siteStr = (a.sites || []).length > 0 ? (a.sites || []).join(' / ') : '未设置';
       const nameEsc = (a.name || '').replace(/'/g, "\\'");
+      // V28ν:中英双显
+      const cnName = a.chineseName && a.chineseName !== a.name 
+        ? `<span style="color:var(--text-secondary); font-weight:normal; font-size:13px; margin-left:6px;">${escapeHtml(a.chineseName)}</span>` 
+        : '';
       return `<button class="agent-switch-card" onclick="switchToAgent('${escapeHtml(nameEsc)}')" type="button">
         <div class="agent-switch-avatar">${escapeHtml((a.name || '?')[0].toUpperCase())}</div>
         <div class="agent-switch-info">
-          <div class="agent-switch-name">${escapeHtml(a.name || '')}</div>
+          <div class="agent-switch-name">${escapeHtml(a.name || '')}${cnName}</div>
           <div class="agent-switch-meta">${role}<span style="color:var(--text-tertiary); font-size:11px; margin-left:8px;">📍 ${escapeHtml(siteStr)}</span></div>
         </div>
         <div class="agent-switch-arrow">→</div>

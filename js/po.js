@@ -3861,7 +3861,7 @@ function renderPoList() {
                 ${statusInfo.label}
               </span>
             </div>
-            <div>跟单:${escapeHtml(p.creator_name || '')}</div>
+            <div>跟单:${escapeHtml(window.getAgentDisplay ? window.getAgentDisplay(p.creator_name) : (p.creator_name || ''))}</div>
             ${p.approved_by && !isRejected ? `<div style="color:var(--success); font-size:11px;">✓ 由 ${escapeHtml(p.approved_by)} 批准</div>` : ''}
           </div>
         </div>
@@ -4495,7 +4495,7 @@ function _renderFinanceWaitingItem(p) {
             <span><b>数量:</b>${totalQty} 件 / ${items.length} 行</span>
             <span><b>金额:</b><b style="color: var(--accent);">¥ ${Number(p.total_amount || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}</b></span>
             <span><b>到货:</b>${arrived}</span>
-            <span><b>跟单:</b>${escapeHtml(p.creator_name || '—')}</span>
+            <span><b>跟单:</b>${escapeHtml(window.getAgentDisplay ? window.getAgentDisplay(p.creator_name) : (p.creator_name || '—'))}</span>
           </div>
           <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
             ${items.slice(0, 4).map(li => `
@@ -4552,7 +4552,7 @@ function _renderFinanceDoneItem(p) {
             <span><b>供应商:</b>${escapeHtml(p.supplier || '—')}</span>
             <span><b>数量:</b>${totalQty} 件 / ${items.length} 行</span>
             <span><b>金额:</b><b style="color: var(--accent);">¥ ${Number(p.total_amount || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}</b></span>
-            <span><b>跟单:</b>${escapeHtml(p.creator_name || '—')}</span>
+            <span><b>跟单:</b>${escapeHtml(window.getAgentDisplay ? window.getAgentDisplay(p.creator_name) : (p.creator_name || '—'))}</span>
           </div>
         </div>
         <div style="display: flex; gap: 6px; flex-shrink: 0;">
