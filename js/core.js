@@ -2389,6 +2389,13 @@ function switchTab(name, fromPopstate) {
   }
   document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === name));
+  // V20260531-mobile:手机端 tab 栏横滚时,激活的 tab 滚到可视
+  try {
+    const activeTab = document.querySelector(`.tab-nav .tab-item[data-tab="${name}"]`);
+    if (activeTab && window.innerWidth <= 768) {
+      activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  } catch(_) {}
   renderActiveTab();
 }
 
@@ -2942,6 +2949,51 @@ window.updateBadges = function() {
 };
 
 // ============ 布局自定义弹窗 ============
+// V20260531-mobile:手机汉堡菜单
+window.openMobileMenu = function() {
+  const drawer = document.getElementById('mobileMenuDrawer');
+  if (!drawer) return;
+  drawer.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  
+  // 动态填充侧栏 tab 入口(让手机用户能访问所有侧栏 tab)
+  const layout = (typeof getTabLayout === 'function') ? getTabLayout() : {};
+  const sideTabs = Object.keys(TAB_META || {}).filter(t => layout[t] === 'side');
+  const container = document.getElementById('mobileMenuSideTabs');
+  if (container) {
+    container.innerHTML = sideTabs.map(t => {
+      const meta = TAB_META[t];
+      // 读取顶部对应 tab 元素的徽章
+      let badge = '';
+      if (meta.badgeId) {
+        const b = document.getElementById(meta.badgeId);
+        if (b && b.textContent && b.textContent !== '0' && !b.classList.contains('zero')) {
+          badge = `<span style="margin-left:auto;background:var(--danger);color:#fff;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;">${b.textContent}</span>`;
+        }
+      }
+      return `<button class="mobile-menu-item" onclick="closeMobileMenu();switchTab('${t}')"><span class="icon">${meta.icon}</span> ${meta.label}${badge}</button>`;
+    }).join('');
+  }
+  
+  // 视角切换按钮:只在老板/主管显示
+  const switchBtn = document.getElementById('mobileMenuSwitchAgent');
+  const topSwitchBtn = document.getElementById('agentSwitchBtn');
+  if (switchBtn && topSwitchBtn) {
+    switchBtn.style.display = (topSwitchBtn.style.display === 'none') ? 'none' : '';
+  }
+};
+window.closeMobileMenu = function() {
+  const drawer = document.getElementById('mobileMenuDrawer');
+  if (!drawer) return;
+  drawer.classList.remove('open');
+  document.body.style.overflow = '';
+};
+window.toggleMobileMenu = function() {
+  const drawer = document.getElementById('mobileMenuDrawer');
+  if (drawer && drawer.classList.contains('open')) closeMobileMenu();
+  else openMobileMenu();
+};
+
 function openTabLayoutModal() {
   const layout = getTabLayout();
   const list = document.getElementById('tabLayoutList');
