@@ -895,11 +895,11 @@ window.normalizeOrderShape = function(raw, shopDomain) {
 // V28ζ:实时单查订单(策略 B:先查本地 · 未命中才拉 Shopify · 不入库批量)
 //
 // 通用 API · 客服系统/发票系统/其它模块都能调:
-//   const r = await window.lookupOrderByName('PL3124', 'pinlighting.myshopify.com');
+//   const r = await window.lookupOrderByName('PL3124', 'vkfrench.myshopify.com');
 //   r = { ok: true/false, source: 'local'|'shopify'|'cache', order: {...} | null, error?: 'xxx' }
 //
 // 调用方建议先用 shop=null 自动多店扫描:
-//   const r = await window.lookupOrderByName('PL3124');  // 会按域名前缀 PL→pinlighting 自动匹配
+//   const r = await window.lookupOrderByName('PL3124');  // 会自动扫所有已连接店
 window._orderLookupCache = window._orderLookupCache || {};  // 内存缓存 5 分钟 · key = `${shop}|${orderNo}`
 const _LOOKUP_CACHE_TTL = 5 * 60 * 1000;
 
@@ -2396,6 +2396,7 @@ function renderShopifyOrders() {
     } else if (o.local_status === 'processing') {
       actionsHtml = `
         <button class="so-action-btn primary" onclick="${isFullyRefunded ? `toast('该订单已全额退款，禁止开采购单，请先取消订单','err')` : `shopifyOpenPoForm('${o.id}')`}" ${isFullyRefunded ? 'disabled style="opacity:0.4; cursor:not-allowed;" title="此订单已全额退款，禁止开采购单"' : ''}>📦 开采购单${items.length > 1 ? '（全部）' : ''}</button>
+        ${!isFullyRefunded ? `<button class="so-action-btn" onclick="openPoWizard('${o.id}')" title="新人引导:5 步走完整流程 · 防漏关键字段(电压/标准/光源等)" style="background:linear-gradient(135deg,#fef3c7,#fff);border-color:#fbbf24;color:#92400e;">🪄 新人引导</button>` : ''}
         ${items.length > 1 && !isFullyRefunded ? `<button class="so-action-btn" onclick="toast('💡 在产品行左侧勾选要拆出来的产品 → 点蓝色「仅为选中开 PO」按钮','info',5000)" title="多个产品不同供应商时，勾选要拆的几个产品开独立 PO">✂ 拆单</button>` : ''}
         <button class="so-action-btn" onclick="shopifyMarkDone('${o.id}')" title="所有产品都开采购单后点此完成">✓ 标记完成</button>`;
     } else if (o.local_status === 'done') {
