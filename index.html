@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>跟单团队工作台 · V3-BATCH3-2026-05-18</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
 <!-- ========== Dekorfine 公司统一 favicon (jsDelivr CDN) ========== -->
 <!-- 来源：https://github.com/Dekorfine/brand -->
@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
 <script defer src="js/issues.js?v=20260528gamma"></script>
-<script defer src="js/help.js?v=20260528xi2"></script>
+<script defer src="js/help.js?v=20260528xi3"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -858,6 +858,221 @@ body.impersonating-readonly .po-card input[type="text"] {
   .imp-banner-back {
     padding: 4px 10px;
     font-size: 11px;
+  }
+}
+
+/* ============================================================ */
+/* V28ξ-3:全局手机端适配 · iPhone Safari + Android Chrome      */
+/* 范围:tab 栏 / header / 卡片 / 表格 / 按钮 / iframe / sidebar */
+/* ============================================================ */
+@media (max-width: 768px) {
+  /* === Header 紧凑 === */
+  .header-top {
+    padding: 8px 12px !important;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .brand-text .sub { display: none; }                  /* 隐藏 V3-BATCH3 那行小字 */
+  .brand-text .name { font-size: 13px; }
+  .header-actions {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .btn { padding: 6px 10px !important; font-size: 11.5px !important; }
+  .btn.sm { padding: 3px 7px !important; font-size: 10.5px !important; }
+
+  /* === 顶部 tab 栏 · 横向滚动(避免挤成两行) === */
+  .tab-nav {
+    padding: 0 12px !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;                              /* Firefox */
+  }
+  .tab-nav::-webkit-scrollbar { display: none; }       /* Chrome / Safari */
+  .tab-item {
+    padding: 10px 12px !important;
+    font-size: 12px !important;
+    flex-shrink: 0;                                     /* 不挤压 */
+    white-space: nowrap;
+  }
+  .tab-new-window-btn { display: none !important; }    /* 手机隐藏 ↗ */
+
+  /* === Section / 卡片内容 · 留窄边距 === */
+  .section-block {
+    padding: 0 12px !important;
+    margin-top: 10px !important;
+  }
+  .fb-card,
+  .stat-card,
+  .so-card,
+  .po-card,
+  .so-item,
+  .po-item {
+    padding: 12px !important;
+    border-radius: 8px !important;
+  }
+  .fb-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .fb-tabs { flex-wrap: wrap; }
+
+  /* === Stats 业绩卡 · 5 列 → 2 列 === */
+  .stats-bar {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  .stat-card .value { font-size: 20px !important; }
+  .stat-card { padding: 10px 12px !important; }
+
+  /* === 通用表格(订单/采购列表) === */
+  table { font-size: 12px; }
+  .row-num-idx { font-size: 9px; }
+  
+  /* 销售单/采购单内容行折叠 · 大网格 → 单列 */
+  .so-card-body,
+  .po-card-body {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  .so-action-row,
+  .po-action-row {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  .so-action-btn,
+  .po-action-btn {
+    font-size: 11px !important;
+    padding: 5px 9px !important;
+  }
+  
+  /* === 子 tab 横滚 === */
+  .sub-tabs,
+  .po-subtabs {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .sub-tabs::-webkit-scrollbar,
+  .po-subtabs::-webkit-scrollbar { display: none; }
+  .sub-tab-btn { flex-shrink: 0; white-space: nowrap; }
+
+  /* === Modal 全屏 === */
+  .modal-bg .modal,
+  .modal {
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    border-radius: 0 !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow-y: auto;
+  }
+  .modal-head,
+  .modal-header {
+    padding: 12px 14px !important;
+    position: sticky;
+    top: 0;
+    background: var(--bg-card);
+    z-index: 10;
+  }
+  .modal-body { padding: 14px !important; }
+
+  /* === Sidebar 在手机隐藏(节省横向空间) === */
+  .side-tab-bar {
+    display: none !important;
+  }
+
+  /* === iframe 高度 · 报价单/合箱/计算器等嵌入工具 === */
+  iframe#quotationFrame,
+  iframe#consolidationFrame {
+    height: calc(100vh - 130px) !important;             /* header + tab 占约 100-130px */
+    min-height: 500px !important;
+    border-radius: 0 0 8px 8px !important;
+  }
+  /* 报价单顶部提示条紧凑 */
+  .tab-content[data-tab="quotation"] > .section-block > div:first-child {
+    padding: 8px 10px !important;
+    font-size: 11px !important;
+  }
+  .tab-content[data-tab="quotation"] > .section-block > div:first-child a {
+    display: block;
+    margin-top: 4px;
+  }
+
+  /* === 表单输入 · iOS 输入框 16px 防自动缩放 === */
+  input, textarea, select {
+    font-size: 16px !important;        /* iOS 14+ 这个值以下会自动放大 */
+  }
+  
+  /* === 售后 / 找灯 / 拍摄需求 卡片单列 === */
+  .grid-2col,
+  .grid-3col,
+  .grid-4col,
+  .as-grid,
+  .photoreq-grid,
+  .missing-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+  
+  /* === 顶部固定按钮区 · 横向滚 === */
+  .header-actions {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap !important;
+  }
+  .header-actions::-webkit-scrollbar { display: none; }
+  
+  /* === 长文本截断 · 防止超出屏幕 === */
+  .so-card .product-name,
+  .po-card .product-name,
+  .fb-item .product {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  /* === 跨部门工单 modal 全屏适配 === */
+  .cdm-modal {
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100vh !important;
+    border-radius: 0 !important;
+  }
+  
+  /* === Toast 居中 · 防被截断 === */
+  #toast,
+  .toast {
+    left: 12px !important;
+    right: 12px !important;
+    max-width: calc(100vw - 24px) !important;
+    font-size: 12px !important;
+  }
+}
+
+/* === iPhone SE / 老款小屏(< 380px)再紧一点 === */
+@media (max-width: 380px) {
+  .header-top { padding: 6px 10px !important; }
+  .btn { padding: 5px 8px !important; font-size: 11px !important; }
+  .tab-item { padding: 8px 10px !important; font-size: 11.5px !important; }
+  .section-block { padding: 0 8px !important; }
+  .stats-bar { gap: 6px !important; }
+  .stat-card { padding: 8px !important; }
+  .stat-card .value { font-size: 18px !important; }
+}
+
+/* === iOS 安全区(刘海/Home 指示器) === */
+@supports (padding: max(0px)) {
+  .app-header {
+    padding-top: env(safe-area-inset-top);
+  }
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }
 /* ========================================================== */
