@@ -2241,6 +2241,15 @@ function loadAllData() {
 }
 
 function renderActiveTab() {
+  // V20260531-freight:首次进 freight tab 时才设 iframe src(懒加载 · 加缓存戳)
+  if (CURRENT_TAB === 'freight') {
+    const frame = document.getElementById('freightFrame');
+    if (frame && !frame.src) {
+      // 缓存戳挂载时固定一次 · 客服更新后用户强刷会自动拿到新版
+      frame.src = `https://dekorfine.github.io/cs-system/freight-calc.html?t=${Date.now().toString(36)}`;
+    }
+  }
+  
   if (CURRENT_TAB === 'orders') {
     // PO 派生数据可能尚未加载完成（异步）—— 先尝试用现有缓存渲染，加载完成后再次刷新
     renderOrders(); refreshOrdersFb(); renderUrgentBanner(); updateOrderStats();
@@ -2639,9 +2648,10 @@ function toggleFb(id, e) {
 // ============================================================================
 const TAB_LAYOUT_KEY = 'tab_layout_v1';
 const TAB_LAYOUT_DEFAULT = {
-  // V20260531:常用工具置顶 · 合箱+报价单提升到顶部
+  // V20260531:常用工具置顶 · 合箱+报价单+运费精算 提升到顶部
   consolidation: 'top',      // 🧊 合箱 · 运费核算
   quotation:     'top',      // 📄 报价单 · 算卖价 / 出 PI
+  freight:       'top',      // 🚚 运费精算 · 跨域引用 cs-system
   // 业务流程主线
   sales:         'top',
   po:            'top',
@@ -2680,6 +2690,7 @@ const TAB_META = {
   photoreq:      { icon: '📨', label: '拍摄需求',   badgeId: null },
   inspection:    { icon: '🔍', label: '验货单',     badgeId: null },
   quotation:     { icon: '📄', label: '报价单',     badgeId: null },  // V28ξ-2
+  freight:       { icon: '🚚', label: '运费精算',   badgeId: null },  // V20260531(跨域引用 cs-system)
   workflows:     { icon: '📘', label: '工作流速查', badgeId: null },  // V20260531
 };
 
