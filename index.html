@@ -22,18 +22,18 @@
 <link rel="preconnect" href="https://xyhbwqugbnowfjuhqhsj.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
-<link rel="preload" href="js/core.js?v=20260531ord" as="script">
+<link rel="preload" href="js/core.js?v=20260531fr" as="script">
 <link rel="preload" href="js/utils.js?v=20260528xi4" as="script">
 <link rel="preload" href="js/shopify.js?v=20260531wiz" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="js/core.js?v=20260531ord"></script>
+<script defer src="js/core.js?v=20260531fr"></script>
 <script defer src="js/utils.js?v=20260528xi4"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
 <script defer src="js/issues.js?v=20260528gamma"></script>
-<script defer src="js/help.js?v=20260531ord"></script>
+<script defer src="js/help.js?v=20260531fr"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -5548,6 +5548,7 @@ if ('serviceWorker' in navigator) {
     <!-- V20260531:常用工具置顶 · 合箱+报价单提到最前 -->
     <div class="tab-item" data-tab="consolidation" onclick="switchTab('consolidation')">🧊 合箱<a href="?tab=consolidation" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="quotation" onclick="switchTab('quotation')">📄 报价单<a href="?tab=quotation" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块(独立工具 · 美工/客服共用同一数据)">↗</a></div>
+    <div class="tab-item" data-tab="freight" onclick="switchTab('freight')">🚚 运费精算<a href="?tab=freight" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块(客服侧统一维护)">↗</a></div>
     <div class="tab-item active" data-tab="sales" onclick="switchTab('sales')">📥 销售单 <span class="badge zero" id="badgeSales">0</span><a href="?tab=sales" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块（多窗口同时工作）">↗</a></div>
     <div class="tab-item" data-tab="po" onclick="switchTab('po')">📦 采购单 <span class="badge zero" id="badgePo">0</span><a href="?tab=po" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="orders" onclick="switchTab('orders')">📋 催单 <span class="badge zero" id="badgeOrders">0</span><a href="?tab=orders" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
@@ -6703,6 +6704,25 @@ if ('serviceWorker' in navigator) {
       title="工作流速查"
       loading="lazy">
     </iframe>
+  </div>
+</div>
+
+<!-- V20260531-freight:运费精算器(跨域引用客服 cs-system · 客服侧统一维护) -->
+<div class="tab-content" data-tab="freight">
+  <div class="section-block" style="padding: 0;">
+    <div style="padding: 10px 14px; background:linear-gradient(90deg, #fef3c7, #fff); border-radius:12px 12px 0 0; border-bottom:1px solid var(--border-subtle); font-size:12px; color:#92400e;">
+      🚚 <b>运费精算器</b> · 跨域引用 <code style="background:#fff;padding:1px 4px;border-radius:3px;font-size:11px;">cs-system</code> · 客服侧统一维护 · 自动同步规则
+      &nbsp;&nbsp;
+      <a href="https://dekorfine.github.io/cs-system/freight-calc.html" target="_blank" rel="noopener" style="color:#92400e; text-decoration:underline; font-weight:600;">↗ 新窗口打开</a>
+    </div>
+    <div style="width:100%; padding: 0;">
+      <iframe id="freightFrame"
+        title="运费精算器"
+        style="width:100%; height: 1400px; border:none; border-radius: 0 0 12px 12px; background:#fafafa; display:block;"
+        loading="lazy"
+        referrerpolicy="no-referrer">
+      </iframe>
+    </div>
   </div>
 </div>
 
