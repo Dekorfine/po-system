@@ -343,20 +343,16 @@
         /* === iframe 自适应:通知父页面调整高度,消除内部滚动条 === */
 
         /* ============================================================ */
-        /* V20260531-COMPACT:紧凑桌面布局 · 一页填完不下滑                */
-        /* 目标:每个包装卡从垂直 5 行 → 横向 1 行 · 拓宽到 1536px       */
+        /* V20260531-COMPACT-v2:紧凑桌面布局 · 稳定网格(不用 display:contents)  */
+        /* 策略:每个包装卡是独立 grid · 给内部子元素显式分配 grid-column   */
         /* ============================================================ */
         @media (min-width: 1280px) {
-            /* 容器拓宽 · 用更多横向空间 */
-            .max-w-7xl {
-                max-width: 1536px !important;
-            }
-            
-            /* 顶部 padding 减小 · 让首屏多容纳内容 */
+            /* 容器拓宽 */
+            .max-w-7xl { max-width: 1536px !important; }
             .pt-12 { padding-top: 20px !important; }
             .pb-8 { padding-bottom: 12px !important; }
             
-            /* === 多包装场景说明卡(💡)默认折叠 · 鼠标悬停展开 === */
+            /* 说明卡默认折叠 · 悬停展开 */
             div[style*="border: 1px dashed"] {
                 max-height: 38px;
                 overflow: hidden;
@@ -368,23 +364,42 @@
                 max-height: 280px;
             }
             
-            /* === 包装卡:6 列横向网格 + 右侧 100px 给操作按钮预留 === */
+            /* === 单个包装卡:独立 grid · 6 列 + 右侧 110px 给操作按钮 === */
             .space-y-3 > div[class*="rounded-xl"][class*="p-4"] {
                 display: grid !important;
                 grid-template-columns: 1.3fr 0.55fr 0.55fr 0.55fr 0.7fr 0.55fr !important;
+                grid-template-areas:
+                    "note l   w   h   wt  qty"
+                    "tip  tip tip tip tip tip" !important;
                 gap: 6px !important;
                 align-items: center !important;
-                padding: 10px 105px 10px 12px !important;
+                padding: 10px 110px 10px 12px !important;
                 margin-bottom: 6px !important;
                 position: relative;
             }
             
-            /* 内部 .grid 子容器(LWH 和 重量+数量)展平到外层网格 */
-            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .grid {
-                display: contents !important;
+            /* 备注 div(单 input · 不带 grid 类)· 占 note 区 */
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > div.mb-3:not(.flex):not(.grid) {
+                grid-area: note;
+                margin: 0 !important;
             }
             
-            /* 头部"包装 N · 复制/删除"→ 绝对定位到右侧预留区 */
+            /* L W H 容器(grid-cols-3)· 内部 3 个子 div · 占 l/w/h 区 */
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .grid.grid-cols-3 {
+                display: contents !important;
+            }
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .grid.grid-cols-3 > div:nth-child(1) { grid-area: l; }
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .grid.grid-cols-3 > div:nth-child(2) { grid-area: w; }
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .grid.grid-cols-3 > div:nth-child(3) { grid-area: h; }
+            
+            /* 重量数量(grid-cols-2)· 内部 2 个 · 占 wt/qty 区 */
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .grid.grid-cols-2 {
+                display: contents !important;
+            }
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .grid.grid-cols-2 > div:nth-child(1) { grid-area: wt; }
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .grid.grid-cols-2 > div:nth-child(2) { grid-area: qty; }
+            
+            /* 头部(包装 N + 复制/删除)· 绝对定位到右侧 */
             .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .flex.items-center.justify-between.mb-3 {
                 position: absolute;
                 top: 50%;
@@ -392,40 +407,41 @@
                 transform: translateY(-50%);
                 margin: 0 !important;
                 z-index: 2;
-                background: transparent;
                 width: auto !important;
+                display: flex !important;
+                gap: 4px !important;
+                background: transparent;
             }
-            /* 隐藏左上"包装 N · 纸箱缓冲"标签 · 节省高度 */
+            /* "包装 N · 纸箱缓冲" 标签 · 压缩 */
             .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .flex.items-center.justify-between.mb-3 > .flex:first-child {
-                display: none !important;
+                display: flex !important;
+                gap: 4px !important;
+                align-items: center !important;
+            }
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .flex.items-center.justify-between.mb-3 > .flex:first-child > .text-\[10px\] {
+                display: none !important;  /* 隐藏文字说明 · 只留徽章 */
             }
             
-            /* 备注 div(mb-3 直接 input)· 占第一列 */
-            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .mb-3:not(.flex):not(.grid) {
-                margin: 0 !important;
-                grid-column: 1;
-            }
-            
-            /* 输入框紧凑 · 全部统一高度 */
-            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] .field-input {
-                padding: 6px 8px !important;
-                font-size: 12px !important;
-                min-height: 32px !important;
-                width: 100%;
-            }
-            
-            /* 大件建议提示 / 木箱 toggle / 强制单件 → 占满整行(下一行) */
+            /* 大件建议提示 / 木箱 toggle / 强制单件 · 占满第 2 行 */
             .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > div[style*="warn-soft"],
             .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .flex.items-center.mt-3,
             .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .pt-3,
             .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .border-t {
-                grid-column: 1 / -1;
+                grid-area: tip;
                 font-size: 10.5px !important;
-                padding-top: 4px !important;
-                margin-top: 4px !important;
+                padding: 4px 8px !important;
+                margin: 4px 0 0 0 !important;
             }
             
-            /* === 输入区卡片整体 padding 减小 === */
+            /* 输入框紧凑 */
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] .field-input {
+                padding: 6px 8px !important;
+                font-size: 12px !important;
+                min-height: 30px !important;
+                width: 100% !important;
+            }
+            
+            /* 输入区卡 padding 减小 */
             .paper.rounded-2xl.p-6 {
                 padding: 14px 16px !important;
             }
@@ -433,13 +449,10 @@
                 font-size: 15px !important;
             }
             
-            /* === 推荐承运商 padding 减小 === */
+            /* 推荐承运商 padding 减小 */
             div[style*="background: var(--accent-soft)"][class*="rounded-lg"][class*="p-3"] {
                 padding: 6px 10px !important;
             }
-            
-            /* === 左输入栏 占比从 5/12 → 4/12 给右侧结果更多空间 === */
-            /* 实际上不动 Tailwind 类 · 让 max-w-7xl 拓宽就够了 */
         }
         
         /* === iframe 自适应:通知父页面调整高度,消除内部滚动条 === */
