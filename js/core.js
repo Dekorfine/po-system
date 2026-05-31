@@ -3168,3 +3168,23 @@ window.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('resize', () => {
   if (typeof syncMainAppPadding === 'function') syncMainAppPadding();
 });
+
+// V28ξ-4:页面加载后启动自动同步(不再等 user 切到 sales tab)· 店小秘式后台拉
+window.addEventListener('DOMContentLoaded', () => {
+  // 等用户登录 + Shopify 模块初始化完成再启动
+  const tryStart = () => {
+    if (typeof shopifyAutoSyncOn !== 'function') return false;
+    if (!shopifyAutoSyncOn()) return true;  // 用户关了 · 不启动 · 算完成
+    if (!SHOPIFY || !SHOPIFY._stores || SHOPIFY._stores.length === 0) return false;  // 未就绪
+    if (typeof shopifyStartAutoSync === 'function') {
+      shopifyStartAutoSync();
+      console.log('[autosync] ✓ 页面加载后自动启动 · 5 分钟周期');
+    }
+    return true;
+  };
+  // 轮询等就绪 · 最多等 15 秒
+  let n = 0;
+  const t = setInterval(() => {
+    if (tryStart() || n++ > 30) clearInterval(t);
+  }, 500);
+});

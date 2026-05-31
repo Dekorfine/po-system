@@ -1308,14 +1308,18 @@ function closeImgLightbox(e) {
   document.body.style.overflow = '';
 }
 
-// ============ 自动同步 ============
+// ============ 自动同步(V28ξ-4:店小秘式 · 默认开 · 跨 tab · 多店增量) ============
 const SHOPIFY_AUTOSYNC_KEY = 'shopify_autosync_on';
+const SHOPIFY_LAST_SYNC_KEY = 'shopify_last_sync_at';
+const SHOPIFY_AUTOSYNC_INTERVAL_MS = 5 * 60 * 1000;  // 5 分钟
+const SHOPIFY_VISIBILITY_THRESHOLD_MS = 2 * 60 * 1000;  // 切回页面距上次 > 2 分钟触发
 
 function shopifyAutoSyncOn() {
-  // V20260527m: 默认关闭 · 必须显式开启('1')才生效
-  // 之前 bug:用 !== '0' 判定 · localStorage 没值时默认开启 → 后台每 5 分钟无感拉数据
-  // 现在跟店小秘一致 · 用户主动点 [⏱️ 自动] 按钮才开
-  return localStorage.getItem(SHOPIFY_AUTOSYNC_KEY) === '1';
+  // V28ξ-4:默认开启 · 用户可以手动点 [⏱️ 自动] 按钮关掉
+  // localStorage 没值时默认 '1'(开)· 显式 '0' 才算关
+  const v = localStorage.getItem(SHOPIFY_AUTOSYNC_KEY);
+  if (v === null) return true;    // 首次访问默认开
+  return v === '1';
 }
 
 function shopifyToggleAutoSync() {
@@ -1323,7 +1327,7 @@ function shopifyToggleAutoSync() {
   localStorage.setItem(SHOPIFY_AUTOSYNC_KEY, on ? '1' : '0');
   if (on) {
     shopifyStartAutoSync();
-    toast('自动同步已开启 · 每 5 分钟自动拉单');
+    toast('🔄 自动同步已开启 · 5 分钟周期 + 切回页面触发');
   } else {
     shopifyStopAutoSync();
     toast('自动同步已关闭');
@@ -1338,39 +1342,104 @@ function shopifyUpdateAutoSyncIndicator() {
   const on = shopifyAutoSyncOn();
   btn.classList.toggle('on', on);
   btn.innerHTML = on ? '⏱️ 自动 ✓' : '⏱️ 自动';
-  ind.textContent = on ? '自动同步：开 · 5 分钟' : '自动同步：关';
+  // 显示上次同步时间
+  const lastTs = parseInt(localStorage.getItem(SHOPIFY_LAST_SYNC_KEY) || '0', 10);
+  if (on && lastTs) {
+    const min = Math.floor((Date.now() - lastTs) / 60000);
+    ind.textContent = `自动同步：开 · ${min < 1 ? '刚刚' : min + '分钟前'}`;
+  } else {
+    ind.textContent = on ? '自动同步:开 · 5 分钟周期' : '自动同步:关';
+  }
+}
+
+// V28ξ-4:多店静默增量同步(不要求待在 sales tab · 不打扰用户)
+async function shopifyQuickSyncAllStores() {
+  if (!SHOPIFY._initialized) return;
+  const stores = (SHOPIFY._stores || []).filter(s => (s.connected || s.platform === 'woo') && (s.shop_domain || s.domain));
+  if (stores.length === 0) return;
+  
+  // 增量同步:只拉最近 7 天的(店小秘式 · 不全量)
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
+  const createdMin = sevenDaysAgo.toISOString();
+  
+  let totalNew = 0;
+  const prevIds = new Set((SHOPIFY._orders || []).map(o => o.shopify_order_id));
+  
+  for (const store of stores) {
+    const shop = store.shop_domain || store.domain;
+    try {
+      // 后台轻量同步 · limit 100 够覆盖单店一周
+      await SHOPIFY.call('list_orders', {
+        status: 'any',
+        limit: 100,
+        auto_save: true,
+        created_at_min: createdMin,
+      }, shop);
+    } catch (e) {
+      // 单店失败不阻塞其它店(网络抖动 / 单店配额满)
+      console.warn(`[autosync] ${shop} 同步失败`, e.message);
+    }
+  }
+  
+  // 全店拉完再 reload 本地 + render
+  try {
+    await shopifyReloadOrdersAndRender();
+    totalNew = (SHOPIFY._orders || []).filter(o => !prevIds.has(o.shopify_order_id)).length;
+  } catch (e) {
+    console.warn('[autosync] reload 失败', e);
+  }
+  
+  // 标记同步时间 + UI 更新
+  localStorage.setItem(SHOPIFY_LAST_SYNC_KEY, String(Date.now()));
+  shopifyUpdateAutoSyncIndicator();
+  
+  // 只有真有新单才提示(不打扰)
+  if (totalNew > 0) {
+    if (typeof toast === 'function') toast(`🔔 新到 ${totalNew} 个订单`);
+  }
+  
+  return totalNew;
 }
 
 function shopifyStartAutoSync() {
   shopifyStopAutoSync();
-  SHOPIFY._autoSyncTimer = setInterval(async () => {
-    if (CURRENT_TAB !== 'sales') return;
-    const shop = document.getElementById('salesFetchShop')?.value;
-    if (!shop) return;
-    try {
-      const status = document.getElementById('salesFetchStatus').value;
-      const from = document.getElementById('salesFetchFrom').value;
-      const to = document.getElementById('salesFetchTo').value;
-      const params = { status, limit: 100, auto_save: true };
-      if (from) params.created_at_min = from + 'T00:00:00Z';
-      if (to) params.created_at_max = to + 'T23:59:59Z';
-      const r = await SHOPIFY.call('list_orders', params, shop);
-      const prevIds = new Set(SHOPIFY._orders.map(o => o.shopify_order_id));
-      await shopifyReloadOrdersAndRender();
-      const newCount = SHOPIFY._orders.filter(o => !prevIds.has(o.shopify_order_id)).length;
-      const hint = document.getElementById('salesFetchHint');
-      if (hint) hint.textContent = `自动同步：${r.count} 单 · ${new Date().toLocaleTimeString()}`;
-      if (newCount > 0) {
-        toast(`🔔 自动同步：新到 ${newCount} 个订单`);
+  
+  // V28ξ-4:启动立即跑一次(打开浏览器就同步 · 不用切到 sales tab)
+  // 延迟 3 秒避免跟其它初始化抢资源
+  setTimeout(() => {
+    if (shopifyAutoSyncOn()) shopifyQuickSyncAllStores();
+  }, 3000);
+  
+  // 周期同步(每 5 分钟跑全店增量)
+  SHOPIFY._autoSyncTimer = setInterval(() => {
+    if (!shopifyAutoSyncOn()) return;
+    shopifyQuickSyncAllStores();
+  }, SHOPIFY_AUTOSYNC_INTERVAL_MS);
+  
+  // V28ξ-4:visibilitychange · 用户切回页面(从其它 tab/app 回来)如果距上次 > 2 分钟就触发
+  if (!SHOPIFY._visibilityHandler) {
+    SHOPIFY._visibilityHandler = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!shopifyAutoSyncOn()) return;
+      const lastTs = parseInt(localStorage.getItem(SHOPIFY_LAST_SYNC_KEY) || '0', 10);
+      if (Date.now() - lastTs >= SHOPIFY_VISIBILITY_THRESHOLD_MS) {
+        shopifyQuickSyncAllStores();
       }
-    } catch (e) {
-      console.warn('自动同步失败', e);
-    }
-  }, 5 * 60 * 1000);
+    };
+    document.addEventListener('visibilitychange', SHOPIFY._visibilityHandler);
+  }
 }
 
 function shopifyStopAutoSync() {
-  if (SHOPIFY._autoSyncTimer) { clearInterval(SHOPIFY._autoSyncTimer); SHOPIFY._autoSyncTimer = null; }
+  if (SHOPIFY._autoSyncTimer) { 
+    clearInterval(SHOPIFY._autoSyncTimer); 
+    SHOPIFY._autoSyncTimer = null; 
+  }
+  if (SHOPIFY._visibilityHandler) {
+    document.removeEventListener('visibilitychange', SHOPIFY._visibilityHandler);
+    SHOPIFY._visibilityHandler = null;
+  }
 }
 
 // ============ 销售单 tab 初始化 ============
