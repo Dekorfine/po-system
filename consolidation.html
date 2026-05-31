@@ -370,10 +370,12 @@
                 grid-template-columns: 1.3fr 0.55fr 0.55fr 0.55fr 0.7fr 0.55fr !important;
                 grid-template-areas:
                     "note l   w   h   wt  qty"
-                    "tip  tip tip tip tip tip" !important;
-                gap: 6px !important;
+                    "tip  tip tip tip tip tip"
+                    "crt  crt crt crt crt crt"
+                    "sgl  sgl sgl sgl sgl sgl" !important;
+                gap: 4px 6px !important;
                 align-items: center !important;
-                padding: 10px 110px 10px 12px !important;
+                padding: 10px 110px 8px 12px !important;
                 margin-bottom: 6px !important;
                 position: relative;
             }
@@ -402,9 +404,8 @@
             /* 头部(包装 N + 复制/删除)· 绝对定位到右侧 */
             .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .flex.items-center.justify-between.mb-3 {
                 position: absolute;
-                top: 50%;
+                top: 8px;
                 right: 8px;
-                transform: translateY(-50%);
                 margin: 0 !important;
                 z-index: 2;
                 width: auto !important;
@@ -412,32 +413,53 @@
                 gap: 4px !important;
                 background: transparent;
             }
-            /* "包装 N · 纸箱缓冲" 标签 · 压缩 */
             .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .flex.items-center.justify-between.mb-3 > .flex:first-child {
                 display: flex !important;
                 gap: 4px !important;
                 align-items: center !important;
             }
-            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .flex.items-center.justify-between.mb-3 > .flex:first-child > .text-\[10px\] {
-                display: none !important;  /* 隐藏文字说明 · 只留徽章 */
+            /* 隐藏"纸箱 +2cm 缓冲"那段文字描述(右上太挤)· 留下徽章 */
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .flex.items-center.justify-between.mb-3 > .flex:first-child > span.text-\[10px\] {
+                display: none !important;
             }
             
-            /* 大件建议提示 / 木箱 toggle / 强制单件 · 占满第 2 行 */
-            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > div[style*="warn-soft"],
-            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .flex.items-center.mt-3,
-            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .pt-3,
-            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .border-t {
+            /* 大件建议提示 · 占 tip 区(条件渲染) */
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > div[style*="warn-soft"] {
                 grid-area: tip;
                 font-size: 10.5px !important;
                 padding: 4px 8px !important;
-                margin: 4px 0 0 0 !important;
+                margin: 0 !important;
+            }
+            
+            /* 包装类型 toggle(纸箱/木箱)· 占 crt 区 */
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .flex.items-center.gap-2.mb-2 {
+                grid-area: crt;
+                margin: 0 !important;
+                padding: 2px 6px !important;
+                background: rgba(245, 245, 244, 0.5);
+                border-radius: 5px;
+                font-size: 10px !important;
+            }
+            /* pill 按钮紧凑 */
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .flex.items-center.gap-2.mb-2 .pill {
+                padding: 3px 8px !important;
+                font-size: 10px !important;
+                min-height: auto !important;
+            }
+            
+            /* 强制单件装箱 toggle · 占 sgl 区 */
+            .space-y-3 > div[class*="rounded-xl"][class*="p-4"] > .flex.items-center.gap-2.px-2.py-1\.5 {
+                grid-area: sgl;
+                margin: 0 !important;
+                padding: 3px 8px !important;
+                font-size: 10.5px !important;
             }
             
             /* 输入框紧凑 */
             .space-y-3 > div[class*="rounded-xl"][class*="p-4"] .field-input {
-                padding: 6px 8px !important;
+                padding: 5px 8px !important;
                 font-size: 12px !important;
-                min-height: 30px !important;
+                min-height: 28px !important;
                 width: 100% !important;
             }
             
