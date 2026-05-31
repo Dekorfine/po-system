@@ -22,13 +22,13 @@
 <link rel="preconnect" href="https://xyhbwqugbnowfjuhqhsj.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
-<link rel="preload" href="js/core.js?v=20260531wf" as="script">
+<link rel="preload" href="js/core.js?v=20260531side" as="script">
 <link rel="preload" href="js/utils.js?v=20260528xi4" as="script">
 <link rel="preload" href="js/shopify.js?v=20260531wiz" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="js/core.js?v=20260531wf"></script>
+<script defer src="js/core.js?v=20260531side"></script>
 <script defer src="js/utils.js?v=20260528xi4"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
@@ -4840,6 +4840,39 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   transform: translateX(0);
 }
 .side-tab-bar:not(.collapsed) .side-tab-tooltip { display: none; }
+
+/* V20260531:侧栏 ↗ 新标签按钮 · 跟顶部 tab 同款行为 */
+.side-tab-new-window-btn {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-decoration: none;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid var(--border);
+  transition: all 0.15s;
+  z-index: 5;
+  line-height: 1;
+}
+.side-tab-item:hover .side-tab-new-window-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+.side-tab-new-window-btn:hover {
+  background: var(--accent);
+  color: white !important;
+  border-color: var(--accent);
+}
+/* 收起模式(图标 only)隐藏 ↗ · 收起时 hover 已经显示 tooltip */
+.side-tab-bar.collapsed .side-tab-new-window-btn {
+  display: none !important;
+}
 
 .side-tab-divider {
   width: calc(100% - 24px);
