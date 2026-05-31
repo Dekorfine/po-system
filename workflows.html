@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>跟单工作流速查 · Workflow Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fafaf9;
+  --bg-card: #ffffff;
+  --bg-warm: #fff7ed;
+  --border: #e7e5e4;
+  --border-soft: #f5f5f4;
+  --text-primary: #1c1917;
+  --text-secondary: #57534e;
+  --text-tertiary: #a8a29e;
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #b91c1c;
+  --purple: #7c3aed;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-thumb { background: rgba(168,162,158,0.4); border-radius: 3px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(120,113,108,0.7); }
+body {
+  font-family: 'Manrope','Noto Sans SC',-apple-system,sans-serif;
+  font-size: 14px; line-height: 1.6;
+  background: var(--bg); color: var(--text-primary);
+  padding: 20px;
+  -webkit-text-size-adjust: 100%;
+}
+
+.page {
+  max-width: 1200px; margin: 0 auto;
+}
+
+/* Header */
+.page-header {
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  color: white; padding: 24px 28px; border-radius: 14px;
+  margin-bottom: 22px;
+  box-shadow: 0 6px 24px rgba(37,99,235,0.18);
+}
+.page-header h1 { font-size: 22px; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 6px; }
+.page-header p { font-size: 13px; opacity: 0.92; }
+
+/* Quick filter tags */
+.role-filter {
+  display: flex; gap: 6px; flex-wrap: wrap; margin: 16px 0 8px;
+}
+.role-tag {
+  padding: 6px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 600;
+  background: white; border: 1px solid var(--border); cursor: pointer;
+  transition: all 0.15s; color: var(--text-secondary);
+}
+.role-tag:hover { border-color: var(--accent); color: var(--accent); }
+.role-tag.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* Workflow grid */
+.workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 16px;
+}
+
+.workflow-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px 20px;
+  transition: all 0.15s;
+  position: relative; overflow: hidden;
+}
+.workflow-card:hover {
+  border-color: var(--accent); transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+}
+.workflow-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 3px; background: var(--accent);
+}
+.workflow-card.priority-1::before { background: var(--danger); }
+.workflow-card.priority-2::before { background: var(--warning); }
+.workflow-card.priority-3::before { background: var(--text-tertiary); }
+
+.wf-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+}
+.wf-icon {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: var(--accent-soft); display: inline-flex;
+  align-items: center; justify-content: center; font-size: 18px;
+}
+.wf-title-area { flex: 1; }
+.wf-title { font-size: 15px; font-weight: 700; }
+.wf-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; display: flex; gap: 8px; }
+.wf-priority {
+  font-size: 10px; padding: 2px 8px; border-radius: 4px;
+  background: var(--bg-warm); color: var(--warning); font-weight: 700;
+}
+.wf-priority.p1 { background: rgba(185,28,28,0.1); color: var(--danger); }
+.wf-priority.p2 { background: rgba(180,83,9,0.1); color: var(--warning); }
+.wf-priority.p3 { background: var(--bg-warm); color: var(--text-tertiary); }
+
+/* Steps */
+.wf-steps {
+  display: flex; flex-direction: column; gap: 0;
+  margin: 14px 0 12px;
+  padding: 14px 16px;
+  background: #fafaf9; border-radius: 8px;
+}
+.wf-step {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 5px 0; position: relative;
+}
+.wf-step:not(:last-child)::after {
+  content: ''; position: absolute;
+  left: 11px; top: 30px; bottom: -5px;
+  width: 1px; background: var(--border);
+}
+.wf-step-num {
+  flex-shrink: 0; width: 22px; height: 22px;
+  border-radius: 50%; background: white; border: 1.5px solid var(--accent);
+  color: var(--accent); font-weight: 700; font-size: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  z-index: 1;
+}
+.wf-step-text {
+  flex: 1; font-size: 12.5px; line-height: 1.5;
+  color: var(--text-primary); padding-top: 2px;
+}
+.wf-step-text b { color: var(--text-primary); font-weight: 700; }
+.wf-step-text .tip {
+  display: block; font-size: 11px; color: var(--text-tertiary);
+  margin-top: 2px; font-style: italic;
+}
+
+/* Tips */
+.wf-tips {
+  background: rgba(202,138,4,0.06); border-left: 3px solid var(--warning);
+  padding: 8px 12px; border-radius: 0 6px 6px 0;
+  margin-top: 10px; font-size: 12px; color: var(--text-secondary);
+}
+.wf-tips b { color: var(--warning); }
+
+/* Pitfall (易踩坑) */
+.wf-pitfall {
+  background: rgba(185,28,28,0.05); border-left: 3px solid var(--danger);
+  padding: 8px 12px; border-radius: 0 6px 6px 0;
+  margin-top: 8px; font-size: 12px; color: var(--text-secondary);
+}
+.wf-pitfall b { color: var(--danger); }
+
+/* Where in system */
+.wf-where {
+  font-size: 11.5px; color: var(--accent);
+  background: var(--accent-soft); padding: 6px 10px; border-radius: 5px;
+  margin-top: 10px; display: inline-block;
+}
+
+/* Hidden when filter not matched */
+.workflow-card.hidden { display: none; }
+
+/* Mobile */
+@media (max-width: 768px) {
+  body { padding: 12px; font-size: 13px; }
+  .page-header { padding: 16px 18px; }
+  .page-header h1 { font-size: 18px; }
+  .workflow-grid {
+    grid-template-columns: 1fr; gap: 12px;
+  }
+  .workflow-card { padding: 14px 16px; }
+  .wf-step-text { font-size: 12px; }
+}
+@media (max-width: 380px) {
+  body { padding: 8px; }
+  .page-header { padding: 14px 14px; }
+  .workflow-card { padding: 12px 14px; }
+}
+@supports (padding: max(0px)) {
+  body { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="page-header">
+  <h1>📘 跟单工作流速查</h1>
+  <p>每个流程的步骤、易踩坑点和系统里在哪操作 · 新人优先看 🔴 高优先级</p>
+</div>
+
+<div class="role-filter">
+  <span class="role-tag active" data-filter="all">📋 全部 (12)</span>
+  <span class="role-tag" data-filter="p1">🔴 高优先 · 新人必看 (3)</span>
+  <span class="role-tag" data-filter="p2">🟡 中优先 (4)</span>
+  <span class="role-tag" data-filter="p3">🔵 低优先 / 偶发 (5)</span>
+</div>
+
+<div class="workflow-grid">
+
+<!-- ========== 🔴 高优先 P1 ========== -->
+
+<!-- WF 1:接单 → 开 PO -->
+<div class="workflow-card priority-1" data-priority="p1">
+  <div class="wf-head">
+    <div class="wf-icon">📥</div>
+    <div class="wf-title-area">
+      <div class="wf-title">接单 → 开采购单(PO)</div>
+      <div class="wf-meta">
+        <span class="wf-priority p1">🔴 新人必看</span>
+        <span>7-9 步</span>
+        <span>最常用 · 每天都跑</span>
+      </div>
+    </div>
+  </div>
+  <div class="wf-steps">
+    <div class="wf-step"><div class="wf-step-num">1</div><div class="wf-step-text"><b>查新订单</b>:销售单 tab 看今天新到的(已自动同步)<span class="tip">默认按"今天"过滤 · 红色徽章是新单</span></div></div>
+    <div class="wf-step"><div class="wf-step-num">2</div><div class="wf-step-text"><b>点开订单详情</b>看清产品 SKU / 数量 / 客户地址</div></div>
+    <div class="wf-step"><div class="wf-step-num">3</div><div class="wf-step-text"><b>核对成本</b>:看采购价 / 运费 / 卖价 · 异常的标记</div></div>
+    <div class="wf-step"><div class="wf-step-num">4</div><div class="wf-step-text"><b>点 [开 PO]</b> 按钮 · 弹出采购单表单</div></div>
+    <div class="wf-step"><div class="wf-step-num">5</div><div class="wf-step-text"><b>选供应商</b>:产品有"上次供应商"则智能推荐 · 否则手动选</div></div>
+    <div class="wf-step"><div class="wf-step-num">6</div><div class="wf-step-text"><b>填规格 / 数量 / 单价 / 备注</b>:特殊要求(电压/光源/颜色)写清</div></div>
+    <div class="wf-step"><div class="wf-step-num">7</div><div class="wf-step-text"><b>提交</b>:进入"待审批"状态 · 主管批了变"待发供应商"</div></div>
+    <div class="wf-step"><div class="wf-step-num">8</div><div class="wf-step-text"><b>📋 点 [复制订单图]</b>:自动生成产品图发供应商群</div></div>
+    <div class="wf-step"><div class="wf-step-num">9</div><div class="wf-step-text"><b>状态推到"已下单"</b>:供应商确认后再点</div></div>
+  </div>
+  <div class="wf-pitfall"><b>⚠ 易踩坑</b>:特殊电压(110V/220V)/ 标准(美标/欧标)漏写 → 供应商按默认做了报废 · 第 6 步务必填全</div>
+  <div class="wf-tips"><b>💡 提示</b>:同一订单多产品但**不同供应商**要拆成多个 PO · 每个 PO 一个供应商</div>
+  <div class="wf-where">📍 在系统 → 销售单 tab → 点订单卡片右下 [📦 开 PO]</div>
+</div>
+
+<!-- WF 2:PO 全生命周期 -->
+<div class="workflow-card priority-1" data-priority="p1">
+  <div class="wf-head">
+    <div class="wf-icon">📦</div>
+    <div class="wf-title-area">
+      <div class="wf-title">PO 全生命周期跟踪</div>
+      <div class="wf-meta">
+        <span class="wf-priority p1">🔴 新人必看</span>
+        <span>8 步状态机</span>
+        <span>跨多天</span>
+      </div>
+    </div>
+  </div>
+  <div class="wf-steps">
+    <div class="wf-step"><div class="wf-step-num">1</div><div class="wf-step-text"><b>待审批</b>:主管点 ✓ 批准 / ✗ 拒绝 · 跟单等主管</div></div>
+    <div class="wf-step"><div class="wf-step-num">2</div><div class="wf-step-text"><b>待发供应商</b>:点 [📋 复制订单图] 发供应商群</div></div>
+    <div class="wf-step"><div class="wf-step-num">3</div><div class="wf-step-text"><b>已下单</b>:供应商回复"收到"后跟单点这个状态</div></div>
+    <div class="wf-step"><div class="wf-step-num">4</div><div class="wf-step-text"><b>生产中</b>:供应商在打样 / 生产 · 定期问进度</div></div>
+    <div class="wf-step"><div class="wf-step-num">5</div><div class="wf-step-text"><b>已发货</b>:供应商发出 · 记录快递单号</div></div>
+    <div class="wf-step"><div class="wf-step-num">6</div><div class="wf-step-text"><b>已到货</b>:仓库签收 · 财务核对入库</div></div>
+    <div class="wf-step"><div class="wf-step-num">7</div><div class="wf-step-text"><b>已完成</b>:产品状态正常 · PO 关闭</div></div>
+    <div class="wf-step"><div class="wf-step-num">8</div><div class="wf-step-text"><b>(异常路径) 已取消</b>:订单取消时 · 通知供应商</div></div>
+  </div>
+  <div class="wf-pitfall"><b>⚠ 易踩坑</b>:状态长期停在"生产中"超 7 天 = 异常 · 用 [⏰ 昨天没下完] chip 快速找出来催单</div>
+  <div class="wf-tips"><b>💡 提示</b>:状态错点了点错按 [取消] 重选 · 不要乱推状态(会触发自动消息)</div>
+  <div class="wf-where">📍 在系统 → 采购单 tab → 每个 PO 卡片右下角的状态按钮</div>
+</div>
+
+<!-- WF 3:售后处理 -->
+<div class="workflow-card priority-1" data-priority="p1">
+  <div class="wf-head">
+    <div class="wf-icon">🔧</div>
+    <div class="wf-title-area">
+      <div class="wf-title">售后处理</div>
+      <div class="wf-meta">
+        <span class="wf-priority p1">🔴 新人必看</span>
+        <span>6 步</span>
+        <span>每周遇到</span>
+      </div>
+    </div>
+  </div>
+  <div class="wf-steps">
+    <div class="wf-step"><div class="wf-step-num">1</div><div class="wf-step-text"><b>录入售后</b>:客服或客户反馈 → 售后 tab → 新增</div></div>
+    <div class="wf-step"><div class="wf-step-num">2</div><div class="wf-step-text"><b>定原因</b>:产品质量 / 物流损坏 / 客户原因 / 错发</div></div>
+    <div class="wf-step"><div class="wf-step-num">3</div><div class="wf-step-text"><b>定责</b>:供应商责任(找供应商赔) / 物流(找物流公司)/ 自己(自掏)</div></div>
+    <div class="wf-step"><div class="wf-step-num">4</div><div class="wf-step-text"><b>定方案</b>:退款 / 补寄配件 / 全单重发 / 折扣补偿 / 换货</div></div>
+    <div class="wf-step"><div class="wf-step-num">5</div><div class="wf-step-text"><b>执行</b>:操作系统(退款/重发) · 记录在售后单 thread 里</div></div>
+    <div class="wf-step"><div class="wf-step-num">6</div><div class="wf-step-text"><b>关单</b>:客户确认满意 · 售后状态推到"已解决"</div></div>
+  </div>
+  <div class="wf-pitfall"><b>⚠ 易踩坑</b>:定责前不要承诺方案 · 先确认供应商是否赔 · 不然你自己亏</div>
+  <div class="wf-tips"><b>💡 提示</b>:大事(整单重发)必须主管批 · 小事(配件)自己处理 · 单价 &gt; 50 美元的事必报</div>
+  <div class="wf-where">📍 在系统 → 售后 tab</div>
+</div>
+
+<!-- ========== 🟡 中优先 P2 ========== -->
+
+<!-- WF 4:找灯 / 反查 -->
+<div class="workflow-card priority-2" data-priority="p2">
+  <div class="wf-head">
+    <div class="wf-icon">🔍</div>
+    <div class="wf-title-area">
+      <div class="wf-title">找灯 / 反查供应商</div>
+      <div class="wf-meta">
+        <span class="wf-priority p2">🟡 中</span>
+        <span>5 步</span>
+      </div>
+    </div>
+  </div>
+  <div class="wf-steps">
+    <div class="wf-step"><div class="wf-step-num">1</div><div class="wf-step-text"><b>客户发图 / 链接</b>来询价 · 上传到找灯 tab</div></div>
+    <div class="wf-step"><div class="wf-step-num">2</div><div class="wf-step-text"><b>搜产品库</b>:看跟单系统有没有现有 SKU 匹配</div></div>
+    <div class="wf-step"><div class="wf-step-num">3</div><div class="wf-step-text"><b>没找到</b> → 发跨部门工单求助美工 / 老员工</div></div>
+    <div class="wf-step"><div class="wf-step-num">4</div><div class="wf-step-text"><b>找到供应商</b>后录入产品库 · 下次自动匹配</div></div>
+    <div class="wf-step"><div class="wf-step-num">5</div><div class="wf-step-text"><b>报价回复客户</b>:用报价单工具出 PI 或 Quotation</div></div>
+  </div>
+  <div class="wf-tips"><b>💡 提示</b>:产品库已经有 542+ SKU · 搜不到再求助 · 先自己试着搜关键词</div>
+  <div class="wf-where">📍 在系统 → 找灯 tab / 跨部门工单</div>
+</div>
+
+<!-- WF 5:合箱发货核算 -->
+<div class="workflow-card priority-2" data-priority="p2">
+  <div class="wf-head">
+    <div class="wf-icon">🧊</div>
+    <div class="wf-title-area">
+      <div class="wf-title">合箱发货 + 运费核算</div>
+      <div class="wf-meta">
+        <span class="wf-priority p2">🟡 中</span>
+        <span>6 步</span>
+      </div>
+    </div>
+  </div>
+  <div class="wf-steps">
+    <div class="wf-step"><div class="wf-step-num">1</div><div class="wf-step-text"><b>合箱表 tab</b>打开规划器 · 添加要合的包裹</div></div>
+    <div class="wf-step"><div class="wf-step-num">2</div><div class="wf-step-text"><b>填长宽高 / 重量 / 数量</b>:每个包裹精确填</div></div>
+    <div class="wf-step"><div class="wf-step-num">3</div><div class="wf-step-text"><b>选运输方式</b>:海运 / 空运 / 快递 · 目的国选对</div></div>
+    <div class="wf-step"><div class="wf-step-num">4</div><div class="wf-step-text"><b>计算合箱方案</b>:系统自动算木架尺寸 / 运费</div></div>
+    <div class="wf-step"><div class="wf-step-num">5</div><div class="wf-step-text"><b>套上利润</b>:看核算价格区 · 调汇率 / 折扣 / 损耗</div></div>
+    <div class="wf-step"><div class="wf-step-num">6</div><div class="wf-step-text"><b>定卖价</b>给客户 · 报价单出 PI</div></div>
+  </div>
+  <div class="wf-pitfall"><b>⚠ 易踩坑</b>:体积重 vs 实重谁大算谁 · 系统自动判 · 不要自己手算</div>
+  <div class="wf-tips"><b>💡 手机也能用</b>:已适配 · 出差时也能算</div>
+  <div class="wf-where">📍 在系统 → 合箱表 tab</div>
+</div>
+
+<!-- WF 6:验货单 -->
+<div class="workflow-card priority-2" data-priority="p2">
+  <div class="wf-head">
+    <div class="wf-icon">🔎</div>
+    <div class="wf-title-area">
+      <div class="wf-title">验货单出具(发供应商工厂)</div>
+      <div class="wf-meta">
+        <span class="wf-priority p2">🟡 中</span>
+        <span>4 步</span>
+      </div>
+    </div>
+  </div>
+  <div class="wf-steps">
+    <div class="wf-step"><div class="wf-step-num">1</div><div class="wf-step-text"><b>找对应 PO</b>:验货单 tab 新增 · 关联 PO</div></div>
+    <div class="wf-step"><div class="wf-step-num">2</div><div class="wf-step-text"><b>填验货标准</b>:目的国 / 美标欧标 / 光源色温电压 / 是否首样</div></div>
+    <div class="wf-step"><div class="wf-step-num">3</div><div class="wf-step-text"><b>粘贴产品图</b>:Ctrl+V 直接进卡片 · 一目了然</div></div>
+    <div class="wf-step"><div class="wf-step-num">4</div><div class="wf-step-text"><b>导出 PDF</b>发供应商:打印按钮就能预览导出</div></div>
+  </div>
+  <div class="wf-pitfall"><b>⚠ 易踩坑</b>:目的国忘填美标/欧标 → 供应商默认中标(出口标准不同)</div>
+  <div class="wf-where">📍 在系统 → 验货单 tab(侧栏图标)</div>
+</div>
+
+<!-- WF 7:报价单 -->
+<div class="workflow-card priority-2" data-priority="p2">
+  <div class="wf-head">
+    <div class="wf-icon">📄</div>
+    <div class="wf-title-area">
+      <div class="wf-title">报价 / PI / Packing List 出单</div>
+      <div class="wf-meta">
+        <span class="wf-priority p2">🟡 中</span>
+        <span>5 步</span>
+      </div>
+    </div>
+  </div>
+  <div class="wf-steps">
+    <div class="wf-step"><div class="wf-step-num">1</div><div class="wf-step-text"><b>报价单 tab</b>打开工具(美工/客服共用同一份)</div></div>
+    <div class="wf-step"><div class="wf-step-num">2</div><div class="wf-step-text"><b>选语言 / 货币 / 运输方式</b>:对应客户国家</div></div>
+    <div class="wf-step"><div class="wf-step-num">3</div><div class="wf-step-text"><b>填买家 / 卖家信息</b> · 填产品(SKU/描述/数量/单价)</div></div>
+    <div class="wf-step"><div class="wf-step-num">4</div><div class="wf-step-text"><b>选单据类型</b>:<br>· <b>Quotation</b> 报价单(客户询价时)<br>· <b>PO</b> 采购单(给供应商)<br>· <b>PI</b> 形式发票(客户付款用)<br>· <b>Packing List</b> 装箱单(发货用)</div></div>
+    <div class="wf-step"><div class="wf-step-num">5</div><div class="wf-step-text"><b>导出 PDF</b>发客户 · 也可云端保存(美工/客服能看到)</div></div>
+  </div>
+  <div class="wf-tips"><b>💡 提示</b>:Quotation 阶段先发 · 客户接受后再发 PI(收款依据)</div>
+  <div class="wf-where">📍 在系统 → 报价单 tab(侧栏图标)</div>
+</div>
+
+<!-- ========== 🔵 低优先 P3 ========== -->
+
+<!-- WF 8:催单 -->
+<div class="workflow-card priority-3" data-priority="p3">
+  <div class="wf-head">
+    <div class="wf-icon">📋</div>
+    <div class="wf-title-area">
+      <div class="wf-title">催单(供应商延期 / 客户催问)</div>
+      <div class="wf-meta">
+        <span class="wf-priority p3">🔵 偶发</span>
+        <span>3 步</span>
+      </div>
+    </div>
+  </div>
+  <div class="wf-steps">
+    <div class="wf-step"><div class="wf-step-num">1</div><div class="wf-step-text"><b>催单 tab</b>新增 · 关联订单 / PO</div></div>
+    <div class="wf-step"><div class="wf-step-num">2</div><div class="wf-step-text"><b>填要点</b>:延期原因 / 客户期望 / 下次跟进日</div></div>
+    <div class="wf-step"><div class="wf-step-num">3</div><div class="wf-step-text"><b>到期提醒</b>:头部红色 banner 自动提示</div></div>
+  </div>
+  <div class="wf-where">📍 在系统 → 催单 tab</div>
+</div>
+
+<!-- WF 9:跨部门派单 -->
+<div class="workflow-card priority-3" data-priority="p3">
+  <div class="wf-head">
+    <div class="wf-icon">📨</div>
+    <div class="wf-title-area">
+      <div class="wf-title">跨部门派单(找美工 / 客服)</div>
+      <div class="wf-meta">
+        <span class="wf-priority p3">🔵 偶发</span>
+        <span>4 步</span>
+      </div>
+    </div>
+  </div>
+  <div class="wf-steps">
+    <div class="wf-step"><div class="wf-step-num">1</div><div class="wf-step-text"><b>跨部门 tab</b> · [✏ 新建消息]</div></div>
+    <div class="wf-step"><div class="wf-step-num">2</div><div class="wf-step-text"><b>选目标部门</b>:美工 / 客服 · 可指定具体人("Aylin(李雪玲)" 双显)</div></div>
+    <div class="wf-step"><div class="wf-step-num">3</div><div class="wf-step-text"><b>填要点</b> + 上传附件 + 设优先级</div></div>
+    <div class="wf-step"><div class="wf-step-num">4</div><div class="wf-step-text"><b>对方回复后</b>:消息流自动 thread 显示 · 完成关闭</div></div>
+  </div>
+  <div class="wf-where">📍 在系统 → 跨部门 tab(侧栏图标)</div>
+</div>
+
+<!-- WF 10:供应商问题 -->
+<div class="workflow-card priority-3" data-priority="p3">
+  <div class="wf-head">
+    <div class="wf-icon">⚠</div>
+    <div class="wf-title-area">
+      <div class="wf-title">供应商问题登记</div>
+      <div class="wf-meta">
+        <span class="wf-priority p3">🔵 偶发</span>
+        <span>3 步</span>
+      </div>
+    </div>
+  </div>
+  <div class="wf-steps">
+    <div class="wf-step"><div class="wf-step-num">1</div><div class="wf-step-text"><b>供应商问题 tab</b>新增 · 选供应商 / 选问题类型</div></div>
+    <div class="wf-step"><div class="wf-step-num">2</div><div class="wf-step-text"><b>写细节 + 上传证据</b>(图/聊天截图)</div></div>
+    <div class="wf-step"><div class="wf-step-num">3</div><div class="wf-step-text"><b>跟进直到解决</b>:全员可见 · 团队协作</div></div>
+  </div>
+  <div class="wf-tips"><b>💡 提示</b>:重复问题(同一供应商多次)= 考虑换供应商</div>
+  <div class="wf-where">📍 在系统 → 供应商问题 tab(侧栏图标)</div>
+</div>
+
+<!-- WF 11:线上采购 -->
+<div class="workflow-card priority-3" data-priority="p3">
+  <div class="wf-head">
+    <div class="wf-icon">🛒</div>
+    <div class="wf-title-area">
+      <div class="wf-title">线上采购(零配件 / 紧急补货)</div>
+      <div class="wf-meta">
+        <span class="wf-priority p3">🔵 偶发</span>
+        <span>3 步</span>
+      </div>
+    </div>
+  </div>
+  <div class="wf-steps">
+    <div class="wf-step"><div class="wf-step-num">1</div><div class="wf-step-text"><b>线上采购 tab</b>新增 · 贴链接 + 金额</div></div>
+    <div class="wf-step"><div class="wf-step-num">2</div><div class="wf-step-text"><b>填收货地址</b> + 备注哪个订单用</div></div>
+    <div class="wf-step"><div class="wf-step-num">3</div><div class="wf-step-text"><b>到货</b>:状态推到"已到货" + 关联到对应 PO/订单</div></div>
+  </div>
+  <div class="wf-tips"><b>💡 提示</b>:贴链接前先看全员有没有人采过同款 · 防重复</div>
+  <div class="wf-where">📍 在系统 → 线上采购 tab(侧栏图标)</div>
+</div>
+
+<!-- WF 12:拍摄需求 -->
+<div class="workflow-card priority-3" data-priority="p3">
+  <div class="wf-head">
+    <div class="wf-icon">📷</div>
+    <div class="wf-title-area">
+      <div class="wf-title">拍摄需求(发美工拍产品图)</div>
+      <div class="wf-meta">
+        <span class="wf-priority p3">🔵 偶发</span>
+        <span>4 步</span>
+      </div>
+    </div>
+  </div>
+  <div class="wf-steps">
+    <div class="wf-step"><div class="wf-step-num">1</div><div class="wf-step-text"><b>拍摄需求 tab</b>新增 · 关联 SKU</div></div>
+    <div class="wf-step"><div class="wf-step-num">2</div><div class="wf-step-text"><b>填要求</b>:角度 / 场景 / 是否带模特 / 截止日</div></div>
+    <div class="wf-step"><div class="wf-step-num">3</div><div class="wf-step-text"><b>美工领单 / 派给具体人</b> · 状态变"进行中"</div></div>
+    <div class="wf-step"><div class="wf-step-num">4</div><div class="wf-step-text"><b>收图验收</b>:不合格驳回 · 合格关单 · 自动更新产品库</div></div>
+  </div>
+  <div class="wf-where">📍 在系统 → 拍摄需求 tab(侧栏图标)</div>
+</div>
+
+</div>
+
+<div style="text-align:center; margin-top: 28px; padding: 16px; color: var(--text-tertiary); font-size: 11px;">
+  📘 跟单工作流速查 · V1 · 2026-05-31 · 有不清楚的找 Martin / Eleanor
+</div>
+
+</div>
+
+<script>
+// === Filter ===
+document.querySelectorAll('.role-tag').forEach(tag => {
+  tag.addEventListener('click', () => {
+    document.querySelectorAll('.role-tag').forEach(t => t.classList.remove('active'));
+    tag.classList.add('active');
+    const filter = tag.dataset.filter;
+    document.querySelectorAll('.workflow-card').forEach(card => {
+      if (filter === 'all' || card.dataset.priority === filter) {
+        card.classList.remove('hidden');
+      } else {
+        card.classList.add('hidden');
+      }
+    });
+  });
+});
+</script>
+
+</body>
+</html>
