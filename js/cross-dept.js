@@ -246,6 +246,31 @@ let _CDM_TIMEOUT_DRAFT = null;       // 超时设置弹窗草稿
 let _CDM_TIMEOUT_ACTIVE_CAT = 'product_fix';
 let _CDM_NEW_WATCHERS = [];          // v22-CW 补丁: 新建消息时勾选的 watcher user_id 列表
 
+// V20260531-ase:工单跳转到共享售后事件
+window.cdmJumpToAftersalesEvent = function(aseId) {
+  if (!aseId) return;
+  // 1. 切到售后 tab(让 aftersales-shared 挂载点显示)
+  if (typeof switchTab === 'function') switchTab('aftersales');
+  // 2. 关闭工单详情(避免遮挡)
+  if (typeof cdmCloseDetail === 'function') cdmCloseDetail();
+  // 3. 等售后模块就绪后打开详情(可能 modal 已经加载或要等 ase 列表)
+  let attempts = 0;
+  const tryOpen = () => {
+    if (typeof window.aseOpenDetail !== 'function') return false;
+    window.aseOpenDetail(aseId);
+    const aseRoot = document.getElementById('aseRoot');
+    if (aseRoot) aseRoot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return true;
+  };
+  setTimeout(() => {
+    if (tryOpen()) return;
+    // 等模块就绪 · 最多 5 秒
+    const t = setInterval(() => {
+      if (tryOpen() || attempts++ > 10) clearInterval(t);
+    }, 500);
+  }, 400);
+};
+
 // ─────────────── 用户工具 ───────────────
 function _cdmGetCurrentUser() {
   const me = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) || '';
@@ -1225,6 +1250,32 @@ function cdmRenderDetail(m) {
         ${m.related_ref ? `<span class="cdm-chip" style="background:rgba(37,99,235,0.08); color:#2563eb; padding:2px 8px; font-size:12px; font-family:'JetBrains Mono',monospace;">${CDM_REL_TYPES[m.related_type] || '🔗'} ${escapeHtml(m.related_ref)}</span>` : ''}
       </div>
       <h2 style="font-size:18px; font-weight:600; margin:0 0 10px; color:var(--text-primary);">${escapeHtml(m.title || '')}</h2>
+      ${(() => {
+        // V20260531-ase:工单关联售后事件 · 显示跳转按钮
+        // 兼容三种方式:① payload.aftersales_event_id ② related_type='aftersales_event' ③ payload 整体是 jsonb 含此字段
+        let aseId = null;
+        try {
+          if (m.payload && typeof m.payload === 'object' && m.payload.aftersales_event_id) {
+            aseId = m.payload.aftersales_event_id;
+          } else if (m.related_type === 'aftersales_event' && m.related_ref) {
+            aseId = m.related_ref;
+          } else if (typeof m.payload === 'string') {
+            const p = JSON.parse(m.payload);
+            if (p && p.aftersales_event_id) aseId = p.aftersales_event_id;
+          }
+        } catch(_) {}
+        if (!aseId) return '';
+        return `
+          <div style="margin:0 0 12px;padding:10px 14px;background:linear-gradient(90deg,#fef3c7,#fff);border:1.5px solid #fbbf24;border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <div style="font-size:12.5px;color:#92400e;">
+              🔗 <b>本工单源于客户售后事件</b> · <code style="background:#fff;padding:1px 6px;border-radius:3px;font-size:11px;font-family:'JetBrains Mono',monospace;">${escapeHtml(String(aseId).slice(0,8))}...</code>
+            </div>
+            <button onclick="cdmJumpToAftersalesEvent('${escapeHtml(aseId)}')" style="padding:7px 16px;background:#f59e0b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:700;white-space:nowrap;">
+              📋 查看售后详情 →
+            </button>
+          </div>
+        `;
+      })()}
       ${m.status === 'done' && isMine ? (() => {
         // V28β:工单已完成 + 我是发起人 → 显眼按钮跳到附件区 + 给完成回复区
         const atts = Array.isArray(m.attachments) ? m.attachments : [];

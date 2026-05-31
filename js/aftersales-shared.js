@@ -127,9 +127,30 @@
   };
   
   // ============ 详情 Modal ============
-  window.aseOpenDetail = function(id) {
-    const ev = ASE_LIST.find(e => e.id === id);
+  window.aseOpenDetail = async function(id) {
+    let ev = ASE_LIST.find(e => e.id === id);
+    
+    // V20260531:如果列表里没有(刚跳转过来 · 列表还没刷新),单独查库
+    if (!ev) {
+      try {
+        const { data, error } = await cdmClient
+          .from('aftersales_events')
+          .select('*')
+          .eq('id', id)
+          .single();
+        if (error) throw error;
+        if (data) {
+          ev = data;
+          // 顺便加进 ASE_LIST 让列表有
+          if (!ASE_LIST.find(e => e.id === id)) ASE_LIST.unshift(data);
+        }
+      } catch (e) {
+        if (typeof toast === 'function') toast('售后事件不存在或无权限:' + e.message, 'err');
+        return;
+      }
+    }
     if (!ev) return;
+    
     _aseCurrentEditId = id;
     
     const m = document.getElementById('aseDetailModal') || (() => {
