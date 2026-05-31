@@ -6684,8 +6684,7 @@ if ('serviceWorker' in navigator) {
 <div class="tab-content" data-tab="consolidation">
   <div class="section-block" style="padding: 0;">
     <iframe id="consolidationFrame" src="consolidation.html"
-      style="width:100%; height: 800px; border: none; background: transparent; border-radius: 12px; display: block; transition: height 0.2s ease;"
-      scrolling="no"
+      style="width:100%; height: calc(100vh - 130px); min-height: 600px; border: none; background: transparent; border-radius: 12px; display: block;"
       loading="lazy">
     </iframe>
   </div>
@@ -7237,9 +7236,15 @@ if ('serviceWorker' in navigator) {
   // 监听合箱 iframe 发来的高度通知，自动调整 iframe 高度（消除内部滚动条）
   window.addEventListener('message', function(e) {
     if (!e.data || e.data.type !== 'consolidation-height') return;
-    const frame = document.getElementById('consolidationFrame');
-    if (frame && e.data.height > 100) {
-      frame.style.height = (e.data.height + 20) + 'px';
+    // V20260531-mobile-fix:不再让 iframe 自动撑高 · iframe 改成内部滚动
+    // 之前在桌面用 contentHeight 调整 iframe 高度 · 手机上和锁死 height 的 CSS 冲突
+    // 让 iframe 用固定 height + 内部滚动 · 简单可靠
+    if (window.innerWidth > 1024) {
+      // 桌面端仍用旧逻辑
+      const frame = document.getElementById('consolidationFrame');
+      if (frame && e.data.height > 100) {
+        frame.style.height = (e.data.height + 20) + 'px';
+      }
     }
   });
 </script>

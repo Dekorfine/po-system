@@ -59,6 +59,14 @@
             background: var(--bg);
             color: var(--ink);
             font-feature-settings: 'cv11', 'ss01', 'ss03', 'tnum';
+            /* V20260531-mobile-fix:iOS Safari iframe 内顺畅滚动 */
+            -webkit-overflow-scrolling: touch;
+            overflow-y: auto;
+            min-height: 100%;
+        }
+        html {
+            -webkit-overflow-scrolling: touch;
+            height: 100%;
         }
 
         .font-display {
@@ -495,10 +503,12 @@
             }
             body { -webkit-text-size-adjust: 100%; }
             
-            /* 2. 防全局横向溢出 */
+            /* 2. 防全局横向溢出 · 但确保竖向滚动正常 */
             html, body {
                 overflow-x: hidden;
+                overflow-y: auto !important;
                 max-width: 100vw;
+                -webkit-overflow-scrolling: touch;
             }
             
             /* 3. 容器内边距收紧(主页 padding) · 不破坏 max-w 类 */
