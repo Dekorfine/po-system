@@ -2641,6 +2641,7 @@ const TAB_LAYOUT_DEFAULT = {
   photoreq:      'side',
   inspection:    'side',
   quotation:     'side',   // V28ξ-2:报价单(iframe)
+  workflows:     'side',   // V20260531:工作流速查
 };
 const TAB_META = {
   sales:         { icon: '📥', label: '销售单',     badgeId: 'badgeSales' },
@@ -2661,6 +2662,7 @@ const TAB_META = {
   photoreq:      { icon: '📨', label: '拍摄需求',   badgeId: null },
   inspection:    { icon: '🔍', label: '验货单',     badgeId: null },
   quotation:     { icon: '📄', label: '报价单',     badgeId: null },  // V28ξ-2
+  workflows:     { icon: '📘', label: '工作流速查', badgeId: null },  // V20260531
 };
 
 function getTabLayout() {
