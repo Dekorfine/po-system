@@ -69,6 +69,8 @@ const DATA = {
       chineseName: a.chinese_name || '',
       englishName: a.english_name || '',
       shortName: a.short_name || a.english_name || a.name,
+      // V20260531-hr:加 role 字段(normal/supervisor/admin/boss/hr)
+      role: a.role || 'normal',
       // 主管视角下的显示名:"Aylin(李雪玲)" · 跟单员只看 name
       displayName: (() => {
         const en = a.english_name || a.name;
@@ -759,6 +761,7 @@ let CONFIG = DATA.getConfig();  // 空配置，bootstrap 后填充
 let CURRENT_AGENT = null;       // 字符串：当前账号姓名
 let IS_ADMIN = false;
 let IS_BOSS = false;            // V4-2026-05-24: 老板角色(比主管更高)
+let IS_HR = false;              // V20260531-hr:HR 角色 · 独立 · 不参与跟单 KPI
 
 // V28ν:中英双显工具 · 主管视角下显示"Aylin(李雪玲)" · 跟单员看到的还是英文
 // 用法:getAgentDisplay('Aylin') → 主管视角"Aylin(李雪玲)" · 跟单视角"Aylin"
@@ -1646,6 +1649,9 @@ async function onAuthSuccess(session) {
   IS_ADMIN = agent.isAdmin;
   IS_BOSS = !!agent.isBoss;       // V4: 老板角色
   if (IS_BOSS) IS_ADMIN = true;   // 老板自动拥有主管权限
+  IS_HR = (agent.role === 'hr');  // V20260531-hr:HR 角色(独立 · 不计入跟单 KPI)
+  if (IS_HR) IS_ADMIN = true;     // HR 拥有跨人查看绩效权限(等同主管视图)
+  window.IS_HR = IS_HR;           // 暴露给 hr-panel.js
 
   // V5-2026-05-25: 记录真实身份(切换视角时要能切回)
   ORIGINAL_AGENT = CURRENT_AGENT;
@@ -1656,6 +1662,13 @@ async function onAuthSuccess(session) {
   // 主管可见"📈 数据" tab
   const tabAna = document.getElementById('tabAnalytics');
   if (tabAna) tabAna.style.display = IS_ADMIN ? '' : 'none';
+  
+  // V20260531-hr:HR 模式 · 隐藏业务 tab · 只保留绩效相关
+  if (IS_HR) {
+    document.body.classList.add('hr-mode');
+    // 默认进绩效 tab
+    setTimeout(() => { if (typeof switchTab === 'function') switchTab('performance'); }, 200);
+  }
 
   // bootstrap 完成，允许同步触发
   _isBootstrapping = false;
