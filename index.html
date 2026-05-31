@@ -22,18 +22,18 @@
 <link rel="preconnect" href="https://xyhbwqugbnowfjuhqhsj.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
-<link rel="preload" href="js/core.js?v=20260531side" as="script">
+<link rel="preload" href="js/core.js?v=20260531mob" as="script">
 <link rel="preload" href="js/utils.js?v=20260528xi4" as="script">
 <link rel="preload" href="js/shopify.js?v=20260531wiz" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="js/core.js?v=20260531side"></script>
+<script defer src="js/core.js?v=20260531mob"></script>
 <script defer src="js/utils.js?v=20260528xi4"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
 <script defer src="js/issues.js?v=20260528gamma"></script>
-<script defer src="js/help.js?v=20260531wiz"></script>
+<script defer src="js/help.js?v=20260531mob"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -863,105 +863,164 @@ body.impersonating-readonly .po-card input[type="text"] {
 }
 
 /* ============================================================ */
-/* V28ξ-3:全局手机端适配 · iPhone Safari + Android Chrome      */
-/* 范围:tab 栏 / header / 卡片 / 表格 / 按钮 / iframe / sidebar */
+/* V20260531-MOBILE-FULL:全面手机适配 · iPhone Safari/Android   */
+/* 策略:汉堡菜单 + tab 横滚 + 内容极致收缩 + 强制单列          */
 /* ============================================================ */
 @media (max-width: 768px) {
-  /* === Header 紧凑 === */
+  
+  /* === iOS:防输入框聚焦自动放大(font ≥ 16px)=== */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+  body { -webkit-text-size-adjust: 100%; }
+  
+  /* === Header:大幅压缩 + 汉堡显示 === */
+  .app-header { box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
   .header-top {
-    padding: 8px 12px !important;
-    flex-wrap: wrap;
-    gap: 8px;
+    padding: 6px 10px !important;
+    max-width: 100% !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
   }
-  .brand-text .sub { display: none; }                  /* 隐藏 V3-BATCH3 那行小字 */
-  .brand-text .name { font-size: 13px; }
+  .brand { gap: 6px !important; flex-shrink: 1; min-width: 0; }
+  .brand-icon { width: 26px !important; height: 26px !important; font-size: 11px !important; }
+  .brand-text .name { font-size: 12px !important; white-space: nowrap; }
+  .brand-text .sub { display: none !important; }
+  
+  /* 显示汉堡按钮 */
+  .mobile-hamburger {
+    display: inline-flex !important;
+    padding: 6px 9px !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+  }
+  
+  /* header-actions 内大部分按钮隐藏 · 移入汉堡抽屉 */
   .header-actions {
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-  .btn { padding: 6px 10px !important; font-size: 11.5px !important; }
-  .btn.sm { padding: 3px 7px !important; font-size: 10.5px !important; }
-
-  /* === 顶部 tab 栏 · 横向滚动(避免挤成两行) === */
-  .tab-nav {
-    padding: 0 12px !important;
-    overflow-x: auto;
-    overflow-y: hidden;
-    flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;                              /* Firefox */
-  }
-  .tab-nav::-webkit-scrollbar { display: none; }       /* Chrome / Safari */
-  .tab-item {
-    padding: 10px 12px !important;
-    font-size: 12px !important;
-    flex-shrink: 0;                                     /* 不挤压 */
-    white-space: nowrap;
-  }
-  .tab-new-window-btn { display: none !important; }    /* 手机隐藏 ↗ */
-
-  /* === Section / 卡片内容 · 留窄边距 === */
-  .section-block {
-    padding: 0 12px !important;
-    margin-top: 10px !important;
-  }
-  .fb-card,
-  .stat-card,
-  .so-card,
-  .po-card,
-  .so-item,
-  .po-item {
-    padding: 12px !important;
-    border-radius: 8px !important;
-  }
-  .fb-head { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .fb-tabs { flex-wrap: wrap; }
-
-  /* === Stats 业绩卡 · 5 列 → 2 列 === */
-  .stats-bar {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 8px !important;
-  }
-  .stat-card .value { font-size: 20px !important; }
-  .stat-card { padding: 10px 12px !important; }
-
-  /* === 通用表格(订单/采购列表) === */
-  table { font-size: 12px; }
-  .row-num-idx { font-size: 9px; }
-  
-  /* 销售单/采购单内容行折叠 · 大网格 → 单列 */
-  .so-card-body,
-  .po-card-body {
-    grid-template-columns: 1fr !important;
-    gap: 8px !important;
-  }
-  .so-action-row,
-  .po-action-row {
-    flex-wrap: wrap !important;
     gap: 4px !important;
+    flex-shrink: 0;
   }
-  .so-action-btn,
-  .po-action-btn {
-    font-size: 11px !important;
-    padding: 5px 9px !important;
+  .header-actions > *:not(.mobile-hamburger):not(#cdmHeaderBadgeWrap):not(.agent-pill) {
+    display: none !important;
   }
+  .header-actions > #cdmHeaderBadgeWrap { font-size: 18px; padding: 4px 6px; }
   
-  /* === 子 tab 横滚 === */
-  .sub-tabs,
-  .po-subtabs {
-    overflow-x: auto;
+  /* Agent pill 紧凑 */
+  .agent-pill { padding: 3px 3px 3px 8px !important; }
+  .agent-pill .name { font-size: 11px !important; max-width: 50px; overflow: hidden; text-overflow: ellipsis; }
+  .agent-pill .avatar { width: 20px !important; height: 20px !important; font-size: 10px !important; }
+  .agent-pill .arrow { display: none; }
+  
+  /* === Tab 栏:横滚 · 紧凑 === */
+  .tab-nav {
+    padding: 0 8px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
     flex-wrap: nowrap !important;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    padding-bottom: 4px;
+    gap: 0 !important;
+  }
+  .tab-nav::-webkit-scrollbar { display: none; }
+  .tab-item {
+    padding: 9px 10px !important;
+    font-size: 12px !important;
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    gap: 4px !important;
+  }
+  .tab-item .badge { padding: 0 5px !important; font-size: 9px !important; }
+  .tab-new-window-btn { display: none !important; }
+  
+  /* === Section / 卡片 padding 极小 === */
+  .section-block {
+    padding: 0 8px !important;
+    margin-top: 8px !important;
+    max-width: 100% !important;
+  }
+  .fb-card, .stat-card,
+  .so-card, .po-card, .so-item, .po-item,
+  .order-card, .as-card, .issue-card {
+    padding: 10px !important;
+    border-radius: 8px !important;
+  }
+  
+  /* === Banner / Stats 紧凑 === */
+  .fb-head { 
+    flex-direction: column; 
+    align-items: flex-start; 
+    gap: 6px !important; 
+    margin-bottom: 8px !important;
+  }
+  .fb-tabs { flex-wrap: wrap !important; gap: 4px !important; }
+  .fb-tab { padding: 4px 8px !important; font-size: 11px !important; }
+  .fb-title { font-size: 13px !important; }
+  
+  .stats-bar {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+    margin-top: 10px !important;
+  }
+  .stat-card { padding: 9px 11px !important; }
+  .stat-card .label { font-size: 9px !important; letter-spacing: 0.8px !important; }
+  .stat-card .value { font-size: 18px !important; }
+  .stat-card .sub { font-size: 10px !important; }
+  
+  /* fb-item 列表项变单行 */
+  .fb-item {
+    grid-template-columns: 8px 1fr auto !important;
+    gap: 6px !important;
+    font-size: 11.5px !important;
+    padding: 8px !important;
+  }
+  .fb-item .order-no { font-size: 11px !important; }
+  .fb-item .product { font-size: 11px !important; }
+  .fb-item .badge { display: none; }    /* 太挤 · 手机隐藏次要标签 */
+  .fb-item .next { font-size: 10px !important; }
+  
+  /* === 通用 grid 单列 / 双列 === */
+  .grid-2col, .grid-3col, .grid-4col,
+  .as-grid, .photoreq-grid, .missing-grid,
+  .form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  
+  /* 销售单/采购单内部 grid 单列 */
+  .so-card-body, .po-card-body {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+  .so-action-row, .po-action-row,
+  .so-actions, .po-actions {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  .so-action-btn, .po-action-btn {
+    font-size: 11px !important;
+    padding: 4px 8px !important;
+  }
+  
+  /* === 子 tab 横滚 === */
+  .sub-tabs, .po-subtabs, .as-subtabs {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+    gap: 4px !important;
   }
   .sub-tabs::-webkit-scrollbar,
   .po-subtabs::-webkit-scrollbar { display: none; }
-  .sub-tab-btn { flex-shrink: 0; white-space: nowrap; }
-
+  .sub-tab-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 4px 9px !important;
+    font-size: 11.5px !important;
+  }
+  
   /* === Modal 全屏 === */
-  .modal-bg .modal,
-  .modal {
+  .modal-bg .modal, .modal {
     margin: 0 !important;
     max-width: 100% !important;
     width: 100% !important;
@@ -970,74 +1029,34 @@ body.impersonating-readonly .po-card input[type="text"] {
     max-height: 100vh !important;
     overflow-y: auto;
   }
-  .modal-head,
-  .modal-header {
-    padding: 12px 14px !important;
+  .modal-head, .modal-header {
+    padding: 10px 14px !important;
     position: sticky;
     top: 0;
     background: var(--bg-card);
     z-index: 10;
   }
-  .modal-body { padding: 14px !important; }
-
-  /* === Sidebar 在手机隐藏(节省横向空间) === */
-  .side-tab-bar {
-    display: none !important;
-  }
-
-  /* === iframe 高度 · 报价单/合箱/计算器等嵌入工具 === */
+  .modal-body { padding: 12px !important; }
+  
+  /* Sidebar 手机隐藏 */
+  .side-tab-bar { display: none !important; }
+  body.has-side-tabs #mainApp { padding-left: 0 !important; }
+  
+  /* iframe(报价单/合箱/工作流速查/计算器)高度自适应 */
   iframe#quotationFrame,
-  iframe#consolidationFrame {
-    height: calc(100vh - 130px) !important;             /* header + tab 占约 100-130px */
+  iframe#consolidationFrame,
+  iframe#workflowsFrame {
+    height: calc(100vh - 100px) !important;
     min-height: 500px !important;
     border-radius: 0 0 8px 8px !important;
   }
-  /* 报价单顶部提示条紧凑 */
-  .tab-content[data-tab="quotation"] > .section-block > div:first-child {
-    padding: 8px 10px !important;
+  .tab-content[data-tab="quotation"] > .section-block > div:first-child,
+  .tab-content[data-tab="workflows"] > .section-block > div:first-child {
+    padding: 7px 10px !important;
     font-size: 11px !important;
   }
-  .tab-content[data-tab="quotation"] > .section-block > div:first-child a {
-    display: block;
-    margin-top: 4px;
-  }
-
-  /* === 表单输入 · iOS 输入框 16px 防自动缩放 === */
-  input, textarea, select {
-    font-size: 16px !important;        /* iOS 14+ 这个值以下会自动放大 */
-  }
   
-  /* === 售后 / 找灯 / 拍摄需求 卡片单列 === */
-  .grid-2col,
-  .grid-3col,
-  .grid-4col,
-  .as-grid,
-  .photoreq-grid,
-  .missing-grid {
-    grid-template-columns: 1fr !important;
-    gap: 10px !important;
-  }
-  
-  /* === 顶部固定按钮区 · 横向滚 === */
-  .header-actions {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    flex-wrap: nowrap !important;
-  }
-  .header-actions::-webkit-scrollbar { display: none; }
-  
-  /* === 长文本截断 · 防止超出屏幕 === */
-  .so-card .product-name,
-  .po-card .product-name,
-  .fb-item .product {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  
-  /* === 跨部门工单 modal 全屏适配 === */
+  /* === Cross-dept modal 全屏 === */
   .cdm-modal {
     margin: 0 !important;
     width: 100% !important;
@@ -1046,35 +1065,144 @@ body.impersonating-readonly .po-card input[type="text"] {
     border-radius: 0 !important;
   }
   
-  /* === Toast 居中 · 防被截断 === */
-  #toast,
-  .toast {
+  /* === Toast 居中 防截断 === */
+  #toast, .toast {
     left: 12px !important;
     right: 12px !important;
     max-width: calc(100vw - 24px) !important;
     font-size: 12px !important;
   }
+  
+  /* === 通用表格 横滚兜底 === */
+  table {
+    font-size: 11.5px !important;
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  
+  /* === 通用按钮触摸目标 === */
+  .btn { padding: 6px 10px !important; font-size: 11.5px !important; min-height: 32px; }
+  .btn.sm { padding: 3px 7px !important; font-size: 10.5px !important; }
+  
+  /* === 长文本截断防溢出 === */
+  .so-card .product-name, .po-card .product-name,
+  .order-card .title, .as-card .title,
+  .fb-item .product {
+    max-width: 100% !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  /* === 防止全局横向溢出 === */
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
 }
 
-/* === iPhone SE / 老款小屏(< 380px)再紧一点 === */
+/* === iPhone SE / 老款小屏(< 380px)再紧 === */
 @media (max-width: 380px) {
-  .header-top { padding: 6px 10px !important; }
+  .header-top { padding: 5px 8px !important; }
+  .brand-text .name { font-size: 11px !important; }
+  .agent-pill .name { max-width: 36px; }
   .btn { padding: 5px 8px !important; font-size: 11px !important; }
-  .tab-item { padding: 8px 10px !important; font-size: 11.5px !important; }
-  .section-block { padding: 0 8px !important; }
-  .stats-bar { gap: 6px !important; }
-  .stat-card { padding: 8px !important; }
-  .stat-card .value { font-size: 18px !important; }
+  .tab-item { padding: 7px 9px !important; font-size: 11.5px !important; }
+  .section-block { padding: 0 6px !important; }
+  .stats-bar { gap: 4px !important; }
+  .stat-card { padding: 7px 9px !important; }
+  .stat-card .value { font-size: 16px !important; }
+  .modal-head, .modal-header { padding: 8px 12px !important; }
 }
 
-/* === iOS 安全区(刘海/Home 指示器) === */
+/* === iOS 安全区(刘海/Home 指示器)=== */
 @supports (padding: max(0px)) {
-  .app-header {
-    padding-top: env(safe-area-inset-top);
-  }
-  body {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
+  .app-header { padding-top: env(safe-area-inset-top); }
+  body { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* ============================================================ */
+/* V20260531:手机汉堡菜单抽屉                                    */
+/* ============================================================ */
+.mobile-menu-drawer {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 200;
+}
+.mobile-menu-drawer.open { display: block; }
+.mobile-menu-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 280px;
+  max-width: 85vw;
+  height: 100vh;
+  background: var(--bg-card);
+  box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+  overflow-y: auto;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: max(16px, env(safe-area-inset-top));
+}
+.mobile-menu-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.mobile-menu-header .title {
+  font-size: 14px;
+  font-weight: 700;
+}
+.mobile-menu-header button {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+}
+.mobile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+}
+.mobile-menu-item:hover, .mobile-menu-item:active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.mobile-menu-item .icon {
+  font-size: 16px;
+  width: 22px;
+  text-align: center;
+}
+.mobile-menu-section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  letter-spacing: 1.5px;
+  font-weight: 600;
+  margin-top: 10px;
+  padding: 0 12px;
 }
 /* ========================================================== */
 /* 视角切换 Modal CSS 结束 */
@@ -5351,6 +5479,29 @@ if ('serviceWorker' in navigator) {
 <!-- ========== Main App (隐藏，登录后显示) ========== -->
 <div id="mainApp" style="display: none;">
 
+<!-- V20260531:手机汉堡菜单抽屉 -->
+<div class="mobile-menu-drawer" id="mobileMenuDrawer" onclick="if(event.target===this)closeMobileMenu()">
+  <div class="mobile-menu-panel">
+    <div class="mobile-menu-header">
+      <div class="title">菜单</div>
+      <button onclick="closeMobileMenu()" aria-label="关闭">✕</button>
+    </div>
+    <div class="mobile-menu-section-label">工具</div>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();openHelpManual()"><span class="icon">📖</span> 使用手册 / 版本记录</button>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();exportCurrentTab()"><span class="icon">⬇</span> 导出 Excel</button>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();openTrash()"><span class="icon">🗑</span> 回收站</button>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();openTabLayoutModal()"><span class="icon">📐</span> 自定义工作台布局</button>
+    <button class="mobile-menu-item" id="mobileMenuSwitchAgent" onclick="closeMobileMenu();openAgentSwitchModal()" style="display:none;"><span class="icon">🔄</span> 切换视角</button>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();openSettings()"><span class="icon">⚙</span> 设置</button>
+    
+    <div class="mobile-menu-section-label">侧栏 tab(更多模块)</div>
+    <div id="mobileMenuSideTabs"></div>
+    
+    <div class="mobile-menu-section-label">账号</div>
+    <button class="mobile-menu-item" onclick="closeMobileMenu();handleLogout()" style="color:var(--danger);background:#fee2e2;"><span class="icon">⎋</span> 登出</button>
+  </div>
+</div>
+
 <!-- Header -->
 <div class="app-header">
   <div class="header-top">
@@ -5362,6 +5513,8 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
     <div class="header-actions">
+      <!-- V20260531-mobile:手机端汉堡菜单按钮(只在手机显示)-->
+      <button class="btn ghost mobile-hamburger" onclick="toggleMobileMenu()" title="菜单" style="display:none;font-size:18px;line-height:1;">☰</button>
       <!-- V5-W3-2026-05-26: 跨部门未读消息徽章(全局长链接监听)-->
       <a href="javascript:void(0)" id="cdmHeaderBadgeWrap" onclick="switchTab('cross_dept')"
          class="cdm-header-badge-wrap" title="跨部门消息">
