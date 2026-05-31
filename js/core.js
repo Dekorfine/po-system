@@ -2639,7 +2639,10 @@ function toggleFb(id, e) {
 // ============================================================================
 const TAB_LAYOUT_KEY = 'tab_layout_v1';
 const TAB_LAYOUT_DEFAULT = {
-  // 常用 — 显示在顶部
+  // V20260531:常用工具置顶 · 合箱+报价单提升到顶部
+  consolidation: 'top',      // 🧊 合箱 · 运费核算
+  quotation:     'top',      // 📄 报价单 · 算卖价 / 出 PI
+  // 业务流程主线
   sales:         'top',
   po:            'top',
   orders:        'top',
@@ -2652,12 +2655,10 @@ const TAB_LAYOUT_DEFAULT = {
   issues:        'side',
   finance:       'side',
   cross_dept:    'side',
-  consolidation: 'side',
   performance:   'side',
   analytics:     'side',
   photoreq:      'side',
   inspection:    'side',
-  quotation:     'side',   // V28ξ-2:报价单(iframe)
   workflows:     'side',   // V20260531:工作流速查
 };
 const TAB_META = {
