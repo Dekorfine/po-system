@@ -22,18 +22,18 @@
 <link rel="preconnect" href="https://xyhbwqugbnowfjuhqhsj.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
-<link rel="preload" href="js/core.js?v=20260531v2" as="script">
+<link rel="preload" href="js/core.js?v=20260531hr" as="script">
 <link rel="preload" href="js/utils.js?v=20260528xi4" as="script">
 <link rel="preload" href="js/shopify.js?v=20260531wiz" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="js/core.js?v=20260531v2"></script>
+<script defer src="js/core.js?v=20260531hr"></script>
 <script defer src="js/utils.js?v=20260528xi4"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
 <script defer src="js/issues.js?v=20260528gamma"></script>
-<script defer src="js/help.js?v=20260531ase2"></script>
+<script defer src="js/help.js?v=20260531hr"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -42,6 +42,7 @@
 <script defer src="js/trash.js"></script>
 <script defer src="js/aftersales.js?v=20260528s"></script>
 <script defer src="js/aftersales-shared.js?v=20260531ase2"></script>
+<script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260527i"></script>
 <script defer src="js/orders.js?v=20260528nu"></script>
 <script defer src="js/shopify.js?v=20260531wiz"></script>
@@ -5067,6 +5068,32 @@ body.has-side-tabs .section-block {
 }
 /* 当 tab 被指定为 'side' 时,从顶栏隐藏 */
 .tab-nav .tab-item[data-zone="side"] { display: none; }
+
+/* V20260531-hr:HR 模式 · 隐藏业务 tab · 只保留绩效/数据/工作流 */
+body.hr-mode .tab-nav .tab-item[data-tab="sales"],
+body.hr-mode .tab-nav .tab-item[data-tab="po"],
+body.hr-mode .tab-nav .tab-item[data-tab="orders"],
+body.hr-mode .tab-nav .tab-item[data-tab="aftersales"],
+body.hr-mode .tab-nav .tab-item[data-tab="issues"],
+body.hr-mode .tab-nav .tab-item[data-tab="missing"],
+body.hr-mode .tab-nav .tab-item[data-tab="purchases"],
+body.hr-mode .tab-nav .tab-item[data-tab="finance"],
+body.hr-mode .tab-nav .tab-item[data-tab="products"],
+body.hr-mode .tab-nav .tab-item[data-tab="consolidation"],
+body.hr-mode .tab-nav .tab-item[data-tab="quotation"],
+body.hr-mode .tab-nav .tab-item[data-tab="freight"],
+body.hr-mode .tab-nav .tab-item[data-tab="inventory"],
+body.hr-mode .tab-nav .tab-item[data-tab="cross_dept"],
+body.hr-mode .tab-nav .tab-item[data-tab="feedback"],
+body.hr-mode .tab-nav .tab-item[data-tab="photoreq"],
+body.hr-mode .tab-nav .tab-item[data-tab="inspection"] {
+  display: none !important;
+}
+/* HR 模式 · 业绩排行榜里隐藏 HR 自己 · 不计入排名 */
+body.hr-mode .perf-row[data-role="hr"],
+body.hr-mode tr[data-role="hr"] {
+  display: none !important;
+}
 
 /* V20260526n: 关键修复 · 让 PO 容器跟销售单一样响应 sidebar(PO 多了一层 .fb-card 包装,需要单独保护) */
 .tab-content[data-tab="po"] .fb-card,
