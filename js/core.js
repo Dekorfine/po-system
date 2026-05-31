@@ -2412,20 +2412,30 @@ window.addEventListener('popstate', (e) => {
 
 function restoreLastTab() {
   try {
-    // V4：优先从 URL 参数读（支持新标签打开指定 tab，例如 ?tab=po）
+    // V4:优先从 URL 参数读(支持新标签打开指定 tab,例如 ?tab=po)
     let target = null;
+    let fromUrl = false;
     try {
       const urlParams = new URLSearchParams(window.location.search);
-      const fromUrl = urlParams.get('tab');
-      if (fromUrl) target = fromUrl;
+      const u = urlParams.get('tab');
+      if (u) { target = u; fromUrl = true; }
     } catch(_) {}
     // 否则用上次访问的 tab
     if (!target) target = localStorage.getItem('current_tab');
     if (!target) return;
     
-    // 验证 tab 元素存在且当前用户有权限访问
+    // 验证 tab 元素存在
     const tabEl = document.querySelector(`.tab-item[data-tab="${target}"]`);
     if (!tabEl) return;
+    
+    // V20260531:URL 参数打开时(?tab=xxx)· 不检查可见性
+    // 因为侧栏 tab(zone='side')在顶部对应的 .tab-item 被 CSS 隐藏 · 但其实是有效 tab
+    if (fromUrl) {
+      switchTab(target);
+      return;
+    }
+    
+    // localStorage 恢复时才检查可见性(防止恢复到当前不允许的 tab)
     const visible = tabEl.offsetParent !== null || window.getComputedStyle(tabEl).display !== 'none';
     if (!visible) return;
     switchTab(target);
@@ -2728,9 +2738,14 @@ function applyTabLayout() {
         <span class="side-tab-icon">${meta.icon}</span>
         <span class="side-tab-label">${meta.label}</span>
         ${meta.badgeId ? `<span class="side-tab-badge ${badgeClass}" data-mirror-of="${meta.badgeId}">${badgeText}</span>` : ''}
+        <a href="?tab=${t}" target="_blank" rel="noopener" class="side-tab-new-window-btn" title="在新浏览器标签打开" onclick="event.stopPropagation();">↗</a>
         <span class="side-tab-tooltip">${meta.label}</span>
       `;
-      side.addEventListener('click', () => switchTab(t));
+      // ↗ 按钮以外的区域点击切 tab
+      side.addEventListener('click', (e) => {
+        if (e.target.closest('.side-tab-new-window-btn')) return;
+        switchTab(t);
+      });
       sideBar.appendChild(side);
     }
   });
