@@ -246,6 +246,55 @@ let _CDM_TIMEOUT_DRAFT = null;       // 超时设置弹窗草稿
 let _CDM_TIMEOUT_ACTIVE_CAT = 'product_fix';
 let _CDM_NEW_WATCHERS = [];          // v22-CW 补丁: 新建消息时勾选的 watcher user_id 列表
 
+// V20260531-img:全局图片三重判断 + 大图预览(z-index 高于 cdm modal)· 与客服侧规范对齐
+window.cdmIsImage = function(a) {
+  if (!a) return false;
+  const mime = a.mime || a.mimeType || a.type || a.content_type || a.contentType || '';
+  if (mime.startsWith && mime.startsWith('image/')) return true;
+  const dataUrl = a.dataUrl || '';
+  if (/^data:image\//i.test(dataUrl)) return true;
+  const u = a.url || a.publicUrl || a.dataUrl || a.name || '';
+  return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(String(u).toLowerCase());
+};
+
+window.cdmPreviewImage = function(url) {
+  if (!url) return;
+  // 移除可能已存在的预览层
+  document.getElementById('cdmImgPreviewLayer')?.remove();
+  const layer = document.createElement('div');
+  layer.id = 'cdmImgPreviewLayer';
+  layer.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:100020;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;';
+  layer.onclick = () => layer.remove();
+  // ESC 关闭
+  const onKey = (e) => { if (e.key === 'Escape') { layer.remove(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
+  layer.innerHTML = `
+    <button onclick="document.getElementById('cdmImgPreviewLayer').remove()" 
+            style="position:absolute;top:20px;right:20px;background:rgba(255,255,255,0.15);border:none;color:#fff;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:18px;line-height:1;z-index:1;">✕</button>
+    <a href="${String(url).replace(/"/g,'&quot;')}" target="_blank" rel="noopener" download
+       onclick="event.stopPropagation();"
+       style="position:absolute;bottom:20px;right:20px;background:rgba(255,255,255,0.15);color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none;font-size:13px;z-index:1;">⬇ 下载</a>
+    <img src="${String(url).replace(/"/g,'&quot;')}" 
+         style="max-width:96%;max-height:96%;object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,0.5);cursor:default;" 
+         onclick="event.stopPropagation();">
+  `;
+  document.body.appendChild(layer);
+};
+
+// 从附件对象拿 URL(兼容 dataUrl / url / publicUrl / storage path)
+window.cdmAttUrl = function(a) {
+  if (!a) return '';
+  if (a.dataUrl) return a.dataUrl;
+  if (a.url) return a.url;
+  if (a.publicUrl) return a.publicUrl;
+  const p = a.path || a.storage_path;
+  if (p && typeof cdmClient !== 'undefined') {
+    try { return cdmClient.storage.from('attachments').getPublicUrl(p).data.publicUrl; } 
+    catch (_) { return ''; }
+  }
+  return '';
+};
+
 // V20260531-ase:工单跳转到共享售后事件
 window.cdmJumpToAftersalesEvent = function(aseId) {
   if (!aseId) return;
@@ -1220,6 +1269,11 @@ async function cdmOpenDetail(id) {
 function cdmCloseDetail() { document.getElementById('cdmDetailModal')?.classList.remove('show'); CDM_CURRENT_DETAIL_ID = null; }
 
 function cdmRenderDetail(m) {
+  // V20260531:打开新工单时清空上一次回复的附件草稿
+  if (!window._cdmCurrentDetailId || window._cdmCurrentDetailId !== m.id) {
+    _CDM_REPLY_ATTS = [];
+    window._cdmCurrentDetailId = m.id;
+  }
   const wrap = document.getElementById('cdmDetailBody');
   if (!wrap) return;
   const me = _cdmGetCurrentUser();
@@ -1315,20 +1369,15 @@ function cdmRenderDetail(m) {
         if (p) { try { return cdmClient.storage.from('attachments').getPublicUrl(p).data.publicUrl; } catch (e) { return ''; } }
         return '';
       };
-      const isImg = (a) => {
-        const mime = a.mime || a.mimeType || a.type || a.content_type || a.contentType || '';
-        if (mime.startsWith && mime.startsWith('image/')) return true;
-        const u = attUrl(a);
-        return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(u);
-      };
+      const isImg = window.cdmIsImage;
       const cells = atts.map(a => {
         const u = attUrl(a);
         if (!u) return '';
         if (isImg(a)) {
-          return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="display:inline-block;">
-            <img src="${escapeHtml(u)}" style="width:90px;height:90px;object-fit:cover;border-radius:6px;border:1px solid var(--border);"
+          return `<div style="display:inline-block; position:relative; cursor:pointer;" onclick="cdmPreviewImage('${escapeHtml(u).replace(/'/g, '&#39;')}')">
+            <img src="${escapeHtml(u)}" style="width:90px;height:90px;object-fit:cover;border-radius:6px;border:1px solid var(--border);display:block;"
                  onerror="this.outerHTML='<div style=\\'width:90px;height:90px;border-radius:6px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-tertiary);text-align:center;\\'>⚠️ 图片<br>打不开</div>'">
-          </a>`;
+          </div>`;
         }
         return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="font-size:12px; color:var(--accent);">📎 ${escapeHtml(a.name || '附件')}</a>`;
       }).join('');
@@ -1391,12 +1440,28 @@ function cdmRenderDetail(m) {
             const tSys = CDM_SYSTEMS[t.system] || { label: t.system, color: '#666' };
             const tDt = new Date(t.ts || 0);
             const isMyReply = (t.system === 'po' && t.user_id === me.id);
+            const tAtts = Array.isArray(t.attachments) ? t.attachments : [];
             return `<div style="background:${isMyReply ? 'rgba(37,99,235,0.05)' : 'var(--bg-card)'}; border:1px solid var(--border-subtle); border-left:3px solid ${tSys.color}; border-radius:6px; padding:10px 12px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; flex-wrap:wrap; gap:6px;">
                   <span style="font-size:12px; font-weight:600;"><span style="color:${tSys.color};">${tSys.label}</span> · ${escapeHtml(t.user_name || t.user_id || '')}</span>
                   <span style="font-size:11px; color:var(--text-tertiary); font-family:'JetBrains Mono',monospace;">${tDt.toLocaleString()}</span>
                 </div>
                 <div style="font-size:13px; line-height:1.5; white-space:pre-wrap; word-break:break-word; color:var(--text-primary);">${escapeHtml(t.content || '')}</div>
+                ${tAtts.length > 0 ? `
+                  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-subtle);">
+                    ${tAtts.map(a => {
+                      const u = cdmAttUrl(a);
+                      if (!u) return '';
+                      if (cdmIsImage(a)) {
+                        return `<div style="cursor:pointer;" onclick="cdmPreviewImage('${escapeHtml(u).replace(/'/g,'&#39;')}')">
+                          <img src="${escapeHtml(u)}" style="width:80px;height:80px;object-fit:cover;border-radius:5px;border:1px solid var(--border);display:block;"
+                               onerror="this.outerHTML='<div style=\\'width:80px;height:80px;border-radius:5px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-tertiary);\\'>⚠️</div>'">
+                        </div>`;
+                      }
+                      return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--accent);padding:4px 9px;background:var(--bg-elevated);border-radius:4px;text-decoration:none;">📎 ${escapeHtml(a.name || '附件')}</a>`;
+                    }).join('')}
+                  </div>
+                ` : ''}
               </div>`;
           }).join('')}
         </div>`}
@@ -1404,10 +1469,24 @@ function cdmRenderDetail(m) {
 
     <div style="border-top:1px solid var(--border-subtle); padding-top:12px;">
       <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">✍ 回复</div>
-      <textarea id="cdmReplyText" placeholder="输入回复内容,支持换行..." rows="3" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); resize:vertical; font-family:inherit;"></textarea>
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+      <textarea id="cdmReplyText" placeholder="输入回复内容,支持 Ctrl+V 粘贴截图..." rows="3"
+        onpaste="cdmReplyPaste(event)"
+        ondragover="event.preventDefault();this.style.background='var(--accent-soft)';"
+        ondragleave="this.style.background='';"
+        ondrop="event.preventDefault();this.style.background='';cdmReplyDrop(event)"
+        style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); resize:vertical; font-family:inherit;"></textarea>
+      
+      <!-- 回复区附件预览 -->
+      <div id="cdmReplyAttachments" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;"></div>
+      
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:8px;">
+        <label style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;">
+          📎 加附件
+          <input type="file" multiple accept="image/*,application/pdf" style="display:none;" onchange="cdmReplyPickFiles(this.files)">
+        </label>
         <button class="btn primary" onclick="cdmSubmitReply('${m.id}')">📤 发送回复</button>
       </div>
+      <div style="font-size:10.5px;color:var(--text-tertiary);margin-top:4px;">💡 支持 Ctrl+V 粘贴截图 / 拖拽图片 / 点击 [📎 加附件]</div>
     </div>
   `;
 }
@@ -1526,20 +1605,98 @@ async function cdmToggleWatcher(msgId, userId, userName) {
   } catch (e) { console.error('[CDM] watcher 切换失败:', e); toast('操作失败:' + (e.message || e), 'err'); }
 }
 
+// V20260531:回复框附件支持
+let _CDM_REPLY_ATTS = [];
+
+window.cdmReplyPaste = async function(e) {
+  const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+  if (!items) return;
+  for (const it of items) {
+    if (it.kind === 'file' && it.type && it.type.startsWith('image/')) {
+      e.preventDefault();
+      const f = it.getAsFile();
+      if (f) await _cdmAddReplyAtt(f);
+    }
+  }
+};
+
+window.cdmReplyDrop = async function(e) {
+  const files = e.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+  for (const f of files) await _cdmAddReplyAtt(f);
+};
+
+window.cdmReplyPickFiles = async function(files) {
+  if (!files || files.length === 0) return;
+  for (const f of files) await _cdmAddReplyAtt(f);
+};
+
+async function _cdmAddReplyAtt(file) {
+  if (file.size > 5 * 1024 * 1024) {
+    toast('附件超 5MB · 请压缩后再传', 'err');
+    return;
+  }
+  const placeholder = { url: '', name: file.name, mime: file.type || 'uploading', _uploading: true };
+  _CDM_REPLY_ATTS.push(placeholder);
+  _renderReplyAtts();
+  try {
+    const att = await _cdmUploadImage(file);
+    const idx = _CDM_REPLY_ATTS.indexOf(placeholder);
+    if (idx >= 0) _CDM_REPLY_ATTS[idx] = att;
+    _renderReplyAtts();
+  } catch (e) {
+    const idx = _CDM_REPLY_ATTS.indexOf(placeholder);
+    if (idx >= 0) _CDM_REPLY_ATTS.splice(idx, 1);
+    _renderReplyAtts();
+    toast('上传失败:' + (e.message || e), 'err');
+  }
+}
+
+function _renderReplyAtts() {
+  const box = document.getElementById('cdmReplyAttachments');
+  if (!box) return;
+  if (_CDM_REPLY_ATTS.length === 0) {
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = _CDM_REPLY_ATTS.map((a, i) => {
+    const u = cdmAttUrl(a);
+    if (a._uploading) {
+      return `<div style="width:60px;height:60px;border-radius:5px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-tertiary);">上传中</div>`;
+    }
+    const isImg = cdmIsImage(a);
+    return `<div style="position:relative;display:inline-block;">
+      ${isImg ? `<img src="${escapeHtml(u)}" style="width:60px;height:60px;object-fit:cover;border-radius:5px;border:1px solid var(--border);display:block;cursor:pointer;" onclick="cdmPreviewImage('${escapeHtml(u).replace(/'/g,'&#39;')}')">` : `<div style="width:60px;height:60px;border-radius:5px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-secondary);text-align:center;padding:4px;">📎<br>${escapeHtml((a.name||'文件').slice(0,8))}</div>`}
+      <button onclick="cdmReplyRemoveAtt(${i})" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#dc2626;color:#fff;border:none;cursor:pointer;font-size:11px;line-height:1;padding:0;">✕</button>
+    </div>`;
+  }).join('');
+}
+
+window.cdmReplyRemoveAtt = function(idx) {
+  _CDM_REPLY_ATTS.splice(idx, 1);
+  _renderReplyAtts();
+};
+
 async function cdmSubmitReply(id) {
   const me = _cdmGetCurrentUser();
   const ta = document.getElementById('cdmReplyText');
   const text = (ta?.value || '').trim();
-  if (!text) { toast('请输入回复内容', 'err'); return; }
+  // V20260531:允许"只附件无文字"
+  const atts = _CDM_REPLY_ATTS.filter(a => !a._uploading);
+  if (!text && atts.length === 0) { toast('请输入回复内容或加附件', 'err'); return; }
+  if (_CDM_REPLY_ATTS.some(a => a._uploading)) { toast('附件还在上传 · 稍等', 'err'); return; }
   const m = CDM_MESSAGES.find(x => x.id === id);
   if (!m) { toast('消息已不存在', 'err'); return; }
   const thread = Array.isArray(m.thread) ? [...m.thread] : [];
-  thread.push({ user_id: me.id, user_name: me.name, system: 'po', content: text, ts: Date.now() });
+  const reply = { user_id: me.id, user_name: me.name, system: 'po', content: text, ts: Date.now() };
+  if (atts.length > 0) reply.attachments = atts;
+  thread.push(reply);
   try {
     const { error } = await cdmClient.from('cross_dept_messages').update({ thread, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) throw error;
     m.thread = thread;
     if (ta) ta.value = '';
+    _CDM_REPLY_ATTS = [];
     cdmRenderDetail(m); cdmRender();
     toast('✓ 回复已发送');
   } catch (e) { console.error('[CDM] 回复失败:', e); toast('回复失败:' + (e.message || e), 'err'); }
