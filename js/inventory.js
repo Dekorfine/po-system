@@ -593,7 +593,7 @@ window.invSaveAdjust = invSaveAdjust;
 // V20260601-INV-SKU-IMG:SKU 拉 Shopify · 粘贴上传 · 图片预览
 // ============================================================
 
-// 1. 从 Shopify 拉 SKU 对应的产品(遍历所有 connected store)
+// 1. 从 Shopify 拉 SKU 对应的产品(SKU 前缀路由 · 命中店铺优先)
 window.invFetchFromShopify = async function() {
   const sku = (INV_EDIT?.sku || '').trim();
   const status = document.getElementById('invFetchStatus');
@@ -601,7 +601,7 @@ window.invFetchFromShopify = async function() {
     if (status) { status.style.color = 'var(--danger)'; status.textContent = '请先填 SKU'; }
     return;
   }
-  if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ 拉取中...遍历各店铺'; }
+  if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ 分析 SKU 前缀...'; }
   
   try {
     if (typeof SHOPIFY === 'undefined' || !SHOPIFY.call) throw new Error('Shopify 模块未就绪');
@@ -611,18 +611,60 @@ window.invFetchFromShopify = async function() {
     const stores = (SHOPIFY._stores || []).filter(s => s.connected || s.platform === 'woo');
     if (stores.length === 0) throw new Error('没有已连接的店铺');
     
+    // 🎯 关键:按 SKU 前缀做店铺路由
+    // 例:DFC-LYD88047 → 前缀含 "DF" → dekorfine 店;VK-001 → "VK" → vakkerlighting
+    const skuUpper = sku.toUpperCase();
+    const STORES_META = (SHOPIFY.STORES_META || []);
+    const meta = STORES_META.find(m => skuUpper.startsWith(m.site_code));  // 前缀严格匹配 site_code
+    
+    // 构造查询队列:命中店第一 · 其它店作为兜底
+    const queue = [];
+    if (meta) {
+      const primary = stores.find(s => s.domain === meta.domain);
+      if (primary) queue.push({ store: primary, isPrimary: true });
+    }
+    // 其它已连接店作为兜底(避免重复)
+    for (const s of stores) {
+      if (!queue.find(q => q.store.domain === s.domain)) queue.push({ store: s, isPrimary: false });
+    }
+    
+    if (status) {
+      if (meta) status.textContent = `⏳ SKU 前缀 ${meta.site_code} → 优先查 ${meta.domain}...`;
+      else status.textContent = `⏳ 未识别 SKU 前缀 · 遍历查询...`;
+    }
+    
     let found = null;
-    for (const store of stores) {
-      if (status) status.textContent = `⏳ 查 ${store.name || store.domain}...`;
+    let triedStores = [];
+    
+    for (const { store, isPrimary } of queue) {
+      triedStores.push(store.name || SHOPIFY.siteCodeOf(store.domain) || store.domain);
+      if (status) status.textContent = `⏳ 查 ${triedStores[triedStores.length-1]}${isPrimary ? '(主)' : ''}...`;
+      
       try {
-        // 尝试 Edge Function 的 search_product_by_sku · 否则用 list_products + 客户端过滤
-        const r = await SHOPIFY.call('search_product_by_sku', { sku }, store.domain).catch(async () => {
-          // 降级:list_products 拉一批后客户端过滤
-          return await SHOPIFY.call('list_products', { fields: 'id,title,image,variants', limit: 250 }, store.domain);
-        });
-        const products = r?.products || (r?.product ? [r.product] : []);
+        // 优先尝试后端 search_product_by_sku · 不支持则降级 list_products
+        let products = [];
+        let usedAction = '';
+        try {
+          console.log(`[invFetch] try search_product_by_sku · sku=${sku} · shop=${store.domain}`);
+          const r1 = await SHOPIFY.call('search_product_by_sku', { sku }, store.domain);
+          console.log('[invFetch] search_product_by_sku response:', r1);
+          products = r1?.products || (r1?.product ? [r1.product] : []);
+          usedAction = 'search_product_by_sku';
+        } catch (e1) {
+          console.warn('[invFetch] search_product_by_sku 失败 · 降级 list_products:', e1.message);
+          // 降级 · list_products 拉一批(默认 250 上限)然后过滤
+          const r2 = await SHOPIFY.call('list_products', { 
+            fields: 'id,title,handle,image,images,variants', 
+            limit: 250 
+          }, store.domain);
+          console.log(`[invFetch] list_products returned ${r2?.products?.length || 0} products`);
+          products = r2?.products || [];
+          usedAction = 'list_products';
+        }
+        console.log(`[invFetch] using ${usedAction} · checking ${products.length} products for SKU=${sku}`);
+        
+        // 客户端筛选 · 检查变体 SKU + 产品 SKU 两层
         for (const p of products) {
-          // 检查变体匹配 SKU
           const matchedVariant = (p.variants || []).find(v => 
             (v.sku || '').toLowerCase() === sku.toLowerCase()
           );
@@ -630,19 +672,28 @@ window.invFetchFromShopify = async function() {
             found = { 
               product: p, 
               variant: matchedVariant, 
-              store: store.name || store.domain 
+              store: store.name || SHOPIFY.siteCodeOf(store.domain) || store.domain,
+              storeDomain: store.domain,
             };
             break;
           }
         }
         if (found) break;
+        // 主店没命中:继续尝试其它店但更明确提示
+        if (isPrimary && status) {
+          status.style.color = '#b45309';
+          status.textContent = `⚠ 主店 ${store.name || meta?.site_code} 未找到 · 尝试其它店...`;
+        }
       } catch (e) {
-        console.warn('[invFetch]', store.domain, e.message);
+        console.warn('[invFetch] store error:', store.domain, e.message);
       }
     }
     
     if (!found) {
-      if (status) { status.style.color = 'var(--danger)'; status.textContent = `⚠ 未在 ${stores.length} 个店铺中找到 SKU=${sku}`; }
+      if (status) { 
+        status.style.color = 'var(--danger)'; 
+        status.textContent = `⚠ 未找到 SKU=${sku} · 已查 ${triedStores.length} 个店铺`;
+      }
       return;
     }
     
@@ -650,11 +701,9 @@ window.invFetchFromShopify = async function() {
     const p = found.product;
     const v = found.variant;
     INV_EDIT.title = p.title || '';
-    // 优先变体图,其次产品主图
     const imgUrl = (v?.image?.src) || (p.image?.src) || (p.images?.[0]?.src) || '';
     if (imgUrl) INV_EDIT.image_url = imgUrl;
     
-    // 同步输入框 UI
     const titleInput = document.getElementById('invEditTitleInput');
     if (titleInput) titleInput.value = INV_EDIT.title;
     const urlInput = document.getElementById('invEditImgUrl');
@@ -669,7 +718,7 @@ window.invFetchFromShopify = async function() {
     console.error('[invFetch]', e);
     if (status) { 
       status.style.color = 'var(--danger)'; 
-      status.textContent = '⚠ 拉取失败:' + (e.message || '未知') + ' · 可手动填写或粘贴图';
+      status.textContent = '⚠ 拉取失败:' + (e.message || '未知');
     }
   }
 };
