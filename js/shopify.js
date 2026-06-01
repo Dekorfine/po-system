@@ -631,18 +631,65 @@ async function shopifyFetchOrders() {
   hint.textContent = '正在同步…';
 
   try {
-    const params = { status, limit: 100, auto_save: true };
-    if (from) params.created_at_min = from + 'T00:00:00Z';
-    if (to) params.created_at_max = to + 'T23:59:59Z';
-    const r = await SHOPIFY.call('list_orders', params, shop);
-    let msg = `同步完成 · 共 ${r.count} 单`;
-    if (r.saved !== undefined) msg += ` · 入库 ${r.saved}`;
-    if (r.new_products) msg += ` · 新建产品 ${r.new_products}`;
+    // V20260601-syncall:循环分页拉所有订单(用 since_id cursor)
+    // 之前:单次 limit=100 · 只拉一批 → 大店只同步前 100 单
+    // 现在:每页 limit=250(Shopify 单页上限)· 循环到无更多 · 全部入库
+    const baseParams = { 
+      status, 
+      limit: 250,                // Shopify Admin REST 单页上限 = 250
+      order: 'id asc',            // 按 ID 升序 · 配合 since_id 翻页
+      auto_save: true,
+    };
+    if (from) baseParams.created_at_min = from + 'T00:00:00Z';
+    if (to) baseParams.created_at_max = to + 'T23:59:59Z';
+    
+    let totalCount = 0;
+    let totalSaved = 0;
+    let totalNewProducts = 0;
+    let sinceId = 0;
+    let page = 1;
+    const MAX_PAGES = 50;  // 安全上限 · 50 × 250 = 12500 单 / 单店单次同步
+    
+    while (page <= MAX_PAGES) {
+      const params = { ...baseParams };
+      if (sinceId > 0) params.since_id = sinceId;
+      
+      hint.textContent = `正在同步第 ${page} 页…${totalCount > 0 ? ` 已拉 ${totalCount} 单` : ''}`;
+      
+      const r = await SHOPIFY.call('list_orders', params, shop);
+      const orders = Array.isArray(r.orders) ? r.orders : [];
+      const batchCount = orders.length || r.count || 0;
+      
+      totalCount += batchCount;
+      if (typeof r.saved === 'number') totalSaved += r.saved;
+      if (typeof r.new_products === 'number') totalNewProducts += r.new_products;
+      
+      console.log(`[syncOrders] ${shop} page ${page}: ${batchCount} 单 · 累计 ${totalCount}`);
+      
+      // 终止条件:本页不足 250(末页)· 或后端没返回 orders 数组(异常)
+      if (batchCount < 250) break;
+      
+      // 取本页最后一单 ID 作为下一页 since_id(已经按 id asc 排序)
+      const lastOrder = orders[orders.length - 1];
+      const lastId = lastOrder?.id;
+      if (!lastId || lastId === sinceId) {
+        // 防死循环:ID 没前进
+        console.warn('[syncOrders] 终止:since_id 没前进', lastId);
+        break;
+      }
+      sinceId = lastId;
+      page++;
+    }
+    
+    let msg = `同步完成 · 共 ${totalCount} 单(${page} 页)`;
+    if (totalSaved > 0) msg += ` · 入库 ${totalSaved}`;
+    if (totalNewProducts > 0) msg += ` · 新建产品 ${totalNewProducts}`;
+    if (page > MAX_PAGES) msg += ` · ⚠ 达到单次同步上限 ${MAX_PAGES} 页 · 再点同步继续拉`;
     hint.textContent = `${msg} · ${new Date().toLocaleTimeString()}`;
     toast(msg);
-    await shopifyReloadOrdersAndRender(true);  // force=true 跳过缓存
+    await shopifyReloadOrdersAndRender(true);
   } catch (e) {
-    toast('同步失败：' + (e.message || e), 'err', 4000);
+    toast('同步失败:' + (e.message || e), 'err', 4000);
     hint.textContent = '同步失败:' + (e.message || e);
   } finally {
     SHOPIFY._syncing = false;
@@ -668,30 +715,48 @@ async function wooSyncOrders(storeMeta) {
   
   try {
     // V28e4: 用 sync_orders · 后端 service_role 拉单+写库(绕过 RLS)
-    const params = { per_page: 100 };
+    // V20260601-syncall:WooCommerce 也分页拉全部
+    const baseParams = { per_page: 100 };
     if (status && status !== 'any') {
-      if (status === 'open' || status === 'unfulfilled') params.status = 'processing,on-hold';
-      else if (status === 'closed' || status === 'fulfilled') params.status = 'completed';
+      if (status === 'open' || status === 'unfulfilled') baseParams.status = 'processing,on-hold';
+      else if (status === 'closed' || status === 'fulfilled') baseParams.status = 'completed';
     } else {
-      params.status = 'processing,completed,on-hold';
+      baseParams.status = 'processing,completed,on-hold';
     }
-    if (from) params.after = from + 'T00:00:00';
-    if (to) params.before = to + 'T23:59:59';
-
-    const result = await SHOPIFY.callWoo('sync_orders', params, storeMeta.woo_store_id);
-    const count = result.count || 0;
-    const saved = result.saved || 0;
-
-    if (count === 0) {
+    if (from) baseParams.after = from + 'T00:00:00';
+    if (to) baseParams.before = to + 'T23:59:59';
+    
+    let totalCount = 0;
+    let totalSaved = 0;
+    let lastError = null;
+    const MAX_PAGES = 50;  // 50 × 100 = 5000 单上限
+    
+    for (let pageNum = 1; pageNum <= MAX_PAGES; pageNum++) {
+      const params = { ...baseParams, page: pageNum };
+      if (hint) hint.textContent = `「${storeMeta.display_name}」第 ${pageNum} 页…${totalCount > 0 ? ` 已拉 ${totalCount} 单` : ''}`;
+      
+      const result = await SHOPIFY.callWoo('sync_orders', params, storeMeta.woo_store_id);
+      const batchCount = result.count || 0;
+      
+      totalCount += batchCount;
+      totalSaved += (result.saved || 0);
+      if (result.error) lastError = result.error;
+      
+      console.log(`[wooSync] ${storeMeta.woo_store_id} page ${pageNum}: ${batchCount} 单 · 累计 ${totalCount}`);
+      
+      if (batchCount < 100) break;  // 末页
+    }
+    
+    if (totalCount === 0) {
       if (hint) hint.textContent = '当前条件下无新订单 · ' + new Date().toLocaleTimeString();
       toast(`「${storeMeta.display_name}」无新订单`, 'info');
       return;
     }
 
-    let msg = `「${storeMeta.display_name}」同步完成 · 共 ${count} 单 · 入库 ${saved}`;
-    if (result.error) {
-      msg += ` · 部分失败:${result.error}`;
-      if (hint) hint.textContent = '❌ ' + (result.error || '');
+    let msg = `「${storeMeta.display_name}」同步完成 · 共 ${totalCount} 单 · 入库 ${totalSaved}`;
+    if (lastError) {
+      msg += ` · 部分失败:${lastError}`;
+      if (hint) hint.textContent = '❌ ' + lastError;
       toast(msg, 'warn', 6000);
     } else {
       if (hint) hint.textContent = msg + ' · ' + new Date().toLocaleTimeString();
@@ -1024,6 +1089,19 @@ window.doFetchByOrderNo = async function() {
 };
 
 // V28β:跟单常用日期快筛 · 今天/昨天/本周/本月/未下完
+// V20260601-syncall:清空日期 · 拉全部历史
+window.shopifyClearDateRange = function() {
+  const from = document.getElementById('salesFetchFrom');
+  const to = document.getElementById('salesFetchTo');
+  if (from) from.value = '';
+  if (to) to.value = '';
+  // 自定义范围 select 切回
+  const sel = document.getElementById('salesFetchRange');
+  if (sel) sel.value = 'custom';
+  const hint = document.getElementById('salesQuickRangeHint');
+  if (hint) hint.textContent = '⚠ 已清空日期 · 点 [🔄 同步] 将拉该店所有历史订单(分页 · 可能数分钟)';
+};
+
 window.shopifyQuickRange = async function(kind) {
   const today = new Date();
   const y = today.getFullYear(), m = today.getMonth(), d = today.getDate();
