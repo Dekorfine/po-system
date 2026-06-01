@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260601-tzfix',
+    date: '2026-06-01',
+    type: 'fix',
+    title: '🕐 快筛日期时区修复(本月/今天偏一天塌缩)',
+    notes: [
+      '🎯 快筛用 toISOString() 把本地时间转 UTC · UTC+8 下"本月(6月)"被算成 05-31→05-31 塌成一天。',
+      '✅ 新增 _ymdLocal() 本地日期格式化 · 替换 shopifyQuickRange / salesQuickRangeChange / 默认初始范围',
+      '⚠️ 注:MH "入库185却只显示11" 是另一问题(Edge Function 存库的 shop_domain / created_at)·',
+      '   需先跑 sql/诊断-MH-185入库只显示11 那句 SQL 定位,再出修复。',
+    ],
+    files: ['shopify.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260601-fetchfix2',
     date: '2026-06-01',
     type: 'fix',

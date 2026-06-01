@@ -589,12 +589,12 @@ function setSalesDefaultDates() {
   if (!to || !from) return;
   if (!to.value) {
     const today = new Date();
-    to.value = today.toISOString().slice(0, 10);
+    to.value = _ymdLocal(today);  // V20260601-tzfix
   }
   if (!from.value) {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    from.value = d.toISOString().slice(0, 10);
+    from.value = _ymdLocal(d);  // V20260601-tzfix
   }
 }
 
@@ -1103,10 +1103,18 @@ window.shopifyClearDateRange = function() {
   if (hint) hint.textContent = '⚠ 已清空日期 · 点 [🔄 同步] 将拉该店所有历史订单(分页 · 可能数分钟)';
 };
 
+// V20260601-tzfix:本地日期 YYYY-MM-DD(不经 UTC · 修 UTC+8 下"本月/今天"偏一天塌缩)
+function _ymdLocal(dt) {
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 window.shopifyQuickRange = async function(kind) {
   const today = new Date();
   const y = today.getFullYear(), m = today.getMonth(), d = today.getDate();
-  const fmt = (dt) => dt.toISOString().slice(0, 10);
+  const fmt = _ymdLocal;  // V20260601-tzfix:本地日期
   let from = '', to = '';
   let needPending = false;
   switch (kind) {
@@ -1269,7 +1277,7 @@ function salesQuickRangeChange() {
   const days = parseInt(v, 10);
   const today = new Date();
   const from = new Date(today.getTime() - days * 86400000);
-  const fmt = d => d.toISOString().slice(0, 10);
+  const fmt = _ymdLocal;  // V20260601-tzfix:本地日期
   fromEl.value = fmt(from);
   toEl.value = fmt(today);
   // 立刻按新区间从本地读
