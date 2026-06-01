@@ -297,6 +297,18 @@ function _invRenderEdit() {
           ${s.isNew ? `<button onclick="invFetchFromShopify()" style="padding:8px 14px; background:var(--accent); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap;">🔍 拉取</button>` : ''}
         </div>
         ${!s.isNew ? '<div style="font-size:10px; color:var(--text-tertiary); margin-top:2px;">SKU 创建后不可改</div>' : '<div id="invFetchStatus" style="font-size:11px; margin-top:3px;"></div>'}
+        ${s.isNew ? `
+          <details style="margin-top:6px;">
+            <summary style="font-size:10.5px;color:var(--text-tertiary);cursor:pointer;">📌 SKU 找不到?粘贴产品 URL 拉(兜底方案)</summary>
+            <div style="display:flex; gap:6px; margin-top:5px;">
+              <input type="text" id="invProductUrlInput" 
+                     placeholder="https://www.dekorfine.com/products/xxx?variant=12345"
+                     style="flex:1; padding:6px 8px; font-size:11.5px; border:1px solid var(--border); border-radius:5px;">
+              <button onclick="invFetchFromProductUrl()" 
+                      style="padding:6px 10px; background:var(--accent); color:#fff; border:none; border-radius:5px; cursor:pointer; font-size:11px;">拉</button>
+            </div>
+          </details>
+        ` : ''}
       </div>
       <div>
         <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">当前库存 <span style="color:var(--danger);">*</span></label>
@@ -593,7 +605,7 @@ window.invSaveAdjust = invSaveAdjust;
 // V20260601-INV-SKU-IMG:SKU 拉 Shopify · 粘贴上传 · 图片预览
 // ============================================================
 
-// 1. 从 Shopify 拉 SKU 对应的产品(SKU 前缀路由 · 命中店铺优先)
+// 1. 从 Shopify 拉 SKU 对应的产品(用公开 /products.json API · 不走后端 Edge Function)
 window.invFetchFromShopify = async function() {
   const sku = (INV_EDIT?.sku || '').trim();
   const status = document.getElementById('invFetchStatus');
@@ -604,95 +616,76 @@ window.invFetchFromShopify = async function() {
   if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ 分析 SKU 前缀...'; }
   
   try {
-    if (typeof SHOPIFY === 'undefined' || !SHOPIFY.call) throw new Error('Shopify 模块未就绪');
-    if (!SHOPIFY._stores || SHOPIFY._stores.length === 0) {
-      await SHOPIFY.loadStores().catch(() => {});
-    }
-    const stores = (SHOPIFY._stores || []).filter(s => s.connected || s.platform === 'woo');
-    if (stores.length === 0) throw new Error('没有已连接的店铺');
-    
-    // 🎯 关键:按 SKU 前缀做店铺路由
-    // 例:DFC-LYD88047 → 前缀含 "DF" → dekorfine 店;VK-001 → "VK" → vakkerlighting
+    // 🎯 SKU 前缀路由 · 命中 site_code 优先查那家店
     const skuUpper = sku.toUpperCase();
-    const STORES_META = (SHOPIFY.STORES_META || []);
-    const meta = STORES_META.find(m => skuUpper.startsWith(m.site_code));  // 前缀严格匹配 site_code
+    const STORES_META = (SHOPIFY?.STORES_META || []).filter(m => !m.legacyOnly && m.public_domain);
+    const meta = STORES_META.find(m => skuUpper.startsWith(m.site_code));
     
-    // 构造查询队列:命中店第一 · 其它店作为兜底
+    // 构造查询队列:命中店第一 · 其它有 public_domain 的店作为兜底
     const queue = [];
-    if (meta) {
-      const primary = stores.find(s => s.domain === meta.domain);
-      if (primary) queue.push({ store: primary, isPrimary: true });
-    }
-    // 其它已连接店作为兜底(避免重复)
-    for (const s of stores) {
-      if (!queue.find(q => q.store.domain === s.domain)) queue.push({ store: s, isPrimary: false });
+    if (meta) queue.push({ meta, isPrimary: true });
+    for (const m of STORES_META) {
+      if (!queue.find(q => q.meta.domain === m.domain)) queue.push({ meta: m, isPrimary: false });
     }
     
     if (status) {
-      if (meta) status.textContent = `⏳ SKU 前缀 ${meta.site_code} → 优先查 ${meta.domain}...`;
-      else status.textContent = `⏳ 未识别 SKU 前缀 · 遍历查询...`;
+      if (meta) status.textContent = `⏳ SKU 前缀 ${meta.site_code} → 优先查 ${meta.public_domain}...`;
+      else status.textContent = `⏳ 未识别前缀 · 遍历查询(可能较慢)...`;
     }
     
     let found = null;
     let triedStores = [];
     
-    for (const { store, isPrimary } of queue) {
-      triedStores.push(store.name || SHOPIFY.siteCodeOf(store.domain) || store.domain);
-      if (status) status.textContent = `⏳ 查 ${triedStores[triedStores.length-1]}${isPrimary ? '(主)' : ''}...`;
+    for (const { meta: m, isPrimary } of queue) {
+      const storeName = m.public_domain || m.domain;
+      triedStores.push(`${m.site_code}(${storeName})`);
+      if (status) status.textContent = `⏳ 查 ${storeName}${isPrimary ? ' [主店]' : ''}...`;
       
       try {
-        // 优先尝试后端 search_product_by_sku · 不支持则降级 list_products
-        let products = [];
-        let usedAction = '';
-        try {
-          console.log(`[invFetch] try search_product_by_sku · sku=${sku} · shop=${store.domain}`);
-          const r1 = await SHOPIFY.call('search_product_by_sku', { sku }, store.domain);
-          console.log('[invFetch] search_product_by_sku response:', r1);
-          products = r1?.products || (r1?.product ? [r1.product] : []);
-          usedAction = 'search_product_by_sku';
-        } catch (e1) {
-          console.warn('[invFetch] search_product_by_sku 失败 · 降级 list_products:', e1.message);
-          // 降级 · list_products 拉一批(默认 250 上限)然后过滤
-          const r2 = await SHOPIFY.call('list_products', { 
-            fields: 'id,title,handle,image,images,variants', 
-            limit: 250 
-          }, store.domain);
-          console.log(`[invFetch] list_products returned ${r2?.products?.length || 0} products`);
-          products = r2?.products || [];
-          usedAction = 'list_products';
+        // 调 Shopify 公开 API · 支持分页 · 最多查 5 页(1250 个产品)
+        const maxPages = isPrimary ? 5 : 2;  // 主店多查几页,兜底店少查
+        let allProducts = [];
+        for (let page = 1; page <= maxPages; page++) {
+          const url = `https://${m.public_domain}/products.json?limit=250&page=${page}`;
+          console.log(`[invFetch] fetching ${url}`);
+          const res = await fetch(url, { method: 'GET', mode: 'cors', credentials: 'omit' });
+          if (!res.ok) {
+            console.warn(`[invFetch] ${url} HTTP ${res.status}`);
+            break;
+          }
+          const json = await res.json();
+          const products = json.products || [];
+          console.log(`[invFetch] ${storeName} page ${page}: ${products.length} products`);
+          allProducts.push(...products);
+          if (products.length < 250) break;  // 最后一页
         }
-        console.log(`[invFetch] using ${usedAction} · checking ${products.length} products for SKU=${sku}`);
         
-        // 客户端筛选 · 检查变体 SKU + 产品 SKU 两层
-        for (const p of products) {
-          const matchedVariant = (p.variants || []).find(v => 
+        // 客户端 SKU 过滤 · 检查所有变体
+        for (const p of allProducts) {
+          const variants = p.variants || [];
+          const matchedVariant = variants.find(v => 
             (v.sku || '').toLowerCase() === sku.toLowerCase()
           );
-          if (matchedVariant || (p.sku || '').toLowerCase() === sku.toLowerCase()) {
-            found = { 
-              product: p, 
-              variant: matchedVariant, 
-              store: store.name || SHOPIFY.siteCodeOf(store.domain) || store.domain,
-              storeDomain: store.domain,
-            };
+          if (matchedVariant) {
+            found = { product: p, variant: matchedVariant, store: storeName };
             break;
           }
         }
         if (found) break;
-        // 主店没命中:继续尝试其它店但更明确提示
+        
         if (isPrimary && status) {
           status.style.color = '#b45309';
-          status.textContent = `⚠ 主店 ${store.name || meta?.site_code} 未找到 · 尝试其它店...`;
+          status.textContent = `⚠ 主店 ${storeName} ${allProducts.length} 个产品中未找到 SKU=${sku} · 尝试其它店...`;
         }
       } catch (e) {
-        console.warn('[invFetch] store error:', store.domain, e.message);
+        console.warn('[invFetch] store error:', m.public_domain, e.message);
       }
     }
     
     if (!found) {
       if (status) { 
         status.style.color = 'var(--danger)'; 
-        status.textContent = `⚠ 未找到 SKU=${sku} · 已查 ${triedStores.length} 个店铺`;
+        status.textContent = `⚠ 未找到 · 已查 ${triedStores.length} 个店 · 可能产品已下架或 SKU 输错 · 也可粘贴产品 URL 手动拉`;
       }
       return;
     }
@@ -701,7 +694,12 @@ window.invFetchFromShopify = async function() {
     const p = found.product;
     const v = found.variant;
     INV_EDIT.title = p.title || '';
-    const imgUrl = (v?.image?.src) || (p.image?.src) || (p.images?.[0]?.src) || '';
+    // 优先变体 featured_image · 其次产品主图
+    let imgUrl = '';
+    if (v?.featured_image?.src) imgUrl = v.featured_image.src;
+    else if (Array.isArray(p.images) && p.images.length > 0) imgUrl = p.images[0].src;
+    else if (p.image?.src) imgUrl = p.image.src;
+    
     if (imgUrl) INV_EDIT.image_url = imgUrl;
     
     const titleInput = document.getElementById('invEditTitleInput');
@@ -712,13 +710,81 @@ window.invFetchFromShopify = async function() {
     
     if (status) { 
       status.style.color = 'var(--ok)'; 
-      status.textContent = `✓ 在 ${found.store} 找到 · 已填充产品名${imgUrl ? '+图' : ''}`; 
+      status.textContent = `✓ 在 ${found.store} 找到 · ${escapeHtmlForInv(p.title || '')}${imgUrl ? ' · 图已加载' : ''}`; 
     }
   } catch (e) {
     console.error('[invFetch]', e);
     if (status) { 
       status.style.color = 'var(--danger)'; 
       status.textContent = '⚠ 拉取失败:' + (e.message || '未知');
+    }
+  }
+};
+
+// 1b. 通过产品 URL 直接拉(兜底:SKU 找不到时用户手贴 URL)
+window.invFetchFromProductUrl = async function() {
+  const url = (document.getElementById('invProductUrlInput')?.value || '').trim();
+  const status = document.getElementById('invFetchStatus');
+  if (!url) {
+    if (status) { status.style.color = 'var(--danger)'; status.textContent = '请贴产品 URL'; }
+    return;
+  }
+  if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ 解析产品 URL...'; }
+  
+  try {
+    // 解析 URL · 提取 host + handle
+    // 例:https://www.dekorfine.com/products/ghiaccio-round-chandelier?variant=48187747827966
+    const m = url.match(/https?:\/\/(?:www\.)?([^/]+)\/products\/([^/?#]+)/i);
+    if (!m) throw new Error('URL 格式不识别 · 应该是 /products/<handle>');
+    const host = m[1];
+    const handle = m[2];
+    const variantId = (url.match(/variant=(\d+)/) || [])[1];
+    
+    const productUrl = `https://${host}/products/${handle}.json`;
+    console.log(`[invFetchUrl] fetching ${productUrl}`);
+    if (status) status.textContent = `⏳ 拉 ${host}/${handle}...`;
+    
+    const res = await fetch(productUrl, { method: 'GET', mode: 'cors', credentials: 'omit' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const p = json.product;
+    if (!p) throw new Error('返回数据没有 product 字段');
+    
+    // 找指定变体 · 没指定就用第一个
+    const variants = p.variants || [];
+    const v = variantId 
+      ? variants.find(x => String(x.id) === String(variantId))
+      : variants[0];
+    
+    INV_EDIT.title = p.title || '';
+    let imgUrl = '';
+    if (v?.featured_image?.src) imgUrl = v.featured_image.src;
+    else if (Array.isArray(p.images) && p.images.length > 0) imgUrl = p.images[0].src;
+    else if (p.image?.src) imgUrl = p.image.src;
+    
+    if (imgUrl) INV_EDIT.image_url = imgUrl;
+    // 如果变体有 SKU 且当前 SKU 为空 · 自动填
+    if (v?.sku && !INV_EDIT.sku) {
+      INV_EDIT.sku = v.sku;
+      const skuIn = document.getElementById('invEditSkuInput');
+      if (skuIn) skuIn.value = v.sku;
+    }
+    
+    const titleInput = document.getElementById('invEditTitleInput');
+    if (titleInput) titleInput.value = INV_EDIT.title;
+    const urlInput = document.getElementById('invEditImgUrl');
+    if (urlInput) urlInput.value = INV_EDIT.image_url;
+    invRefreshImgPreview();
+    
+    if (status) { 
+      status.style.color = 'var(--ok)'; 
+      status.textContent = `✓ 已从 ${host} 拉取 · ${p.title}${imgUrl ? ' · 图已加载' : ''}`; 
+    }
+  } catch (e) {
+    console.error('[invFetchUrl]', e);
+    if (status) { 
+      status.style.color = 'var(--danger)'; 
+      status.textContent = '⚠ URL 拉取失败:' + (e.message || '未知'); 
     }
   }
 };

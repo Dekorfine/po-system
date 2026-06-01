@@ -13,21 +13,22 @@
 // ============================================================
 const SHOPIFY = {
   STORES_META: [
-    { domain: 'vakkerlighting.myshopify.com', site_code: 'VK' },
-    { domain: 'dekorfine.myshopify.com',      site_code: 'DF' },
-    { domain: 'docolight.myshopify.com',      site_code: 'DC' },
-    { domain: 'vkfrench.myshopify.com',       site_code: 'PL' },
-    { domain: 'vakkerge.myshopify.com',       site_code: 'RD' },
-    { domain: 'vkwholesale.myshopify.com',    site_code: 'MH' },
-    { domain: 'docolamp.myshopify.com',       site_code: 'LS' },
+    // V20260601:加 public_domain · 用于前端直拉公开 /products.json API(Edge Function 不支持产品查询)
+    { domain: 'vakkerlighting.myshopify.com', site_code: 'VK', public_domain: 'vakkerlighting.com' },
+    { domain: 'dekorfine.myshopify.com',      site_code: 'DF', public_domain: 'dekorfine.com' },
+    { domain: 'docolight.myshopify.com',      site_code: 'DC', public_domain: 'docolight.com' },
+    { domain: 'vkfrench.myshopify.com',       site_code: 'PL', public_domain: 'pinlighting.com' },
+    { domain: 'vakkerge.myshopify.com',       site_code: 'RD', public_domain: 'radilum.com' },
+    { domain: 'vkwholesale.myshopify.com',    site_code: 'MH', public_domain: 'mhdecorlife.com' },
+    { domain: 'docolamp.myshopify.com',       site_code: 'LS', public_domain: 'lumioshine.com' },
     // V20260527e: mooijane.myshopify.com 已被 janedecor.myshopify.com (JD app) 接管
     // 保留 site_code='MJ' 用于历史订单解析,但不在 chip 条显示 "+ 安装" 入口
     { domain: 'mooijane.myshopify.com',       site_code: 'MJ', legacyOnly: true },
-    { domain: 'decormote.myshopify.com',      site_code: 'RS' },
-    { domain: 'janedecor.myshopify.com',      site_code: 'JD' },
+    { domain: 'decormote.myshopify.com',      site_code: 'RS', public_domain: 'rayonshine.com' },
+    { domain: 'janedecor.myshopify.com',      site_code: 'JD', public_domain: 'janedecor.com' },
     // V20260528b: WooCommerce 接入 · mooielight 是 WordPress + WooCommerce(不是 Shopify)
     // platform='woo' 走 woo-api Edge Function · 不走 shopify-api
-    { domain: 'mooielight.com', site_code: 'ML', platform: 'woo', woo_store_id: 'mooielight', display_name: 'Mooielight' },
+    { domain: 'mooielight.com', site_code: 'ML', platform: 'woo', woo_store_id: 'mooielight', display_name: 'Mooielight', public_domain: 'mooielight.com' },
   ],
   FN_URL: 'https://pyfmuknvjqfwcqvbrsvw.supabase.co/functions/v1/shopify-api',
   // V20260528b: woo-api Edge Function URL · 用 anon key 调(已 --no-verify-jwt 部署)
