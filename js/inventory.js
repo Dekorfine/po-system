@@ -608,25 +608,59 @@ window.invSaveAdjust = invSaveAdjust;
 // V20260601-INV-SKU-IMG:SKU 拉 Shopify · 粘贴上传 · 图片预览
 // ============================================================
 
-// 翻译工具(MyMemory 免费 · 无需 key · CORS 允许)
+// V20260601:复用 po.js 里的 _aiTranslateSpec(Claude Sonnet 4 · 已为灯具术语优化)
+// 单次调用太慢(每个变体属性都翻一次)· 改成一次性合批翻译
+async function _invTranslateBatch(items) {
+  // items: [{ key, text }] · 返回 { key: translatedText }
+  if (!items || items.length === 0) return {};
+  if (typeof _aiTranslateSpec !== 'function') {
+    console.warn('[invTranslate] _aiTranslateSpec 不存在 · 跳过翻译');
+    return {};
+  }
+  
+  // 已经是中文的过滤掉(>30% 中文)
+  const needTranslate = items.filter(it => {
+    if (!it.text) return false;
+    const cnChars = (it.text.match(/[\u4e00-\u9fa5]/g) || []).length;
+    return cnChars / it.text.length < 0.3;
+  });
+  if (needTranslate.length === 0) return {};
+  
+  // 合批:用编号格式喂给 Claude · 一次返回多条
+  const numbered = needTranslate.map((it, i) => `[${i+1}] ${it.text}`).join('\n');
+  
+  try {
+    const result = await _aiTranslateSpec(numbered);
+    // 解析:[1] xxx \n [2] yyy ...
+    const map = {};
+    const lines = result.split('\n').filter(l => l.trim());
+    lines.forEach(line => {
+      const m = line.match(/^\[(\d+)\]\s*(.+)$/);
+      if (m) {
+        const idx = parseInt(m[1]) - 1;
+        if (needTranslate[idx]) {
+          map[needTranslate[idx].key] = m[2].trim();
+        }
+      }
+    });
+    return map;
+  } catch (e) {
+    console.warn('[invTranslate] 批量翻译失败', e.message);
+    return {};
+  }
+}
+
+// 单次翻译(仅供单字段需要时调用 · 大部分场景用 _invTranslateBatch)
 async function _invTranslateEnToCn(text) {
   if (!text || typeof text !== 'string') return '';
   const t = text.trim();
   if (!t) return '';
-  // 已经是中文(>30% 字符是中文)就不翻译
   const cnChars = (t.match(/[\u4e00-\u9fa5]/g) || []).length;
   if (cnChars / t.length > 0.3) return t;
   
+  if (typeof _aiTranslateSpec !== 'function') return text;
   try {
-    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(t)}&langpair=en|zh-CN`;
-    const res = await fetch(url, { method: 'GET' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const json = await res.json();
-    const tr = json?.responseData?.translatedText || '';
-    if (!tr) return t;
-    // MyMemory 偶尔返回大写或带 "MYMEMORY WARNING" 前缀 · 过滤
-    if (/MYMEMORY WARNING/i.test(tr)) return t;
-    return tr;
+    return (await _aiTranslateSpec(t)) || text;
   } catch (e) {
     console.warn('[invTranslate]', e.message);
     return text;
@@ -698,52 +732,64 @@ function _invRenderVariantDetail(detail) {
 
 // 通用核心:抓到 product + variant 后做完整处理(填充 + 翻译 + 渲染明细)
 async function _invApplyProductData(p, v, storeName, productUrl) {
-  // 1. 标题翻译
-  const titleEn = p.title || '';
   const status = document.getElementById('invFetchStatus');
-  if (status) status.textContent = `⏳ 翻译产品名 / 属性...`;
+  if (status) status.textContent = `⏳ Claude AI 翻译产品信息...`;
   
-  const titleCn = await _invTranslateEnToCn(titleEn);
-  INV_EDIT.title = titleCn || titleEn;
+  // 1. 收集所有需要翻译的字段(一次批量翻 · 省 API 调用)
+  const toTranslate = [];
+  toTranslate.push({ key: 'title', text: p.title || '' });
+  if (p.product_type) toTranslate.push({ key: 'productType', text: p.product_type });
   
-  // 2. 图
+  // 变体属性 · option 名 + 值
+  if (v && Array.isArray(p.options)) {
+    for (let i = 0; i < p.options.length; i++) {
+      const optName = p.options[i].name;
+      const optValue = v[`option${i+1}`];
+      if (optName) toTranslate.push({ key: `optName_${i}`, text: optName });
+      if (optValue) toTranslate.push({ key: `optValue_${i}`, text: optValue });
+    }
+  }
+  
+  // 描述(去 HTML 取前 800 字符)
+  let descText = '';
+  if (p.body_html) {
+    descText = p.body_html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 800);
+    if (descText) toTranslate.push({ key: 'description', text: descText });
+  }
+  
+  // 一次批量调用 Claude
+  const cnMap = await _invTranslateBatch(toTranslate);
+  
+  // 2. 标题
+  const titleEn = p.title || '';
+  const titleCn = cnMap['title'] || titleEn;
+  INV_EDIT.title = titleCn;
+  
+  // 3. 图
   let imgUrl = '';
   if (v?.featured_image?.src) imgUrl = v.featured_image.src;
   else if (Array.isArray(p.images) && p.images.length > 0) imgUrl = p.images[0].src;
   else if (p.image?.src) imgUrl = p.image.src;
   if (imgUrl) INV_EDIT.image_url = imgUrl;
   
-  // 3. 解析变体 options(option1/2/3 → 用 product.options[i].name 翻译)
+  // 4. 变体 options · 用翻译结果
   const variantOptions = [];
   if (v && Array.isArray(p.options)) {
     for (let i = 0; i < p.options.length; i++) {
-      const optName = p.options[i].name;   // "Color" / "Size" / "Material"
-      const optValue = v[`option${i+1}`];  // "Black" / "60cm"
+      const optName = p.options[i].name;
+      const optValue = v[`option${i+1}`];
       if (!optValue) continue;
-      const nameCn = await _invTranslateEnToCn(optName);
-      const valueCn = await _invTranslateEnToCn(optValue);
+      const nameCn = cnMap[`optName_${i}`];
+      const valueCn = cnMap[`optValue_${i}`];
       variantOptions.push({
-        name: (nameCn && nameCn !== optName) ? `${nameCn}(${optName})` : optName,
+        name: nameCn && nameCn !== optName ? `${nameCn}(${optName})` : optName,
         value: optValue,
-        valueCn: valueCn,
+        valueCn: valueCn || '',
       });
     }
   }
   
-  // 4. 翻译 product_type
-  const productTypeCn = p.product_type ? await _invTranslateEnToCn(p.product_type) : '';
-  
-  // 5. 翻译描述(简短版 · 防止 MyMemory 超字数)
-  let descriptionCn = '';
-  if (p.body_html) {
-    // 去 HTML 标签
-    const textOnly = p.body_html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 800);
-    if (textOnly) {
-      descriptionCn = await _invTranslateEnToCn(textOnly);
-    }
-  }
-  
-  // 6. 构造完整 detail 渲染
+  // 5. 构造明细
   const detail = {
     productId: p.id,
     variantId: v?.id || null,
@@ -758,13 +804,13 @@ async function _invApplyProductData(p, v, storeName, productUrl) {
     barcode: v?.barcode || null,
     vendor: p.vendor || '',
     productType: p.product_type || '',
-    productTypeCn: productTypeCn,
+    productTypeCn: cnMap['productType'] || '',
     tags: p.tags || '',
-    descriptionCn: descriptionCn,
+    descriptionCn: cnMap['description'] || '',
     productUrl: productUrl,
   };
   
-  // 7. UI 同步
+  // 6. UI 同步
   const titleInput = document.getElementById('invEditTitleInput');
   if (titleInput) titleInput.value = INV_EDIT.title;
   const urlInput = document.getElementById('invEditImgUrl');
