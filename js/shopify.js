@@ -229,9 +229,24 @@ const SHOPIFY = {
 
   async loadProductImageMap(skus) {
     if (!skus || skus.length === 0) return {};
-    const { data } = await sb.from('products').select('sku, image_url, name_cn, name_en').in('sku', skus).is('deleted_at', null);
+    // V20260601-fix:分批查询 · 避免 .in() 把所有 SKU 塞 URL 导致 HTTP 414 URL Too Long
+    // 547 个 SKU 一次塞 URL 会超 8KB 网关限制
+    const BATCH_SIZE = 100;
     const map = {};
-    (data || []).forEach(p => { map[p.sku] = p; });
+    for (let i = 0; i < skus.length; i += BATCH_SIZE) {
+      const batch = skus.slice(i, i + BATCH_SIZE);
+      try {
+        const { data, error } = await sb
+          .from('products')
+          .select('sku, image_url, name_cn, name_en')
+          .in('sku', batch)
+          .is('deleted_at', null);
+        if (error) { console.warn('[loadProductImageMap] 批次', i/BATCH_SIZE+1, '失败:', error.message); continue; }
+        (data || []).forEach(p => { map[p.sku] = p; });
+      } catch (e) {
+        console.warn('[loadProductImageMap] 批次', i/BATCH_SIZE+1, '异常:', e.message);
+      }
+    }
     return map;
   },
 
@@ -655,26 +670,38 @@ async function shopifyFetchOrders() {
       if (sinceId > 0) params.since_id = sinceId;
       
       hint.textContent = `正在同步第 ${page} 页…${totalCount > 0 ? ` 已拉 ${totalCount} 单` : ''}`;
+      console.log(`[syncOrders] ${shop} → page ${page} · since_id=${sinceId} · params=`, params);
       
       const r = await SHOPIFY.call('list_orders', params, shop);
       const orders = Array.isArray(r.orders) ? r.orders : [];
       const batchCount = orders.length || r.count || 0;
       
+      console.log(`[syncOrders] ${shop} ← page ${page} · 收到 ${batchCount} 单 · r.count=${r.count} · r.saved=${r.saved}`);
+      
       totalCount += batchCount;
       if (typeof r.saved === 'number') totalSaved += r.saved;
       if (typeof r.new_products === 'number') totalNewProducts += r.new_products;
       
-      console.log(`[syncOrders] ${shop} page ${page}: ${batchCount} 单 · 累计 ${totalCount}`);
+      // 终止条件
+      if (batchCount === 0) {
+        console.log(`[syncOrders] ${shop} 末页 · 退出`);
+        break;
+      }
+      if (batchCount < 250) {
+        console.log(`[syncOrders] ${shop} 不足 250 · 末页 · 退出`);
+        break;
+      }
       
-      // 终止条件:本页不足 250(末页)· 或后端没返回 orders 数组(异常)
-      if (batchCount < 250) break;
-      
-      // 取本页最后一单 ID 作为下一页 since_id(已经按 id asc 排序)
+      // 取本页最后一单 ID 作为下一页 since_id
       const lastOrder = orders[orders.length - 1];
       const lastId = lastOrder?.id;
-      if (!lastId || lastId === sinceId) {
-        // 防死循环:ID 没前进
-        console.warn('[syncOrders] 终止:since_id 没前进', lastId);
+      if (!lastId) {
+        console.warn(`[syncOrders] ${shop} 终止:最后一单无 id`);
+        break;
+      }
+      if (lastId === sinceId) {
+        console.warn(`[syncOrders] ${shop} 终止:since_id 没前进(${lastId}) · Edge Function 可能不支持 since_id 参数`);
+        toast(`⚠ ${shop} 后端不支持分页 · 只拿到第 1 页 250 单`, 'warn', 5000);
         break;
       }
       sinceId = lastId;

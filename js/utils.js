@@ -1369,7 +1369,18 @@ async function shopifyQuickSyncAllStores() {
   for (const store of stores) {
     const shop = store.shop_domain || store.domain;
     try {
-      // 后台轻量同步 · limit 100 够覆盖单店一周
+      // V20260601-fix:woo 店走 callWoo · 不走 shopify-api(否则报 Shop not connected)
+      if (store.platform === 'woo') {
+        if (typeof SHOPIFY.callWoo === 'function') {
+          await SHOPIFY.callWoo('sync_orders', {
+            per_page: 100,
+            status: 'processing,completed,on-hold',
+            after: createdMin.slice(0, 19),  // woo 要 YYYY-MM-DDTHH:MM:SS
+          }, store.woo_store_id || shop);
+        }
+        continue;  // woo 处理完跳到下一店
+      }
+      // Shopify 店 · 后台轻量同步 · limit 100 够覆盖单店一周
       await SHOPIFY.call('list_orders', {
         status: 'any',
         limit: 100,

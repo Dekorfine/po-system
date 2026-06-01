@@ -248,7 +248,18 @@ let _CDM_NEW_WATCHERS = [];          // v22-CW 补丁: 新建消息时勾选的 
 
 // V20260601-perf:列表查询只拉轻量字段 · 不拉 attachments(图)/thread(沟通)大字段
 // 详情打开时再单独拉。三系统(客服/跟单/美工)统一规范
-const CDM_LIST_COLS = 'id,from_system,from_user_id,from_user_name,to_system,to_user_id,to_user_name,category,priority,title,body,related_ref,related_type,related_shop,assigned_to_id,assigned_to_name,assigned_by_id,assigned_by_name,assigned_at_ms,watchers,status,read_by,created_at_ms,updated_at,completed_at_ms,completed_by_id,completed_by_name,payload';
+// V20260601-fix:跟单表可能没有 completed_* / payload(美工新加),用核心字段(保证三系统都有)
+const CDM_LIST_COLS = 'id,from_system,from_user_id,from_user_name,to_system,to_user_id,to_user_name,category,priority,title,body,related_ref,related_type,related_shop,assigned_to_id,assigned_to_name,assigned_by_id,assigned_by_name,assigned_at_ms,watchers,status,read_by,created_at_ms,updated_at';
+
+// 列表查询的统一辅助函数 · 字段缺失自动降级
+async function _cdmQueryList(query) {
+  const r = await query.select(CDM_LIST_COLS);
+  if (r.error) {
+    console.warn('[CDM] 轻量字段查询失败 · 降级到 *', r.error.message);
+    return await query.select('*');
+  }
+  return r;
+}
 
 // 把 realtime 推送的整行 row 瘦身成轻量版(去掉 attachments / thread 大字段)
 function _cdmTrimRow(row) {
@@ -1264,17 +1275,19 @@ async function cdmSubmitNew() {
   }
 }
 
-// V20260601-perf:按需拉详情大字段(attachments + thread)
+// V20260601-perf:按需拉详情大字段
+// V20260601-fix2:用 select('*') 单条 · 字段不存在就是 undefined · 不报错
 async function cdmFetchDetailFields(id) {
   try {
     const { data } = await cdmClient
       .from('cross_dept_messages')
-      .select('attachments,thread')
+      .select('*')
       .eq('id', id)
       .maybeSingle();
     return {
       attachments: Array.isArray(data?.attachments) ? data.attachments : [],
       thread: Array.isArray(data?.thread) ? data.thread : [],
+      payload: data?.payload || null,
     };
   } catch (e) {
     console.warn('[CDM] 详情大字段加载失败', e.message);
