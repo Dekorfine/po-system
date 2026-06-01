@@ -362,6 +362,9 @@ function _invRenderEdit() {
       </div>
     </div>
     
+    <!-- V20260601:SKU 全明细挂载点(拉 Shopify 后自动填充) -->
+    <div id="invVariantDetailBox" style="display:none;"></div>
+    
     <div style="margin-bottom:14px;">
       <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">低库存预警线</label>
       <input type="number" min="0" value="${s.stock_alert_threshold}" oninput="INV_EDIT.stock_alert_threshold=parseInt(this.value)||0"
@@ -605,6 +608,173 @@ window.invSaveAdjust = invSaveAdjust;
 // V20260601-INV-SKU-IMG:SKU 拉 Shopify · 粘贴上传 · 图片预览
 // ============================================================
 
+// 翻译工具(MyMemory 免费 · 无需 key · CORS 允许)
+async function _invTranslateEnToCn(text) {
+  if (!text || typeof text !== 'string') return '';
+  const t = text.trim();
+  if (!t) return '';
+  // 已经是中文(>30% 字符是中文)就不翻译
+  const cnChars = (t.match(/[\u4e00-\u9fa5]/g) || []).length;
+  if (cnChars / t.length > 0.3) return t;
+  
+  try {
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(t)}&langpair=en|zh-CN`;
+    const res = await fetch(url, { method: 'GET' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    const tr = json?.responseData?.translatedText || '';
+    if (!tr) return t;
+    // MyMemory 偶尔返回大写或带 "MYMEMORY WARNING" 前缀 · 过滤
+    if (/MYMEMORY WARNING/i.test(tr)) return t;
+    return tr;
+  } catch (e) {
+    console.warn('[invTranslate]', e.message);
+    return text;
+  }
+}
+
+// SKU 全明细渲染(尺寸/颜色/材质/价格/重量等)
+function _invRenderVariantDetail(detail) {
+  const box = document.getElementById('invVariantDetailBox');
+  if (!box) return;
+  if (!detail) { box.innerHTML = ''; box.style.display = 'none'; return; }
+  
+  const rows = [];
+  
+  // 变体 SKU(可能跟 internal SKU 不同)
+  if (detail.variantSku) rows.push(['店铺 SKU', detail.variantSku, true]);
+  if (detail.barcode) rows.push(['条形码', detail.barcode, true]);
+  if (detail.variantTitle) rows.push(['变体名', detail.variantTitle, false]);
+  
+  // 变体属性(尺寸/颜色等 · 把 option1/2/3 用产品 options.name 解析)
+  if (Array.isArray(detail.variantOptions) && detail.variantOptions.length > 0) {
+    detail.variantOptions.forEach(opt => {
+      if (opt.value) rows.push([opt.name + ' (英)', opt.value, false]);
+      if (opt.valueCn && opt.valueCn !== opt.value) rows.push([opt.name + ' (中)', opt.valueCn, false]);
+    });
+  }
+  
+  // 价格 / 划线价
+  if (detail.price) rows.push(['价格', `$${detail.price}${detail.compareAtPrice ? ` (划线 $${detail.compareAtPrice})` : ''}`, true]);
+  
+  // 重量
+  if (detail.weight) rows.push(['重量', `${detail.weight} ${detail.weightUnit || 'g'}`, true]);
+  
+  // 店铺库存
+  if (detail.inventoryQuantity != null) rows.push(['店铺库存', detail.inventoryQuantity, true]);
+  
+  // 产品分类
+  if (detail.vendor) rows.push(['品牌', detail.vendor, false]);
+  if (detail.productType) rows.push(['类型 (英)', detail.productType, false]);
+  if (detail.productTypeCn && detail.productTypeCn !== detail.productType) rows.push(['类型 (中)', detail.productTypeCn, false]);
+  if (detail.tags) rows.push(['标签', detail.tags, false]);
+  
+  // 产品 + 变体 ID(供后端参考)
+  if (detail.productId) rows.push(['Shopify Product ID', detail.productId, true]);
+  if (detail.variantId) rows.push(['Shopify Variant ID', detail.variantId, true]);
+  
+  box.innerHTML = `
+    <div style="background:#f0f9ff;border:1px solid #93c5fd;border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="font-size:11.5px;color:#1e40af;font-weight:700;letter-spacing:0.5px;">📋 SKU 全明细 · 自动翻译完成</div>
+        ${detail.productUrl ? `<a href="${escapeHtmlForInv(detail.productUrl)}" target="_blank" rel="noopener" style="font-size:11px;color:#2563eb;text-decoration:underline;">↗ 看产品页</a>` : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12.5px;">
+        ${rows.map(([k, v, mono]) => `
+          <div style="color:#64748b;font-weight:500;">${escapeHtmlForInv(k)}</div>
+          <div style="color:#1c1917;${mono ? 'font-family:JetBrains Mono,monospace;font-size:12px;' : ''}word-break:break-all;">${escapeHtmlForInv(String(v))}</div>
+        `).join('')}
+      </div>
+      ${detail.descriptionCn ? `
+        <details style="margin-top:10px;padding-top:8px;border-top:1px dashed #93c5fd;">
+          <summary style="font-size:11px;color:#1e40af;cursor:pointer;font-weight:600;">📄 产品描述(自动翻译)</summary>
+          <div style="margin-top:6px;font-size:12px;line-height:1.6;color:#1c1917;max-height:200px;overflow-y:auto;padding:8px;background:#fff;border-radius:5px;">${detail.descriptionCn}</div>
+        </details>
+      ` : ''}
+    </div>
+  `;
+  box.style.display = 'block';
+}
+
+// 通用核心:抓到 product + variant 后做完整处理(填充 + 翻译 + 渲染明细)
+async function _invApplyProductData(p, v, storeName, productUrl) {
+  // 1. 标题翻译
+  const titleEn = p.title || '';
+  const status = document.getElementById('invFetchStatus');
+  if (status) status.textContent = `⏳ 翻译产品名 / 属性...`;
+  
+  const titleCn = await _invTranslateEnToCn(titleEn);
+  INV_EDIT.title = titleCn || titleEn;
+  
+  // 2. 图
+  let imgUrl = '';
+  if (v?.featured_image?.src) imgUrl = v.featured_image.src;
+  else if (Array.isArray(p.images) && p.images.length > 0) imgUrl = p.images[0].src;
+  else if (p.image?.src) imgUrl = p.image.src;
+  if (imgUrl) INV_EDIT.image_url = imgUrl;
+  
+  // 3. 解析变体 options(option1/2/3 → 用 product.options[i].name 翻译)
+  const variantOptions = [];
+  if (v && Array.isArray(p.options)) {
+    for (let i = 0; i < p.options.length; i++) {
+      const optName = p.options[i].name;   // "Color" / "Size" / "Material"
+      const optValue = v[`option${i+1}`];  // "Black" / "60cm"
+      if (!optValue) continue;
+      const nameCn = await _invTranslateEnToCn(optName);
+      const valueCn = await _invTranslateEnToCn(optValue);
+      variantOptions.push({
+        name: (nameCn && nameCn !== optName) ? `${nameCn}(${optName})` : optName,
+        value: optValue,
+        valueCn: valueCn,
+      });
+    }
+  }
+  
+  // 4. 翻译 product_type
+  const productTypeCn = p.product_type ? await _invTranslateEnToCn(p.product_type) : '';
+  
+  // 5. 翻译描述(简短版 · 防止 MyMemory 超字数)
+  let descriptionCn = '';
+  if (p.body_html) {
+    // 去 HTML 标签
+    const textOnly = p.body_html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 800);
+    if (textOnly) {
+      descriptionCn = await _invTranslateEnToCn(textOnly);
+    }
+  }
+  
+  // 6. 构造完整 detail 渲染
+  const detail = {
+    productId: p.id,
+    variantId: v?.id || null,
+    variantSku: v?.sku || p.sku || '',
+    variantTitle: v?.title || '',
+    variantOptions: variantOptions,
+    price: v?.price || null,
+    compareAtPrice: v?.compare_at_price || null,
+    weight: v?.grams || v?.weight || null,
+    weightUnit: v?.grams ? 'g' : (v?.weight_unit || ''),
+    inventoryQuantity: v?.inventory_quantity ?? null,
+    barcode: v?.barcode || null,
+    vendor: p.vendor || '',
+    productType: p.product_type || '',
+    productTypeCn: productTypeCn,
+    tags: p.tags || '',
+    descriptionCn: descriptionCn,
+    productUrl: productUrl,
+  };
+  
+  // 7. UI 同步
+  const titleInput = document.getElementById('invEditTitleInput');
+  if (titleInput) titleInput.value = INV_EDIT.title;
+  const urlInput = document.getElementById('invEditImgUrl');
+  if (urlInput) urlInput.value = INV_EDIT.image_url;
+  invRefreshImgPreview();
+  _invRenderVariantDetail(detail);
+  
+  return { titleCn, titleEn, imgUrl, detail };
+}
+
 // 1. 从 Shopify 拉 SKU 对应的产品(用公开 /products.json API · 不走后端 Edge Function)
 window.invFetchFromShopify = async function() {
   const sku = (INV_EDIT?.sku || '').trim();
@@ -616,12 +786,11 @@ window.invFetchFromShopify = async function() {
   if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ 分析 SKU 前缀...'; }
   
   try {
-    // 🎯 SKU 前缀路由 · 命中 site_code 优先查那家店
+    // SKU 前缀路由
     const skuUpper = sku.toUpperCase();
     const STORES_META = (SHOPIFY?.STORES_META || []).filter(m => !m.legacyOnly && m.public_domain);
     const meta = STORES_META.find(m => skuUpper.startsWith(m.site_code));
     
-    // 构造查询队列:命中店第一 · 其它有 public_domain 的店作为兜底
     const queue = [];
     if (meta) queue.push({ meta, isPrimary: true });
     for (const m of STORES_META) {
@@ -629,8 +798,8 @@ window.invFetchFromShopify = async function() {
     }
     
     if (status) {
-      if (meta) status.textContent = `⏳ SKU 前缀 ${meta.site_code} → 优先查 ${meta.public_domain}...`;
-      else status.textContent = `⏳ 未识别前缀 · 遍历查询(可能较慢)...`;
+      if (meta) status.textContent = `⏳ SKU 前缀 ${meta.site_code} → 优先 ${meta.public_domain}...`;
+      else status.textContent = `⏳ 未识别前缀 · 遍历查询(较慢)...`;
     }
     
     let found = null;
@@ -638,36 +807,30 @@ window.invFetchFromShopify = async function() {
     
     for (const { meta: m, isPrimary } of queue) {
       const storeName = m.public_domain || m.domain;
-      triedStores.push(`${m.site_code}(${storeName})`);
+      triedStores.push(storeName);
       if (status) status.textContent = `⏳ 查 ${storeName}${isPrimary ? ' [主店]' : ''}...`;
       
       try {
-        // 调 Shopify 公开 API · 支持分页 · 最多查 5 页(1250 个产品)
-        const maxPages = isPrimary ? 5 : 2;  // 主店多查几页,兜底店少查
+        const maxPages = isPrimary ? 5 : 2;
         let allProducts = [];
         for (let page = 1; page <= maxPages; page++) {
           const url = `https://${m.public_domain}/products.json?limit=250&page=${page}`;
-          console.log(`[invFetch] fetching ${url}`);
           const res = await fetch(url, { method: 'GET', mode: 'cors', credentials: 'omit' });
-          if (!res.ok) {
-            console.warn(`[invFetch] ${url} HTTP ${res.status}`);
-            break;
-          }
+          if (!res.ok) break;
           const json = await res.json();
           const products = json.products || [];
-          console.log(`[invFetch] ${storeName} page ${page}: ${products.length} products`);
           allProducts.push(...products);
-          if (products.length < 250) break;  // 最后一页
+          if (products.length < 250) break;
         }
         
-        // 客户端 SKU 过滤 · 检查所有变体
         for (const p of allProducts) {
           const variants = p.variants || [];
           const matchedVariant = variants.find(v => 
             (v.sku || '').toLowerCase() === sku.toLowerCase()
           );
           if (matchedVariant) {
-            found = { product: p, variant: matchedVariant, store: storeName };
+            const productUrl = `https://${m.public_domain}/products/${p.handle}${matchedVariant.id ? '?variant=' + matchedVariant.id : ''}`;
+            found = { product: p, variant: matchedVariant, store: storeName, productUrl };
             break;
           }
         }
@@ -675,7 +838,7 @@ window.invFetchFromShopify = async function() {
         
         if (isPrimary && status) {
           status.style.color = '#b45309';
-          status.textContent = `⚠ 主店 ${storeName} ${allProducts.length} 个产品中未找到 SKU=${sku} · 尝试其它店...`;
+          status.textContent = `⚠ 主店未找到 · 尝试其它店...`;
         }
       } catch (e) {
         console.warn('[invFetch] store error:', m.public_domain, e.message);
@@ -685,43 +848,25 @@ window.invFetchFromShopify = async function() {
     if (!found) {
       if (status) { 
         status.style.color = 'var(--danger)'; 
-        status.textContent = `⚠ 未找到 · 已查 ${triedStores.length} 个店 · 可能产品已下架或 SKU 输错 · 也可粘贴产品 URL 手动拉`;
+        status.textContent = `⚠ 未找到 · 已查 ${triedStores.length} 个店 · 可粘贴产品 URL 手动拉`;
       }
       return;
     }
     
-    // 填充数据
-    const p = found.product;
-    const v = found.variant;
-    INV_EDIT.title = p.title || '';
-    // 优先变体 featured_image · 其次产品主图
-    let imgUrl = '';
-    if (v?.featured_image?.src) imgUrl = v.featured_image.src;
-    else if (Array.isArray(p.images) && p.images.length > 0) imgUrl = p.images[0].src;
-    else if (p.image?.src) imgUrl = p.image.src;
-    
-    if (imgUrl) INV_EDIT.image_url = imgUrl;
-    
-    const titleInput = document.getElementById('invEditTitleInput');
-    if (titleInput) titleInput.value = INV_EDIT.title;
-    const urlInput = document.getElementById('invEditImgUrl');
-    if (urlInput) urlInput.value = INV_EDIT.image_url;
-    invRefreshImgPreview();
+    // 应用产品数据 + 翻译
+    await _invApplyProductData(found.product, found.variant, found.store, found.productUrl);
     
     if (status) { 
       status.style.color = 'var(--ok)'; 
-      status.textContent = `✓ 在 ${found.store} 找到 · ${escapeHtmlForInv(p.title || '')}${imgUrl ? ' · 图已加载' : ''}`; 
+      status.textContent = `✓ 在 ${found.store} 找到 · 已填充全部明细 + 翻译完成`; 
     }
   } catch (e) {
     console.error('[invFetch]', e);
-    if (status) { 
-      status.style.color = 'var(--danger)'; 
-      status.textContent = '⚠ 拉取失败:' + (e.message || '未知');
-    }
+    if (status) { status.style.color = 'var(--danger)'; status.textContent = '⚠ 拉取失败:' + (e.message || '未知'); }
   }
 };
 
-// 1b. 通过产品 URL 直接拉(兜底:SKU 找不到时用户手贴 URL)
+// 1b. 通过产品 URL 拉(兜底)
 window.invFetchFromProductUrl = async function() {
   const url = (document.getElementById('invProductUrlInput')?.value || '').trim();
   const status = document.getElementById('invFetchStatus');
@@ -732,16 +877,13 @@ window.invFetchFromProductUrl = async function() {
   if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ 解析产品 URL...'; }
   
   try {
-    // 解析 URL · 提取 host + handle
-    // 例:https://www.dekorfine.com/products/ghiaccio-round-chandelier?variant=48187747827966
     const m = url.match(/https?:\/\/(?:www\.)?([^/]+)\/products\/([^/?#]+)/i);
-    if (!m) throw new Error('URL 格式不识别 · 应该是 /products/<handle>');
+    if (!m) throw new Error('URL 格式不识别');
     const host = m[1];
     const handle = m[2];
     const variantId = (url.match(/variant=(\d+)/) || [])[1];
     
     const productUrl = `https://${host}/products/${handle}.json`;
-    console.log(`[invFetchUrl] fetching ${productUrl}`);
     if (status) status.textContent = `⏳ 拉 ${host}/${handle}...`;
     
     const res = await fetch(productUrl, { method: 'GET', mode: 'cors', credentials: 'omit' });
@@ -750,42 +892,27 @@ window.invFetchFromProductUrl = async function() {
     const p = json.product;
     if (!p) throw new Error('返回数据没有 product 字段');
     
-    // 找指定变体 · 没指定就用第一个
     const variants = p.variants || [];
     const v = variantId 
       ? variants.find(x => String(x.id) === String(variantId))
       : variants[0];
     
-    INV_EDIT.title = p.title || '';
-    let imgUrl = '';
-    if (v?.featured_image?.src) imgUrl = v.featured_image.src;
-    else if (Array.isArray(p.images) && p.images.length > 0) imgUrl = p.images[0].src;
-    else if (p.image?.src) imgUrl = p.image.src;
-    
-    if (imgUrl) INV_EDIT.image_url = imgUrl;
-    // 如果变体有 SKU 且当前 SKU 为空 · 自动填
+    // 自动填 SKU(如果空)
     if (v?.sku && !INV_EDIT.sku) {
       INV_EDIT.sku = v.sku;
       const skuIn = document.getElementById('invEditSkuInput');
       if (skuIn) skuIn.value = v.sku;
     }
     
-    const titleInput = document.getElementById('invEditTitleInput');
-    if (titleInput) titleInput.value = INV_EDIT.title;
-    const urlInput = document.getElementById('invEditImgUrl');
-    if (urlInput) urlInput.value = INV_EDIT.image_url;
-    invRefreshImgPreview();
+    await _invApplyProductData(p, v, host, url);
     
     if (status) { 
       status.style.color = 'var(--ok)'; 
-      status.textContent = `✓ 已从 ${host} 拉取 · ${p.title}${imgUrl ? ' · 图已加载' : ''}`; 
+      status.textContent = `✓ 已从 ${host} 拉取 · 全部明细 + 翻译完成`; 
     }
   } catch (e) {
     console.error('[invFetchUrl]', e);
-    if (status) { 
-      status.style.color = 'var(--danger)'; 
-      status.textContent = '⚠ URL 拉取失败:' + (e.message || '未知'); 
-    }
+    if (status) { status.style.color = 'var(--danger)'; status.textContent = '⚠ URL 拉取失败:' + (e.message || '未知'); }
   }
 };
 
