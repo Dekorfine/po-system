@@ -284,11 +284,19 @@ function _invRenderEdit() {
   body.innerHTML = `
     <div style="display:grid; grid-template-columns: 2fr 1fr; gap:12px; margin-bottom:14px;">
       <div>
-        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">内部 SKU <span style="color:var(--danger);">*</span></label>
-        <input type="text" value="${escapeHtml(s.sku)}" oninput="INV_EDIT.sku=this.value" ${s.isNew ? '' : 'readonly'}
-               placeholder="例:INV-PEARL-001"
-               style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; font-family:monospace; ${s.isNew ? '' : 'background:var(--bg-elevated); color:var(--text-tertiary);'}">
-        ${!s.isNew ? '<div style="font-size:10px; color:var(--text-tertiary); margin-top:2px;">SKU 创建后不可改</div>' : ''}
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">
+          内部 SKU <span style="color:var(--danger);">*</span>
+          ${s.isNew ? '<span style="font-weight:400;color:var(--text-tertiary);">· 输入后按 [🔍 拉取] 自动从 Shopify 找产品</span>' : ''}
+        </label>
+        <div style="display:flex; gap:6px;">
+          <input type="text" id="invEditSkuInput" value="${escapeHtml(s.sku)}" oninput="INV_EDIT.sku=this.value"
+                 onkeydown="if(event.key==='Enter' && ${s.isNew}){event.preventDefault();invFetchFromShopify();}"
+                 ${s.isNew ? '' : 'readonly'}
+                 placeholder="例:VK-PEARL-001"
+                 style="flex:1; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; font-family:monospace; ${s.isNew ? '' : 'background:var(--bg-elevated); color:var(--text-tertiary);'}">
+          ${s.isNew ? `<button onclick="invFetchFromShopify()" style="padding:8px 14px; background:var(--accent); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap;">🔍 拉取</button>` : ''}
+        </div>
+        ${!s.isNew ? '<div style="font-size:10px; color:var(--text-tertiary); margin-top:2px;">SKU 创建后不可改</div>' : '<div id="invFetchStatus" style="font-size:11px; margin-top:3px;"></div>'}
       </div>
       <div>
         <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">当前库存 <span style="color:var(--danger);">*</span></label>
@@ -299,23 +307,54 @@ function _invRenderEdit() {
     
     <div style="margin-bottom:14px;">
       <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">产品名称 <span style="color:var(--danger);">*</span></label>
-      <input type="text" value="${escapeHtml(s.title)}" oninput="INV_EDIT.title=this.value"
-             placeholder="例:Pearl Pendant Lamp"
+      <input type="text" id="invEditTitleInput" value="${escapeHtml(s.title)}" oninput="INV_EDIT.title=this.value"
+             placeholder="例:Pearl Pendant Lamp · 拉取 SKU 后自动填充"
              style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px;">
     </div>
     
-    <div style="display:grid; grid-template-columns: 2fr 1fr; gap:12px; margin-bottom:14px;">
-      <div>
-        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">产品图 URL(可选)</label>
-        <input type="text" value="${escapeHtml(s.image_url)}" oninput="INV_EDIT.image_url=this.value"
-               placeholder="https://...png"
-               style="width:100%; padding:8px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px;">
+    <!-- 产品图区域:URL 输入 + 缩略预览 + 粘贴上传 + 点击大图 -->
+    <div style="margin-bottom:14px;">
+      <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">
+        产品图 · 支持 URL / 粘贴(Ctrl+V)/ 拖拽 / 点击上传
+      </label>
+      <div style="display:flex; gap:10px; align-items:flex-start;">
+        <!-- 缩略预览 -->
+        <div id="invEditImgPreview" 
+             onclick="if(INV_EDIT.image_url) invPreviewImage(INV_EDIT.image_url)"
+             style="flex-shrink:0; width:100px; height:100px; border:1.5px dashed var(--border); border-radius:8px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:${s.image_url ? 'zoom-in' : 'default'};">
+          ${s.image_url 
+            ? `<img src="${escapeHtml(s.image_url)}" style="width:100%; height:100%; object-fit:cover;" onerror="this.parentNode.innerHTML='<span style=\\'font-size:10px;color:var(--text-tertiary);text-align:center;\\'>⚠️图片<br>加载失败</span>'">` 
+            : '<span style="font-size:10px;color:var(--text-tertiary);text-align:center;line-height:1.4;">📦<br>无图</span>'}
+        </div>
+        
+        <!-- 右侧:URL 输入 + 操作 -->
+        <div style="flex:1;">
+          <input type="text" id="invEditImgUrl" value="${escapeHtml(s.image_url)}" 
+                 oninput="INV_EDIT.image_url=this.value;invRefreshImgPreview()"
+                 onpaste="invHandlePaste(event)"
+                 placeholder="粘贴 URL 或 Ctrl+V 粘贴图片"
+                 ondragover="event.preventDefault();this.style.background='var(--accent-soft)';"
+                 ondragleave="this.style.background='';"
+                 ondrop="event.preventDefault();this.style.background='';invHandleDrop(event)"
+                 style="width:100%; padding:8px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px;">
+          
+          <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
+            <label style="display:inline-flex; align-items:center; gap:4px; padding:5px 10px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:5px; cursor:pointer; font-size:11.5px;">
+              📷 选图上传
+              <input type="file" accept="image/*" style="display:none;" onchange="invUploadImgFile(this.files[0])">
+            </label>
+            ${s.image_url ? `<button onclick="INV_EDIT.image_url='';invRefreshImgPreview();document.getElementById('invEditImgUrl').value='';" style="padding:5px 10px; background:#fff; border:1px solid var(--border); color:var(--danger); border-radius:5px; cursor:pointer; font-size:11.5px;">✕ 清空</button>` : ''}
+          </div>
+          <div id="invImgUploadStatus" style="font-size:10.5px; color:var(--text-tertiary); margin-top:4px;"></div>
+        </div>
       </div>
-      <div>
-        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">低库存预警线</label>
-        <input type="number" min="0" value="${s.stock_alert_threshold}" oninput="INV_EDIT.stock_alert_threshold=parseInt(this.value)||0"
-               style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center;">
-      </div>
+    </div>
+    
+    <div style="margin-bottom:14px;">
+      <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">低库存预警线</label>
+      <input type="number" min="0" value="${s.stock_alert_threshold}" oninput="INV_EDIT.stock_alert_threshold=parseInt(this.value)||0"
+             placeholder="低于此值告警"
+             style="width:120px; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center;">
     </div>
     
     <!-- 绑定平台 SKU -->
@@ -549,3 +588,200 @@ async function invSaveAdjust() {
   }
 }
 window.invSaveAdjust = invSaveAdjust;
+
+// ============================================================
+// V20260601-INV-SKU-IMG:SKU 拉 Shopify · 粘贴上传 · 图片预览
+// ============================================================
+
+// 1. 从 Shopify 拉 SKU 对应的产品(遍历所有 connected store)
+window.invFetchFromShopify = async function() {
+  const sku = (INV_EDIT?.sku || '').trim();
+  const status = document.getElementById('invFetchStatus');
+  if (!sku) {
+    if (status) { status.style.color = 'var(--danger)'; status.textContent = '请先填 SKU'; }
+    return;
+  }
+  if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ 拉取中...遍历各店铺'; }
+  
+  try {
+    if (typeof SHOPIFY === 'undefined' || !SHOPIFY.call) throw new Error('Shopify 模块未就绪');
+    if (!SHOPIFY._stores || SHOPIFY._stores.length === 0) {
+      await SHOPIFY.loadStores().catch(() => {});
+    }
+    const stores = (SHOPIFY._stores || []).filter(s => s.connected || s.platform === 'woo');
+    if (stores.length === 0) throw new Error('没有已连接的店铺');
+    
+    let found = null;
+    for (const store of stores) {
+      if (status) status.textContent = `⏳ 查 ${store.name || store.domain}...`;
+      try {
+        // 尝试 Edge Function 的 search_product_by_sku · 否则用 list_products + 客户端过滤
+        const r = await SHOPIFY.call('search_product_by_sku', { sku }, store.domain).catch(async () => {
+          // 降级:list_products 拉一批后客户端过滤
+          return await SHOPIFY.call('list_products', { fields: 'id,title,image,variants', limit: 250 }, store.domain);
+        });
+        const products = r?.products || (r?.product ? [r.product] : []);
+        for (const p of products) {
+          // 检查变体匹配 SKU
+          const matchedVariant = (p.variants || []).find(v => 
+            (v.sku || '').toLowerCase() === sku.toLowerCase()
+          );
+          if (matchedVariant || (p.sku || '').toLowerCase() === sku.toLowerCase()) {
+            found = { 
+              product: p, 
+              variant: matchedVariant, 
+              store: store.name || store.domain 
+            };
+            break;
+          }
+        }
+        if (found) break;
+      } catch (e) {
+        console.warn('[invFetch]', store.domain, e.message);
+      }
+    }
+    
+    if (!found) {
+      if (status) { status.style.color = 'var(--danger)'; status.textContent = `⚠ 未在 ${stores.length} 个店铺中找到 SKU=${sku}`; }
+      return;
+    }
+    
+    // 填充数据
+    const p = found.product;
+    const v = found.variant;
+    INV_EDIT.title = p.title || '';
+    // 优先变体图,其次产品主图
+    const imgUrl = (v?.image?.src) || (p.image?.src) || (p.images?.[0]?.src) || '';
+    if (imgUrl) INV_EDIT.image_url = imgUrl;
+    
+    // 同步输入框 UI
+    const titleInput = document.getElementById('invEditTitleInput');
+    if (titleInput) titleInput.value = INV_EDIT.title;
+    const urlInput = document.getElementById('invEditImgUrl');
+    if (urlInput) urlInput.value = INV_EDIT.image_url;
+    invRefreshImgPreview();
+    
+    if (status) { 
+      status.style.color = 'var(--ok)'; 
+      status.textContent = `✓ 在 ${found.store} 找到 · 已填充产品名${imgUrl ? '+图' : ''}`; 
+    }
+  } catch (e) {
+    console.error('[invFetch]', e);
+    if (status) { 
+      status.style.color = 'var(--danger)'; 
+      status.textContent = '⚠ 拉取失败:' + (e.message || '未知') + ' · 可手动填写或粘贴图';
+    }
+  }
+};
+
+// 2. 粘贴图片处理(Ctrl+V 在 URL 输入框)
+window.invHandlePaste = function(e) {
+  const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+  if (!items) return;
+  for (const it of items) {
+    if (it.kind === 'file' && it.type && it.type.startsWith('image/')) {
+      e.preventDefault();
+      const f = it.getAsFile();
+      if (f) invUploadImgFile(f);
+      return;
+    }
+  }
+};
+
+// 3. 拖拽图片处理
+window.invHandleDrop = function(e) {
+  const files = e.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+  for (const f of files) {
+    if (f.type && f.type.startsWith('image/')) {
+      invUploadImgFile(f);
+      return;
+    }
+  }
+};
+
+// 4. 上传图片文件到 attachments 桶(跨部门库 · 已有公开桶)
+window.invUploadImgFile = async function(file) {
+  if (!file) return;
+  const status = document.getElementById('invImgUploadStatus');
+  if (file.size > 5 * 1024 * 1024) {
+    if (status) { status.style.color = 'var(--danger)'; status.textContent = '⚠ 文件超 5MB · 请压缩'; }
+    return;
+  }
+  if (!file.type.startsWith('image/')) {
+    if (status) { status.style.color = 'var(--danger)'; status.textContent = '⚠ 不是图片格式'; }
+    return;
+  }
+  if (typeof cdmClient === 'undefined') {
+    if (status) { status.style.color = 'var(--danger)'; status.textContent = '⚠ 跨部门库未就绪 · 无法上传'; }
+    return;
+  }
+  
+  if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ 上传中...'; }
+  
+  try {
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const path = `inventory/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await cdmClient.storage.from('attachments')
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (error) throw error;
+    const { data: { publicUrl } } = cdmClient.storage.from('attachments').getPublicUrl(path);
+    
+    INV_EDIT.image_url = publicUrl;
+    const urlInput = document.getElementById('invEditImgUrl');
+    if (urlInput) urlInput.value = publicUrl;
+    invRefreshImgPreview();
+    
+    if (status) { 
+      status.style.color = 'var(--ok)'; 
+      status.textContent = `✓ 已上传 · ${(file.size/1024).toFixed(0)} KB`; 
+    }
+  } catch (e) {
+    console.error('[invUpload]', e);
+    if (status) { 
+      status.style.color = 'var(--danger)'; 
+      status.textContent = '⚠ 上传失败:' + (e.message || '未知'); 
+    }
+  }
+};
+
+// 5. 大图预览(fixed 弹层 · 与 cross-dept 同款)
+window.invPreviewImage = function(url) {
+  if (!url) return;
+  document.getElementById('invImgPreviewLayer')?.remove();
+  const layer = document.createElement('div');
+  layer.id = 'invImgPreviewLayer';
+  layer.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:100020;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;';
+  layer.onclick = () => { layer.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = (e) => { if (e.key === 'Escape') { layer.remove(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
+  const safeUrl = String(url).replace(/"/g, '&quot;');
+  layer.innerHTML = `
+    <button onclick="document.getElementById('invImgPreviewLayer').remove()" 
+            style="position:absolute;top:20px;right:20px;background:rgba(255,255,255,0.15);border:none;color:#fff;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:18px;z-index:1;">✕</button>
+    <a href="${safeUrl}" target="_blank" rel="noopener" download onclick="event.stopPropagation();"
+       style="position:absolute;bottom:20px;right:20px;background:rgba(255,255,255,0.15);color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none;font-size:13px;z-index:1;">⬇ 下载</a>
+    <img src="${safeUrl}" style="max-width:96%;max-height:96%;object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,0.5);" onclick="event.stopPropagation();">
+  `;
+  document.body.appendChild(layer);
+};
+
+// 6. 刷新缩略图预览(URL 变了之后调用)
+window.invRefreshImgPreview = function() {
+  const box = document.getElementById('invEditImgPreview');
+  if (!box) return;
+  const url = INV_EDIT?.image_url || '';
+  if (url) {
+    box.style.cursor = 'zoom-in';
+    box.innerHTML = `<img src="${escapeHtmlForInv(url)}" style="width:100%; height:100%; object-fit:cover;" onerror="this.parentNode.innerHTML='<span style=\\'font-size:10px;color:var(--text-tertiary);text-align:center;\\'>⚠️图片<br>加载失败</span>'">`;
+  } else {
+    box.style.cursor = 'default';
+    box.innerHTML = '<span style="font-size:10px;color:var(--text-tertiary);text-align:center;line-height:1.4;">📦<br>无图</span>';
+  }
+};
+
+// 本地 escape(避免依赖外部)
+function escapeHtmlForInv(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
