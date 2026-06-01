@@ -39,13 +39,13 @@ const SHOPIFY = {
   _initialized: false,
   _currentFilter: 'all',
 
-  async call(action, params = {}, shop = null) {
+  async call(action, params = {}, shop = null, timeoutMs = 45000) {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) throw new Error('未登录');
     const body = { shop, action, params };
     // V28d: 加 45 秒超时 · 避免卡死无限转圈(用户以为坏了狂点)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(this.FN_URL, {
         method: 'POST',
@@ -677,33 +677,44 @@ async function shopifyFetchOrders() {
 }
 
 // 单店 Shopify 同步核心(无锁 / 无按钮 / 无 reload · 供调度器循环调用)
-// V20260601-fetchfix:时间窗口分片拉取 · 彻底修复抓取不全
-//   背景:Edge Function 不支持 since_id 分页(console 实锤)· 大店翻页失效只拿第一页 + 45 秒超时
-//   方案:把日期范围切成窗口(初始 7 天)· 逐窗用 created_at_min/max 拉(每窗 ≤250 一页拉完)
-//        某窗满 250(疑似截断)→ 自动二分细窗重拉 → 保证拉全 · 单窗数据小 → 不超时
-//        status 固定 any → 不漏已完成 / 已关闭单
-// 返回 { count, saved, newProducts, truncated }
+// V20260601-fetchfix2:时间窗口分片 + 超时自适应二分 · 彻底修复大店超时/抓不全
+//   背景:Edge Function 不支持 since_id 分页;auto_save 逐单存很慢 · 大店一窗就 >45 秒超时
+//   方案:① 日期范围切 3 天窗 · 逐窗 created_at_min/max 拉(每窗 ≤250 一页拉完)
+//        ② 同步超时放宽到 90 秒
+//        ③ 任一窗【超时/出错】或【满 250 疑似截断】→ 自动二分该窗重拉 · 直到窗够小能完成
+//        ④ 窗口缩到 12 小时仍失败才放弃该窗(避免死循环)· 单店失败不影响其它店
+//        ⑤ status 固定 any → 不漏已完成 / 已关闭单
+// 返回 { count, saved, newProducts, truncated, failedWindows }
 async function _syncShopifyStore(shop, { from, to, status }, hint, prefix = '') {
   const fetchStatus = status || 'any';
   const DAY = 864e5;
+  const MIN_SPAN = DAY / 2;          // 最小窗口 12 小时
+  const SYNC_TIMEOUT = 90000;        // 同步单次给 90 秒
   const endDate   = to   ? new Date(to   + 'T23:59:59Z') : new Date();
   const startDate = from ? new Date(from + 'T00:00:00Z') : new Date(endDate.getTime() - 365 * DAY);
 
-  // 初始按 7 天切窗(从最新往回)· 用栈 · 满 250 时二分压回
+  // 初始按 3 天切窗(从最新往回)
   const stack = [];
   let c = new Date(endDate);
   while (c > startDate) {
-    let st = new Date(c.getTime() - 7 * DAY);
+    let st = new Date(c.getTime() - 3 * DAY);
     if (st < startDate) st = new Date(startDate);
     stack.push([new Date(st), new Date(c)]);
     c = st;
   }
 
-  let totalCount = 0, totalSaved = 0, totalNewProducts = 0, reqCount = 0;
-  const MAX_REQ = 400;  // 安全上限(7 天窗 ≈ 可覆盖 7+ 年 · 含二分细窗仍够用)
+  let totalCount = 0, totalSaved = 0, totalNewProducts = 0, reqCount = 0, failedWindows = 0;
+  const MAX_REQ = 800;  // 安全上限
+
+  const halve = (ws, we) => {
+    const mid = new Date(ws.getTime() + Math.floor((we - ws) / 2));
+    stack.push([new Date(ws), mid]);
+    stack.push([new Date(mid.getTime()), new Date(we)]);
+  };
 
   while (stack.length && reqCount < MAX_REQ) {
     const [ws, we] = stack.pop();
+    const spanMs = we - ws;
     const params = {
       status: fetchStatus, limit: 250, auto_save: true,
       created_at_min: ws.toISOString(),
@@ -711,30 +722,31 @@ async function _syncShopifyStore(shop, { from, to, status }, hint, prefix = '') 
     };
     if (hint) hint.textContent = `${prefix}${ws.toISOString().slice(0,10)} ~ ${we.toISOString().slice(0,10)}…${totalCount > 0 ? ` 已 ${totalCount} 单` : ''}`;
 
-    const r = await SHOPIFY.call('list_orders', params, shop);
+    let r;
+    try {
+      r = await SHOPIFY.call('list_orders', params, shop, SYNC_TIMEOUT);
+    } catch (e) {
+      reqCount++;
+      if (spanMs > MIN_SPAN) { halve(ws, we); continue; }   // 超时/出错 → 二分重试
+      console.warn(`[syncOrders] ${shop} 窗口 ${ws.toISOString().slice(0,10)}~${we.toISOString().slice(0,10)} 已最小仍失败 · 跳过 · ${e.message || e}`);
+      failedWindows++;
+      continue;
+    }
     reqCount++;
     const orders = Array.isArray(r.orders) ? r.orders : [];
     const batchCount = orders.length || r.count || 0;
 
-    // 满 250 且窗口 > 1 天 → 二分细窗重拉(避免截断 · 本次不累计)
-    const spanMs = we - ws;
-    if (batchCount >= 250 && spanMs > DAY) {
-      const mid = new Date(ws.getTime() + Math.floor(spanMs / 2));
-      stack.push([new Date(ws), mid]);
-      stack.push([new Date(mid.getTime()), new Date(we)]);
-      continue;
-    }
+    if (batchCount >= 250 && spanMs > MIN_SPAN) { halve(ws, we); continue; }  // 满250 → 二分
 
     totalCount += batchCount;
     if (typeof r.saved === 'number')        totalSaved += r.saved;
     if (typeof r.new_products === 'number') totalNewProducts += r.new_products;
   }
 
-  const truncated = reqCount >= MAX_REQ && stack.length > 0;
-  if (truncated) console.warn(`[syncOrders] ${shop} 达到请求上限 ${MAX_REQ} · 可能未拉全 · 建议缩小日期范围`);
-  return { count: totalCount, saved: totalSaved, newProducts: totalNewProducts, truncated };
+  const truncated = (reqCount >= MAX_REQ && stack.length > 0) || failedWindows > 0;
+  if (truncated) console.warn(`[syncOrders] ${shop} 未完全拉全 · 失败窗口 ${failedWindows} · 剩余 ${stack.length}`);
+  return { count: totalCount, saved: totalSaved, newProducts: totalNewProducts, truncated, failedWindows };
 }
-
 
 async function _syncWooStore(storeMeta, { from, to, status }, hint, prefix = '') {
   const baseParams = { per_page: 100 };
