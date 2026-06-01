@@ -667,158 +667,103 @@ async function _invTranslateEnToCn(text) {
   }
 }
 
-// SKU 全明细渲染(尺寸/颜色/材质/价格/重量等)
+// SKU 明细渲染 · 只显示店铺 SKU + 变体翻译结果
 function _invRenderVariantDetail(detail) {
   const box = document.getElementById('invVariantDetailBox');
   if (!box) return;
   if (!detail) { box.innerHTML = ''; box.style.display = 'none'; return; }
   
-  const rows = [];
-  
-  // 变体 SKU(可能跟 internal SKU 不同)
-  if (detail.variantSku) rows.push(['店铺 SKU', detail.variantSku, true]);
-  if (detail.barcode) rows.push(['条形码', detail.barcode, true]);
-  if (detail.variantTitle) rows.push(['变体名', detail.variantTitle, false]);
-  
-  // 变体属性(尺寸/颜色等 · 把 option1/2/3 用产品 options.name 解析)
-  if (Array.isArray(detail.variantOptions) && detail.variantOptions.length > 0) {
-    detail.variantOptions.forEach(opt => {
-      if (opt.value) rows.push([opt.name + ' (英)', opt.value, false]);
-      if (opt.valueCn && opt.valueCn !== opt.value) rows.push([opt.name + ' (中)', opt.valueCn, false]);
-    });
+  // 没有变体名也不显示
+  if (!detail.variantTitleEn && !detail.variantSku) {
+    box.innerHTML = ''; 
+    box.style.display = 'none';
+    return;
   }
   
-  // 价格 / 划线价
-  if (detail.price) rows.push(['价格', `$${detail.price}${detail.compareAtPrice ? ` (划线 $${detail.compareAtPrice})` : ''}`, true]);
-  
-  // 重量
-  if (detail.weight) rows.push(['重量', `${detail.weight} ${detail.weightUnit || 'g'}`, true]);
-  
-  // 店铺库存
-  if (detail.inventoryQuantity != null) rows.push(['店铺库存', detail.inventoryQuantity, true]);
-  
-  // 产品分类
-  if (detail.vendor) rows.push(['品牌', detail.vendor, false]);
-  if (detail.productType) rows.push(['类型 (英)', detail.productType, false]);
-  if (detail.productTypeCn && detail.productTypeCn !== detail.productType) rows.push(['类型 (中)', detail.productTypeCn, false]);
-  if (detail.tags) rows.push(['标签', detail.tags, false]);
-  
-  // 产品 + 变体 ID(供后端参考)
-  if (detail.productId) rows.push(['Shopify Product ID', detail.productId, true]);
-  if (detail.variantId) rows.push(['Shopify Variant ID', detail.variantId, true]);
+  // 变体翻译显示成多行(extractVariantInfo 输出每行用 \n 分隔)
+  const cnLines = (detail.variantInfoCn || '').split('\n').filter(Boolean);
   
   box.innerHTML = `
-    <div style="background:#f0f9ff;border:1px solid #93c5fd;border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+    <div style="background:#f0f9ff;border:1px solid #93c5fd;border-radius:8px;padding:10px 14px;margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <div style="font-size:11.5px;color:#1e40af;font-weight:700;letter-spacing:0.5px;">📋 SKU 全明细 · 自动翻译完成</div>
+        <div style="font-size:11.5px;color:#1e40af;font-weight:700;letter-spacing:0.5px;">📋 SKU 明细</div>
         ${detail.productUrl ? `<a href="${escapeHtmlForInv(detail.productUrl)}" target="_blank" rel="noopener" style="font-size:11px;color:#2563eb;text-decoration:underline;">↗ 看产品页</a>` : ''}
       </div>
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12.5px;">
-        ${rows.map(([k, v, mono]) => `
-          <div style="color:#64748b;font-weight:500;">${escapeHtmlForInv(k)}</div>
-          <div style="color:#1c1917;${mono ? 'font-family:JetBrains Mono,monospace;font-size:12px;' : ''}word-break:break-all;">${escapeHtmlForInv(String(v))}</div>
-        `).join('')}
-      </div>
-      ${detail.descriptionCn ? `
-        <details style="margin-top:10px;padding-top:8px;border-top:1px dashed #93c5fd;">
-          <summary style="font-size:11px;color:#1e40af;cursor:pointer;font-weight:600;">📄 产品描述(自动翻译)</summary>
-          <div style="margin-top:6px;font-size:12px;line-height:1.6;color:#1c1917;max-height:200px;overflow-y:auto;padding:8px;background:#fff;border-radius:5px;">${detail.descriptionCn}</div>
-        </details>
+      
+      ${detail.variantSku ? `
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12.5px;margin-bottom:8px;">
+          <div style="color:#64748b;">店铺 SKU</div>
+          <div style="color:#1c1917;font-family:JetBrains Mono,monospace;font-size:12px;">${escapeHtmlForInv(detail.variantSku)}</div>
+        </div>
       ` : ''}
+      
+      ${detail.variantTitleEn ? `
+        <div style="font-size:11px;color:#78716c;margin-bottom:4px;">变体(原文)</div>
+        <div style="font-size:12.5px;color:#57534e;margin-bottom:8px;padding:6px 8px;background:#fafaf9;border-radius:5px;font-family:JetBrains Mono,monospace;">${escapeHtmlForInv(detail.variantTitleEn)}</div>
+      ` : ''}
+      
+      ${cnLines.length > 0 ? `
+        <div style="font-size:11px;color:#78716c;margin-bottom:4px;">变体(中文 · 自动转 cm + 去重)</div>
+        <div style="background:#fff;border:1px solid #e0e7ff;border-radius:5px;padding:8px 10px;">
+          ${cnLines.map(line => `<div style="font-size:12.5px;color:#1c1917;line-height:1.6;">${escapeHtmlForInv(line)}</div>`).join('')}
+        </div>
+      ` : (detail.variantTitleEn ? `<div style="font-size:11.5px;color:#a8a29e;font-style:italic;">变体未能自动翻译 · 可手动编辑产品名</div>` : '')}
     </div>
   `;
   box.style.display = 'block';
 }
 
-// 通用核心:抓到 product + variant 后做完整处理(填充 + 翻译 + 渲染明细)
+// 通用核心:抓到 product + variant 后做完整处理
+// V20260601 精简版:只翻译产品名(Claude) + 用 PO 的 extractVariantInfo 处理变体
 async function _invApplyProductData(p, v, storeName, productUrl) {
   const status = document.getElementById('invFetchStatus');
-  if (status) status.textContent = `⏳ Claude AI 翻译产品信息...`;
+  if (status) status.textContent = `⏳ Claude AI 翻译产品名...`;
   
-  // 1. 收集所有需要翻译的字段(一次批量翻 · 省 API 调用)
-  const toTranslate = [];
-  toTranslate.push({ key: 'title', text: p.title || '' });
-  if (p.product_type) toTranslate.push({ key: 'productType', text: p.product_type });
-  
-  // 变体属性 · option 名 + 值
-  if (v && Array.isArray(p.options)) {
-    for (let i = 0; i < p.options.length; i++) {
-      const optName = p.options[i].name;
-      const optValue = v[`option${i+1}`];
-      if (optName) toTranslate.push({ key: `optName_${i}`, text: optName });
-      if (optValue) toTranslate.push({ key: `optValue_${i}`, text: optValue });
-    }
-  }
-  
-  // 描述(去 HTML 取前 800 字符)
-  let descText = '';
-  if (p.body_html) {
-    descText = p.body_html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 800);
-    if (descText) toTranslate.push({ key: 'description', text: descText });
-  }
-  
-  // 一次批量调用 Claude
-  const cnMap = await _invTranslateBatch(toTranslate);
-  
-  // 2. 标题
+  // 1. 产品名翻译(Claude · 灯具术语优化)
   const titleEn = p.title || '';
-  const titleCn = cnMap['title'] || titleEn;
+  let titleCn = titleEn;
+  try {
+    if (typeof _aiTranslateSpec === 'function' && titleEn) {
+      // 已经是中文就跳
+      const cnChars = (titleEn.match(/[\u4e00-\u9fa5]/g) || []).length;
+      if (cnChars / titleEn.length < 0.3) {
+        titleCn = (await _aiTranslateSpec(titleEn)) || titleEn;
+      }
+    }
+  } catch (e) {
+    console.warn('[invTranslate]', e.message);
+  }
   INV_EDIT.title = titleCn;
   
-  // 3. 图
+  // 2. 图
   let imgUrl = '';
   if (v?.featured_image?.src) imgUrl = v.featured_image.src;
   else if (Array.isArray(p.images) && p.images.length > 0) imgUrl = p.images[0].src;
   else if (p.image?.src) imgUrl = p.image.src;
   if (imgUrl) INV_EDIT.image_url = imgUrl;
   
-  // 4. 变体 options · 用翻译结果
-  const variantOptions = [];
-  if (v && Array.isArray(p.options)) {
-    for (let i = 0; i < p.options.length; i++) {
-      const optName = p.options[i].name;
-      const optValue = v[`option${i+1}`];
-      if (!optValue) continue;
-      const nameCn = cnMap[`optName_${i}`];
-      const valueCn = cnMap[`optValue_${i}`];
-      variantOptions.push({
-        name: nameCn && nameCn !== optName ? `${nameCn}(${optName})` : optName,
-        value: optValue,
-        valueCn: valueCn || '',
-      });
-    }
+  // 3. 变体翻译 · 复用 PO 单的 extractVariantInfo(英寸→cm · 多尺寸去重 · 颜色/材质翻译)
+  let variantInfoCn = '';
+  if (v?.title && typeof extractVariantInfo === 'function') {
+    variantInfoCn = extractVariantInfo(v.title);
   }
   
-  // 5. 构造明细
-  const detail = {
-    productId: p.id,
-    variantId: v?.id || null,
-    variantSku: v?.sku || p.sku || '',
-    variantTitle: v?.title || '',
-    variantOptions: variantOptions,
-    price: v?.price || null,
-    compareAtPrice: v?.compare_at_price || null,
-    weight: v?.grams || v?.weight || null,
-    weightUnit: v?.grams ? 'g' : (v?.weight_unit || ''),
-    inventoryQuantity: v?.inventory_quantity ?? null,
-    barcode: v?.barcode || null,
-    vendor: p.vendor || '',
-    productType: p.product_type || '',
-    productTypeCn: cnMap['productType'] || '',
-    tags: p.tags || '',
-    descriptionCn: cnMap['description'] || '',
-    productUrl: productUrl,
-  };
-  
-  // 6. UI 同步
+  // 4. UI 同步
   const titleInput = document.getElementById('invEditTitleInput');
   if (titleInput) titleInput.value = INV_EDIT.title;
   const urlInput = document.getElementById('invEditImgUrl');
   if (urlInput) urlInput.value = INV_EDIT.image_url;
   invRefreshImgPreview();
-  _invRenderVariantDetail(detail);
   
-  return { titleCn, titleEn, imgUrl, detail };
+  // 5. 精简明细
+  _invRenderVariantDetail({
+    variantSku: v?.sku || p.sku || '',
+    variantTitleEn: v?.title || '',
+    variantInfoCn: variantInfoCn,
+    productUrl: productUrl,
+  });
+  
+  return { titleCn, titleEn, imgUrl };
 }
 
 // 1. 从 Shopify 拉 SKU 对应的产品(用公开 /products.json API · 不走后端 Edge Function)
