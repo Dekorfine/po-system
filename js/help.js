@@ -10,6 +10,23 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260601-loadfix2',
+    date: '2026-06-01',
+    type: 'fix',
+    title: '🎯 真正修复"入库185只显示11" · 加载层补齐',
+    notes: [
+      '🎯 SQL 证实 DB 数据完美(MH 185 单 · 域名/时间都对)· 是前端加载没读出来。',
+      '   排查发现:之前几轮被打断 · loadOrdersFromDB 的核心改动没真正落地——',
+      '   主查询(③)仍是 limit(500) 老逻辑 · _fetchOrdersScoped 被调用却从未定义(后台刷新静默崩溃)。',
+      '✅ 补齐三处:',
+      '   ① 定义 _fetchOrdersScoped:按 shops 下推 .in(shop_domain) + 分页拉全(上限8000)',
+      '   ② 主查询③ 改用它 · 去掉全局 limit(500)(大店 vakkerlighting 2502 单不再挤掉 MH)',
+      '   ③ cacheKey 含 shops · 切店分桶 · 不再串缓存',
+      '   → 选 MH 现在按 vkwholesale 查库 · 185 单全部加载',
+    ],
+    files: ['shopify.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260601-tzfix',
     date: '2026-06-01',
     type: 'fix',

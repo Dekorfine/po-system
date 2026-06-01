@@ -126,9 +126,35 @@ const SHOPIFY = {
 
   // V28x:真正的秒开 · localStorage 缓存订单 · 打开立即渲染 · 后台异步刷新
   // V28y:cache v2 · 不再按 shop 分桶(避免切 chip 时本地没数据 → 显示 0 的 bug)
+  // V20260601-loadfix2:按当前 shops + 日期范围分页拉全 · 带安全上限
+  // shops 非空 → .in('shop_domain', shops)(选店只查该店 · 小店不被大店挤出 limit 500)
+  async _fetchOrdersScoped(opts = {}) {
+    const PAGE = 1000;        // PostgREST 单次返回上限
+    const MAX_ROWS = 8000;    // 安全上限(全店总量约 4500 · 留余量)
+    const shops = (opts.shops || []).filter(Boolean);
+    let all = [];
+    let offset = 0;
+    while (offset < MAX_ROWS) {
+      let q = sb.from('shopify_orders').select('*').is('deleted_at', null);
+      if (shops.length) q = q.in('shop_domain', shops);
+      if (opts.from) q = q.gte('shopify_created_at', opts.from + 'T00:00:00Z');
+      if (opts.to)   q = q.lte('shopify_created_at', opts.to + 'T23:59:59Z');
+      q = q.order('shopify_created_at', { ascending: false }).range(offset, offset + PAGE - 1);
+      const { data, error } = await q;
+      if (error) throw error;
+      const batch = data || [];
+      all = all.concat(batch);
+      if (batch.length < PAGE) break;   // 末页
+      offset += PAGE;
+    }
+    const truncated = all.length >= MAX_ROWS;
+    if (truncated) console.warn(`[订单] 达到加载上限 ${MAX_ROWS} · 部分未加载 · 建议选店/缩小日期`);
+    return { rows: all, truncated };
+  },
+
   async loadOrdersFromDB(force = false, opts = {}) {
     const CACHE_MS = 60 * 1000;
-    const cacheKey = JSON.stringify({ from: opts.from || '', to: opts.to || '' });
+    const cacheKey = JSON.stringify({ from: opts.from || '', to: opts.to || '', shops: (opts.shops || []).slice().sort() });  // V20260601-loadfix2:含 shops 分桶
     // ① in-memory 缓存(同 session 内)
     if (!force && this._ordersCacheKey === cacheKey && this._ordersLoadedAt && (Date.now() - this._ordersLoadedAt < CACHE_MS) && this._orders.length > 0) {
       return this._orders;
@@ -152,14 +178,9 @@ const SHOPIFY = {
       } catch (e) { console.warn('[订单缓存] 读取失败:', e); }
     }
     // ③ 无缓存 / force / 缓存失效 → 同步从 supabase 拉
-    let q = sb.from('shopify_orders').select('*').is('deleted_at', null);
-    // V28y:不按 shop 过滤
-    if (opts.from) q = q.gte('shopify_created_at', opts.from + 'T00:00:00Z');
-    if (opts.to)   q = q.lte('shopify_created_at', opts.to + 'T23:59:59Z');
-    q = q.order('shopify_created_at', { ascending: false }).limit(500);
-    const { data, error } = await q;
-    if (error) throw error;
-    this._orders = data || [];
+    // V20260601-loadfix2:按 shops + 日期下推 + 分页拉全(选店只查该店 · 不被大店挤出 limit 500)
+    const { rows } = await this._fetchOrdersScoped(opts);
+    this._orders = rows;
     this._ordersLoadedAt = Date.now();
     this._ordersCacheKey = cacheKey;
     this._persistOrdersCache(cacheKey);
