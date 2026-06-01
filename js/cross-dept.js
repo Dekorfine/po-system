@@ -246,6 +246,21 @@ let _CDM_TIMEOUT_DRAFT = null;       // 超时设置弹窗草稿
 let _CDM_TIMEOUT_ACTIVE_CAT = 'product_fix';
 let _CDM_NEW_WATCHERS = [];          // v22-CW 补丁: 新建消息时勾选的 watcher user_id 列表
 
+// V20260601-perf:列表查询只拉轻量字段 · 不拉 attachments(图)/thread(沟通)大字段
+// 详情打开时再单独拉。三系统(客服/跟单/美工)统一规范
+const CDM_LIST_COLS = 'id,from_system,from_user_id,from_user_name,to_system,to_user_id,to_user_name,category,priority,title,body,related_ref,related_type,related_shop,assigned_to_id,assigned_to_name,assigned_by_id,assigned_by_name,assigned_at_ms,watchers,status,read_by,created_at_ms,updated_at,completed_at_ms,completed_by_id,completed_by_name,payload';
+
+// 把 realtime 推送的整行 row 瘦身成轻量版(去掉 attachments / thread 大字段)
+function _cdmTrimRow(row) {
+  if (!row) return row;
+  const { attachments, thread, ...trimmed } = row;
+  // 保留计数提示(老代码可能依赖判空)
+  trimmed.attachments = Array.isArray(attachments) ? [] : (attachments == null ? null : []);
+  trimmed.thread = Array.isArray(thread) ? [] : (thread == null ? null : []);
+  trimmed._lite = true;  // 标记:大字段未加载 · 详情时按需取
+  return trimmed;
+}
+
 // V20260531-img:全局图片三重判断 + 大图预览(z-index 高于 cdm modal)· 与客服侧规范对齐
 window.cdmIsImage = function(a) {
   if (!a) return false;
@@ -395,7 +410,7 @@ async function cdmLoadMessages() {
   const me = _cdmGetCurrentUser();
   try {
     const { data, error } = await cdmClient
-      .from('cross_dept_messages').select('*')
+      .from('cross_dept_messages').select(CDM_LIST_COLS)
       .or(`to_system.eq.po,and(from_system.eq.po,from_user_id.eq.${me.id})`)
       .order('created_at_ms', { ascending: false }).limit(500);
     if (error) throw error;
@@ -491,17 +506,28 @@ function cdmHandleRealtimeChange(payload) {
   if (!isRelevant) return;
 
   if (payload.eventType === 'INSERT') {
-    if (!CDM_MESSAGES.find(m => m.id === payload.new.id)) CDM_MESSAGES.unshift(payload.new);
+    // V20260601-perf:剥大字段 · 详情打开再按需拉
+    const lite = _cdmTrimRow(payload.new);
+    if (!CDM_MESSAGES.find(m => m.id === lite.id)) CDM_MESSAGES.unshift(lite);
     cdmRender(); cdmUpdateHeaderBadge();
     if (payload.new.to_system === 'po' && payload.new.from_user_id !== me.id) cdmShowNotification(payload.new);
   } else if (payload.eventType === 'UPDATE') {
-    const idx = CDM_MESSAGES.findIndex(m => m.id === payload.new.id);
+    const lite = _cdmTrimRow(payload.new);
+    const idx = CDM_MESSAGES.findIndex(m => m.id === lite.id);
     const oldRow = idx >= 0 ? CDM_MESSAGES[idx] : (payload.old || null);
-    if (idx >= 0) CDM_MESSAGES[idx] = payload.new;
-    else CDM_MESSAGES.unshift(payload.new);
+    if (idx >= 0) CDM_MESSAGES[idx] = lite;
+    else CDM_MESSAGES.unshift(lite);
     cdmRender(); cdmUpdateHeaderBadge();
-    // 如果详情正打开,刷新
-    if (CDM_CURRENT_DETAIL_ID === payload.new.id) cdmRenderDetail(payload.new);
+    // 如果详情正打开 · 重新按需拉 attachments + thread(实时更新)
+    if (CDM_CURRENT_DETAIL_ID === payload.new.id) {
+      // 异步取大字段 · 不阻塞
+      cdmFetchDetailFields(payload.new.id).then(extra => {
+        const merged = { ...lite, ...extra, _lite: false };
+        const i2 = CDM_MESSAGES.findIndex(m => m.id === lite.id);
+        if (i2 >= 0) CDM_MESSAGES[i2] = merged;
+        cdmRenderDetail(merged);
+      });
+    }
     // v22-CW: 别人完成我发出的工单 → owner 收到桌面通知
     const wasNotDone = oldRow && oldRow.status !== 'done';
     const nowDone = payload.new.status === 'done';
@@ -1238,19 +1264,61 @@ async function cdmSubmitNew() {
   }
 }
 
+// V20260601-perf:按需拉详情大字段(attachments + thread)
+async function cdmFetchDetailFields(id) {
+  try {
+    const { data } = await cdmClient
+      .from('cross_dept_messages')
+      .select('attachments,thread')
+      .eq('id', id)
+      .maybeSingle();
+    return {
+      attachments: Array.isArray(data?.attachments) ? data.attachments : [],
+      thread: Array.isArray(data?.thread) ? data.thread : [],
+    };
+  } catch (e) {
+    console.warn('[CDM] 详情大字段加载失败', e.message);
+    return { attachments: [], thread: [] };
+  }
+}
+
 // ─────────────── 详情弹窗 ───────────────
 async function cdmOpenDetail(id) {
   let m = CDM_MESSAGES.find(x => x.id === id);
   if (!m) {
+    // 列表里没有 · 直接查全行(罕见 · 比如刚跳过来)
     try {
       const { data } = await cdmClient.from('cross_dept_messages').select('*').eq('id', id).single();
       if (data) {
-        const idx = CDM_MESSAGES.findIndex(x => x.id === id);
-        if (idx >= 0) CDM_MESSAGES[idx] = data; else CDM_MESSAGES.unshift(data);
         m = data;
+        // 缓存轻量版到列表
+        const lite = _cdmTrimRow(data);
+        const idx = CDM_MESSAGES.findIndex(x => x.id === id);
+        if (idx >= 0) CDM_MESSAGES[idx] = lite; else CDM_MESSAGES.unshift(lite);
       }
     } catch (e) {}
+  } else if (m._lite) {
+    // 列表里只有轻量版 · 按需拉大字段
+    CDM_CURRENT_DETAIL_ID = id;
+    cdmRenderDetail(m);  // 先用轻量版渲染骨架(显示 "加载附件...")
+    document.getElementById('cdmDetailModal')?.classList.add('show');
+    const extra = await cdmFetchDetailFields(id);
+    Object.assign(m, extra, { _lite: false });
+    cdmRenderDetail(m);  // 大字段到了 · 重新渲染
+    
+    // 标已读
+    const me = _cdmGetCurrentUser();
+    const readBy = Array.isArray(m.read_by) ? m.read_by : [];
+    if (m.to_system === 'po' && !readBy.includes(me.id)) {
+      const newReadBy = [...readBy, me.id];
+      try {
+        const { error } = await cdmClient.from('cross_dept_messages').update({ read_by: newReadBy }).eq('id', m.id);
+        if (!error) { m.read_by = newReadBy; cdmRender(); cdmUpdateHeaderBadge(); }
+      } catch (e) {}
+    }
+    return;
   }
+  
   if (!m) { toast('消息不存在', 'err'); return; }
   CDM_CURRENT_DETAIL_ID = id;
   cdmRenderDetail(m);
@@ -2205,7 +2273,7 @@ async function cdmInitHeaderOnly() {
     if (!me.id || me.id === 'unknown') return;
     await Promise.all([cdmLoadShopOwners(), cdmLoadTimeoutConfig()]);
     const { data } = await cdmClient
-      .from('cross_dept_messages').select('*')
+      .from('cross_dept_messages').select(CDM_LIST_COLS)
       .or(`to_system.eq.po,and(from_system.eq.po,from_user_id.eq.${me.id})`)
       .order('created_at_ms', { ascending: false }).limit(500);
     CDM_MESSAGES = data || [];
