@@ -976,6 +976,10 @@ async function openPoForm(salesOrderId, selectedLineItemIds = null) {
     // lineNotesManuallyEdited: { [shopify_line_item_id]: true } — 跟单手动改过则不再自动覆盖
     lineNotes: {},
     lineNotesManuallyEdited: {},
+    // V20260601-desc:per-line 描述字段(中文名/英文名/规格)· 创建 PO 时直接编辑
+    // lineDescriptions: { [liid]: { title_cn, title_en, variant } }
+    // 提交时优先用这里的值,fallback 到 sel.customTitleCn / eff.name_cn / li.title / li.variant_title
+    lineDescriptions: {},
     // V5-W3-2026-05-26 BUG FIX: 跟单改过的 boxNote 不能在 renderPoForm 重渲时被冲掉
     boxNote: '',
     boxNoteManuallyEdited: false,
@@ -1088,6 +1092,36 @@ function renderPoForm() {
             ${fullyAssigned ? '' : `<button onclick="poFormTranslateLine('${li.shopify_line_item_id}')" title="一键翻译:把残留英文规格翻成中文(AI)"
               style="flex-shrink:0; padding:4px 9px; font-size:11px; border:1px solid #7c3aed; background:#7c3aed10; color:#7c3aed; border-radius:4px; cursor:pointer; white-space:nowrap;">🌐 翻译</button>`}
           </div>
+          
+          <!-- V20260601-desc:per-line 描述字段(中文名/英文名/规格)· 创建 PO 时直接改 -->
+          ${fullyAssigned ? '' : (() => {
+            const liid = li.shopify_line_item_id;
+            const d = PO_FORM_STATE.lineDescriptions[liid] || {};
+            const defaultTitleCn = d.title_cn !== undefined ? d.title_cn : ((PO_FORM_STATE.lineItemSelections[liid]?.customTitleCn) || eff.name_cn || '');
+            const defaultTitleEn = d.title_en !== undefined ? d.title_en : (li.title || '');
+            const defaultVariant = d.variant !== undefined ? d.variant : (li.variant_title || '');
+            return `
+            <div style="margin-top:6px; padding:6px 8px; background:rgba(124,58,237,0.04); border:1px dashed rgba(124,58,237,0.3); border-radius:5px;">
+              <div style="font-size:10.5px; color:#7c3aed; font-weight:600; margin-bottom:4px;">✏️ 改描述(打印件 / 订单图用):</div>
+              <div style="display:grid; grid-template-columns:60px 1fr; gap:4px 6px; align-items:center;">
+                <span style="font-size:11px; color:var(--text-secondary);">中文名:</span>
+                <input type="text" value="${escapeHtml(defaultTitleCn)}"
+                  oninput="poFormSetLineDesc('${liid}','title_cn',this.value)"
+                  placeholder="例:玻璃花朵铜质壁灯"
+                  style="padding:4px 7px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card);">
+                <span style="font-size:11px; color:var(--text-secondary);">英文名:</span>
+                <input type="text" value="${escapeHtml(defaultTitleEn)}"
+                  oninput="poFormSetLineDesc('${liid}','title_en',this.value)"
+                  placeholder="例:Brass Floral Glass Sconce"
+                  style="padding:4px 7px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card);">
+                <span style="font-size:11px; color:var(--text-secondary);">规格:</span>
+                <input type="text" value="${escapeHtml(defaultVariant)}"
+                  oninput="poFormSetLineDesc('${liid}','variant',this.value)"
+                  placeholder="例:220V / 黑色 / E27"
+                  style="padding:4px 7px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card);">
+              </div>
+            </div>`;
+          })()}
         </div>
         <div style="position:relative;">
           <input type="number" min="1" max="${sel.remaining}" value="${sel.qty}" placeholder="数量"
@@ -1321,6 +1355,13 @@ function poFormSetLineNote(liid, val) {
   PO_FORM_STATE.lineNotes[liid] = val;
   PO_FORM_STATE.lineNotesManuallyEdited[liid] = true;
 }
+
+// V20260601-desc:per-line 描述字段 setter(中文名 / 英文名 / 规格)
+window.poFormSetLineDesc = function(liid, field, val) {
+  PO_FORM_STATE.lineDescriptions = PO_FORM_STATE.lineDescriptions || {};
+  PO_FORM_STATE.lineDescriptions[liid] = PO_FORM_STATE.lineDescriptions[liid] || {};
+  PO_FORM_STATE.lineDescriptions[liid][field] = val;
+};
 
 // V28t:手动选/输入下单标准(美客户在欧洲用→可改欧规)
 function poFormSetStd(v) {
@@ -1794,18 +1835,19 @@ async function poFormDoSave(groups, common) {
         const li = items.find(x => x.shopify_line_item_id === liid);
         const sel = PO_FORM_STATE.lineItemSelections[liid];
         const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
-        // 用户改过则用 custom 字段，否则用 effective/li 原始字段
+        // V20260601-desc:per-line 描述优先(用户在创建 PO 弹窗里直接改的)· 否则 fallback 旧逻辑
+        const desc = (PO_FORM_STATE.lineDescriptions && PO_FORM_STATE.lineDescriptions[liid]) || {};
         return {
           shopify_line_item_id: liid,
           sku: sel.customSku || eff.sku || li.sku,
-          title_cn: sel.customTitleCn || eff.name_cn || '',
-          title_en: li.title || '',
-          variant: li.variant_title || '',
+          title_cn: (desc.title_cn !== undefined ? desc.title_cn : (sel.customTitleCn || eff.name_cn || '')),
+          title_en: (desc.title_en !== undefined ? desc.title_en : (li.title || '')),
+          variant:  (desc.variant !== undefined ? desc.variant : (li.variant_title || '')),
           image_url: sel.customImageUrl || eff.image_url || li.image_url || '',
           qty: Number(sel.qty),
           price: Number(sel.price),
           subtotal: Number(sel.qty) * Number(sel.price),
-          edited: !!(sel.customSku || sel.customTitleCn || sel.customImageUrl),
+          edited: !!(sel.customSku || sel.customTitleCn || sel.customImageUrl || desc.title_cn !== undefined || desc.title_en !== undefined || desc.variant !== undefined),
           // V5-W3-2026-05-26: per-line 电气标准 + 备注
           electrical_standard: _poStandard,
           line_note: (PO_FORM_STATE.lineNotes && PO_FORM_STATE.lineNotes[liid]) || '',
@@ -3923,7 +3965,7 @@ function renderPoList() {
             ${next ? `<button class="so-action-btn primary" onclick="poAdvance('${p.id}', '${next.value}', '${next.label}')" title="推进到下一步">▶ ${next.label}</button>` : ''}
             ${prev ? `<button class="so-action-btn" onclick="poRevert('${p.id}', '${prev.value}', '${prev.label}')" title="退回上一步">↩ 退回</button>` : ''}
             ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditPrices('${p.id}')" title="修改 PO 内每个产品的数量和单价">✏️ 改价</button>` : ''}
-            ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditDescription('${p.id}')" title="修改产品中文名/英文名/规格/备注（不改数量和价格）">📝 改描述</button>` : ''}
+            <!-- V20260601-desc:移除 [📝 改描述] 按钮 · 改描述已搬到创建 PO 弹窗内每行 · 创建时直接编辑 -->
             <button class="so-action-btn primary" onclick="poQuickCopyImage('${p.id}')" title="一键生成订单图,直接复制到剪贴板,粘贴到供应商群">📋 复制订单图</button>
             <button class="so-action-btn" onclick="poOpenPrint('${p.id}')" title="预览 + 打印 PO(纸质单据 / 也是预览效果最准的方式)">🖨 打印</button>
             ${!isCancelled ? `<button class="so-action-btn danger" onclick="poCancel('${p.id}')">⊘ 取消</button>` : ''}
