@@ -24,7 +24,7 @@
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
 <link rel="preload" href="js/core.js?v=20260531hr" as="script">
 <link rel="preload" href="js/utils.js?v=20260528xi4" as="script">
-<link rel="preload" href="js/shopify.js?v=20260601pub" as="script">
+<link rel="preload" href="js/shopify.js?v=20260601syncall" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -45,7 +45,7 @@
 <script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260527i"></script>
 <script defer src="js/orders.js?v=20260528nu"></script>
-<script defer src="js/shopify.js?v=20260601pub"></script>
+<script defer src="js/shopify.js?v=20260601syncall"></script>
 <script defer src="js/po.js?v=20260601desc"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
 <script defer src="js/inventory.js?v=20260601po"></script>
@@ -6105,6 +6105,8 @@ if ('serviceWorker' in navigator) {
         <button class="btn small" onclick="shopifyQuickRange('yesterday')" title="昨天下的单(继续昨晚没下完的)">📅 昨天</button>
         <button class="btn small" onclick="shopifyQuickRange('week')" title="本周(周一开始)">📅 本周</button>
         <button class="btn small" onclick="shopifyQuickRange('month')" title="本月">📅 本月</button>
+        <span style="border-left:1px solid var(--border-subtle); height:18px; margin:0 4px;"></span>
+        <button class="btn small" onclick="shopifyClearDateRange()" style="background:#fee2e2; color:#991b1b; border-color:#dc2626; font-weight:700;" title="清空日期 · 同步该店所有历史订单(可能较慢 · 分页拉)">📅 全部历史</button>
         <span style="border-left:1px solid var(--border-subtle); height:18px; margin:0 4px;"></span>
         <button class="btn small" onclick="shopifyQuickRange('yesterday_pending')" style="background:#fef3c7; color:#92400e; border-color:#fbbf24;" title="昨天的订单 + 还没下PO的(继续昨晚没下完)">⏰ 昨天没下完</button>
         <button class="btn small" onclick="shopifyQuickRange('today_pending')" style="background:#fef3c7; color:#92400e; border-color:#fbbf24;" title="今天的订单 + 还没下PO的">⏰ 今天没下完</button>
