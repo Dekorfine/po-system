@@ -625,7 +625,7 @@ async function shopifyFetchOrders() {
 
   const from = document.getElementById('salesFetchFrom').value;
   const to = document.getElementById('salesFetchTo').value;
-  const status = document.getElementById('salesFetchStatus').value;
+  const status = 'any';  // V20260601-fetchfix:同步一律抓全部状态(含已完成)· 拉全入库
 
   const btn = document.querySelector('#salesFetchCard .btn.primary');
   const hint = document.getElementById('salesFetchHint');
@@ -677,45 +677,65 @@ async function shopifyFetchOrders() {
 }
 
 // 单店 Shopify 同步核心(无锁 / 无按钮 / 无 reload · 供调度器循环调用)
-// 返回 { count, saved, newProducts }
+// V20260601-fetchfix:时间窗口分片拉取 · 彻底修复抓取不全
+//   背景:Edge Function 不支持 since_id 分页(console 实锤)· 大店翻页失效只拿第一页 + 45 秒超时
+//   方案:把日期范围切成窗口(初始 7 天)· 逐窗用 created_at_min/max 拉(每窗 ≤250 一页拉完)
+//        某窗满 250(疑似截断)→ 自动二分细窗重拉 → 保证拉全 · 单窗数据小 → 不超时
+//        status 固定 any → 不漏已完成 / 已关闭单
+// 返回 { count, saved, newProducts, truncated }
 async function _syncShopifyStore(shop, { from, to, status }, hint, prefix = '') {
-  const baseParams = { status, limit: 250, order: 'id asc', auto_save: true };
-  if (from) baseParams.created_at_min = from + 'T00:00:00Z';
-  if (to) baseParams.created_at_max = to + 'T23:59:59Z';
+  const fetchStatus = status || 'any';
+  const DAY = 864e5;
+  const endDate   = to   ? new Date(to   + 'T23:59:59Z') : new Date();
+  const startDate = from ? new Date(from + 'T00:00:00Z') : new Date(endDate.getTime() - 365 * DAY);
 
-  let totalCount = 0, totalSaved = 0, totalNewProducts = 0, sinceId = 0, page = 1;
-  const MAX_PAGES = 50;  // 50 × 250 = 12500 单 / 单店单次
+  // 初始按 7 天切窗(从最新往回)· 用栈 · 满 250 时二分压回
+  const stack = [];
+  let c = new Date(endDate);
+  while (c > startDate) {
+    let st = new Date(c.getTime() - 7 * DAY);
+    if (st < startDate) st = new Date(startDate);
+    stack.push([new Date(st), new Date(c)]);
+    c = st;
+  }
 
-  while (page <= MAX_PAGES) {
-    const params = { ...baseParams };
-    if (sinceId > 0) params.since_id = sinceId;
-    if (hint) hint.textContent = `${prefix}第 ${page} 页…${totalCount > 0 ? ` 已拉 ${totalCount} 单` : ''}`;
+  let totalCount = 0, totalSaved = 0, totalNewProducts = 0, reqCount = 0;
+  const MAX_REQ = 400;  // 安全上限(7 天窗 ≈ 可覆盖 7+ 年 · 含二分细窗仍够用)
+
+  while (stack.length && reqCount < MAX_REQ) {
+    const [ws, we] = stack.pop();
+    const params = {
+      status: fetchStatus, limit: 250, auto_save: true,
+      created_at_min: ws.toISOString(),
+      created_at_max: we.toISOString(),
+    };
+    if (hint) hint.textContent = `${prefix}${ws.toISOString().slice(0,10)} ~ ${we.toISOString().slice(0,10)}…${totalCount > 0 ? ` 已 ${totalCount} 单` : ''}`;
 
     const r = await SHOPIFY.call('list_orders', params, shop);
+    reqCount++;
     const orders = Array.isArray(r.orders) ? r.orders : [];
     const batchCount = orders.length || r.count || 0;
-    totalCount += batchCount;
-    if (typeof r.saved === 'number') totalSaved += r.saved;
-    if (typeof r.new_products === 'number') totalNewProducts += r.new_products;
 
-    if (batchCount === 0) break;
-    if (batchCount < 250) break;
-
-    const lastId = orders[orders.length - 1]?.id;
-    if (!lastId) break;
-    if (lastId === sinceId) {
-      console.warn(`[syncOrders] ${shop} since_id 没前进(${lastId}) · 后端可能不支持分页`);
-      toast(`⚠ ${shop} 后端不支持分页 · 只拿到第 1 页`, 'warn', 4000);
-      break;
+    // 满 250 且窗口 > 1 天 → 二分细窗重拉(避免截断 · 本次不累计)
+    const spanMs = we - ws;
+    if (batchCount >= 250 && spanMs > DAY) {
+      const mid = new Date(ws.getTime() + Math.floor(spanMs / 2));
+      stack.push([new Date(ws), mid]);
+      stack.push([new Date(mid.getTime()), new Date(we)]);
+      continue;
     }
-    sinceId = lastId;
-    page++;
+
+    totalCount += batchCount;
+    if (typeof r.saved === 'number')        totalSaved += r.saved;
+    if (typeof r.new_products === 'number') totalNewProducts += r.new_products;
   }
-  return { count: totalCount, saved: totalSaved, newProducts: totalNewProducts };
+
+  const truncated = reqCount >= MAX_REQ && stack.length > 0;
+  if (truncated) console.warn(`[syncOrders] ${shop} 达到请求上限 ${MAX_REQ} · 可能未拉全 · 建议缩小日期范围`);
+  return { count: totalCount, saved: totalSaved, newProducts: totalNewProducts, truncated };
 }
 
-// 单店 WooCommerce 同步核心(无锁 / 无按钮 / 无 reload)
-// 返回 { count, saved, error? } · 部分失败不抛错,通过 error 字段上报调度器
+
 async function _syncWooStore(storeMeta, { from, to, status }, hint, prefix = '') {
   const baseParams = { per_page: 100 };
   if (status && status !== 'any') {
@@ -1690,7 +1710,14 @@ function _orderMatchesRule(o, rule) {
 // 计数遵循"所见即所得"原则：显示**当前 sub-tab 范围内**命中的数量
 // 同时缓存全局命中数（不限 sub-tab）到 SHOPIFY._ruleGlobalCounts，用于空结果引导
 function shopifyRefreshRuleCounts() {
-  const all = SHOPIFY._orders || [];
+  // V20260601-fetchfix:规则计数也按店铺 chip + 快筛日期过滤 · 和列表对齐(消除"标准运输460"这类全店串数)
+  let all = SHOPIFY._orders || [];
+  if (SHOPIFY_SEARCH && SHOPIFY_SEARCH.shops && SHOPIFY_SEARCH.shops.size > 0) {
+    all = all.filter(o => SHOPIFY_SEARCH.shops.has(o.shop_domain || ''));
+  }
+  if (typeof SHOPIFY_DATE_PRESET !== 'undefined' && SHOPIFY_DATE_PRESET && SHOPIFY_DATE_PRESET !== 'all' && typeof isDateInRange === 'function') {
+    all = all.filter(o => isDateInRange(o.shopify_created_at || o.created_at, SHOPIFY_DATE_PRESET));
+  }
   const filter = SHOPIFY._currentFilter || 'all';
   // 当前 sub-tab 范围
   const currentScope = filter === 'all'

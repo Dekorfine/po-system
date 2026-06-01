@@ -10,6 +10,25 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260601-fetchfix',
+    date: '2026-06-01',
+    type: 'fix',
+    title: '🛰️ 订单抓取彻底修复 · 所有店铺拉全(时间窗口分片)',
+    notes: [
+      '🎯 根因:Edge Function 不支持 since_id 分页(console 实锤 since_id 没前进),',
+      '   大店翻页失效只拿第一页;单次拉太多 → 45 秒超时(dekorfine/docolight)。',
+      '✅ 重写 _syncShopifyStore:时间窗口分片',
+      '   · 日期范围切成 7 天窗口 · 逐窗用 created_at_min/max 拉(每窗 ≤250 一页拉完)',
+      '   · 某窗满 250(疑似截断)→ 自动二分细窗重拉 → 保证拉全',
+      '   · 单窗数据小 → 不再 45 秒超时 · 不依赖任何后端分页支持',
+      '   · status 固定 any → 不漏已完成/已关闭单(MH 115 单不再只抓 79)',
+      '🔢 规则计数(有备注/标准运输/未配对SKU)也按店铺+日期过滤 · 和列表对齐',
+      '   · 消除"仅显示MH 却显示 标准运输460"这类全店串数的困惑',
+      'ℹ️ 纯前端修复 · 不需要改 shopify-api Edge Function',
+    ],
+    files: ['shopify.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260601-loadfix',
     date: '2026-06-01',
     type: 'fix',
