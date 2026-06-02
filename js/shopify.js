@@ -134,7 +134,7 @@ const SHOPIFY = {
     const shops = (opts.shops || []).filter(Boolean);
     // V20260602-perf:精简列(排除 raw_payload 大字段)· Shopify 列表/催单都不用它 · egress 大幅下降
     // 列错会 400 → 自动回退 select(*) 兜底 · WooCommerce 详情/运费用到的 raw_payload 之后按需补
-    const LEAN = 'id,shopify_order_number,shopify_order_id,shop_domain,platform,customer_name,customer_email,customer_phone,total_price,currency,financial_status,fulfillment_status,shipping_address,line_items,shopify_created_at,note,local_status,updated_at,created_at,deleted_at';
+    const LEAN = 'id,shop_domain,shopify_order_id,shopify_order_number,customer_name,customer_email,customer_phone,shipping_address,line_items,financial_status,fulfillment_status,local_status,total_price,currency,customer_note,internal_note,shopify_created_at,imported_by,imported_at,updated_at,deleted_at,deleted_by,platform,wp_order_id,store_label,store_code';
     let all = [];
     let offset = 0;
     let useLean = true;

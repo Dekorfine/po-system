@@ -26,7 +26,7 @@ async function loadChaseOrders(force = false) {
   try {
     // V20260602-perf:禁止 select('*') · 只取列表/弹窗渲染实际用到的列(orders 表本身无 base64/大字段,但减少传输)
     // 列名写错会 400 → 自动回退 select('*') 兜底
-    const COLS = 'id,agent_id,order_no,site,product,supplier,status,order_date,promised_date,shipped_date,arrived_date,next_follow,notes,screenshots,followups,products,qty,po_number,line_items,created_at,updated_at,deleted_at,deleted_by';
+    const COLS = 'id,agent_id,order_no,site,product,supplier,status,order_date,promised_date,shipped_date,arrived_date,next_follow,notes,screenshots,followups,created_at,updated_at,deleted_at,deleted_by,shopify_order_id,shopify_order_name,shopify_shop_domain,customer_name,customer_email,shipping_address,shipping_country,order_value,order_currency,shopify_financial_status,shopify_fulfillment_status,shopify_order_number,line_items,source,po_number,box_note,total_amount,freight,other_fees,creator_name,sales_order_id,note,approved_by,approval_note,finance_deposit_paid,finance_deposit_paid_at,finance_payment_completed,finance_payment_completed_at,finance_total_paid,finance_recorded,finance_order_uuid,finance_recorded_at,qty,products';
     let q = sb.from('orders').select(COLS)
       .is('deleted_at', null);
     // V20260526p: 催单完全开放 · 所有人可看 + 改所有催单(应业务需求 · 之前只看自己的)
