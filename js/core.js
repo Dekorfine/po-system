@@ -159,6 +159,8 @@ const DATA = {
       description: r.description || '',
       createdDate: r.created_date || null,
       screenshots: r.screenshots || [],
+      orderNo: r.order_no || '',             // V20260602
+      products: r.products || [],            // V20260602
       // V4 R2 跟进字段
       nextFollowDate: r.next_follow_date || '',
       deletedAt: r.deleted_at || null, deletedBy: r.deleted_by || null,
@@ -252,6 +254,8 @@ const DATA = {
       description: i.description || null,
       created_date: i.createdDate || null,
       screenshots: i.screenshots || [],
+      order_no: i.orderNo || null,           // V20260602:关联订单号
+      products: i.products || [],            // V20260602:关联产品(多选)[{spec,qty,image_url,sku}]
       // V4 R2 跟进字段
       next_follow_date: i.nextFollowDate || null,
       deleted_at: i.deletedAt || null, deleted_by: i.deletedBy || null,
@@ -2211,7 +2215,12 @@ function loadAllData() {
   // 同时预加载 PRODUCTS_CACHE + SHOPIFY._productMap，让催单/售后能通过 SKU 反查产品图
   if (typeof SHOPIFY !== 'undefined' && SHOPIFY.loadStores && SHOPIFY.loadOrdersFromDB) {
     SHOPIFY.loadStores()
-      .then(() => SHOPIFY.loadOrdersFromDB(false))
+      .then(() => {
+        // V20260601-loadfix3:进页面用界面默认范围读库(近30天)· 快 + 和列表一致 · 不依赖点同步
+        const _from = document.getElementById('salesFetchFrom')?.value || '';
+        const _to   = document.getElementById('salesFetchTo')?.value || '';
+        return SHOPIFY.loadOrdersFromDB(false, { from: _from, to: _to });
+      })
       .then(async () => {
         // 收集所有订单的 SKU，预加载产品图 map（催单/售后通过 SKU 反查时要用）
         const allSkus = new Set();

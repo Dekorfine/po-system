@@ -438,7 +438,7 @@ function renderIssueCard(it, i) {
   const catMeta = _getIssueCategoryMeta(it);
   const cat = catMeta ? `${catMeta.icon} ${catMeta.label}` : (it.issueType || '—');
   const desc = (it.description || it.requirement || '').slice(0, 60);
-  const shots = it.screenshots || [];
+  const shots = [...new Set([...((it.products||[]).map(p=>p.image_url).filter(Boolean)), ...(it.screenshots||[])])];
   const cover = shots[0];
   const siteBadge = it.site ? `<span class="site-badge s-${it.site}">${escapeHtml(it.site)}</span>` : '';
   const overdue = _isIssueOverdue(it);
@@ -499,7 +499,7 @@ function renderIssueRow(it, i) {
     ? escapeHtml(desc.slice(0, 100)) + (desc.length > 100 ? '...' : '')
     : '<span style="color:var(--text-tertiary);">未填写描述</span>';
   // V20260601-issuefix #6:行内问题截图缩略图(模仿售后 · 点击看大图)
-  const shots = it.screenshots || [];
+  const shots = [...new Set([...((it.products||[]).map(p=>p.image_url).filter(Boolean)), ...(it.screenshots||[])])];
   const thumbHtml = shots.length > 0
     ? `<div style="display:flex; gap:3px; margin-top:5px; flex-wrap:wrap;">${shots.slice(0,3).map(sc => `<img src="${sc}" style="width:42px; height:42px; object-fit:cover; border-radius:4px; cursor:zoom-in; border:1px solid var(--border);" onclick="event.stopPropagation(); viewImage('${sc}')">`).join('')}${shots.length>3 ? `<span style="font-size:10px; color:var(--text-tertiary); align-self:center;">+${shots.length-3}</span>` : ''}</div>`
     : '';
@@ -572,10 +572,13 @@ function addIssue() {
     nextFollowDate: '',  // R2: 下次跟进日期
     followups: [],
     screenshots: [],
+    orderNo: '',          // V20260602:关联订单号
+    products: [],         // V20260602:抓取选中的产品
   };
   
   _renderIssueModal({ isDraft: true });
   document.getElementById('issueModal').classList.add('show');
+  if (typeof issAutoFetchProducts === 'function') issAutoFetchProducts();
 }
 
 // V20260601-issuefix:重渲前把输入框里已敲的值存进草稿 · 否则点问题大类/加图片会清空供应商和详细描述
@@ -589,6 +592,8 @@ function _captureIssueDraftFromDOM() {
   if (sup)  _issueDraft.supplier = sup.value;
   if (cd)   _issueDraft.createdDate = cd.value;
   if (desc) _issueDraft.description = desc.value;
+  const ono = document.getElementById('ismOrderNo');
+  if (ono) _issueDraft.orderNo = ono.value;
 }
 
 async function saveDraftIssue() {
@@ -621,6 +626,8 @@ async function saveDraftIssue() {
     status: 'pending',
     followups: [],
     screenshots: _issueDraft.screenshots || [],  // V20260601-issuefix:保存草稿里的图片(原来写死 [] 把图丢了)
+    orderNo: _issueDraft.orderNo || '',          // V20260602
+    products: _issueDraft.products || [],        // V20260602
     createdAt: new Date().toISOString(),
   };
   
@@ -752,6 +759,7 @@ function openIssueModal(id, agent) {
   
   _renderIssueModal({ isDraft: false });
   document.getElementById('issueModal').classList.add('show');
+  if (typeof issAutoFetchProducts === 'function') issAutoFetchProducts();
 }
 
 // ============================================================
@@ -874,8 +882,10 @@ function _renderIssueModal({ isDraft }) {
                  style="padding:6px 8px; font-size:13px; width:100%;">
         </div>
         <div class="form-group" style="margin-bottom:0;">
-          <label style="font-size:11px;">问题类型筛选</label>
-          <input type="text" placeholder="自动按下方选择" disabled style="padding:6px 8px; font-size:13px; width:100%; background:#f9fafb; color:#9ca3af;" value="${(data.subTags || []).join(', ') || '在下方选'}">
+          <label style="font-size:11px;">订单号（自动抓产品）</label>
+          <input type="text" id="ismOrderNo" value="${escapeHtml(data.orderNo || '')}" placeholder="填订单号自动抓产品"
+                 oninput="issOrderNoChanged(this.value)"
+                 style="padding:6px 8px; font-size:13px; width:100%;">
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label style="font-size:11px;">问题发起日期</label>
@@ -885,6 +895,9 @@ function _renderIssueModal({ isDraft }) {
         </div>
       </div>
       
+      <!-- V20260602:抓取的产品(多选 · 自动填图和规格) -->
+      <div id="issFetchPanel" style="margin-bottom:12px; padding:10px 12px; background:var(--bg-elevated); border-radius:8px;"></div>
+
       <!-- 问题大类 + 状态 一行 -->
       <div style="display:grid; grid-template-columns:2fr 1fr; gap:10px; margin-bottom:12px;">
         <div style="padding:10px 12px; background:var(--bg-elevated); border-radius:8px;">
@@ -958,6 +971,148 @@ function _renderIssueModal({ isDraft }) {
 // ============================================================
 // 编辑态字段同步
 // ============================================================
+// ============================================================
+// V20260602:供应商问题模块 · 自动抓取订单产品(复用催单逻辑)
+// ============================================================
+let _issFetched = [], _issFetchTimer = null, _issState = 'empty', _issNo = '', _issLastSrc = '';
+
+function _issTarget() { return _issueDraft ? _issueDraft : (typeof currentIssue === 'function' ? currentIssue() : null); }
+function _issPersist(updater) {
+  if (_issueDraft) updater(_issueDraft);
+  else if (typeof persistCurrentIssue === 'function') persistCurrentIssue(updater);
+}
+
+function issOrderNoChanged(value) {
+  if (_issueDraft) _issueDraft.orderNo = value;
+  else _issPersist(it => it.orderNo = value);
+  clearTimeout(_issFetchTimer);
+  _issFetchTimer = setTimeout(() => issAutoFetchProducts(), 600);
+}
+
+function issAutoFetchProducts() {
+  const t = _issTarget();
+  const no = (document.getElementById('ismOrderNo')?.value || (t && t.orderNo) || '').trim().replace(/^#/, '');
+  const panel = document.getElementById('issFetchPanel');
+  _issNo = no;
+  if (!no) { _issFetched = []; _issState = 'empty'; if (panel) issRenderFetchPanel(); return; }
+
+  let lineItems = [], src = '';
+  if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
+    const pos = PO_LIST.filter(pp => String(pp.po_number||'').trim()===no || String(pp.order_no||'').trim()===no);
+    const poItems = pos.flatMap(pp => pp.line_items || []);
+    if (poItems.length) { lineItems = poItems; src = pos.length > 1 ? `PO（${pos.length}张·已拆分）` : 'PO'; }
+  }
+  if (lineItems.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
+    const so = SHOPIFY._orders.find(x => String(x.shopify_order_number||'').replace('#','')===no || String(x.name||'').replace('#','')===no);
+    if (so && so.line_items && so.line_items.length) { lineItems = so.line_items; src = '销售单（旧系统订单）'; }
+  }
+  lineItems = (lineItems||[]).filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
+
+  const productMap = (typeof SHOPIFY !== 'undefined' && SHOPIFY._productMap) ? SHOPIFY._productMap : {};
+  _issFetched = lineItems.map(li => {
+    const rawSpec = li.variant || li.variant_title || li.title_cn || li.title_en || li.title || '';
+    let spec = (typeof _cleanFetchedSpec === 'function') ? _cleanFetchedSpec(li, rawSpec) : rawSpec;
+    let img = li.image_url || li.image || '';
+    if (!img && li.sku && productMap[li.sku] && productMap[li.sku].image_url) img = productMap[li.sku].image_url;
+    if (!img && li.sku && typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) {
+      const pp = PRODUCTS_CACHE.effectiveBySku(li.sku); if (pp && pp.image_url) img = pp.image_url;
+    }
+    const cur = (t && t.products) || [];
+    const checked = cur.some(x => (x.sku && x.sku===li.sku) || (x.spec && x.spec===spec));
+    return { spec, qty: li.qty || '', image_url: img, sku: li.sku || '', _checked: checked };
+  });
+  _issState = (_issFetched.length === 0) ? 'nomatch' : 'ok';
+  if (_issFetched.length === 1 && (!(t && t.products) || t.products.length === 0)) { _issFetched[0]._checked = true; issCommitProducts(); }
+  _issLastSrc = src;
+  issRenderFetchPanel();
+  issTranslateRemaining();
+}
+
+async function issManualFetch() {
+  const t = _issTarget();
+  const no = (document.getElementById('ismOrderNo')?.value || (t && t.orderNo) || '').trim().replace(/^#/, '');
+  if (!no) { alert('请先填订单号'); return; }
+  const site = document.getElementById('ismSite')?.value || (t && t.site);
+  const meta = (typeof SHOPIFY !== 'undefined' && SHOPIFY.STORES_META) ? SHOPIFY.STORES_META.find(m => m.site_code === site) : null;
+  const shop = meta ? meta.domain : null;
+  const panel = document.getElementById('issFetchPanel');
+  if (!shop) { if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--danger);">⚠ 站点 ${escapeHtml(site||'')} 无对应 Shopify 店铺</div>`; return; }
+  if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--text-secondary);padding:6px 0;">⏳ 正在从 Shopify 后台拉取订单「${escapeHtml(no)}」…</div>`;
+  try {
+    const r = await SHOPIFY.call('list_orders', { name: no, status: 'any', limit: 10, auto_save: false }, shop, 30000);
+    const orders = Array.isArray(r.orders) ? r.orders : [];
+    const ord = orders.find(x => String(x.name||'').replace('#','')===no) || orders[0];
+    let lineItems = (ord && ord.line_items) ? ord.line_items : [];
+    lineItems = lineItems.filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
+    if (lineItems.length === 0) { _issFetched=[]; _issState='nomatch'; _issNo=no; if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--warning);padding:4px 0;">⚠ Shopify 后台也没查到订单「${escapeHtml(no)}」的产品</div>`; return; }
+    const productMap = (SHOPIFY._productMap) || {};
+    _issFetched = lineItems.map(li => {
+      const rawSpec = li.variant_title || li.variant || li.title || '';
+      let spec = (typeof _cleanFetchedSpec === 'function') ? _cleanFetchedSpec(li, rawSpec) : rawSpec;
+      let img = li.image_url || '';
+      if (!img && li.sku && productMap[li.sku] && productMap[li.sku].image_url) img = productMap[li.sku].image_url;
+      const cur = (t && t.products) || [];
+      const checked = cur.some(x => (x.sku && x.sku===li.sku) || (x.spec && x.spec===spec));
+      return { spec, qty: li.quantity || li.qty || '', image_url: img, sku: li.sku || '', _checked: checked };
+    });
+    _issState='ok'; _issLastSrc='Shopify后台'; _issNo=no;
+    if (_issFetched.length===1 && (!(t && t.products) || t.products.length===0)) { _issFetched[0]._checked=true; issCommitProducts(); }
+    issRenderFetchPanel();
+    issTranslateRemaining();
+  } catch (e) {
+    if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--danger);padding:4px 0;">❌ 后台拉取失败:${escapeHtml(e.message||String(e))}</div>`;
+  }
+}
+
+function issRenderFetchPanel() {
+  const panel = document.getElementById('issFetchPanel'); if (!panel) return;
+  const btn = '<button type="button" class="btn small" onclick="issManualFetch()" style="padding:3px 10px;font-size:11px;margin-left:8px;">📥 从 Shopify 后台拉取</button>';
+  if (_issState === 'empty' || !_issNo) {
+    panel.innerHTML = '<div style="font-size:11.5px;color:var(--text-secondary);padding:2px 0;">👆 填<b>订单号</b> → 自动从 PO/销售单抓产品,勾选自动填入产品图和规格' + btn + '</div>';
+    return;
+  }
+  if (_issState === 'nomatch' || !_issFetched.length) {
+    panel.innerHTML = `<div style="font-size:11.5px;color:var(--warning);padding:4px 0;">⚠ 本地没找到订单「<b>${escapeHtml(_issNo)}</b>」· 旧订单可点右边从后台拉` + btn + `</div>`;
+    return;
+  }
+  const allChecked = _issFetched.every(p => p._checked);
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;">
+      <div style="font-size:11.5px;color:var(--text-secondary);font-weight:600;">📥 订单「${escapeHtml(_issNo)}」的产品(${_issLastSrc||'订单'})· 勾选问题产品 → 自动填图+规格</div>
+      <div>
+        <button type="button" class="btn small" onclick="issToggleAll()" style="padding:3px 10px;font-size:11px;">${allChecked?'取消全选':'全选'}</button>
+        <button type="button" class="btn small" onclick="issManualFetch()" style="padding:3px 10px;font-size:11px;margin-left:6px;">📥 后台重拉</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      ${_issFetched.map((p,i)=>`
+        <label style="display:flex;align-items:center;gap:7px;border:1.5px solid ${p._checked?'var(--accent)':'var(--border)'};border-radius:8px;padding:6px 9px;cursor:pointer;background:${p._checked?'rgba(37,99,235,0.08)':'var(--bg-card)'};">
+          <input type="checkbox" ${p._checked?'checked':''} onchange="issToggleFetched(${i})">
+          ${p.image_url?`<img src="${p.image_url}" style="width:48px;height:48px;object-fit:cover;border-radius:5px;">`:'<span style="font-size:20px;">📷</span>'}
+          <span style="font-size:12px;max-width:240px;line-height:1.35;">${escapeHtml(p.spec||'(无规格)')}${p.qty?` · <b style="color:#dc2626;">×${p.qty}</b>`:''}</span>
+        </label>`).join('')}
+    </div>`;
+}
+
+function issToggleFetched(i) { if (!_issFetched[i]) return; _issFetched[i]._checked = !_issFetched[i]._checked; issCommitProducts(); issRenderFetchPanel(); }
+function issToggleAll() { const tg = !_issFetched.every(p=>p._checked); _issFetched.forEach(p=>p._checked=tg); issCommitProducts(); issRenderFetchPanel(); }
+function issCommitProducts() {
+  const selected = _issFetched.filter(p=>p._checked).map(p=>({spec:p.spec,qty:p.qty,image_url:p.image_url,sku:p.sku}));
+  _issPersist(t => { t.products = selected; });
+  if (!_issueDraft) { if (typeof renderIssues==='function') renderIssues(); }
+}
+async function issTranslateRemaining() {
+  if (typeof _aiTranslateSpec !== 'function') return;
+  const need = _issFetched.filter(p => { if(!p.spec)return false; const en=(p.spec.match(/[A-Za-z]{3,}/g)||[]).length; const cn=(p.spec.match(/[\u4e00-\u9fa5]/g)||[]).length; return en>0 && cn/Math.max(p.spec.length,1)<0.5; });
+  if (need.length === 0) return;
+  try {
+    const numbered = need.map((p,i)=>`[${i+1}] ${p.spec}`).join('\n');
+    const result = await _aiTranslateSpec(numbered);
+    (result.split('\n').filter(l=>l.trim())).forEach(line=>{ const m=line.match(/^\[(\d+)\]\s*(.+)$/); if(m){const idx=parseInt(m[1])-1; if(need[idx])need[idx].spec=m[2].trim();}});
+    issCommitProducts(); issRenderFetchPanel();
+  } catch(e) { console.warn('[问题 AI 翻译兜底失败]', e.message||e); }
+}
+
 function currentIssue() {
   if (!_currentItemId) return null;
   const agent = window._currentItemAgent || CURRENT_AGENT;
