@@ -22,25 +22,25 @@
 <link rel="preconnect" href="https://xyhbwqugbnowfjuhqhsj.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
-<link rel="preload" href="js/core.js?v=20260602perf" as="script">
+<link rel="preload" href="js/core.js?v=20260602perf2" as="script">
 <link rel="preload" href="js/utils.js?v=20260602chase13" as="script">
 <link rel="preload" href="js/shopify.js?v=20260602perf5" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="js/core.js?v=20260602perf"></script>
+<script defer src="js/core.js?v=20260602perf2"></script>
 <script defer src="js/utils.js?v=20260602chase13"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260602perf3"></script>
+<script defer src="js/help.js?v=20260602asfetch1"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
 <script defer src="js/purchases.js"></script>
 <script defer src="js/analytics.js"></script>
 <script defer src="js/trash.js"></script>
-<script defer src="js/aftersales.js?v=20260528s"></script>
+<script defer src="js/aftersales.js?v=20260602asfetch1"></script>
 <script defer src="js/aftersales-shared.js?v=20260531ase2"></script>
 <script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260527i"></script>
@@ -7702,9 +7702,13 @@ if ('serviceWorker' in navigator) {
         </select>
       </div>
       <div class="form-group" style="margin-bottom:0;">
-        <label style="font-size:11px;">订单号 *</label>
-        <input type="text" class="form-control mono" id="asmOrderNo" placeholder="先选网站" oninput="onAfterField('orderNo', this.value)" style="padding:6px 8px; font-size:13px;">
+        <label style="font-size:11px;">订单号 *(多个用 / 隔开)</label>
+        <input type="text" class="form-control mono" id="asmOrderNo" placeholder="先选网站 · 填订单号自动抓产品" oninput="afOrderNoChanged(this.value)" style="padding:6px 8px; font-size:13px;">
         <div id="asmOrderNoHint" style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px; display: none;"></div>
+      </div>
+      <!-- V20260602:售后订单产品抓取面板(全宽)-->
+      <div class="form-group" style="margin-bottom:0; grid-column:1 / -1;">
+        <div id="asmFetchPanel" style="background:var(--bg-subtle,rgba(0,0,0,0.02));border:1px dashed var(--border);border-radius:8px;padding:8px 10px;"></div>
       </div>
       <div class="form-group" style="margin-bottom:0; display:none;">
         <label style="font-size:11px;">产品 / SKU</label>
