@@ -10,6 +10,21 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260602-chase',
+    date: '2026-06-02',
+    type: 'feature',
+    title: '🔗 催单自动抓产品 + 多选 + 数量 + 过滤保险',
+    notes: [
+      '🐛 过滤"保险/运费险"行:产品图不再被保险盾牌图占位(_isInsuranceLineItem)',
+      '✨ 催单 modal 填订单号→自动抓产品(先 PO 后销售单)· 过滤保险',
+      '✨ 多 SKU 时勾选要催的(可多选 · 一条催单对多个产品)',
+      '✨ 规格自动标准化(复用 PO extractVariantInfo):英文→中文 · 英寸→cm · 重复尺寸只留一个',
+      '✨ 新建催单表单加"数量"字段(DB orders 加 qty/products 列 · 见随附 SQL)',
+      '📤 导出优先用勾选的产品(规格已标准化 · 不含 SKU/标题)',
+    ],
+    files: ['orders.js', 'utils.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260602-export',
     date: '2026-06-02',
     type: 'feature',

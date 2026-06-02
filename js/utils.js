@@ -520,6 +520,23 @@ function viewImage(src) {
 // 输出：[image_url, ...] 数组
 // 实现：先通过 orderNo 找到订单 → 拿出 line_items 的 SKU 列表 → 
 //      按 SKU 反查 SHOPIFY._productMap 或 PRODUCTS_CACHE 拿到产品图
+// ============================================================
+// V20260602:判断 line item 是否是"保险/运费险/小费"等非产品项(要从产品图/抓取里过滤)
+// ============================================================
+function _isInsuranceLineItem(li) {
+  if (!li) return false;
+  const t = [li.title, li.title_cn, li.title_en, li.name, li.variant, li.sku]
+    .filter(Boolean).join(' ').toLowerCase();
+  if (!t) return false;
+  const kw = [
+    'insurance', 'protection', 'route', 'order protection', 'shipping protection',
+    'package protection', 'warranty', 'assurance', 'guarantee', 'seel',
+    'tip', 'donation', 'carbon', 'priority processing', 'priority shipping',
+    '保险', '运费险', '运输险', '运输保险', '保价', '保障', '小费', '碳中和', '优先',
+  ];
+  return kw.some(k => t.includes(k));
+}
+
 function _getRelatedOrderImages(orderNo) {
   if (!orderNo) return [];
   const cleanNo = String(orderNo).trim().replace(/^#/, '');
@@ -545,6 +562,8 @@ function _getRelatedOrderImages(orderNo) {
     if (po && po.line_items) lineItems = po.line_items;
   }
   
+  // V20260602:过滤掉保险/运费险等非产品项 · 否则产品图会被保险图占位
+  lineItems = (lineItems || []).filter(li => !_isInsuranceLineItem(li));
   if (lineItems.length === 0) return [];
   
   // 通过 SKU 反查产品图（line_items 本身没有 image_url 字段）
@@ -1947,12 +1966,13 @@ function _renderExportTableHTML(items, type) {
     const date = _fd(item.orderDate || item.created_at || item.createdDate);
     const statusLabel = (typeof ORDER_STATUS_LABELS !== 'undefined' && ORDER_STATUS_LABELS[item.status]) || item.status || '';
     const baseNote = item.notes || item.box_note || '';
-    const lis = item._isPO ? item.lineItems : (Array.isArray(item.line_items) ? item.line_items : null);
+    const lis = (Array.isArray(item.products) && item.products.length) ? item.products
+      : (item._isPO ? item.lineItems : (Array.isArray(item.line_items) ? item.line_items : null));
     if (lis && lis.length > 0) {
       lis.forEach(li => rows.push({
         date, supplier,
         img: li.image_url || li.image || '',
-        spec: li.variant || '',
+        spec: li.spec || li.variant || '',
         qty: li.qty || '',
         note: [li.note || li.line_note, baseNote].filter(Boolean).join(' · '),
         status: statusLabel,

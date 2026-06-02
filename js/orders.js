@@ -75,6 +75,8 @@ function _toChaseOrder(row, userIdToName) {
     createdAt: row.created_at,
     totalAmount: parseFloat(row.total_amount) || 0,
     lineItems: row.line_items || [],
+    qty: (row.qty != null ? row.qty : null),          // V20260602:催单数量
+    products: row.products || [],                     // V20260602:多选产品 [{spec,qty,image_url,sku}]
     poNumber: row.po_number,
     salesOrderId: row.sales_order_id,
   };
@@ -1065,6 +1067,7 @@ function openOrderModal(id, agent) {
   document.getElementById('omSite').value = o.site || '';
   document.getElementById('omOrderNo').value = o.orderNo || '';
   document.getElementById('omProduct').value = o.product || '';
+  const _omQtyEl = document.getElementById('omQty'); if (_omQtyEl) _omQtyEl.value = (o.qty != null ? o.qty : '');
   document.getElementById('omSupplier').value = o.supplier || '';
   document.getElementById('omNotes').value = o.notes || '';
   document.getElementById('omOrderDate').value = o.orderDate || '';
@@ -1088,6 +1091,8 @@ function openOrderModal(id, agent) {
 
   renderOrderModalContent();
   document.getElementById('orderModal').classList.add('show');
+  // V20260602:打开即自动抓取原始订单产品(先 PO 后销售单 · 过滤保险)
+  if (typeof omAutoFetchProducts === 'function') omAutoFetchProducts();
 }
 
 function renderOrderModalContent() {
@@ -1166,6 +1171,8 @@ function persistCurrentOrder(updater, immediate = false) {
     next_follow: o.nextFollow || null,
     screenshots: o.screenshots || [],
     followups: o.followups || [],
+    qty: (o.qty != null && o.qty !== '' ? Number(o.qty) : null),   // V20260602
+    products: o.products || [],                                    // V20260602
     updated_at: new Date().toISOString(),
   };
   // 备注字段分流（旧 orders 表两个字段同时存在：notes 旧手动用，note PO 用）
@@ -1179,6 +1186,104 @@ function persistCurrentOrder(updater, immediate = false) {
   };
   if (immediate) return p.then(handler);
   p.then(handler);
+}
+
+// ============================================================
+// V20260602:催单自动抓取原始订单产品(先 PO 后销售单)· 过滤保险 · 规格标准化 · 多选
+// ============================================================
+let _omFetched = [];
+let _omFetchTimer = null;
+let _omLastSrc = '';
+
+function omOrderNoChanged(value) {
+  onOrderField('orderNo', value);
+  clearTimeout(_omFetchTimer);
+  _omFetchTimer = setTimeout(() => omAutoFetchProducts(), 600);
+}
+
+function omQtyChanged(value) {
+  persistCurrentOrder(o => { o.qty = (value === '' ? null : Number(value)); });
+}
+
+function omAutoFetchProducts() {
+  const o = currentOrder(); if (!o) return;
+  const no = (document.getElementById('omOrderNo')?.value || o.orderNo || '').trim().replace(/^#/, '');
+  const panel = document.getElementById('omFetchPanel');
+  if (!no) { _omFetched = []; if (panel) omRenderFetchPanel(''); return; }
+
+  let lineItems = [], src = '';
+  // 1) 先 PO
+  if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
+    const po = PO_LIST.find(p => String(p.po_number||'').trim()===no || String(p.order_no||'').trim()===no);
+    if (po && po.line_items && po.line_items.length) { lineItems = po.line_items; src = 'PO'; }
+  }
+  // 2) 再销售单
+  if (lineItems.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
+    const so = SHOPIFY._orders.find(s => String(s.shopify_order_number||'').replace('#','')===no || String(s.name||'').replace('#','')===no);
+    if (so && so.line_items && so.line_items.length) { lineItems = so.line_items; src = '销售单'; }
+  }
+  // 过滤保险/运费险等
+  lineItems = (lineItems||[]).filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
+
+  const productMap = (typeof SHOPIFY !== 'undefined' && SHOPIFY._productMap) ? SHOPIFY._productMap : {};
+  const canNorm = (typeof extractVariantInfo === 'function');
+  _omFetched = lineItems.map(li => {
+    const rawSpec = li.variant || li.variant_title || li.title_cn || li.title_en || li.title || '';
+    let spec = rawSpec;
+    if (canNorm && rawSpec) { const e = extractVariantInfo(rawSpec); if (e) spec = e; }
+    let img = li.image_url || li.image || '';
+    if (!img && li.sku && productMap[li.sku] && productMap[li.sku].image_url) img = productMap[li.sku].image_url;
+    if (!img && li.sku && typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) {
+      const pp = PRODUCTS_CACHE.effectiveBySku(li.sku); if (pp && pp.image_url) img = pp.image_url;
+    }
+    const checked = (o.products||[]).some(x => (x.sku && x.sku===li.sku) || (x.spec && x.spec===spec));
+    return { spec, qty: li.qty || '', image_url: img, sku: li.sku || '', _checked: checked };
+  });
+  // 单个产品且未选过 → 默认勾上
+  if (_omFetched.length === 1 && (o.products||[]).length === 0) { _omFetched[0]._checked = true; omCommitProducts(); }
+  _omLastSrc = src;
+  omRenderFetchPanel(src);
+}
+
+function omRenderFetchPanel(src) {
+  const panel = document.getElementById('omFetchPanel'); if (!panel) return;
+  if (!_omFetched || _omFetched.length === 0) {
+    panel.innerHTML = '<div style="font-size:11px; color:var(--text-tertiary); padding:4px 0;">填对订单号会自动抓取产品(先 PO 后销售单)· 也可手动填产品/数量</div>';
+    return;
+  }
+  panel.innerHTML = `
+    <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:6px;">📥 来自${src || _omLastSrc || '订单'}的产品 · 勾选要催的(可多选 · 规格已标准化)</div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+      ${_omFetched.map((p, i) => `
+        <label style="display:flex; align-items:center; gap:6px; border:1px solid ${p._checked ? 'var(--accent)' : 'var(--border)'}; border-radius:8px; padding:6px 8px; cursor:pointer; background:${p._checked ? 'rgba(37,99,235,0.06)' : 'var(--bg-card)'};">
+          <input type="checkbox" ${p._checked ? 'checked' : ''} onchange="omToggleFetched(${i})">
+          ${p.image_url ? `<img src="${p.image_url}" style="width:42px; height:42px; object-fit:cover; border-radius:4px;">` : '<span style="font-size:18px;">📷</span>'}
+          <span style="font-size:11.5px; max-width:220px;">${escapeHtml(p.spec || '(无规格)')}${p.qty ? ` <b>×${p.qty}</b>` : ''}</span>
+        </label>
+      `).join('')}
+    </div>`;
+}
+
+function omToggleFetched(i) {
+  if (!_omFetched[i]) return;
+  _omFetched[i]._checked = !_omFetched[i]._checked;
+  omCommitProducts();
+  omRenderFetchPanel(_omLastSrc);
+}
+
+function omCommitProducts() {
+  const o = currentOrder(); if (!o) return;
+  const selected = _omFetched.filter(p => p._checked).map(p => ({ spec: p.spec, qty: p.qty, image_url: p.image_url, sku: p.sku }));
+  persistCurrentOrder(oo => {
+    oo.products = selected;
+    const specs = selected.map(p => p.spec).filter(Boolean);
+    if (specs.length) oo.product = specs.join(' / ');
+    const totalQty = selected.reduce((s, p) => s + (Number(p.qty) || 0), 0);
+    if (totalQty) oo.qty = totalQty;
+  });
+  const cur = currentOrder();
+  const pe = document.getElementById('omProduct'); if (pe && cur.product) pe.value = cur.product;
+  const qe = document.getElementById('omQty'); if (qe && cur.qty) qe.value = cur.qty;
 }
 
 function onOrderField(field, value) {
