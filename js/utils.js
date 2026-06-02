@@ -1526,21 +1526,32 @@ async function renderSales() {
       box-sizing: border-box;
     }
     .export-print-header {
-      border-bottom: 3px solid #2563eb;
-      padding-bottom: 14px;
-      margin-bottom: 22px;
+      position: relative;
+      padding: 18px 22px;
+      margin-bottom: 24px;
       display: flex;
       justify-content: space-between;
-      align-items: flex-end;
+      align-items: center;
+      background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 60%, #3b82f6 100%);
+      border-radius: 12px;
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(37,99,235,0.25);
+    }
+    .export-print-header .epp-brand {
+      font-size: 12px; font-weight: 600; letter-spacing: 2px;
+      text-transform: uppercase; opacity: 0.85; margin-bottom: 4px;
     }
     .export-print-header .epp-title {
-      font-size: 26px; font-weight: 700; color: #111827;
+      font-size: 25px; font-weight: 800; color: #fff;
       letter-spacing: 0.5px;
     }
     .export-print-header .epp-meta {
-      font-size: 13px; color: #6b7280;
-      text-align: right;
-      line-height: 1.6;
+      font-size: 12px; color: #fff;
+      text-align: right; line-height: 1.9;
+    }
+    .export-print-header .epp-meta > div {
+      display: inline-block; background: rgba(255,255,255,0.18);
+      padding: 2px 10px; border-radius: 20px; margin-left: 6px; margin-bottom: 3px;
     }
     .export-print-card {
       display: grid;
@@ -1985,9 +1996,9 @@ function _renderExportTableHTML(items, type) {
     }
   });
   const TD = 'border:1px solid #d6d3d1; padding:5px 8px; vertical-align:middle;';
-  const TH = 'border:1px solid #d6d3d1; padding:6px 8px; font-weight:600; text-align:left; background:#f5f5f4;';
+  const TH = 'border:1px solid #c7d2e8; padding:8px 10px; font-weight:700; text-align:left; background:#eef2fb; color:#1e3a8a; font-size:12px;';
   const body = rows.map((r, i) => `
-    <tr>
+    <tr style="background:${i % 2 ? '#faf9f7' : '#ffffff'};">
       <td style="${TD} text-align:center; color:#78716c;">${i + 1}</td>
       <td style="${TD} font-size:11px;">${_esc(r.date)}</td>
       <td style="${TD} font-size:12px;">${_esc(r.supplier)}</td>
@@ -1997,7 +2008,7 @@ function _renderExportTableHTML(items, type) {
       <td style="${TD} font-size:11px; color:#44403c;">${_esc(r.note)}</td>
       <td style="${TD} font-size:11px;">${_esc(r.status)}</td>
     </tr>`).join('');
-  return `<table style="border-collapse:collapse; width:100%; font-family:-apple-system,'Microsoft YaHei',sans-serif;">
+  return `<table style="border-collapse:collapse; width:100%; font-family:-apple-system,'Microsoft YaHei',sans-serif; border-radius:8px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,0.06);">
     <thead><tr>
       <th style="${TH} width:36px; text-align:center;">#</th>
       <th style="${TH} width:88px;">采购日期</th>
@@ -2010,6 +2021,45 @@ function _renderExportTableHTML(items, type) {
     </tr></thead>
     <tbody>${body}</tbody>
   </table>`;
+}
+
+// ============================================================
+// V20260602:导出"网格大图卡片"(所见即所得 · 图片占大头 · 无 SKU/标题)
+// ============================================================
+function _renderExportGridCardHTML(item, index, type) {
+  const _esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const _fd = (d) => { if (!d) return ''; if (typeof d === 'string' && d.length >= 10) return d.slice(0,10); try { return new Date(d).toISOString().slice(0,10); } catch { return String(d); } };
+  // 图片(已过滤保险)
+  let imgs = [];
+  if (Array.isArray(item.products) && item.products.length) imgs = item.products.map(p => p.image_url).filter(Boolean);
+  if (imgs.length === 0 && item.orderNo && typeof _getRelatedOrderImages === 'function') imgs = _getRelatedOrderImages(item.orderNo);
+  if (imgs.length === 0) imgs = [...(item.screenshots || []), ...((item.followups || []).flatMap(f => f.screenshots || []))];
+  const cover = imgs[0] || '';
+  // 规格(无 sku/标题)
+  let spec = '';
+  if (Array.isArray(item.products) && item.products.length) spec = item.products.map(p => p.spec).filter(Boolean).join(' / ');
+  if (!spec && item.product && item.product !== '(无产品)') spec = item.product;
+  const supplier = item.supplier || '';
+  const qty = item.qty || (Array.isArray(item.products) ? item.products.reduce((s, p) => s + (Number(p.qty) || 0), 0) : '') || '';
+  const statusLabel = (typeof ORDER_STATUS_LABELS !== 'undefined' && ORDER_STATUS_LABELS[item.status]) || item.status || '';
+  const date = _fd(item.orderDate || item.created_at);
+  const note = item.notes || '';
+  const coverHtml = cover
+    ? `<img src="${_esc(cover)}" crossorigin="anonymous" style="width:100%; height:230px; object-fit:cover; display:block;" onerror="this.style.opacity=0.3;">`
+    : `<div style="height:230px; display:flex; align-items:center; justify-content:center; color:#a8a29e; font-size:34px; background:#f5f5f4;">📷</div>`;
+  return `
+    <div style="border:1px solid #e7e5e4; border-radius:12px; overflow:hidden; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+      ${coverHtml}
+      <div style="padding:9px 11px;">
+        <div style="font-size:13px; font-weight:600; color:#1c1917; line-height:1.4; min-height:36px;">${spec ? _esc(spec) : '<span style="color:#a8a29e;">（见图 · 待补规格）</span>'}</div>
+        <div style="font-size:12px; color:#44403c; margin-top:5px;">供应商：${_esc(supplier)}${qty ? ` · 数量：<b style="color:#dc2626;">${_esc(String(qty))}</b>` : ''}</div>
+        ${note ? `<div style="font-size:11px; color:#78716c; margin-top:3px;">备注：${_esc(note)}</div>` : ''}
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:7px;">
+          <span style="font-size:11px; background:#f5f5f4; padding:2px 9px; border-radius:4px; color:#44403c;">${_esc(statusLabel)}</span>
+          <span style="font-size:11px; color:#78716c;">📅 ${_esc(date)}</span>
+        </div>
+      </div>
+    </div>`;
 }
 
 async function _buildExportPageAndPreview(opts) {
@@ -2041,22 +2091,28 @@ async function _buildExportPageAndPreview(opts) {
   const timeStr = today.toLocaleTimeString('zh-CN', { hour12: false });
   const currentUser = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) || '';
   
-  // V20260602:table 布局(发供应商) vs 卡片布局
-  const isTable = opts.layout === 'table';
-  const isGrid = !isTable && opts.viewMode === 'grid';
-  const bodyInner = isTable
-    ? _renderExportTableHTML(opts.items, opts.type)
-    : opts.items.map((item, i) => _renderExportCardHTML(item, i, opts.type)).join('');
-  const bodyStyle = isTable
-    ? ''
-    : (isGrid
-      ? 'display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;'
-      : 'display:flex; flex-direction:column; gap:6px;');
+  // V20260602:三种布局 · table(发供应商表格) / grid-cards(网格大图·所见即所得) / list-cards(横向卡片)
+  const layout = opts.layout || (opts.viewMode === 'grid' ? 'grid-cards' : 'list-cards');
+  let bodyInner, bodyStyle, isGrid = false;
+  if (layout === 'table') {
+    bodyInner = _renderExportTableHTML(opts.items, opts.type);
+    bodyStyle = '';
+  } else if (layout === 'grid-cards') {
+    isGrid = true;
+    bodyInner = opts.items.map((item, i) => _renderExportGridCardHTML(item, i, opts.type)).join('');
+    bodyStyle = 'display:grid; grid-template-columns:repeat(2, 1fr); gap:10px;';
+  } else {
+    bodyInner = opts.items.map((item, i) => _renderExportCardHTML(item, i, opts.type)).join('');
+    bodyStyle = 'display:flex; flex-direction:column; gap:6px;';
+  }
   
   wrap.innerHTML = `
     <div class="export-print-page${isGrid ? ' grid-mode' : ''}">
       <div class="export-print-header">
-        <div class="epp-title">${opts.title}</div>
+        <div>
+          <div class="epp-brand">跟单团队工作台 · ORDER FOLLOW-UP</div>
+          <div class="epp-title">${opts.title}</div>
+        </div>
         <div class="epp-meta">
           <div>📅 ${dateStr} ${timeStr}</div>
           <div>📊 共 ${opts.items.length} 条记录</div>
@@ -2277,10 +2333,10 @@ async function exportOrdersPDF() {
   await _buildExportPageAndPreview({
     type: 'orders',
     items,
-    title: '📋 催单清单（发供应商）' + (window._lastVisibleOrders ? ` (已筛选 ${items.length} 条)` : ''),
-    fileName: `催单清单_${new Date().toISOString().slice(0,10)}.pdf`,
+    title: '📋 催单清单（发供应商）' + (window._lastVisibleOrders ? ` (已筛选 ${items.length} 条)` : '') + (viewMode === 'grid' ? ' · 网格大图' : ''),
+    fileName: `催单清单_${viewMode === 'grid' ? '网格_' : ''}${new Date().toISOString().slice(0,10)}.pdf`,
     viewMode,
-    layout: 'table',  // V20260602:表格样式 · 无 SKU/标题 · 带图
+    layout: viewMode === 'grid' ? 'grid-cards' : 'table',  // V20260602:网格→大图卡片(所见即所得)· 列表→表格
   });
 }
 function exportOrdersExcel() {

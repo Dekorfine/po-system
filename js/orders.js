@@ -284,7 +284,8 @@ function _renderOrderCard(o, i) {
   const urgent = urgentLevel !== '';
   
   // 收集图片(产品图 + 沟通截图)
-  const productImages = (typeof _getRelatedOrderImages === 'function') ? _getRelatedOrderImages(o.orderNo) : [];
+  let productImages = (Array.isArray(o.products) && o.products.length) ? o.products.map(p => p.image_url).filter(Boolean) : [];
+  if (productImages.length === 0) productImages = (typeof _getRelatedOrderImages === 'function') ? _getRelatedOrderImages(o.orderNo) : [];
   const fuScreenshots = (o.followups || []).flatMap(f => f.screenshots || []);
   const orderScreenshots = o.screenshots || [];
   const allImages = [...productImages, ...orderScreenshots, ...fuScreenshots];
@@ -596,8 +597,8 @@ function renderOrderRow(o, i) {
   // ① 跟单催单时上传的沟通截图（→ 右侧"截图"列：显示催单进度）
   const manualScreenshots = [...(o.screenshots || []), ...((o.followups || []).flatMap(f => f.screenshots || []))];
   // ② 产品图：从 PO line_items 或销售单反查（→ 左侧"状态"列下方：显示产品长啥样）
-  let productImages = [];
-  if (o._isPO && o.lineItems && o.lineItems.length > 0) {
+  let productImages = (Array.isArray(o.products) && o.products.length) ? o.products.map(p => p.image_url).filter(Boolean) : [];
+  if (productImages.length === 0 && o._isPO && o.lineItems && o.lineItems.length > 0) {
     productImages = o.lineItems.map(li => li.image_url || li.image || '').filter(Boolean);
     // 如果 line_items 没存图，按 SKU 反查
     if (productImages.length === 0 && typeof _getRelatedOrderImages === 'function') {
@@ -612,7 +613,7 @@ function renderOrderRow(o, i) {
         return '';
       }).filter(Boolean);
     }
-  } else if (!o._isPO && o.orderNo && typeof _getRelatedOrderImages === 'function') {
+  } else if (productImages.length === 0 && !o._isPO && o.orderNo && typeof _getRelatedOrderImages === 'function') {
     productImages = _getRelatedOrderImages(o.orderNo);
   }
   // V4-2026-05-24：产品图反查不到时 → 兜底用跟单上传的沟通截图
