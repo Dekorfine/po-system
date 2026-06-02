@@ -1415,17 +1415,23 @@ function omAutoFetchProducts() {
   // 单个产品且未选过 → 默认勾上
   if (_omFetched.length === 1 && (o.products||[]).length === 0) { _omFetched[0]._checked = true; omCommitProducts(); }
   _omLastSrc = src;
-  // V20260602:用新抓取补全已保存产品缺失的数量/图 + 刷新残留英文规格(按 sku/spec 匹配 · 不动手动改过的数量和手动行)
-  if ((o.products || []).length && _omFetched.length) {
-    let changed = false;
-    o.products.forEach(prod => {
-      const m = _omFetched.find(f => (f.sku && f.sku === prod.sku) || (f.spec && f.spec === prod.spec));
-      if (!m) return;
-      if ((prod.qty === '' || prod.qty == null) && m.qty) { prod.qty = m.qty; changed = true; }
-      if (!prod.image_url && m.image_url) { prod.image_url = m.image_url; changed = true; }
-      if (m.spec && /[A-Za-z]{3,}/.test(prod.spec || '') && m.spec !== prod.spec) { prod.spec = m.spec; changed = true; }
+  // V20260602:打开时用新抓取(已清洗+数量)重建已选明细 · 彻底修"数量空/规格还是英文"
+  // 只保留:手动加的行(_manual) + 手动改过数量的(_qtyEdited,按 sku 带回数量)· 其余以抓取为准
+  if (_omFetched.length && _omFetched.some(p => p._checked)) {
+    const fetchedSel = _omFetched.filter(p => p._checked).map(p => ({ spec: p.spec, qty: p.qty, image_url: p.image_url, sku: p.sku }));
+    const oldProds = o.products || [];
+    // 带回手动改过的数量(按 sku 匹配)
+    fetchedSel.forEach(fp => {
+      if (!fp.sku) return;
+      const old = oldProds.find(pr => pr._qtyEdited && pr.sku && pr.sku === fp.sku && pr.qty !== '' && pr.qty != null);
+      if (old) { fp.qty = old.qty; fp._qtyEdited = true; }
     });
-    if (changed) persistCurrentOrder(oo => { oo.qty = (oo.products||[]).reduce((sm,p)=>sm+(Number(p.qty)||0),0); oo.product = (oo.products||[]).map(p=>p.spec).filter(Boolean).join(' / '); });
+    const manualRows = oldProds.filter(pr => pr._manual);
+    const merged = [...fetchedSel, ...manualRows];
+    const sig = arr => JSON.stringify(arr.map(p => [p.sku || '', p.spec || '', p.qty == null ? '' : p.qty, p.image_url || '']));
+    if (sig(oldProds) !== sig(merged)) {
+      persistCurrentOrder(oo => { oo.products = merged; oo.product = merged.map(p => p.spec).filter(Boolean).join(' / '); oo.qty = merged.reduce((sm, p) => sm + (Number(p.qty) || 0), 0); });
+    }
   }
   _omSyncQtyField();
   if (typeof omRenderProductLines === 'function') omRenderProductLines();
@@ -1647,7 +1653,7 @@ function omRenderProductLines() {
     </div>`;
 }
 function omSetLineQty(i, val) {
-  persistCurrentOrder(o => { if (o.products && o.products[i]) o.products[i].qty = (val === '' ? '' : Number(val)); o.qty = (o.products || []).reduce((s, p) => s + (Number(p.qty) || 0), 0); });
+  persistCurrentOrder(o => { if (o.products && o.products[i]) { o.products[i].qty = (val === '' ? '' : Number(val)); o.products[i]._qtyEdited = true; } o.qty = (o.products || []).reduce((s, p) => s + (Number(p.qty) || 0), 0); });
   const o = currentOrder(); const qe = document.getElementById('omQty'); if (qe && o) qe.value = o.qty;
   if (typeof renderOrders === 'function') renderOrders();
 }
@@ -1662,7 +1668,7 @@ function omRemoveLine(i) {
   if (typeof renderOrders === 'function') renderOrders();
 }
 function omAddLine() {
-  persistCurrentOrder(o => { if (!o.products) o.products = []; o.products.push({ spec: '', qty: '', image_url: '', sku: '' }); });
+  persistCurrentOrder(o => { if (!o.products) o.products = []; o.products.push({ spec: '', qty: '', image_url: '', sku: '', _manual: true }); });
   omRenderProductLines();
 }
 window.omRenderProductLines = omRenderProductLines;

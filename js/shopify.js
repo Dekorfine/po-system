@@ -132,20 +132,38 @@ const SHOPIFY = {
     const PAGE = 1000;        // PostgREST 单次返回上限
     const MAX_ROWS = 8000;    // 安全上限(全店总量约 4500 · 留余量)
     const shops = (opts.shops || []).filter(Boolean);
+    // V20260602-perf:精简列(排除 raw_payload 大字段)· Shopify 列表/催单都不用它 · egress 大幅下降
+    // 列错会 400 → 自动回退 select(*) 兜底 · WooCommerce 详情/运费用到的 raw_payload 之后按需补
+    const LEAN = 'id,shopify_order_number,shopify_order_id,shop_domain,platform,customer_name,customer_email,customer_phone,total_price,currency,financial_status,fulfillment_status,shipping_address,line_items,shopify_created_at,processed_at,customer_note,note,note_attributes,local_status,updated_at,created_at,deleted_at';
     let all = [];
     let offset = 0;
+    let useLean = true;
     while (offset < MAX_ROWS) {
-      let q = sb.from('shopify_orders').select('*').is('deleted_at', null);
+      let q = sb.from('shopify_orders').select(useLean ? LEAN : '*').is('deleted_at', null);
       if (shops.length) q = q.in('shop_domain', shops);
       if (opts.from) q = q.gte('shopify_created_at', opts.from + 'T00:00:00Z');
       if (opts.to)   q = q.lte('shopify_created_at', opts.to + 'T23:59:59Z');
       q = q.order('shopify_created_at', { ascending: false }).range(offset, offset + PAGE - 1);
       const { data, error } = await q;
-      if (error) throw error;
+      if (error) {
+        if (useLean && offset === 0) { console.warn('[订单] 精简列查询失败 · 回退 select(*) ·', error.message); useLean = false; continue; }
+        throw error;
+      }
       const batch = data || [];
       all = all.concat(batch);
       if (batch.length < PAGE) break;   // 末页
       offset += PAGE;
+    }
+    // V20260602-perf:WooCommerce 订单按需补 raw_payload(列表详情/运费/税要)· 量小(单店)
+    if (useLean) {
+      const wooIds = all.filter(o => o.platform === 'woo').map(o => o.id).filter(Boolean);
+      if (wooIds.length) {
+        try {
+          const { data: woo } = await sb.from('shopify_orders').select('id,raw_payload').in('id', wooIds);
+          const rpMap = {}; (woo || []).forEach(w => { rpMap[w.id] = w.raw_payload; });
+          all.forEach(o => { if (o.platform === 'woo' && rpMap[o.id]) o.raw_payload = rpMap[o.id]; });
+        } catch (e) { console.warn('[订单] WooCommerce raw_payload 补全失败:', e); }
+      }
     }
     const truncated = all.length >= MAX_ROWS;
     if (truncated) console.warn(`[订单] 达到加载上限 ${MAX_ROWS} · 部分未加载 · 建议选店/缩小日期`);
