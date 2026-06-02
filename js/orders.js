@@ -1250,22 +1250,72 @@ function omAutoFetchProducts() {
   omRenderFetchPanel();
 }
 
+// V20260602:手动从 Shopify 后台拉取单个订单(本地没同步到的旧单 · 兜底)
+async function omManualFetch() {
+  const o = currentOrder(); if (!o) return;
+  const no = (document.getElementById('omOrderNo')?.value || o.orderNo || '').trim().replace(/^#/, '');
+  if (!no) { alert('请先填订单号'); return; }
+  const site = document.getElementById('omSite')?.value || o.site;
+  const meta = (typeof SHOPIFY !== 'undefined' && SHOPIFY.STORES_META)
+    ? SHOPIFY.STORES_META.find(m => m.site_code === site) : null;
+  const shop = meta ? meta.domain : null;
+  const panel = document.getElementById('omFetchPanel');
+  if (!shop) { if (panel) panel.innerHTML = `<div style="font-size:12px; color:var(--danger);">⚠ 站点 ${escapeHtml(site||'')} 没有对应 Shopify 店铺,无法后台拉取</div>`; return; }
+  if (panel) panel.innerHTML = `<div style="font-size:12px; color:var(--text-secondary); padding:6px 0;">⏳ 正在从 Shopify 后台拉取订单「${escapeHtml(no)}」(${shop})…</div>`;
+  try {
+    const r = await SHOPIFY.call('list_orders', { name: no, status: 'any', limit: 10 }, shop, 30000);
+    const orders = Array.isArray(r.orders) ? r.orders : [];
+    const ord = orders.find(x => String(x.name || '').replace('#', '') === no) || orders[0];
+    let lineItems = (ord && ord.line_items) ? ord.line_items : [];
+    lineItems = lineItems.filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
+    if (lineItems.length === 0) {
+      _omFetched = []; _omState = 'nomatch'; _omNo = no;
+      if (panel) panel.innerHTML = `<div style="font-size:12px; color:var(--warning); padding:4px 0;">⚠ Shopify 后台也没查到订单「${escapeHtml(no)}」的产品(可能订单号不对,或该店铺未授权)</div>`;
+      return;
+    }
+    const productMap = (SHOPIFY._productMap) || {};
+    const canNorm = (typeof extractVariantInfo === 'function');
+    // 顺便补全产品图(用 sku 拉图)
+    const skus = lineItems.map(li => li.sku).filter(Boolean);
+    if (skus.length && typeof SHOPIFY.loadProductImageMap === 'function') {
+      try { const m = await SHOPIFY.loadProductImageMap(skus); Object.assign(productMap, m || {}); SHOPIFY._productMap = productMap; } catch (e) {}
+    }
+    _omFetched = lineItems.map(li => {
+      const rawSpec = li.variant_title || li.variant || li.title || '';
+      let spec = rawSpec;
+      if (canNorm && rawSpec) { const e = extractVariantInfo(rawSpec); if (e) spec = e; }
+      let img = li.image_url || '';
+      if (!img && li.sku && productMap[li.sku] && productMap[li.sku].image_url) img = productMap[li.sku].image_url;
+      const checked = (o.products || []).some(x => (x.sku && x.sku === li.sku) || (x.spec && x.spec === spec));
+      return { spec, qty: li.quantity || li.qty || '', image_url: img, sku: li.sku || '', _checked: checked };
+    });
+    _omState = 'ok'; _omLastSrc = 'Shopify后台'; _omNo = no;
+    if (_omFetched.length === 1 && (o.products || []).length === 0) { _omFetched[0]._checked = true; omCommitProducts(); }
+    omRenderFetchPanel();
+  } catch (e) {
+    if (panel) panel.innerHTML = `<div style="font-size:12px; color:var(--danger); padding:4px 0;">❌ 后台拉取失败:${escapeHtml(e.message || String(e))}<br><span style="color:var(--text-tertiary);">（若反复失败,可能 Edge Function 不支持按订单号查询,需后台加 name 参数支持）</span></div>`;
+  }
+}
+
 function omRenderFetchPanel() {
   const panel = document.getElementById('omFetchPanel'); if (!panel) return;
   // 三态:empty(没填订单号) / nomatch(查不到) / ok(抓到了)
   if (_omState === 'empty' || !_omNo) {
-    panel.innerHTML = '<div style="font-size:11.5px; color:var(--text-secondary); padding:2px 0;">👆 在上方填<b>订单号</b> → 自动从 <b>PO / 销售单</b> 抓取产品供勾选,自动填入产品 / 数量 / 图片,免手输错</div>';
+    panel.innerHTML = '<div style="font-size:11.5px; color:var(--text-secondary); padding:2px 0;">👆 在上方填<b>订单号</b> → 自动从 <b>PO / 销售单</b> 抓取产品供勾选,自动填入产品 / 数量 / 图片,免手输错' + `<button type="button" class="btn small" onclick="omManualFetch()" style="padding:3px 10px; font-size:11px; margin-left:8px;">📥 从 Shopify 后台拉取</button>` + '</div>';
     return;
   }
   if (_omState === 'nomatch' || !_omFetched || _omFetched.length === 0) {
-    panel.innerHTML = `<div style="font-size:11.5px; color:var(--warning); padding:2px 0;">⚠ 没找到订单「<b>${escapeHtml(_omNo)}</b>」的产品 · 请确认订单号,或该订单还没同步(去「销售单」同步后再打开)· 也可在上方手动填产品/数量</div>`;
+    panel.innerHTML = `<div style="font-size:11.5px; color:var(--warning); padding:4px 0;">⚠ 本地没找到订单「<b>${escapeHtml(_omNo)}</b>」· 该订单可能还没同步(旧系统订单)→ 点右边直接从后台拉` + `<button type="button" class="btn small" onclick="omManualFetch()" style="padding:3px 10px; font-size:11px; margin-left:8px;">📥 从 Shopify 后台拉取</button>` + `<br><span style="color:var(--text-tertiary); font-size:11px;">或去「销售单」同步后再打开 · 也可在上方手动填产品/数量</span></div>`;
     return;
   }
   const allChecked = _omFetched.every(p => p._checked);
   panel.innerHTML = `
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:7px;">
       <div style="font-size:11.5px; color:var(--text-secondary); font-weight:600;">📥 订单「${escapeHtml(_omNo)}」的产品(来自${_omLastSrc || '订单'})· 勾选要催的 → 自动填表(规格已标准化 · 防手输错)</div>
-      <button type="button" class="btn small" onclick="omToggleAllFetched()" style="padding:3px 10px; font-size:11px;">${allChecked ? '取消全选' : '全选'}</button>
+      <div>
+        <button type="button" class="btn small" onclick="omToggleAllFetched()" style="padding:3px 10px; font-size:11px;">${allChecked ? '取消全选' : '全选'}</button>
+        <button type="button" class="btn small" onclick="omManualFetch()" style="padding:3px 10px; font-size:11px; margin-left:6px;" title="从 Shopify 后台重新拉取">📥 后台重拉</button>
+      </div>
     </div>
     <div style="display:flex; flex-wrap:wrap; gap:8px;">
       ${_omFetched.map((p, i) => `
