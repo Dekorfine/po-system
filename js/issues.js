@@ -317,6 +317,22 @@ function issuesOnDateChange(preset) {
 // ============================================================
 // 列表渲染
 // ============================================================
+// V20260601-issuegrid:列表/网格切换(同催单设计)· 存 localStorage
+let _issuesViewMode = (localStorage.getItem('issues_view_mode') || 'list');
+function setIssuesViewMode(mode) {
+  if (!['list', 'grid'].includes(mode)) return;
+  _issuesViewMode = mode;
+  localStorage.setItem('issues_view_mode', mode);
+  document.querySelectorAll('#isViewToggle .o-view-btn').forEach(b => {
+    const active = b.dataset.view === mode;
+    b.classList.toggle('active', active);
+    b.style.background = active ? 'var(--bg-card)' : 'transparent';
+    b.style.color = active ? 'var(--accent)' : 'var(--text-secondary)';
+    b.style.fontWeight = active ? '600' : '400';
+  });
+  renderIssues();
+}
+
 function renderIssues() {
   const container = document.getElementById('issuesContainer');
   // V20260526o: 关键修复 · 先填充日期 select(避免空列表时早 return 跳过)
@@ -328,6 +344,14 @@ function renderIssues() {
   const fs = document.getElementById('isFilterStatus').value;
   const fType = document.getElementById('isFilterType').value;
   const view = document.getElementById('isView').value;
+  // V20260601-issuegrid:同步 列表/网格 按钮高亮(刷新后保持上次选择)
+  document.querySelectorAll('#isViewToggle .o-view-btn').forEach(b => {
+    const active = b.dataset.view === _issuesViewMode;
+    b.classList.toggle('active', active);
+    b.style.background = active ? 'var(--bg-card)' : 'transparent';
+    b.style.color = active ? 'var(--accent)' : 'var(--text-secondary)';
+    b.style.fontWeight = active ? '600' : '400';
+  });
   
   let list = ISSUES.filter(it => {
     if (q) {
@@ -380,13 +404,16 @@ function renderIssues() {
             <div class="name">🏭 ${escapeHtml(sup)} <span class="count-badge">${items.length} 项</span>${unresolved > 0 ? `<span class="unresolved-badge">${unresolved} 未解决</span>` : ''}</div>
           </div>
           <div class="supplier-group-body">
-            ${items.map((it, i) => renderIssueRow(it, i)).join('')}
+            ${_issuesViewMode === 'grid'
+              ? `<div class="as-grid">${items.map((it, i) => renderIssueCard(it, i)).join('')}</div>`
+              : items.map((it, i) => renderIssueRow(it, i)).join('')}
           </div>
         </div>
       `;
     }).join('');
-  } else if (view === 'grid') {
-    container.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; padding:4px;">${list.map((it, i) => renderIssueCard(it, i)).join('')}<div class="add-row" style="display:flex; align-items:center; justify-content:center; border:2px dashed var(--border); border-radius:10px; min-height:120px; cursor:pointer;" onclick="addIssue()">+ 新增问题</div></div>`;
+  } else if (_issuesViewMode === 'grid') {
+    // 不分组 + 网格:图墙(同催单 .as-grid)
+    container.innerHTML = `<div class="records-card"><div class="as-grid">${list.map((it, i) => renderIssueCard(it, i)).join('')}</div><div class="add-row" onclick="addIssue()">+ 新增问题</div></div>`;
   } else {
     container.innerHTML = `
       <div class="records-card">
