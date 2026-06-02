@@ -10,6 +10,17 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260602-chase5',
+    date: '2026-06-02',
+    type: 'fix',
+    title: '⚡ 手动后台拉取改 auto_save:false(实时单查·直接带图)',
+    notes: [
+      '· 核对 Edge Function 源码:已支持按订单号 name 单查 · 无需改后台',
+      '· 手动拉取改走实时单查路径(auto_save:false)→ 返回 line_items 直接带产品图 · 更快 · 不入库',
+    ],
+    files: ['orders.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260602-chase4',
     date: '2026-06-02',
     type: 'feature',

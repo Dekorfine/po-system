@@ -1263,7 +1263,7 @@ async function omManualFetch() {
   if (!shop) { if (panel) panel.innerHTML = `<div style="font-size:12px; color:var(--danger);">⚠ 站点 ${escapeHtml(site||'')} 没有对应 Shopify 店铺,无法后台拉取</div>`; return; }
   if (panel) panel.innerHTML = `<div style="font-size:12px; color:var(--text-secondary); padding:6px 0;">⏳ 正在从 Shopify 后台拉取订单「${escapeHtml(no)}」(${shop})…</div>`;
   try {
-    const r = await SHOPIFY.call('list_orders', { name: no, status: 'any', limit: 10 }, shop, 30000);
+    const r = await SHOPIFY.call('list_orders', { name: no, status: 'any', limit: 10, auto_save: false }, shop, 30000);  // auto_save:false → 实时单查 · 直接带产品图 · 不入库
     const orders = Array.isArray(r.orders) ? r.orders : [];
     const ord = orders.find(x => String(x.name || '').replace('#', '') === no) || orders[0];
     let lineItems = (ord && ord.line_items) ? ord.line_items : [];
