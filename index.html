@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
 <script defer src="js/issues.js?v=20260602issfetch"></script>
-<script defer src="js/help.js?v=20260602chase14"></script>
+<script defer src="js/help.js?v=20260602chase15"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -44,7 +44,7 @@
 <script defer src="js/aftersales-shared.js?v=20260531ase2"></script>
 <script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260527i"></script>
-<script defer src="js/orders.js?v=20260602chase14"></script>
+<script defer src="js/orders.js?v=20260602chase15"></script>
 <script defer src="js/shopify.js?v=20260601perf"></script>
 <script defer src="js/po.js?v=20260602export"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
@@ -7591,8 +7591,8 @@ if ('serviceWorker' in navigator) {
         </select>
       </div>
       <div class="form-group" style="margin-bottom:0;">
-        <label style="font-size:11px;">订单号 *</label>
-        <input type="text" class="form-control mono" id="omOrderNo" placeholder="K114176" oninput="omOrderNoChanged(this.value)" style="padding:6px 8px; font-size:13px;">
+        <label style="font-size:11px;">订单号 *<span style="font-weight:400; color:var(--text-tertiary);">（多个用 / 隔开）</span></label>
+        <input type="text" class="form-control mono" id="omOrderNo" placeholder="K114176 或 V110375/V110540" oninput="omOrderNoChanged(this.value)" style="padding:6px 8px; font-size:13px;">
         <div id="omOrderNoHint" style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px; display: none;"></div>
       </div>
       <div class="form-group" style="margin-bottom:0;">
