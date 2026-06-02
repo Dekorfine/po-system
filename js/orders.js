@@ -368,6 +368,51 @@ function _renderOrderCard(o, i) {
   `;
 }
 
+// V20260602:判断催单是否"空白草稿"(没填任何有效内容 · PO 派生的不算)
+function _isOrderBlank(o) {
+  if (!o || o._isPO) return false;
+  const has = v => v != null && String(v).trim() !== '' && String(v).trim() !== '(无产品)' && String(v).trim() !== '(无产品描述)';
+  if (has(o.orderNo) || has(o.product) || has(o.supplier) || has(o.notes)) return false;
+  if ((o.products || []).length || (o.followups || []).length || (o.screenshots || []).length) return false;
+  return true;
+}
+
+// 关闭催单弹窗:若是全空白草稿 → 自动软删(避免堆积空白)
+function closeOrderModalSmart() {
+  const o = (typeof currentOrder === 'function') ? currentOrder() : null;
+  if (o && _isOrderBlank(o) && o._id && typeof sb !== 'undefined') {
+    sb.from('orders').update({ deleted_at: new Date().toISOString(), deleted_by: (typeof CURRENT_AGENT !== 'undefined' ? CURRENT_AGENT : null) })
+      .eq('id', o._id).then(() => {
+        const idx = CHASE_ORDERS.findIndex(x => x._id === o._id);
+        if (idx >= 0) CHASE_ORDERS.splice(idx, 1);
+        if (typeof renderOrders === 'function') renderOrders();
+      }).catch(e => console.warn('清空白草稿失败', e));
+  }
+  closeModal('orderModal');
+}
+window.closeOrderModalSmart = closeOrderModalSmart;
+
+// 一键清理所有空白草稿(历史遗留 · 软删进回收站)
+async function chaseCleanBlankOrders() {
+  const blanks = (typeof CHASE_ORDERS !== 'undefined' ? CHASE_ORDERS : []).filter(o => _isOrderBlank(o));
+  if (blanks.length === 0) { alert('没有空白草稿需要清理'); return; }
+  if (!confirm(`发现 ${blanks.length} 条空白催单草稿(没填任何内容)。\n\n清理后移入回收站(30 天可恢复)。确定清理?`)) return;
+  let done = 0;
+  for (const o of blanks) {
+    try {
+      if (o._id && typeof sb !== 'undefined') {
+        await sb.from('orders').update({ deleted_at: new Date().toISOString(), deleted_by: (typeof CURRENT_AGENT !== 'undefined' ? CURRENT_AGENT : null) }).eq('id', o._id);
+      }
+      const idx = CHASE_ORDERS.findIndex(x => x._id === o._id);
+      if (idx >= 0) CHASE_ORDERS.splice(idx, 1);
+      done++;
+    } catch (e) { console.warn(e); }
+  }
+  if (typeof renderOrders === 'function') renderOrders();
+  alert(`✅ 已清理 ${done} 条空白草稿(回收站可恢复)`);
+}
+window.chaseCleanBlankOrders = chaseCleanBlankOrders;
+
 function renderOrders() {
   const body = document.getElementById('ordersBody');
   const card = document.getElementById('ordersCard');
@@ -389,6 +434,7 @@ function renderOrders() {
   const sortBy = document.getElementById('oSortBy')?.value || 'urgency';
 
   let list = CHASE_ORDERS.filter(o => {
+    if (_isOrderBlank(o)) return false;  // V20260602:默认隐藏空白草稿(没填任何东西的)
     // V5-2026-05-24: "仅看 PO 派生" 过滤(与阈值 AND 组合)
     if (_onlyPoSource && !o._isPO) return false;
     // 阈值过滤
