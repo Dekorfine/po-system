@@ -1038,6 +1038,18 @@ function issAutoFetchProducts() {
   _issState = (_issFetched.length === 0) ? 'nomatch' : 'ok';
   if (_issFetched.length === 1 && (!(t && t.products) || t.products.length === 0)) { _issFetched[0]._checked = true; issCommitProducts(); }
   _issLastSrc = src;
+  // V20260602:用新抓取补全已保存产品缺失的数量/图 + 刷新残留英文规格(不动手动改过的)
+  if (t && (t.products || []).length && _issFetched.length) {
+    let changed = false;
+    t.products.forEach(prod => {
+      const m = _issFetched.find(f => (f.sku && f.sku === prod.sku) || (f.spec && f.spec === prod.spec));
+      if (!m) return;
+      if ((prod.qty === '' || prod.qty == null) && m.qty) { prod.qty = m.qty; changed = true; }
+      if (!prod.image_url && m.image_url) { prod.image_url = m.image_url; changed = true; }
+      if (m.spec && /[A-Za-z]{3,}/.test(prod.spec || '') && m.spec !== prod.spec) { prod.spec = m.spec; changed = true; }
+    });
+    if (changed) _issPersist(() => {});
+  }
   issRenderFetchPanel();
   issTranslateRemaining();
 }

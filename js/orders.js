@@ -1415,6 +1415,18 @@ function omAutoFetchProducts() {
   // 单个产品且未选过 → 默认勾上
   if (_omFetched.length === 1 && (o.products||[]).length === 0) { _omFetched[0]._checked = true; omCommitProducts(); }
   _omLastSrc = src;
+  // V20260602:用新抓取补全已保存产品缺失的数量/图 + 刷新残留英文规格(按 sku/spec 匹配 · 不动手动改过的数量和手动行)
+  if ((o.products || []).length && _omFetched.length) {
+    let changed = false;
+    o.products.forEach(prod => {
+      const m = _omFetched.find(f => (f.sku && f.sku === prod.sku) || (f.spec && f.spec === prod.spec));
+      if (!m) return;
+      if ((prod.qty === '' || prod.qty == null) && m.qty) { prod.qty = m.qty; changed = true; }
+      if (!prod.image_url && m.image_url) { prod.image_url = m.image_url; changed = true; }
+      if (m.spec && /[A-Za-z]{3,}/.test(prod.spec || '') && m.spec !== prod.spec) { prod.spec = m.spec; changed = true; }
+    });
+    if (changed) persistCurrentOrder(oo => { oo.qty = (oo.products||[]).reduce((sm,p)=>sm+(Number(p.qty)||0),0); oo.product = (oo.products||[]).map(p=>p.spec).filter(Boolean).join(' / '); });
+  }
   _omSyncQtyField();
   if (typeof omRenderProductLines === 'function') omRenderProductLines();
   omRenderFetchPanel();
