@@ -882,8 +882,8 @@ function _renderIssueModal({ isDraft }) {
                  style="padding:6px 8px; font-size:13px; width:100%;">
         </div>
         <div class="form-group" style="margin-bottom:0;">
-          <label style="font-size:11px;">订单号（自动抓产品）</label>
-          <input type="text" id="ismOrderNo" value="${escapeHtml(data.orderNo || '')}" placeholder="填订单号自动抓产品"
+          <label style="font-size:11px;">订单号（自动抓产品 · 多个用 / 隔开）</label>
+          <input type="text" id="ismOrderNo" value="${escapeHtml(data.orderNo || '')}" placeholder="如 V110375/V110540"
                  oninput="issOrderNoChanged(this.value)"
                  style="padding:6px 8px; font-size:13px; width:100%;">
         </div>
@@ -991,21 +991,30 @@ function issOrderNoChanged(value) {
 
 function issAutoFetchProducts() {
   const t = _issTarget();
-  const no = (document.getElementById('ismOrderNo')?.value || (t && t.orderNo) || '').trim().replace(/^#/, '');
+  const rawNo = (document.getElementById('ismOrderNo')?.value || (t && t.orderNo) || '').trim();
   const panel = document.getElementById('issFetchPanel');
-  _issNo = no;
-  if (!no) { _issFetched = []; _issState = 'empty'; if (panel) issRenderFetchPanel(); return; }
+  // V20260602:支持多个订单号(/ , 、 空格 分隔)· 一个供应商多个订单有问题
+  const nos = rawNo.split(/[\/,，、\s]+/).map(x => x.trim().replace(/^#/, '')).filter(Boolean);
+  _issNo = nos.join(' / ');
+  if (nos.length === 0) { _issFetched = []; _issState = 'empty'; if (panel) issRenderFetchPanel(); return; }
 
-  let lineItems = [], src = '';
-  if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
-    const pos = PO_LIST.filter(pp => String(pp.po_number||'').trim()===no || String(pp.order_no||'').trim()===no);
-    const poItems = pos.flatMap(pp => pp.line_items || []);
-    if (poItems.length) { lineItems = poItems; src = pos.length > 1 ? `PO（${pos.length}张·已拆分）` : 'PO'; }
-  }
-  if (lineItems.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
-    const so = SHOPIFY._orders.find(x => String(x.shopify_order_number||'').replace('#','')===no || String(x.name||'').replace('#','')===no);
-    if (so && so.line_items && so.line_items.length) { lineItems = so.line_items; src = '销售单（旧系统订单）'; }
-  }
+  let lineItems = [];
+  const srcSet = new Set();
+  nos.forEach(n => {
+    let got = [];
+    if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
+      const pos = PO_LIST.filter(pp => String(pp.po_number||'').trim()===n || String(pp.order_no||'').trim()===n);
+      got = pos.flatMap(pp => pp.line_items || []);
+      if (got.length) srcSet.add('PO');
+    }
+    if (got.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
+      const so = SHOPIFY._orders.find(x => String(x.shopify_order_number||'').replace('#','')===n || String(x.name||'').replace('#','')===n);
+      if (so && so.line_items && so.line_items.length) { got = so.line_items; srcSet.add('销售单'); }
+    }
+    got.forEach(li => { try { li._fromOrder = n; } catch(e){} });
+    lineItems = lineItems.concat(got);
+  });
+  const src = (nos.length > 1 ? `${nos.length}个订单·` : '') + ([...srcSet].join('/') || '');
   lineItems = (lineItems||[]).filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
 
   const productMap = (typeof SHOPIFY !== 'undefined' && SHOPIFY._productMap) ? SHOPIFY._productMap : {};
@@ -1021,6 +1030,11 @@ function issAutoFetchProducts() {
     const checked = cur.some(x => (x.sku && x.sku===li.sku) || (x.spec && x.spec===spec));
     return { spec, qty: li.qty || '', image_url: img, sku: li.sku || '', _checked: checked };
   });
+  // V20260602:本地没抓到但已保存过产品 → 显示已保存的(不报"没找到")
+  if (_issFetched.length === 0 && t && (t.products || []).length > 0) {
+    _issFetched = t.products.map(p => ({ spec: p.spec, qty: p.qty, image_url: p.image_url, sku: p.sku, _checked: true }));
+    _issLastSrc = '已保存';
+  }
   _issState = (_issFetched.length === 0) ? 'nomatch' : 'ok';
   if (_issFetched.length === 1 && (!(t && t.products) || t.products.length === 0)) { _issFetched[0]._checked = true; issCommitProducts(); }
   _issLastSrc = src;
@@ -1030,21 +1044,30 @@ function issAutoFetchProducts() {
 
 async function issManualFetch() {
   const t = _issTarget();
-  const no = (document.getElementById('ismOrderNo')?.value || (t && t.orderNo) || '').trim().replace(/^#/, '');
-  if (!no) { alert('请先填订单号'); return; }
+  const rawNo = (document.getElementById('ismOrderNo')?.value || (t && t.orderNo) || '').trim();
+  const nos = rawNo.split(/[\/,，、\s]+/).map(x => x.trim().replace(/^#/, '')).filter(Boolean);
+  if (nos.length === 0) { alert('请先填订单号'); return; }
   const site = document.getElementById('ismSite')?.value || (t && t.site);
   const meta = (typeof SHOPIFY !== 'undefined' && SHOPIFY.STORES_META) ? SHOPIFY.STORES_META.find(m => m.site_code === site) : null;
   const shop = meta ? meta.domain : null;
   const panel = document.getElementById('issFetchPanel');
   if (!shop) { if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--danger);">⚠ 站点 ${escapeHtml(site||'')} 无对应 Shopify 店铺</div>`; return; }
-  if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--text-secondary);padding:6px 0;">⏳ 正在从 Shopify 后台拉取订单「${escapeHtml(no)}」…</div>`;
+  _issNo = nos.join(' / ');
+  if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--text-secondary);padding:6px 0;">⏳ 正在从 Shopify 后台拉取${nos.length>1?` ${nos.length} 个订单`:`订单「${escapeHtml(nos[0])}」`}…</div>`;
   try {
-    const r = await SHOPIFY.call('list_orders', { name: no, status: 'any', limit: 10, auto_save: false }, shop, 30000);
-    const orders = Array.isArray(r.orders) ? r.orders : [];
-    const ord = orders.find(x => String(x.name||'').replace('#','')===no) || orders[0];
-    let lineItems = (ord && ord.line_items) ? ord.line_items : [];
+    let lineItems = [];
+    for (const n of nos) {
+      try {
+        const r = await SHOPIFY.call('list_orders', { name: n, status: 'any', limit: 10, auto_save: false }, shop, 30000);
+        const orders = Array.isArray(r.orders) ? r.orders : [];
+        const ord = orders.find(x => String(x.name||'').replace('#','')===n) || orders[0];
+        let lis = (ord && ord.line_items) ? ord.line_items : [];
+        lis.forEach(li => { try { li._fromOrder = n; } catch(e){} });
+        lineItems = lineItems.concat(lis);
+      } catch (e) { console.warn('[问题后台拉取]', n, e.message || e); }
+    }
     lineItems = lineItems.filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
-    if (lineItems.length === 0) { _issFetched=[]; _issState='nomatch'; _issNo=no; if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--warning);padding:4px 0;">⚠ Shopify 后台也没查到订单「${escapeHtml(no)}」的产品</div>`; return; }
+    if (lineItems.length === 0) { _issFetched=[]; _issState='nomatch'; if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--warning);padding:4px 0;">⚠ Shopify 后台也没查到「${escapeHtml(_issNo)}」的产品</div>`; return; }
     const productMap = (SHOPIFY._productMap) || {};
     _issFetched = lineItems.map(li => {
       const rawSpec = li.variant_title || li.variant || li.title || '';
@@ -1055,7 +1078,7 @@ async function issManualFetch() {
       const checked = cur.some(x => (x.sku && x.sku===li.sku) || (x.spec && x.spec===spec));
       return { spec, qty: li.quantity || li.qty || '', image_url: img, sku: li.sku || '', _checked: checked };
     });
-    _issState='ok'; _issLastSrc='Shopify后台'; _issNo=no;
+    _issState='ok'; _issLastSrc = nos.length > 1 ? `Shopify后台·${nos.length}单` : 'Shopify后台';
     if (_issFetched.length===1 && (!(t && t.products) || t.products.length===0)) { _issFetched[0]._checked=true; issCommitProducts(); }
     issRenderFetchPanel();
     issTranslateRemaining();
