@@ -23,17 +23,17 @@
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
 <link rel="preload" href="js/core.js?v=20260601loadfix3" as="script">
-<link rel="preload" href="js/utils.js?v=20260602export" as="script">
+<link rel="preload" href="js/utils.js?v=20260602chase" as="script">
 <link rel="preload" href="js/shopify.js?v=20260601perf" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="js/core.js?v=20260601loadfix3"></script>
-<script defer src="js/utils.js?v=20260602export"></script>
+<script defer src="js/utils.js?v=20260602chase"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
 <script defer src="js/issues.js?v=20260601issuegrid"></script>
-<script defer src="js/help.js?v=20260602export"></script>
+<script defer src="js/help.js?v=20260602chase"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -44,7 +44,7 @@
 <script defer src="js/aftersales-shared.js?v=20260531ase2"></script>
 <script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260527i"></script>
-<script defer src="js/orders.js?v=20260528nu"></script>
+<script defer src="js/orders.js?v=20260602chase"></script>
 <script defer src="js/shopify.js?v=20260601perf"></script>
 <script defer src="js/po.js?v=20260602export"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
@@ -7581,7 +7581,7 @@ if ('serviceWorker' in navigator) {
     <div class="od-header" id="omHeader" style="margin-bottom:10px;"></div>
     
     <!-- 顶部一行:基本信息 5 列横排 -->
-    <div style="display:grid; grid-template-columns: 160px 1fr 1fr 1fr 1.5fr; gap:10px; margin-bottom:12px; padding:12px; background:var(--bg-elevated); border-radius:8px;">
+    <div style="display:grid; grid-template-columns: 140px 1fr 1.1fr 72px 1fr 1.2fr; gap:10px; margin-bottom:10px; padding:12px; background:var(--bg-elevated); border-radius:8px;">
       <div class="form-group" style="margin-bottom:0;">
         <label style="font-size:11px;">📍 网站 *</label>
         <select class="form-control mono" id="omSite" onchange="onOrderField('site', this.value)" style="padding:6px 8px; font-size:13px;">
@@ -7590,12 +7590,16 @@ if ('serviceWorker' in navigator) {
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label style="font-size:11px;">订单号 *</label>
-        <input type="text" class="form-control mono" id="omOrderNo" placeholder="K114176" oninput="onOrderField('orderNo', this.value)" style="padding:6px 8px; font-size:13px;">
+        <input type="text" class="form-control mono" id="omOrderNo" placeholder="K114176" oninput="omOrderNoChanged(this.value)" style="padding:6px 8px; font-size:13px;">
         <div id="omOrderNoHint" style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px; display: none;"></div>
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label style="font-size:11px;">产品 / SKU</label>
-        <input type="text" class="form-control" id="omProduct" placeholder="吊灯A型 x2" oninput="onOrderField('product', this.value)" style="padding:6px 8px; font-size:13px;">
+        <input type="text" class="form-control" id="omProduct" placeholder="自动抓取/手填" oninput="onOrderField('product', this.value)" style="padding:6px 8px; font-size:13px;">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label style="font-size:11px;">数量</label>
+        <input type="number" min="0" class="form-control mono" id="omQty" placeholder="0" oninput="omQtyChanged(this.value)" style="padding:6px 8px; font-size:13px;">
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label style="font-size:11px;">供应商</label>
@@ -7608,6 +7612,9 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
     
+    <!-- V20260602:抓取的产品(多选 · 发供应商用) -->
+    <div id="omFetchPanel" style="margin-bottom:12px; padding:10px 12px; background:var(--bg-elevated); border-radius:8px;"></div>
+
     <!-- 状态 + 日期:横向一行 -->
     <div style="display:grid; grid-template-columns: 2fr 3fr; gap:12px; margin-bottom:12px;">
       <div style="padding:10px 12px; background:var(--bg-elevated); border-radius:8px;">
