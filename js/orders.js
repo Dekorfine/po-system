@@ -1194,6 +1194,8 @@ function persistCurrentOrder(updater, immediate = false) {
 let _omFetched = [];
 let _omFetchTimer = null;
 let _omLastSrc = '';
+let _omState = 'empty';
+let _omNo = '';
 
 function omOrderNoChanged(value) {
   onOrderField('orderNo', value);
@@ -1209,7 +1211,8 @@ function omAutoFetchProducts() {
   const o = currentOrder(); if (!o) return;
   const no = (document.getElementById('omOrderNo')?.value || o.orderNo || '').trim().replace(/^#/, '');
   const panel = document.getElementById('omFetchPanel');
-  if (!no) { _omFetched = []; if (panel) omRenderFetchPanel(''); return; }
+  _omNo = no;
+  if (!no) { _omFetched = []; _omState = 'empty'; if (panel) omRenderFetchPanel(); return; }
 
   let lineItems = [], src = '';
   // 1) 先 PO
@@ -1239,36 +1242,53 @@ function omAutoFetchProducts() {
     const checked = (o.products||[]).some(x => (x.sku && x.sku===li.sku) || (x.spec && x.spec===spec));
     return { spec, qty: li.qty || '', image_url: img, sku: li.sku || '', _checked: checked };
   });
+  _omState = (_omFetched.length === 0) ? 'nomatch' : 'ok';
   // 单个产品且未选过 → 默认勾上
   if (_omFetched.length === 1 && (o.products||[]).length === 0) { _omFetched[0]._checked = true; omCommitProducts(); }
   _omLastSrc = src;
-  omRenderFetchPanel(src);
+  omRenderFetchPanel();
 }
 
-function omRenderFetchPanel(src) {
+function omRenderFetchPanel() {
   const panel = document.getElementById('omFetchPanel'); if (!panel) return;
-  if (!_omFetched || _omFetched.length === 0) {
-    panel.innerHTML = '<div style="font-size:11px; color:var(--text-tertiary); padding:4px 0;">填对订单号会自动抓取产品(先 PO 后销售单)· 也可手动填产品/数量</div>';
+  // 三态:empty(没填订单号) / nomatch(查不到) / ok(抓到了)
+  if (_omState === 'empty' || !_omNo) {
+    panel.innerHTML = '<div style="font-size:11.5px; color:var(--text-secondary); padding:2px 0;">👆 在上方填<b>订单号</b> → 自动从 <b>PO / 销售单</b> 抓取产品供勾选,自动填入产品 / 数量 / 图片,免手输错</div>';
     return;
   }
+  if (_omState === 'nomatch' || !_omFetched || _omFetched.length === 0) {
+    panel.innerHTML = `<div style="font-size:11.5px; color:var(--warning); padding:2px 0;">⚠ 没找到订单「<b>${escapeHtml(_omNo)}</b>」的产品 · 请确认订单号,或该订单还没同步(去「销售单」同步后再打开)· 也可在上方手动填产品/数量</div>`;
+    return;
+  }
+  const allChecked = _omFetched.every(p => p._checked);
   panel.innerHTML = `
-    <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:6px;">📥 来自${src || _omLastSrc || '订单'}的产品 · 勾选要催的(可多选 · 规格已标准化)</div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:7px;">
+      <div style="font-size:11.5px; color:var(--text-secondary); font-weight:600;">📥 订单「${escapeHtml(_omNo)}」的产品(来自${_omLastSrc || '订单'})· 勾选要催的 → 自动填表(规格已标准化 · 防手输错)</div>
+      <button type="button" class="btn small" onclick="omToggleAllFetched()" style="padding:3px 10px; font-size:11px;">${allChecked ? '取消全选' : '全选'}</button>
+    </div>
     <div style="display:flex; flex-wrap:wrap; gap:8px;">
       ${_omFetched.map((p, i) => `
-        <label style="display:flex; align-items:center; gap:6px; border:1px solid ${p._checked ? 'var(--accent)' : 'var(--border)'}; border-radius:8px; padding:6px 8px; cursor:pointer; background:${p._checked ? 'rgba(37,99,235,0.06)' : 'var(--bg-card)'};">
+        <label style="display:flex; align-items:center; gap:7px; border:1.5px solid ${p._checked ? 'var(--accent)' : 'var(--border)'}; border-radius:8px; padding:6px 9px; cursor:pointer; background:${p._checked ? 'rgba(37,99,235,0.08)' : 'var(--bg-card)'};">
           <input type="checkbox" ${p._checked ? 'checked' : ''} onchange="omToggleFetched(${i})">
-          ${p.image_url ? `<img src="${p.image_url}" style="width:42px; height:42px; object-fit:cover; border-radius:4px;">` : '<span style="font-size:18px;">📷</span>'}
-          <span style="font-size:11.5px; max-width:220px;">${escapeHtml(p.spec || '(无规格)')}${p.qty ? ` <b>×${p.qty}</b>` : ''}</span>
+          ${p.image_url ? `<img src="${p.image_url}" style="width:48px; height:48px; object-fit:cover; border-radius:5px;">` : '<span style="font-size:20px;">📷</span>'}
+          <span style="font-size:12px; max-width:240px; line-height:1.35;">${escapeHtml(p.spec || '(无规格)')}${p.qty ? ` · <b style="color:#dc2626;">×${p.qty}</b>` : ''}</span>
         </label>
       `).join('')}
     </div>`;
+}
+
+function omToggleAllFetched() {
+  const target = !_omFetched.every(p => p._checked);
+  _omFetched.forEach(p => p._checked = target);
+  omCommitProducts();
+  omRenderFetchPanel();
 }
 
 function omToggleFetched(i) {
   if (!_omFetched[i]) return;
   _omFetched[i]._checked = !_omFetched[i]._checked;
   omCommitProducts();
-  omRenderFetchPanel(_omLastSrc);
+  omRenderFetchPanel();
 }
 
 function omCommitProducts() {
