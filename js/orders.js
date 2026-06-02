@@ -1260,6 +1260,16 @@ function _cleanFetchedSpec(li, rawSpec) {
   v = v.replace(/\s*[:：]\s*/g, ' ');
   v = v.replace(/\s*[-–—]+\s*/g, ' · ');
   v = v.replace(/(·\s*){2,}/g, '· ');
+  // V20260602:尺寸去重(D/∅/Dia/直径 视为同一)· 重复维度只留一个 · 参考 PO
+  {
+    const segs = v.split(/\s*[·\/]\s*/).map(x => x.trim()).filter(Boolean);
+    const seen = new Set(); const kept = [];
+    segs.forEach(seg => {
+      const norm = seg.toLowerCase().replace(/[∅⌀φ]/g, 'd').replace(/\b(dia|diameter|直径)\b/g, 'd').replace(/\s+/g, '');
+      if (!seen.has(norm)) { seen.add(norm); kept.push(seg); }
+    });
+    v = kept.join(' · ');
+  }
   v = v.replace(/^[·\s]+|[·\s]+$/g, '');
   v = v.replace(/\s{2,}/g, ' ').trim();
   return v;
@@ -1441,6 +1451,54 @@ function omCommitProducts() {
   if (typeof renderOrderModalContent === 'function') renderOrderModalContent();
   if (typeof renderOrders === 'function') renderOrders();
 }
+
+// V20260602:批量补全所有催单的产品(从 PO/销售单 · 只填空白的)
+async function chaseBatchFillProducts() {
+  const targets = (typeof CHASE_ORDERS !== 'undefined' ? CHASE_ORDERS : []).filter(o => (!o.products || o.products.length === 0) && o.orderNo);
+  if (targets.length === 0) { alert('没有需要补全的催单(都已有产品 或 没填订单号)'); return; }
+  if (!confirm(`批量从 PO/销售单补全 ${targets.length} 条催单的产品(规格/数量/图)?\n\n只填当前空白的,不覆盖已填的。\n本地查不到的会跳过(可逐个手动后台拉取)。`)) return;
+  const productMap = (typeof SHOPIFY !== 'undefined' && SHOPIFY._productMap) ? SHOPIFY._productMap : {};
+  let filled = 0, noMatch = 0;
+  const updatedRows = [];
+  for (const o of targets) {
+    const no = String(o.orderNo).trim().replace(/^#/, '');
+    let lineItems = [];
+    if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
+      const pos = PO_LIST.filter(pp => String(pp.po_number||'').trim()===no || String(pp.order_no||'').trim()===no);
+      lineItems = pos.flatMap(pp => pp.line_items || []);
+    }
+    if (lineItems.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
+      const so = SHOPIFY._orders.find(s => String(s.shopify_order_number||'').replace('#','')===no || String(s.name||'').replace('#','')===no);
+      if (so && so.line_items) lineItems = so.line_items;
+    }
+    lineItems = (lineItems||[]).filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
+    if (lineItems.length === 0) { noMatch++; continue; }
+    const products = lineItems.map(li => {
+      const rawSpec = li.variant || li.variant_title || li.title || '';
+      let spec = (typeof _cleanFetchedSpec === 'function') ? _cleanFetchedSpec(li, rawSpec) : rawSpec;
+      let img = li.image_url || li.image || '';
+      if (!img && li.sku && productMap[li.sku] && productMap[li.sku].image_url) img = productMap[li.sku].image_url;
+      return { spec, qty: li.qty || '', image_url: img, sku: li.sku || '' };
+    });
+    o.products = products;
+    const specs = products.map(pp => pp.spec).filter(Boolean);
+    if (specs.length) o.product = specs.join(' / ');
+    const tq = products.reduce((su, pp) => su + (Number(pp.qty) || 0), 0);
+    if (tq) o.qty = tq;
+    updatedRows.push({ id: o._id, products: o.products, qty: o.qty || null, product: o.product });
+    filled++;
+  }
+  if (updatedRows.length && typeof sb !== 'undefined') {
+    try {
+      for (const r of updatedRows) {
+        await sb.from('orders').update({ products: r.products, qty: r.qty, product: r.product }).eq('id', r.id);
+      }
+    } catch (e) { console.error('批量补全存库失败', e); }
+  }
+  if (typeof renderOrders === 'function') renderOrders();
+  alert(`✅ 批量补全完成\n\n已补全:${filled} 条\n本地查不到(跳过):${noMatch} 条\n\n查不到的多为旧系统订单,可逐个打开点「📥 从 Shopify 后台拉取」。`);
+}
+window.chaseBatchFillProducts = chaseBatchFillProducts;
 
 function onOrderField(field, value) {
   persistCurrentOrder(o => {

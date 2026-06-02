@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260602-chase10',
+    date: '2026-06-02',
+    type: 'fix',
+    title: '🖼 导出图真不压扁 + 批量补全产品 + 尺寸去重',
+    notes: [
+      '🐛 导出图还是扁:根因 html2canvas 不支持 object-fit → 改 flex 居中 + max-width/max-height(按原比例渲染 · 不再拉伸压扁)· 网格+表格缩略图都改 · 顺手修表格 emoji 字面量',
+      '✨ 催单页加「📥 批量补全产品」:一键从 PO/销售单给所有空白催单补规格/数量/图(只填空白 · 本地查不到的跳过 · 旧单可逐个后台拉)',
+      '✨ 尺寸去重:D/∅/Dia/直径 视为同一 · "D 42cm x H 42cm / ∅ 42cm x H 42cm / 黄铜" → "D 42cm x H 42cm · 黄铜"(参考 PO 逻辑)',
+    ],
+    files: ['orders.js', 'utils.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260602-issfetch',
     date: '2026-06-02',
     type: 'feature',

@@ -2009,7 +2009,7 @@ function _renderExportTableHTML(items, type) {
       <td style="${TD} text-align:center; color:#78716c;">${i + 1}</td>
       <td style="${TD} font-size:11px;">${_esc(r.date)}</td>
       <td style="${TD} font-size:12px;">${_esc(r.supplier)}</td>
-      <td style="${TD} text-align:center;">${r.img ? `<img src="${_esc(r.img)}" crossorigin="anonymous" style="width:64px; height:64px; object-fit:cover; border-radius:4px; border:1px solid #d6d3d1; display:block; margin:0 auto;" onerror="this.style.display=&quot;none&quot;;this.parentElement.innerHTML=&quot;\U0001F4F7&quot;;">` : '<span style="color:#a8a29e;">\U0001F4F7</span>'}</td>
+      <td style="${TD} text-align:center;">${r.img ? `<div style="width:72px; height:72px; display:flex; align-items:center; justify-content:center; margin:0 auto; background:#faf9f7; border-radius:4px; border:1px solid #e7e5e4;"><img src="${_esc(r.img)}" crossorigin="anonymous" style="max-width:100%; max-height:100%; width:auto; height:auto;" onerror="this.parentElement.innerHTML='📷';"></div>` : '<span style="color:#a8a29e;">📷</span>'}</td>
       <td style="${TD} font-size:12px; color:#1c1917;">${r.spec ? _esc(r.spec) : '<span style="color:#a8a29e;">（见图 · 待补规格）</span>'}</td>
       <td style="${TD} text-align:center; ${Number(r.qty) >= 2 ? 'color:#dc2626; font-weight:700; font-size:14px;' : ''}">${_esc(String(r.qty || ''))}</td>
       <td style="${TD} font-size:11px; color:#44403c;">${_esc(r.note)}</td>
@@ -2052,8 +2052,8 @@ function _renderExportGridCardHTML(item, index, type) {
   const date = _fd(item.orderDate || item.created_at);
   const note = item.notes || '';
   const coverHtml = cover
-    ? `<img src="${_esc(cover)}" crossorigin="anonymous" style="width:100%; height:220px; object-fit:contain; display:block; background:#f8f8f6; padding:8px; box-sizing:border-box;" onerror="this.style.opacity=0.3;">`
-    : `<div style="height:220px; display:flex; align-items:center; justify-content:center; color:#a8a29e; font-size:34px; background:#f5f5f4;">📷</div>`;
+    ? `<div style="height:240px; display:flex; align-items:center; justify-content:center; background:#f8f8f6; padding:6px; box-sizing:border-box;"><img src="${_esc(cover)}" crossorigin="anonymous" style="max-width:100%; max-height:100%; width:auto; height:auto; display:block;" onerror="this.parentElement.style.opacity=0.3;"></div>`
+    : `<div style="height:240px; display:flex; align-items:center; justify-content:center; color:#a8a29e; font-size:34px; background:#f5f5f4;">📷</div>`;
   return `
     <div style="border:1px solid #e7e5e4; border-radius:12px; overflow:hidden; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       ${coverHtml}
