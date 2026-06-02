@@ -4048,6 +4048,7 @@ function poExportSupplier() {
         sku: li.sku || '',
         title: li.title_cn || li.title_en || '',
         variant: li.variant || '',
+        note: li.note || li.line_note || '',
         image_url: li.image_url || '',
         qty: li.qty || 0,
         price: li.price || 0,
@@ -4086,13 +4087,12 @@ function poExportSupplier() {
 </style>
 </head>
 <body>
-<h1>📋 ${supplier} 对单表</h1>
-<div class="meta">导出日期：${today} · 状态范围：${filterLabel} · 用于催单 / 对账 / 内部沟通</div>
+<h1>📋 ${supplier} · 供应商催单 / 对单表</h1>
+<div class="meta">导出日期：${today} · 状态范围：${filterLabel}</div>
 <div class="summary">
   <div>采购单总数：<b>${list.length}</b></div>
   <div>产品行数：<b>${allRows.length}</b></div>
   <div>总件数：<b>${totalQty}</b></div>
-  <div>总金额：<b>¥ ${totalAmount.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}</b></div>
 </div>
 <div class="actions">
   <button onclick="window.print()">🖨 打印 / 保存为 PDF</button>
@@ -4102,39 +4102,35 @@ function poExportSupplier() {
 <table>
   <thead>
     <tr>
-      <th style="width: 70px;">图片</th>
-      <th>采购单号</th>
-      <th>销售单</th>
-      <th>SKU / 产品</th>
-      <th>规格</th>
-      <th style="width: 60px; text-align: center;">数量</th>
-      <th style="width: 80px; text-align: right;">单价</th>
-      <th style="width: 90px; text-align: right;">小计</th>
-      <th style="width: 100px;">订单备注</th>
-      <th style="width: 80px;">开单日</th>
-      <th>状态</th>
+      <th style="width: 40px; text-align:center;">#</th>
+      <th style="width: 90px;">采购日期</th>
+      <th style="width: 90px;">供应商</th>
+      <th style="width: 80px;">图片</th>
+      <th>产品 / 规格参数</th>
+      <th style="width: 60px; text-align: center;">采购数量</th>
+      <th style="width: 180px;">备注</th>
+      <th style="width: 70px;">状态</th>
     </tr>
   </thead>
   <tbody>
-    ${allRows.map(r => `
+    ${allRows.map((r, i) => {
+      const note = [r.note, r.box_note].filter(Boolean).join(' · ');
+      return `
       <tr>
+        <td style="text-align:center; color:#78716c;">${i + 1}</td>
+        <td style="font-size: 11px;">${r.created || ''}</td>
+        <td style="font-size: 12px;">${supplier}</td>
         <td>${r.image_url ? `<img src="${r.image_url}">` : '—'}</td>
-        <td style="font-family: monospace; font-size: 11px;">${r.po_number}</td>
-        <td>${r.order_no || ''} <span style="color:#78716c; font-size:10px;">${r.site || ''}</span></td>
-        <td><b>${r.title}</b><br><span style="color:#78716c; font-size:10px; font-family:monospace;">${r.sku}</span></td>
-        <td style="font-size: 11px; color: #44403c;">${r.variant}</td>
-        <td style="text-align: center;">${Number(r.qty) >= 2 ? `<span class="qty-big">${r.qty}</span>` : r.qty}</td>
-        <td style="text-align: right; font-family: monospace;">¥${Number(r.price).toFixed(2)}</td>
-        <td style="text-align: right; font-family: monospace;"><b>¥${Number(r.subtotal).toFixed(2)}</b></td>
-        <td style="font-size: 11px;">${r.box_note}</td>
-        <td style="font-size: 11px;">${r.created}</td>
+        <td style="font-size: 12px; color: #1c1917;">${r.variant || '<span style="color:#a8a29e;">（见图 · 待补规格）</span>'}</td>
+        <td style="text-align: center;">${Number(r.qty) >= 2 ? `<span class="qty-big">${r.qty}</span>` : (r.qty || '')}</td>
+        <td style="font-size: 11px; color:#44403c;">${note || ''}</td>
         <td style="font-size: 11px;">${r.status}</td>
       </tr>
-    `).join('')}
+    `;}).join('')}
   </tbody>
 </table>
 <div style="margin-top: 16px; font-size: 11px; color: #78716c; text-align: right;">
-  跟单团队工作台 · 共 ${allRows.length} 行 · 总额 ¥${totalAmount.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
+  共 ${allRows.length} 行 · 总件数 ${totalQty}
 </div>
 </body>
 </html>`;

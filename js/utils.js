@@ -1934,6 +1934,64 @@ function _renderExportCardHTML(item, index, type) {
 // ============================================================
 // 核心：构建专属打印版 DOM（屏幕外）+ 截图 + 弹预览
 // ============================================================
+// ============================================================
+// V20260602:导出表格布局(发供应商催单 · 模板样式 · 无 SKU/标题)
+// 列:# | 采购日期 | 供应商 | 图片 | 产品规格 | 数量 | 备注 | 状态
+// ============================================================
+function _renderExportTableHTML(items, type) {
+  const _esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const _fd = (d) => { if (!d) return ''; if (typeof d === 'string' && d.length >= 10) return d.slice(0,10); try { return new Date(d).toISOString().slice(0,10); } catch { return String(d); } };
+  const rows = [];
+  items.forEach(item => {
+    const supplier = item.supplier || '';
+    const date = _fd(item.orderDate || item.created_at || item.createdDate);
+    const statusLabel = (typeof ORDER_STATUS_LABELS !== 'undefined' && ORDER_STATUS_LABELS[item.status]) || item.status || '';
+    const baseNote = item.notes || item.box_note || '';
+    const lis = item._isPO ? item.lineItems : (Array.isArray(item.line_items) ? item.line_items : null);
+    if (lis && lis.length > 0) {
+      lis.forEach(li => rows.push({
+        date, supplier,
+        img: li.image_url || li.image || '',
+        spec: li.variant || '',
+        qty: li.qty || '',
+        note: [li.note || li.line_note, baseNote].filter(Boolean).join(' · '),
+        status: statusLabel,
+      }));
+    } else {
+      let img = '';
+      if (item.orderNo && typeof _getRelatedOrderImages === 'function') { const arr = _getRelatedOrderImages(item.orderNo); img = arr[0] || ''; }
+      if (!img) { const ms = [...(item.screenshots || []), ...((item.followups || []).flatMap(f => f.screenshots || []))]; img = ms[0] || ''; }
+      rows.push({ date, supplier, img, spec: '', qty: '', note: baseNote, status: statusLabel });
+    }
+  });
+  const TD = 'border:1px solid #d6d3d1; padding:5px 8px; vertical-align:middle;';
+  const TH = 'border:1px solid #d6d3d1; padding:6px 8px; font-weight:600; text-align:left; background:#f5f5f4;';
+  const body = rows.map((r, i) => `
+    <tr>
+      <td style="${TD} text-align:center; color:#78716c;">${i + 1}</td>
+      <td style="${TD} font-size:11px;">${_esc(r.date)}</td>
+      <td style="${TD} font-size:12px;">${_esc(r.supplier)}</td>
+      <td style="${TD} text-align:center;">${r.img ? `<img src="${_esc(r.img)}" crossorigin="anonymous" style="width:64px; height:64px; object-fit:cover; border-radius:4px; border:1px solid #d6d3d1; display:block; margin:0 auto;" onerror="this.style.display=&quot;none&quot;;this.parentElement.innerHTML=&quot;\U0001F4F7&quot;;">` : '<span style="color:#a8a29e;">\U0001F4F7</span>'}</td>
+      <td style="${TD} font-size:12px; color:#1c1917;">${r.spec ? _esc(r.spec) : '<span style="color:#a8a29e;">（见图 · 待补规格）</span>'}</td>
+      <td style="${TD} text-align:center; ${Number(r.qty) >= 2 ? 'color:#dc2626; font-weight:700; font-size:14px;' : ''}">${_esc(String(r.qty || ''))}</td>
+      <td style="${TD} font-size:11px; color:#44403c;">${_esc(r.note)}</td>
+      <td style="${TD} font-size:11px;">${_esc(r.status)}</td>
+    </tr>`).join('');
+  return `<table style="border-collapse:collapse; width:100%; font-family:-apple-system,'Microsoft YaHei',sans-serif;">
+    <thead><tr>
+      <th style="${TH} width:36px; text-align:center;">#</th>
+      <th style="${TH} width:88px;">采购日期</th>
+      <th style="${TH} width:80px;">供应商</th>
+      <th style="${TH} width:84px; text-align:center;">图片</th>
+      <th style="${TH}">产品 / 规格参数</th>
+      <th style="${TH} width:56px; text-align:center;">数量</th>
+      <th style="${TH} width:170px;">备注</th>
+      <th style="${TH} width:64px;">状态</th>
+    </tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
+}
+
 async function _buildExportPageAndPreview(opts) {
   // opts: { type, items, title, fileName }
   if (!opts.items || opts.items.length === 0) {
@@ -1963,12 +2021,17 @@ async function _buildExportPageAndPreview(opts) {
   const timeStr = today.toLocaleTimeString('zh-CN', { hour12: false });
   const currentUser = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) || '';
   
-  const cardsHtml = opts.items.map((item, i) => _renderExportCardHTML(item, i, opts.type)).join('');
-  // V28β:网格布局支持 + 紧凑(去多余空白)
-  const isGrid = opts.viewMode === 'grid';
-  const bodyStyle = isGrid 
-    ? 'display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;' 
-    : 'display:flex; flex-direction:column; gap:6px;';
+  // V20260602:table 布局(发供应商) vs 卡片布局
+  const isTable = opts.layout === 'table';
+  const isGrid = !isTable && opts.viewMode === 'grid';
+  const bodyInner = isTable
+    ? _renderExportTableHTML(opts.items, opts.type)
+    : opts.items.map((item, i) => _renderExportCardHTML(item, i, opts.type)).join('');
+  const bodyStyle = isTable
+    ? ''
+    : (isGrid
+      ? 'display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;'
+      : 'display:flex; flex-direction:column; gap:6px;');
   
   wrap.innerHTML = `
     <div class="export-print-page${isGrid ? ' grid-mode' : ''}">
@@ -1981,7 +2044,7 @@ async function _buildExportPageAndPreview(opts) {
         </div>
       </div>
       <div class="export-print-body" style="${bodyStyle}">
-        ${cardsHtml}
+        ${bodyInner}
       </div>
     </div>
   `;
@@ -2194,9 +2257,10 @@ async function exportOrdersPDF() {
   await _buildExportPageAndPreview({
     type: 'orders',
     items,
-    title: '📋 催单清单' + (window._lastVisibleOrders ? ` (已筛选 ${items.length} 条)` : '') + (viewMode === 'grid' ? ' · 网格视图' : ' · 列表视图'),
-    fileName: `催单清单_${viewMode === 'grid' ? '网格_' : ''}${new Date().toISOString().slice(0,10)}.pdf`,
+    title: '📋 催单清单（发供应商）' + (window._lastVisibleOrders ? ` (已筛选 ${items.length} 条)` : ''),
+    fileName: `催单清单_${new Date().toISOString().slice(0,10)}.pdf`,
     viewMode,
+    layout: 'table',  // V20260602:表格样式 · 无 SKU/标题 · 带图
   });
 }
 function exportOrdersExcel() {
