@@ -1365,23 +1365,30 @@ async function _omTranslateRemaining() {
 
 function omAutoFetchProducts() {
   const o = currentOrder(); if (!o) return;
-  const no = (document.getElementById('omOrderNo')?.value || o.orderNo || '').trim().replace(/^#/, '');
+  const rawNo = (document.getElementById('omOrderNo')?.value || o.orderNo || '').trim();
   const panel = document.getElementById('omFetchPanel');
-  _omNo = no;
-  if (!no) { _omFetched = []; _omState = 'empty'; if (panel) omRenderFetchPanel(); return; }
+  // V20260602:支持多个订单号(/ , 、 空格 分隔)· 同一客户多个相似订单合并到一张催单
+  const nos = rawNo.split(/[\/,，、\s]+/).map(x => x.trim().replace(/^#/, '')).filter(Boolean);
+  _omNo = nos.join(' / ');
+  if (nos.length === 0) { _omFetched = []; _omState = 'empty'; if (panel) omRenderFetchPanel(); return; }
 
-  let lineItems = [], src = '';
-  // 1) 先抓 PO(优先)· 一个订单可能拆成多个 PO,全收 · PO 已按供应商拆分,直接可用
-  if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
-    const pos = PO_LIST.filter(p => String(p.po_number||'').trim()===no || String(p.order_no||'').trim()===no);
-    const poItems = pos.flatMap(p => p.line_items || []);
-    if (poItems.length) { lineItems = poItems; src = pos.length > 1 ? `PO（${pos.length}张·已拆分）` : 'PO'; }
-  }
-  // 2) PO 没下过 = 旧系统订单 → 再抓销售单页面的产品
-  if (lineItems.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
-    const so = SHOPIFY._orders.find(s => String(s.shopify_order_number||'').replace('#','')===no || String(s.name||'').replace('#','')===no);
-    if (so && so.line_items && so.line_items.length) { lineItems = so.line_items; src = '销售单（旧系统订单）'; }
-  }
+  let lineItems = [];
+  const srcSet = new Set();
+  nos.forEach(n => {
+    let got = [];
+    if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
+      const pos = PO_LIST.filter(p => String(p.po_number||'').trim()===n || String(p.order_no||'').trim()===n);
+      got = pos.flatMap(p => p.line_items || []);
+      if (got.length) srcSet.add('PO');
+    }
+    if (got.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
+      const so = SHOPIFY._orders.find(s => String(s.shopify_order_number||'').replace('#','')===n || String(s.name||'').replace('#','')===n);
+      if (so && so.line_items && so.line_items.length) { got = so.line_items; srcSet.add('销售单'); }
+    }
+    got.forEach(li => { try { li._fromOrder = n; } catch(e){} });
+    lineItems = lineItems.concat(got);
+  });
+  const src = (nos.length > 1 ? `${nos.length}个订单·` : '') + ([...srcSet].join('/') || '');
   // 过滤保险/运费险等
   lineItems = (lineItems||[]).filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
 
@@ -1417,24 +1424,34 @@ function omAutoFetchProducts() {
 // V20260602:手动从 Shopify 后台拉取单个订单(本地没同步到的旧单 · 兜底)
 async function omManualFetch() {
   const o = currentOrder(); if (!o) return;
-  const no = (document.getElementById('omOrderNo')?.value || o.orderNo || '').trim().replace(/^#/, '');
-  if (!no) { alert('请先填订单号'); return; }
+  const rawNo = (document.getElementById('omOrderNo')?.value || o.orderNo || '').trim();
+  const nos = rawNo.split(/[\/,，、\s]+/).map(x => x.trim().replace(/^#/, '')).filter(Boolean);
+  if (nos.length === 0) { alert('请先填订单号'); return; }
   const site = document.getElementById('omSite')?.value || o.site;
   const meta = (typeof SHOPIFY !== 'undefined' && SHOPIFY.STORES_META)
     ? SHOPIFY.STORES_META.find(m => m.site_code === site) : null;
   const shop = meta ? meta.domain : null;
   const panel = document.getElementById('omFetchPanel');
   if (!shop) { if (panel) panel.innerHTML = `<div style="font-size:12px; color:var(--danger);">⚠ 站点 ${escapeHtml(site||'')} 没有对应 Shopify 店铺,无法后台拉取</div>`; return; }
-  if (panel) panel.innerHTML = `<div style="font-size:12px; color:var(--text-secondary); padding:6px 0;">⏳ 正在从 Shopify 后台拉取订单「${escapeHtml(no)}」(${shop})…</div>`;
+  _omNo = nos.join(' / ');
+  if (panel) panel.innerHTML = `<div style="font-size:12px; color:var(--text-secondary); padding:6px 0;">⏳ 正在从 Shopify 后台拉取${nos.length>1?` ${nos.length} 个订单`:`订单「${escapeHtml(nos[0])}」`}(${shop})…</div>`;
   try {
-    const r = await SHOPIFY.call('list_orders', { name: no, status: 'any', limit: 10, auto_save: false }, shop, 30000);  // auto_save:false → 实时单查 · 直接带产品图 · 不入库
-    const orders = Array.isArray(r.orders) ? r.orders : [];
-    const ord = orders.find(x => String(x.name || '').replace('#', '') === no) || orders[0];
-    let lineItems = (ord && ord.line_items) ? ord.line_items : [];
+    // V20260602:支持多个订单号 · 逐个拉取合并
+    let lineItems = [];
+    for (const n of nos) {
+      try {
+        const r = await SHOPIFY.call('list_orders', { name: n, status: 'any', limit: 10, auto_save: false }, shop, 30000);
+        const orders = Array.isArray(r.orders) ? r.orders : [];
+        const ord = orders.find(x => String(x.name || '').replace('#', '') === n) || orders[0];
+        let lis = (ord && ord.line_items) ? ord.line_items : [];
+        lis.forEach(li => { try { li._fromOrder = n; } catch(e){} });
+        lineItems = lineItems.concat(lis);
+      } catch (e) { console.warn('[后台拉取]', n, e.message || e); }
+    }
     lineItems = lineItems.filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
     if (lineItems.length === 0) {
-      _omFetched = []; _omState = 'nomatch'; _omNo = no;
-      if (panel) panel.innerHTML = `<div style="font-size:12px; color:var(--warning); padding:4px 0;">⚠ Shopify 后台也没查到订单「${escapeHtml(no)}」的产品(可能订单号不对,或该店铺未授权)</div>`;
+      _omFetched = []; _omState = 'nomatch';
+      if (panel) panel.innerHTML = `<div style="font-size:12px; color:var(--warning); padding:4px 0;">⚠ Shopify 后台也没查到「${escapeHtml(_omNo)}」的产品(可能订单号不对,或该店铺未授权)</div>`;
       return;
     }
     const productMap = (SHOPIFY._productMap) || {};
@@ -1453,7 +1470,7 @@ async function omManualFetch() {
       const checked = (o.products || []).some(x => (x.sku && x.sku === li.sku) || (x.spec && x.spec === spec));
       return { spec, qty: li.quantity || li.qty || '', image_url: img, sku: li.sku || '', _checked: checked };
     });
-    _omState = 'ok'; _omLastSrc = 'Shopify后台'; _omNo = no;
+    _omState = 'ok'; _omLastSrc = nos.length > 1 ? `Shopify后台·${nos.length}单` : 'Shopify后台';
     if (_omFetched.length === 1 && (o.products || []).length === 0) { _omFetched[0]._checked = true; omCommitProducts(); }
     _omSyncQtyField();
     if (typeof omRenderProductLines === 'function') omRenderProductLines();
