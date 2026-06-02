@@ -288,7 +288,11 @@ function _renderOrderCard(o, i) {
   if (productImages.length === 0) productImages = (typeof _getRelatedOrderImages === 'function') ? _getRelatedOrderImages(o.orderNo) : [];
   const fuScreenshots = (o.followups || []).flatMap(f => f.screenshots || []);
   const orderScreenshots = o.screenshots || [];
-  const allImages = [...productImages, ...orderScreenshots, ...fuScreenshots];
+  // V20260602:去重 + 有产品图就只用产品图(不混入手动截图)· 避免"手动图 + 自动产品图"重复两张
+  const _uniq = arr => [...new Set(arr.filter(Boolean))];
+  const allImages = productImages.length > 0
+    ? _uniq(productImages)
+    : _uniq([...orderScreenshots, ...fuScreenshots]);
   
   // V20260526o: 多图布局 · 性能优化(lazy + async + 占位 · 解决滚动闪烁)
   // 优化点:

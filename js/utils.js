@@ -529,12 +529,19 @@ function _isInsuranceLineItem(li) {
     .filter(Boolean).join(' ').toLowerCase();
   if (!t) return false;
   const kw = [
-    'insurance', 'protection', 'route', 'order protection', 'shipping protection',
-    'package protection', 'warranty', 'assurance', 'guarantee', 'seel',
-    'tip', 'donation', 'carbon', 'priority processing', 'priority shipping',
-    '保险', '运费险', '运输险', '运输保险', '保价', '保障', '小费', '碳中和', '优先',
+    'insurance', 'protection', 'protect', 'route', 'order protection', 'shipping protection',
+    'package protection', 'warranty', 'assurance', 'guarantee', 'guaranty', 'seel', 'worry', 'worry-free',
+    'safeship', 'safe ship', 'tip', 'donation', 'carbon', 'priority processing', 'priority shipping',
+    'shipping fee', 'handling fee', 'freight', 'green shipping', 'eco', 'rush', 'expedited',
+    '保险', '运费险', '运输险', '运输保险', '保价', '保障', '无忧', '安心', '小费', '碳中和', '优先', '运费', '加急',
   ];
-  return kw.some(k => t.includes(k));
+  if (kw.some(k => t.includes(k))) return true;
+  // V20260602:价格区间型 variant(如 "1800.01-1900.00" / "$1800.01 - $1900.00")· 按订单金额分档的运费险 · 灯具不会有这种规格
+  const variantOnly = String(li.variant || li.variant_title || li.title || '').trim();
+  if (/^\$?\s*\d[\d,]*(?:\.\d+)?\s*[-–—~]\s*\$?\s*\d[\d,]*(?:\.\d+)?\s*$/.test(variantOnly)) return true;
+  // 标题就是纯价格/金额(无尺寸无颜色)也大概率是费用项
+  if (/^\$?\s*\d[\d,]*(?:\.\d+)?\s*$/.test(variantOnly) && !/cm|mm|head|tier|color|颜色|尺寸|头|层/i.test(t)) return true;
+  return false;
 }
 
 function _getRelatedOrderImages(orderNo) {
