@@ -2217,8 +2217,11 @@ function loadAllData() {
     SHOPIFY.loadStores()
       .then(() => {
         // V20260601-loadfix3:进页面用界面默认范围读库(近30天)· 快 + 和列表一致 · 不依赖点同步
-        const _from = document.getElementById('salesFetchFrom')?.value || '';
-        const _to   = document.getElementById('salesFetchTo')?.value || '';
+        let _from = document.getElementById('salesFetchFrom')?.value || '';
+        let _to   = document.getElementById('salesFetchTo')?.value || '';
+        // V20260602-perf:初始化预加载限定近 45 天 · 避免输入框为空时拉全部历史(带 raw_payload 大字段 · egress 爆炸 · 整体变卡)
+        // 需要更早订单:去销售单页改日期范围手动加载 · 催单查不到的老单可手动后台拉取
+        if (!_from) { const _d = new Date(); _d.setDate(_d.getDate() - 45); _from = _d.toISOString().slice(0, 10); }
         return SHOPIFY.loadOrdersFromDB(false, { from: _from, to: _to });
       })
       .then(async () => {
