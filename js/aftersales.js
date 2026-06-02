@@ -344,7 +344,8 @@ function setAftersalesPageSize(newSize) {
 function _renderAftersaleCard(a, i) {
   // 收集所有图片 · 优先用客户截图(沟通图)展示
   const manualScreenshots = [...(a.screenshots || []), ...((a.followups || []).flatMap(f => f.screenshots || []))];
-  let productImages = (typeof _getRelatedOrderImages === 'function') ? _getRelatedOrderImages(a.orderNo) : [];
+  let productImages = (a.products || []).map(p => p.image_url).filter(Boolean);  // V20260602:优先选中SKU的图
+  if (!productImages.length && typeof _getRelatedOrderImages === 'function') productImages = _getRelatedOrderImages(a.orderNo);
   const allImages = manualScreenshots.length > 0 ? manualScreenshots : productImages;
   
   // 状态信息
@@ -437,7 +438,8 @@ function _renderAftersaleRow(a, i) {
     // ① 跟单手动上传的图（→ 右侧"截图"列：处理进度可视化）
     const manualScreenshots = [...(a.screenshots || []), ...((a.followups || []).flatMap(f => f.screenshots || []))];
     // ② 产品图：通过 orderNo 反查关联销售单/PO（→ 左侧"状态"列下方：识别产品）
-    let productImages = _getRelatedOrderImages(a.orderNo);
+    let productImages = (a.products || []).map(p => p.image_url).filter(Boolean);  // V20260602:优先选中SKU的图
+    if (!productImages.length) productImages = _getRelatedOrderImages(a.orderNo);
     // V4-2026-05-24：产品图反查不到时 → 兜底用跟单上传的沟通截图
     // 让 # 列大图位永远有内容可看（"一眼识货"的体验不被未填产品破坏）
     let productImageSource = 'product';  // 'product' = 来自产品库 | 'manual' = 来自沟通截图兜底
@@ -583,6 +585,7 @@ async function addAftersales() {
     isUrgent: false,
     createdDate: new Date().toISOString().slice(0, 10),
     status: 'pending', nextFollow: '', resolvedDate: '',
+    products: [],   // V20260602:关联产品(多选)
     screenshots: [], followups: [],
     createdAt: new Date().toISOString(),
   };
@@ -675,6 +678,8 @@ function openAfterModal(id, agent) {
   
   renderAfterModalContent();
   document.getElementById('aftersalesModal').classList.add('show');
+  // V20260602:打开时自动抓取订单产品(有订单号就抓)
+  if (typeof afAutoFetchProducts === 'function') { _afFetched = []; _afState = 'empty'; afAutoFetchProducts(); }
 }
 
 function renderAfterModalContent() {
@@ -805,6 +810,181 @@ function onAfterField(field, value) {
   updateAfterStats();
   refreshAsFb();
   renderAfterReport();
+}
+
+// ===== V20260602:售后订单抓取(镜像催单/问题模块)=====
+// 输入订单号 → 自动从 PO/销售单抓原始订单产品 → 勾选有售后的 SKU(可多选)→ 自动填图+规格
+let _afFetched = [];      // [{spec,qty,image_url,sku,_checked}]
+let _afState = 'empty';   // empty | ok | nomatch
+let _afNo = '';
+let _afLastSrc = '';
+let _afFetchTimer = null;
+
+function afOrderNoChanged(value) {
+  persistCurrentAfter(a => a.orderNo = value);
+  updateOrderNoHint('asmSite', 'asmOrderNo', 'asmOrderNoHint');
+  clearTimeout(_afFetchTimer);
+  _afFetchTimer = setTimeout(() => afAutoFetchProducts(), 600);
+}
+
+function afAutoFetchProducts() {
+  const a = currentAfter();
+  const rawNo = (document.getElementById('asmOrderNo')?.value || (a && a.orderNo) || '').trim();
+  const panel = document.getElementById('asmFetchPanel');
+  // 支持多个订单号(/ , 、 空格 分隔)· 一个客户多个订单都有售后
+  const nos = rawNo.split(/[\/,，、\s]+/).map(x => x.trim().replace(/^#/, '')).filter(Boolean);
+  _afNo = nos.join(' / ');
+  if (nos.length === 0) { _afFetched = []; _afState = 'empty'; if (panel) afRenderFetchPanel(); return; }
+
+  let lineItems = [];
+  const srcSet = new Set();
+  nos.forEach(n => {
+    let got = [];
+    if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
+      const pos = PO_LIST.filter(pp => String(pp.po_number||'').trim()===n || String(pp.order_no||'').trim()===n);
+      got = pos.flatMap(pp => pp.line_items || []);
+      if (got.length) srcSet.add('PO');
+    }
+    if (got.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
+      const so = SHOPIFY._orders.find(x => String(x.shopify_order_number||'').replace('#','')===n || String(x.name||'').replace('#','')===n);
+      if (so && so.line_items && so.line_items.length) { got = so.line_items; srcSet.add('销售单'); }
+    }
+    got.forEach(li => { try { li._fromOrder = n; } catch(e){} });
+    lineItems = lineItems.concat(got);
+  });
+  const src = (nos.length > 1 ? `${nos.length}个订单·` : '') + ([...srcSet].join('/') || '');
+  lineItems = (lineItems||[]).filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
+
+  const productMap = (typeof SHOPIFY !== 'undefined' && SHOPIFY._productMap) ? SHOPIFY._productMap : {};
+  _afFetched = lineItems.map(li => {
+    const rawSpec = li.variant || li.variant_title || li.title_cn || li.title_en || li.title || '';
+    let spec = (typeof _cleanFetchedSpec === 'function') ? _cleanFetchedSpec(li, rawSpec) : rawSpec;
+    let img = li.image_url || li.image || '';
+    if (!img && li.sku && productMap[li.sku] && productMap[li.sku].image_url) img = productMap[li.sku].image_url;
+    if (!img && li.sku && typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) {
+      const pp = PRODUCTS_CACHE.effectiveBySku(li.sku); if (pp && pp.image_url) img = pp.image_url;
+    }
+    const cur = (a && a.products) || [];
+    const checked = cur.some(x => (x.sku && x.sku===li.sku) || (x.spec && x.spec===spec));
+    return { spec, qty: li.qty || li.quantity || '', image_url: img, sku: li.sku || '', _checked: checked };
+  });
+  // 本地没抓到但已保存过产品 → 显示已保存的
+  if (_afFetched.length === 0 && a && (a.products || []).length > 0) {
+    _afFetched = a.products.map(p => ({ spec: p.spec, qty: p.qty, image_url: p.image_url, sku: p.sku, _checked: true }));
+    _afLastSrc = '已保存';
+  }
+  _afState = (_afFetched.length === 0) ? 'nomatch' : 'ok';
+  // 只有一个产品且没选过 → 默认勾上(常见:整单只有一件,直接就是它有售后)
+  if (_afFetched.length === 1 && (!(a && a.products) || a.products.length === 0)) { _afFetched[0]._checked = true; afCommitProducts(); }
+  _afLastSrc = src;
+  // 打开时用新抓取(已清洗+数量)重建已勾选 · 修"规格还是英文/没存数量"
+  if (a && _afFetched.length && _afFetched.some(p => p._checked)) {
+    const fetchedSel = _afFetched.filter(p => p._checked).map(p => ({ spec: p.spec, qty: p.qty, image_url: p.image_url, sku: p.sku }));
+    const sig = arr => JSON.stringify((arr||[]).map(p => [p.sku || '', p.spec || '', p.qty == null ? '' : p.qty, p.image_url || '']));
+    if (sig(a.products) !== sig(fetchedSel)) afCommitProducts();
+  }
+  afRenderFetchPanel();
+  afTranslateRemaining();
+}
+
+async function afManualFetch() {
+  const a = currentAfter();
+  const rawNo = (document.getElementById('asmOrderNo')?.value || (a && a.orderNo) || '').trim();
+  const nos = rawNo.split(/[\/,，、\s]+/).map(x => x.trim().replace(/^#/, '')).filter(Boolean);
+  if (nos.length === 0) { alert('请先填订单号'); return; }
+  const site = document.getElementById('asmSite')?.value || (a && a.site);
+  const meta = (typeof SHOPIFY !== 'undefined' && SHOPIFY.STORES_META) ? SHOPIFY.STORES_META.find(m => m.site_code === site) : null;
+  const shop = meta ? meta.domain : null;
+  const panel = document.getElementById('asmFetchPanel');
+  if (!shop) { if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--danger);">⚠ 站点 ${escapeHtml(site||'')} 无对应 Shopify 店铺</div>`; return; }
+  _afNo = nos.join(' / ');
+  if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--text-secondary);padding:6px 0;">⏳ 正在从 Shopify 后台拉取${nos.length>1?` ${nos.length} 个订单`:`订单「${escapeHtml(nos[0])}」`}…</div>`;
+  try {
+    let lineItems = [];
+    for (const n of nos) {
+      try {
+        const r = await SHOPIFY.call('list_orders', { name: n, status: 'any', limit: 10, auto_save: false }, shop, 30000);
+        const orders = Array.isArray(r.orders) ? r.orders : [];
+        const ord = orders.find(x => String(x.name||'').replace('#','')===n) || orders[0];
+        let lis = (ord && ord.line_items) ? ord.line_items : [];
+        lis.forEach(li => { try { li._fromOrder = n; } catch(e){} });
+        lineItems = lineItems.concat(lis);
+      } catch (e) { console.warn('[售后后台拉取]', n, e.message || e); }
+    }
+    lineItems = lineItems.filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
+    if (lineItems.length === 0) { _afFetched=[]; _afState='nomatch'; if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--warning);padding:4px 0;">⚠ Shopify 后台也没查到「${escapeHtml(_afNo)}」的产品</div>`; return; }
+    const productMap = (SHOPIFY._productMap) || {};
+    _afFetched = lineItems.map(li => {
+      const rawSpec = li.variant_title || li.variant || li.title || '';
+      let spec = (typeof _cleanFetchedSpec === 'function') ? _cleanFetchedSpec(li, rawSpec) : rawSpec;
+      let img = li.image_url || '';
+      if (!img && li.sku && productMap[li.sku] && productMap[li.sku].image_url) img = productMap[li.sku].image_url;
+      const cur = (a && a.products) || [];
+      const checked = cur.some(x => (x.sku && x.sku===li.sku) || (x.spec && x.spec===spec));
+      return { spec, qty: li.quantity || li.qty || '', image_url: img, sku: li.sku || '', _checked: checked };
+    });
+    _afState='ok'; _afLastSrc = nos.length > 1 ? `Shopify后台·${nos.length}单` : 'Shopify后台';
+    if (_afFetched.length===1 && (!(a && a.products) || a.products.length===0)) { _afFetched[0]._checked=true; afCommitProducts(); }
+    afRenderFetchPanel();
+    afTranslateRemaining();
+  } catch (e) {
+    if (panel) panel.innerHTML = `<div style="font-size:12px;color:var(--danger);padding:4px 0;">❌ 后台拉取失败:${escapeHtml(e.message||String(e))}</div>`;
+  }
+}
+
+function afRenderFetchPanel() {
+  const panel = document.getElementById('asmFetchPanel'); if (!panel) return;
+  const btn = '<button type="button" class="btn small" onclick="afManualFetch()" style="padding:3px 10px;font-size:11px;margin-left:8px;">📥 从 Shopify 后台拉取</button>';
+  if (_afState === 'empty' || !_afNo) {
+    panel.innerHTML = '<div style="font-size:11.5px;color:var(--text-secondary);padding:2px 0;">👆 填<b>订单号</b> → 自动从 PO/销售单抓产品,勾选<b>有售后的 SKU</b>(可多选)→ 自动填产品图和规格' + btn + '</div>';
+    return;
+  }
+  if (_afState === 'nomatch' || !_afFetched.length) {
+    panel.innerHTML = `<div style="font-size:11.5px;color:var(--warning);padding:4px 0;">⚠ 本地没找到订单「<b>${escapeHtml(_afNo)}</b>」· 旧订单可点右边从后台拉` + btn + `</div>`;
+    return;
+  }
+  const allChecked = _afFetched.every(p => p._checked);
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;">
+      <div style="font-size:11.5px;color:var(--text-secondary);font-weight:600;">📥 订单「${escapeHtml(_afNo)}」的产品(${_afLastSrc||'订单'})· 勾选<b style="color:var(--pink);">有售后问题的 SKU</b></div>
+      <div>
+        <button type="button" class="btn small" onclick="afToggleAll()" style="padding:3px 10px;font-size:11px;">${allChecked?'取消全选':'全选'}</button>
+        <button type="button" class="btn small" onclick="afManualFetch()" style="padding:3px 10px;font-size:11px;margin-left:6px;">📥 后台重拉</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      ${_afFetched.map((p,i)=>`
+        <label style="display:flex;align-items:center;gap:7px;border:1.5px solid ${p._checked?'var(--pink)':'var(--border)'};border-radius:8px;padding:6px 9px;cursor:pointer;background:${p._checked?'rgba(236,72,153,0.08)':'var(--bg-card)'};">
+          <input type="checkbox" ${p._checked?'checked':''} onchange="afToggleFetched(${i})">
+          ${p.image_url?`<img src="${p.image_url}" style="width:48px;height:48px;object-fit:cover;border-radius:5px;">`:'<span style="font-size:20px;">📷</span>'}
+          <span style="font-size:12px;max-width:240px;line-height:1.35;">${escapeHtml(p.spec||'(无规格)')}${p.qty?` · <b style="color:#dc2626;">×${p.qty}</b>`:''}</span>
+        </label>`).join('')}
+    </div>
+    <div style="font-size:10.5px;color:var(--text-tertiary);margin-top:6px;">勾选后自动填入「产品」字段 · 售后问题图照常在下方上传</div>`;
+}
+
+function afToggleFetched(i) { if (!_afFetched[i]) return; _afFetched[i]._checked = !_afFetched[i]._checked; afCommitProducts(); afRenderFetchPanel(); }
+function afToggleAll() { const tg = !_afFetched.every(p=>p._checked); _afFetched.forEach(p=>p._checked=tg); afCommitProducts(); afRenderFetchPanel(); }
+function afCommitProducts() {
+  const selected = _afFetched.filter(p=>p._checked).map(p=>({spec:p.spec,qty:p.qty,image_url:p.image_url,sku:p.sku}));
+  persistCurrentAfter(a => {
+    a.products = selected;
+    // 自动填「产品」字段(多 SKU 用 / 隔开)
+    a.product = selected.map(p => p.spec).filter(Boolean).join(' / ');
+  });
+  renderAfterModalContent();
+  renderAftersales();
+}
+async function afTranslateRemaining() {
+  if (typeof _aiTranslateSpec !== 'function') return;
+  const need = _afFetched.filter(p => { if(!p.spec)return false; const en=(p.spec.match(/[A-Za-z]{3,}/g)||[]).length; const cn=(p.spec.match(/[\u4e00-\u9fa5]/g)||[]).length; return en>0 && cn/Math.max(p.spec.length,1)<0.5; });
+  if (need.length === 0) return;
+  try {
+    const numbered = need.map((p,i)=>`[${i+1}] ${p.spec}`).join('\n');
+    const result = await _aiTranslateSpec(numbered);
+    (result.split('\n').filter(l=>l.trim())).forEach(line=>{ const m=line.match(/^\[(\d+)\]\s*(.+)$/); if(m){const idx=parseInt(m[1])-1; if(need[idx])need[idx].spec=m[2].trim();}});
+    afCommitProducts(); afRenderFetchPanel();
+  } catch(e) { console.warn('[售后 AI 翻译兜底失败]', e.message||e); }
 }
 
 // 售后原因辅助：拆分 "主类 · 子类" 格式

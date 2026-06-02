@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260602-asfetch1',
+    date: '2026-06-02',
+    type: 'feature',
+    title: '🛠️ 售后单订单抓取(同催单/问题逻辑)',
+    notes: [
+      '✅ 售后单填订单号 → 自动从 PO/销售单抓原始订单产品(支持多个订单号 / 隔开)',
+      '✅ 勾选有售后问题的 SKU(可 1 个或多个)→ 自动填产品图 + 规格(已清洗/翻译)',
+      '✅ 售后问题图照常在下方上传 · 卡片/列表优先显示选中 SKU 的图',
+      '✅ 旧订单本地查不到 → 可一键从 Shopify 后台拉取',
+      '⚠️ 需在 Supabase 跑:售后模块-products列-20260602.sql(aftersales 表加 products 列)',
+    ],
+    files: ['aftersales.js', 'core.js', 'index.html', 'help.js', '售后模块-products列-20260602.sql'],
+  },
+  {
     v: '20260602-perf3',
     date: '2026-06-02',
     type: 'fix',

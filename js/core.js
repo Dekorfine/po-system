@@ -138,6 +138,7 @@ const DATA = {
       _id: r.id, _agent_id: r.agent_id,
       orderNo: r.order_no || '', site: r.site || '',
       product: r.product || '', supplier: r.supplier || '',
+      products: r.products || [],            // V20260602:关联产品(多选)
       reason: r.reason || '', reasonDetail: r.reason_detail || '',
       status: r.status || 'pending',
       createdDate: r.created_date || '', nextFollow: r.next_follow || '', resolvedDate: r.resolved_date || '',
@@ -233,6 +234,7 @@ const DATA = {
       agent_id: userId,
       order_no: a.orderNo || '', site: a.site || '',
       product: a.product || '', supplier: a.supplier || '',
+      products: a.products || [],            // V20260602:关联产品(多选)[{spec,qty,image_url,sku}]
       reason: a.reason || '', reason_detail: a.reasonDetail || '',
       status: a.status || 'pending',
       created_date: a.createdDate || null, next_follow: a.nextFollow || null, resolved_date: a.resolvedDate || null,
