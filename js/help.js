@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260602-chase7',
+    date: '2026-06-02',
+    type: 'fix',
+    title: '🧹 抓取规格清洗:去标题/SKU · 英寸→整数cm · 词典+AI翻译',
+    notes: [
+      '🐛 修:Shopify 拉来的 variant_title 是脏数据(标题+SKU+尺寸+层数+颜色拼一起)· 原样塞入且没换算',
+      '✅ 新清洗:去掉产品标题和 SKU 编号 · 英寸→整数 cm(31.4″→80cm)· 5-tier version→5层版本',
+      '✅ 颜色/材质内置词典翻译(Amethyst→紫水晶 · Antique Gold→复古金 等)',
+      '✅ 词典翻不动的残留英文 → 异步调 Claude API(_aiTranslateSpec)兜底翻译,翻完自动刷新',
+      '例:Amethyst Bloom Chandelier-SKU:...-∅31.4″xH21.6″[5-tier]-复古金+Amethyst → ∅80cm x H55cm 5层版本 · 复古金 + 紫水晶',
+    ],
+    files: ['orders.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260602-chase6',
     date: '2026-06-02',
     type: 'feature',

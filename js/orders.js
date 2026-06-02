@@ -1208,6 +1208,81 @@ function omQtyChanged(value) {
   persistCurrentOrder(o => { o.qty = (value === '' ? null : Number(value)); });
 }
 
+// V20260602:灯具规格词典(英→中)· 多词优先
+const _SPEC_DICT = {
+  'antique gold':'复古金','aged gold':'复古金','antique brass':'复古黄铜','aged brass':'复古黄铜',
+  'rose gold':'玫瑰金','champagne gold':'香槟金','brushed gold':'拉丝金','brushed brass':'拉丝黄铜',
+  'brushed nickel':'拉丝镍','satin brass':'缎面黄铜','satin nickel':'缎面镍','satin black':'缎面黑',
+  'matte black':'哑光黑','matte white':'哑光白','matte gold':'哑光金','smoky gray':'烟灰色','smoke gray':'烟灰色',
+  'warm white':'暖光','cool white':'冷光','natural white':'中性光',
+  'amethyst':'紫水晶','amber':'琥珀色','smoke':'烟灰色','smoky':'烟灰色','clear':'透明',
+  'gold':'金色','black':'黑色','white':'白色','gray':'灰色','grey':'灰色','silver':'银色','bronze':'青铜色',
+  'brass':'黄铜','chrome':'铬色','nickel':'镍色','copper':'红铜色','gunmetal':'枪灰色',
+  'green':'绿色','blue':'蓝色','pink':'粉色','red':'红色','purple':'紫色','beige':'米色','cream':'奶油色',
+  'walnut':'胡桃木色','oak':'橡木色','wood':'木色','wood grain':'木纹','frosted':'磨砂',
+  'wall lamp':'壁灯','pendant':'吊灯','chandelier':'吊灯','table lamp':'台灯','floor lamp':'落地灯','ceiling lamp':'吸顶灯',
+};
+function _dictTranslate(v) {
+  const keys = Object.keys(_SPEC_DICT).sort((a, b) => b.length - a.length);
+  keys.forEach(k => {
+    const esc = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    v = v.replace(new RegExp('(^|[^A-Za-z])' + esc + '([^A-Za-z]|$)', 'gi'), (m, a, b) => a + _SPEC_DICT[k] + b);
+  });
+  return v;
+}
+
+// V20260602:清洗 Shopify/PO 规格 · 去标题去SKU · 英寸→整数cm · N-tier→N层版本 · 词典翻译
+function _cleanFetchedSpec(li, rawSpec) {
+  let v = String(rawSpec || (li && (li.variant_title || li.variant)) || '');
+  if (!v) return '';
+  const title = (li && li.title ? String(li.title) : '').trim();
+  const sku = (li && li.sku ? String(li.sku) : '').trim();
+  if (title && title.length > 2) v = v.split(title).join(' ');
+  v = v.replace(/SKU\s*[:：]\s*[A-Za-z0-9_\-\/]+/gi, ' ');
+  if (sku && sku.length > 2) v = v.split(sku).join(' ');
+  v = v.replace(/\b(Size|尺寸|规格|Color|颜色)\s*[:：]/gi, ' ');
+  // 英寸→整数 cm
+  v = v.replace(/(\d+(?:\.\d+)?)\s*(?:''|″|"|inches?|in\b)/gi,
+    (m, n) => Math.round(parseFloat(n) * 2.54) + 'cm');
+  // 已是 cm 的小数也取整
+  v = v.replace(/(\d+(?:\.\d+)?)\s*cm/gi, (m, n) => Math.round(parseFloat(n)) + 'cm');
+  // N-tier version → N层版本
+  v = v.replace(/(\d+)\s*-?\s*tier(?:\s*version)?/gi, '$1层版本');
+  v = v.replace(/\bversion\b/gi, '版本');
+  // 词典翻译(颜色/材质/灯型)
+  v = _dictTranslate(v);
+  // 清理括号/分隔符
+  v = v.replace(/[\[\]【】]/g, ' ');
+  v = v.replace(/\s*[:：]\s*/g, ' ');
+  v = v.replace(/\s*[-–—]+\s*/g, ' · ');
+  v = v.replace(/(·\s*){2,}/g, '· ');
+  v = v.replace(/^[·\s]+|[·\s]+$/g, '');
+  v = v.replace(/\s{2,}/g, ' ').trim();
+  return v;
+}
+
+// V20260602:词典翻不动的残留英文 → 异步调 Claude API(_aiTranslateSpec)兜底
+async function _omTranslateRemaining() {
+  if (typeof _aiTranslateSpec !== 'function') return;
+  const need = _omFetched.filter(p => {
+    if (!p.spec) return false;
+    const en = (p.spec.match(/[A-Za-z]{3,}/g) || []).length;
+    const cn = (p.spec.match(/[\u4e00-\u9fa5]/g) || []).length;
+    return en > 0 && cn / Math.max(p.spec.length, 1) < 0.5;
+  });
+  if (need.length === 0) return;
+  try {
+    const numbered = need.map((p, i) => `[${i + 1}] ${p.spec}`).join('\n');
+    const result = await _aiTranslateSpec(numbered);
+    (result.split('\n').filter(l => l.trim())).forEach(line => {
+      const m = line.match(/^\[(\d+)\]\s*(.+)$/);
+      if (m) { const idx = parseInt(m[1]) - 1; if (need[idx]) need[idx].spec = m[2].trim(); }
+    });
+    omCommitProducts();
+    omRenderFetchPanel();
+  } catch (e) { console.warn('[催单 AI 翻译兜底失败]', e.message || e); }
+}
+
 function omAutoFetchProducts() {
   const o = currentOrder(); if (!o) return;
   const no = (document.getElementById('omOrderNo')?.value || o.orderNo || '').trim().replace(/^#/, '');
@@ -1234,8 +1309,8 @@ function omAutoFetchProducts() {
   const canNorm = (typeof extractVariantInfo === 'function');
   _omFetched = lineItems.map(li => {
     const rawSpec = li.variant || li.variant_title || li.title_cn || li.title_en || li.title || '';
-    let spec = rawSpec;
-    if (canNorm && rawSpec) { const e = extractVariantInfo(rawSpec); if (e) spec = e; }
+    let spec = _cleanFetchedSpec(li, rawSpec);
+    
     let img = li.image_url || li.image || '';
     if (!img && li.sku && productMap[li.sku] && productMap[li.sku].image_url) img = productMap[li.sku].image_url;
     if (!img && li.sku && typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) {
@@ -1249,6 +1324,7 @@ function omAutoFetchProducts() {
   if (_omFetched.length === 1 && (o.products||[]).length === 0) { _omFetched[0]._checked = true; omCommitProducts(); }
   _omLastSrc = src;
   omRenderFetchPanel();
+  _omTranslateRemaining();  // 残留英文异步 AI 翻译
 }
 
 // V20260602:手动从 Shopify 后台拉取单个订单(本地没同步到的旧单 · 兜底)
@@ -1283,8 +1359,8 @@ async function omManualFetch() {
     }
     _omFetched = lineItems.map(li => {
       const rawSpec = li.variant_title || li.variant || li.title || '';
-      let spec = rawSpec;
-      if (canNorm && rawSpec) { const e = extractVariantInfo(rawSpec); if (e) spec = e; }
+      let spec = _cleanFetchedSpec(li, rawSpec);
+      
       let img = li.image_url || '';
       if (!img && li.sku && productMap[li.sku] && productMap[li.sku].image_url) img = productMap[li.sku].image_url;
       const checked = (o.products || []).some(x => (x.sku && x.sku === li.sku) || (x.spec && x.spec === spec));
@@ -1293,6 +1369,7 @@ async function omManualFetch() {
     _omState = 'ok'; _omLastSrc = 'Shopify后台'; _omNo = no;
     if (_omFetched.length === 1 && (o.products || []).length === 0) { _omFetched[0]._checked = true; omCommitProducts(); }
     omRenderFetchPanel();
+    _omTranslateRemaining();  // 残留英文异步 AI 翻译
   } catch (e) {
     if (panel) panel.innerHTML = `<div style="font-size:12px; color:var(--danger); padding:4px 0;">❌ 后台拉取失败:${escapeHtml(e.message || String(e))}<br><span style="color:var(--text-tertiary);">（若反复失败,可能 Edge Function 不支持按订单号查询,需后台加 name 参数支持）</span></div>`;
   }
