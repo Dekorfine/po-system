@@ -17,14 +17,27 @@ let _onlyPoSource = false;
 // ============================================================
 // 加载条件：未删除 + 未发货/取消/到货的 orders
 // 前端分流：CHASE_ORDERS（所有未结的，含旧手动 + PO 派生），ALL_PO_ORDERS（仅 PO 含已完成，用于绩效）
-async function loadChaseOrders() {
+async function loadChaseOrders(force = false) {
+  // V20260602-perf:60秒缓存 · 切 tab/浏览器返回键不再每次全表扫 orders(IO 主因之一)
+  // 写操作(新增/删除/状态变更)都是内存同步 mutate + 单条 update,数据已是最新,无需重拉
+  if (!force && typeof _chaseLastLoad !== 'undefined' && _chaseLastLoad && (Date.now() - _chaseLastLoad < 60000) && Array.isArray(CHASE_ORDERS) && typeof _chaseLoadedOnce !== 'undefined' && _chaseLoadedOnce) {
+    return;
+  }
   try {
-    let q = sb.from('orders').select('*')
+    // V20260602-perf:禁止 select('*') · 只取列表/弹窗渲染实际用到的列(orders 表本身无 base64/大字段,但减少传输)
+    // 列名写错会 400 → 自动回退 select('*') 兜底
+    const COLS = 'id,agent_id,order_no,site,product,supplier,status,order_date,promised_date,shipped_date,arrived_date,next_follow,notes,screenshots,followups,products,qty,po_number,line_items,created_at,updated_at,deleted_at,deleted_by';
+    let q = sb.from('orders').select(COLS)
       .is('deleted_at', null);
     // V20260526p: 催单完全开放 · 所有人可看 + 改所有催单(应业务需求 · 之前只看自己的)
     // if (!IS_ADMIN && CURRENT_USER_ID) q = q.eq('agent_id', CURRENT_USER_ID);
-    const { data, error } = await q.order('created_at', { ascending: false });
-    if (error) throw error;
+    let { data, error } = await q.order('created_at', { ascending: false });
+    if (error) {
+      console.warn('[催单] 精简列查询失败 · 回退 select(*) ·', error.message);
+      const r2 = await sb.from('orders').select('*').is('deleted_at', null).order('created_at', { ascending: false });
+      data = r2.data; error = r2.error;
+      if (error) throw error;
+    }
 
     // userId → agent name 映射
     const userIdToName = {};
@@ -40,6 +53,7 @@ async function loadChaseOrders() {
       !o.shippedDate
     );
     _chaseLastLoad = Date.now();
+    _chaseLoadedOnce = true;
   } catch (e) {
     console.error('loadChaseOrders 失败:', e);
     CHASE_ORDERS = [];
@@ -847,7 +861,7 @@ async function addOrder() {
     const { data, error } = await sb.from('orders').insert(newRow).select().single();
     if (error) throw error;
     toast('✓ 已新增手动催单，请补充信息');
-    await loadChaseOrders();
+    await loadChaseOrders(true);
     renderOrders(); refreshOrdersFb(); updateOrderStats();
     // 自动打开 modal
     openOrderModal(data.id, CURRENT_AGENT);
@@ -1067,7 +1081,7 @@ async function quickCompleteOrder(id, agent) {
     const { error } = await sb.from('orders').update(updates).eq('id', o._id);
     if (error) throw error;
     toast(`✓ 已标记「${nextLabel}」`);
-    await loadChaseOrders();
+    await loadChaseOrders(true);
     renderOrders(); refreshOrdersFb(); renderUrgentBanner(); updateOrderStats();
   } catch (err) {
     console.error('更新订单失败:', err);
@@ -1095,7 +1109,7 @@ function delOrderRow(id, agent) {
       deleted_by: CURRENT_AGENT,
     }).eq('id', o._id).then(async ({ error }) => {
       if (error) { toast('删除失败：' + error.message, 'err'); return; }
-      await loadChaseOrders();
+      await loadChaseOrders(true);
       renderOrders(); updateOrderStats(); refreshOrdersFb();
       toast('已移入回收站');
     });
@@ -1699,7 +1713,7 @@ async function setOrderStatus(st) {
   }, true);
   renderOrderModalContent();
   // 状态变更可能影响 PO 是否还在催单列表（如改成 shipped/arrived/cancelled 就不在了）
-  await loadChaseOrders();
+  await loadChaseOrders(true);
   renderOrders(); refreshOrdersFb(); renderUrgentBanner(); updateOrderStats();
   if (['shipped', 'arrived', 'cancelled'].includes(st)) {
     toast(`✓ 状态已切到「${ORDER_STATUS_LABELS[st] || st}」，该单已从催单列表移除`);
@@ -1727,7 +1741,7 @@ function deleteCurrentOrder() {
     }).eq('id', o._id).then(async ({ error }) => {
       if (error) { toast('删除失败：' + error.message, 'err'); return; }
       closeModal('orderModal');
-      await loadChaseOrders();
+      await loadChaseOrders(true);
       renderOrders(); updateOrderStats(); refreshOrdersFb();
       toast('已移入回收站');
     });
@@ -2171,7 +2185,7 @@ async function saveBatchChase() {
   
   closeModal('batchChaseModal');
   // 重新加载 PO 派生数据
-  await loadChaseOrders();
+  await loadChaseOrders(true);
   renderOrders();
   updateOrderStats();
   refreshOrdersFb();

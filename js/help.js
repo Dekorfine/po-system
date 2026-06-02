@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260602-perf3',
+    date: '2026-06-02',
+    type: 'fix',
+    title: '⚡ 性能3:催单查询缓存+精简列+索引(修返回键重复全表扫)',
+    notes: [
+      '🐛 浏览器返回键/切 tab → switchTab → loadChaseOrders 每次都全表扫 orders(无缓存)· IO 主因之一',
+      '✅ loadChaseOrders 加 60 秒缓存:切 tab/返回键不再重复全量拉 · 写操作(新增/改状态/删除/批量)强制刷新保证数据最新',
+      '✅ orders 查询禁用 select(*) → 只取实际渲染列(列错自动回退兜底)',
+      '✅ 配套索引 SQL:created_at / status / site / order_no / agent_id + shopify_orders 全套(需在 Supabase 跑)',
+      '✅ 日期过滤已在服务端(.gte/.lte 打在 shopify_created_at)· 分页 .range 已有(每页1000上限8000)',
+    ],
+    files: ['orders.js', 'index.html', 'help.js', 'po-system-索引优化-20260602.sql'],
+  },
+  {
     v: '20260602-perf2',
     date: '2026-06-02',
     type: 'fix',
