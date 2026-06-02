@@ -153,7 +153,7 @@ const SHOPIFY = {
   },
 
   async loadOrdersFromDB(force = false, opts = {}) {
-    const CACHE_MS = 60 * 1000;
+    const CACHE_MS = 5 * 60 * 1000;  // V20260601-perf:60s→5min · 减少全表 select(*) 重复拉(省 egress/CPU)
     const cacheKey = JSON.stringify({ from: opts.from || '', to: opts.to || '', shops: (opts.shops || []).slice().sort() });  // V20260601-loadfix2:含 shops 分桶
     // ① in-memory 缓存(同 session 内)
     if (!force && this._ordersCacheKey === cacheKey && this._ordersLoadedAt && (Date.now() - this._ordersLoadedAt < CACHE_MS) && this._orders.length > 0) {
@@ -162,16 +162,19 @@ const SHOPIFY = {
     // ② V28x:localStorage 缓存(跨 session 秒开)· 立即返回 + 后台异步刷新
     if (!force) {
       try {
-        const cacheRaw = localStorage.getItem('shopify_orders_cache_v2');
+        const cacheRaw = localStorage.getItem('shopify_orders_cache_v3');
         if (cacheRaw) {
           const cache = JSON.parse(cacheRaw);
-          if (cache && cache.byKey && cache.byKey[cacheKey] && Array.isArray(cache.byKey[cacheKey].data)) {
+          if (cache && cache.byKey && cache.byKey[cacheKey] && Array.isArray(cache.byKey[cacheKey].data) && cache.byKey[cacheKey].data.length > 0) {  // V20260601-loadfix3:空缓存不返回 · 防止挡住新查询
             this._orders = cache.byKey[cacheKey].data;
             this._ordersLoadedAt = cache.byKey[cacheKey].ts || Date.now();
             this._ordersCacheKey = cacheKey;
-            // 后台异步拉新数据 · 不阻塞 · 拉完更新缓存 + 重渲
-            this._bgRefreshFromSupabase(opts, cacheKey);
-            console.log(`[订单 ⚡秒开] localStorage 缓存命中 · ${this._orders.length} 单 · 后台正在异步同步…`);
+            // V20260601-perf:缓存够新(<5min)就不再后台全表刷新 · 大幅减少 raw_payload egress
+            const cacheAge = Date.now() - (cache.byKey[cacheKey].ts || 0);
+            if (cacheAge > CACHE_MS) {
+              this._bgRefreshFromSupabase(opts, cacheKey);
+            }
+            console.log(`[订单 ⚡秒开] localStorage 缓存命中 · ${this._orders.length} 单${cacheAge > CACHE_MS ? ' · 后台刷新中…' : ' · 缓存够新跳过刷新'}`);
             return this._orders;
           }
         }
@@ -212,7 +215,7 @@ const SHOPIFY = {
   // V28x:持久化订单缓存到 localStorage(可能撑爆 · try-catch 保护)
   _persistOrdersCache(cacheKey) {
     try {
-      let cacheRaw = localStorage.getItem('shopify_orders_cache_v2');
+      let cacheRaw = localStorage.getItem('shopify_orders_cache_v3');
       let cache = cacheRaw ? JSON.parse(cacheRaw) : { byKey: {} };
       if (!cache.byKey) cache.byKey = {};
       // 瘦身:line_items 保留(渲染要) · raw_payload 大头 · 留着否则运费/税废了
@@ -224,13 +227,13 @@ const SHOPIFY = {
         delete cache.byKey[oldest];
       }
       cache.byKey[cacheKey] = { data: this._orders, ts: Date.now() };
-      localStorage.setItem('shopify_orders_cache_v2', JSON.stringify(cache));
+      localStorage.setItem('shopify_orders_cache_v3', JSON.stringify(cache));
     } catch (e) {
       // localStorage 满了 · 清空重写
       if (e.name === 'QuotaExceededError' || /quota|storage/i.test(e.message || '')) {
         try {
-          localStorage.removeItem('shopify_orders_cache_v2');
-          localStorage.setItem('shopify_orders_cache_v2', JSON.stringify({ byKey: { [cacheKey]: { data: this._orders, ts: Date.now() } } }));
+          localStorage.removeItem('shopify_orders_cache_v3');
+          localStorage.setItem('shopify_orders_cache_v3', JSON.stringify({ byKey: { [cacheKey]: { data: this._orders, ts: Date.now() } } }));
         } catch (_) { /* 还是写不进 · 放弃 */ }
       }
     }
@@ -239,7 +242,7 @@ const SHOPIFY = {
   invalidateOrders() {
     this._ordersLoadedAt = 0;
     this._ordersCacheKey = null;
-    try { localStorage.removeItem('shopify_orders_cache_v2'); } catch (_) {}
+    try { localStorage.removeItem('shopify_orders_cache_v3'); } catch (_) {}
   },
 
   async loadProductImageMap(skus) {

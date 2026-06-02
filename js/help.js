@@ -10,6 +10,22 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260601-perf',
+    date: '2026-06-01',
+    type: 'fix',
+    title: '⚡ 数据库资源优化 · 减少重复全表拉取',
+    notes: [
+      '🎯 Supabase 告警资源吃紧 · 主因:shopify_orders 含大字段 raw_payload(运费/税)· select* 批量拉 4500 行 × 多人 × 频繁触发 → egress/CPU 爆',
+      '✅ 前端止血:',
+      '   · 订单内存缓存 60s→5min',
+      '   · localStorage 命中后,缓存够新(<5min)就跳过后台全表刷新',
+      '   · 自动同步 5→15 分钟(减少多人多 tab 叠加)',
+      '✅ 数据库:加索引 (shop_domain, shopify_created_at desc) 等 → 查询不再全表扫(见随附 SQL)',
+      'ℹ️ 根治 egress 需把运费预存成列(改 Edge Function)· 待资源观察后再定',
+    ],
+    files: ['shopify.js', 'utils.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260601-issuegrid',
     date: '2026-06-01',
     type: 'feature',

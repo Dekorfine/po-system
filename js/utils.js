@@ -1312,7 +1312,7 @@ function closeImgLightbox(e) {
 // ============ 自动同步(V28ξ-4:店小秘式 · 默认开 · 跨 tab · 多店增量) ============
 const SHOPIFY_AUTOSYNC_KEY = 'shopify_autosync_on';
 const SHOPIFY_LAST_SYNC_KEY = 'shopify_last_sync_at';
-const SHOPIFY_AUTOSYNC_INTERVAL_MS = 5 * 60 * 1000;  // 5 分钟
+const SHOPIFY_AUTOSYNC_INTERVAL_MS = 15 * 60 * 1000;  // V20260601-perf:5→15分钟 · 减少多人多 tab 重复同步压力
 const SHOPIFY_VISIBILITY_THRESHOLD_MS = 2 * 60 * 1000;  // 切回页面距上次 > 2 分钟触发
 
 function shopifyAutoSyncOn() {
