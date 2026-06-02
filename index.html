@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
 <script defer src="js/issues.js?v=20260602issfetch"></script>
-<script defer src="js/help.js?v=20260602chase10"></script>
+<script defer src="js/help.js?v=20260602chase11"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -44,7 +44,7 @@
 <script defer src="js/aftersales-shared.js?v=20260531ase2"></script>
 <script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260527i"></script>
-<script defer src="js/orders.js?v=20260602chase10"></script>
+<script defer src="js/orders.js?v=20260602chase11"></script>
 <script defer src="js/shopify.js?v=20260601perf"></script>
 <script defer src="js/po.js?v=20260602export"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
@@ -5672,6 +5672,7 @@ if ('serviceWorker' in navigator) {
         <button class="o-view-btn" data-view="grid" onclick="setOrdersViewMode('grid')" title="网格视图(图墙 · 一眼识货)" style="padding:6px 10px; font-size:12px; background:transparent; border:none; cursor:pointer;">🖼 网格</button>
       </div>
       <button class="btn" onclick="chaseBatchFillProducts()" style="margin-left:8px;" title="批量从 PO/销售单补全所有催单的产品图、规格、数量">📥 批量补全产品</button>
+      <button class="btn" onclick="chaseCleanBlankOrders()" style="margin-left:8px;" title="清理没填任何内容的空白催单草稿(进回收站)">🧹 清理空白</button>
       <button class="btn primary" onclick="addOrder()" style="margin-left: 8px;" title="新增催单(可选:PO 派生 或 手动催单)">+ 新增催单</button>
     </div>
     <!-- V3:催单阈值 chip(按下单距今天数过滤未发货 PO,主管可在配置里自定义)-->
@@ -7574,7 +7575,7 @@ if ('serviceWorker' in navigator) {
 <!-- 催单详情 Modal · V28γ 重设计:2 列宽屏 · 一屏可见 -->
 <div class="modal-bg" id="orderModal">
   <div class="modal" style="width: 1180px; max-width: 96vw; max-height: 92vh; padding: 20px 24px;">
-    <button class="modal-close" onclick="closeModal('orderModal')">✕</button>
+    <button class="modal-close" onclick="closeOrderModalSmart()">✕</button>
     <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px;">
       <h2 style="margin:0;">📋 催单详情</h2>
       <p class="desc" style="margin:0; font-size:12px;">编辑订单信息 · 记录催单进度 · 沟通历史</p>
@@ -7674,7 +7675,7 @@ if ('serviceWorker' in navigator) {
     
     <div class="modal-actions" style="margin-top:12px; padding-top:10px;">
       <button class="btn danger-text" onclick="deleteCurrentOrder()" style="font-size:12px;">🗑 删除此订单</button>
-      <button class="btn primary" onclick="closeModal('orderModal')">完成</button>
+      <button class="btn primary" onclick="closeOrderModalSmart()">完成</button>
     </div>
   </div>
 </div>
