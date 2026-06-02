@@ -32,8 +32,8 @@
 <script defer src="js/utils.js?v=20260601issuefix"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
-<script defer src="js/issues.js?v=20260601issuefix"></script>
-<script defer src="js/help.js?v=20260601issuefix"></script>
+<script defer src="js/issues.js?v=20260601issuegrid"></script>
+<script defer src="js/help.js?v=20260601issuegrid"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -5776,9 +5776,13 @@ if ('serviceWorker' in navigator) {
       </select>
       <select class="filter-select" id="isView" onchange="renderIssues()">
         <option value="grouped">按供应商分组（默认）</option>
-        <option value="list">列表视图</option>
-        <option value="grid">网格视图</option>
+        <option value="list">不分组</option>
       </select>
+      <!-- V20260601-issuegrid:列表/网格切换(同催单) -->
+      <div class="o-view-toggle" id="isViewToggle" style="display:inline-flex; gap:0; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
+        <button class="o-view-btn active" data-view="list" onclick="setIssuesViewMode('list')" title="列表视图(详细信息)" style="padding:6px 10px; font-size:12px; background:var(--bg-card); border:none; cursor:pointer; border-right:1px solid var(--border);">📋 列表</button>
+        <button class="o-view-btn" data-view="grid" onclick="setIssuesViewMode('grid')" title="网格视图(图墙 · 一眼识货)" style="padding:6px 10px; font-size:12px; background:transparent; border:none; cursor:pointer;">🖼 网格</button>
+      </div>
       <!-- V20260526e: 日期筛选 -->
       <select class="filter-select" id="isDateFilter" onchange="issuesOnDateChange(this.value)" style="min-width:160px;">
       </select>
