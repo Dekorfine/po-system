@@ -1144,6 +1144,7 @@ function openOrderModal(id, agent) {
   document.getElementById('orderModal').classList.add('show');
   // V20260602:打开即自动抓取原始订单产品(先 PO 后销售单 · 过滤保险)
   if (typeof omAutoFetchProducts === 'function') omAutoFetchProducts();
+  if (typeof omRenderProductLines === 'function') omRenderProductLines();
 }
 
 function renderOrderModalContent() {
@@ -1310,6 +1311,8 @@ function _cleanFetchedSpec(li, rawSpec) {
   }
   // 词典翻译(颜色/材质/灯型)
   v = _dictTranslate(v);
+  v = v.replace(/\bcolor\b/gi, ' ');     // 去残留 "Color" 标签词
+  v = v.replace(/\s*&\s*/g, ' + ');       // & → +
   // 分段处理(/ 和 ·)
   let segs = v.split(/\s*[\/·]\s*/).map(x => x.trim()).filter(Boolean);
   const _isInchDim = ss => /["'″]/.test(ss) && /\d/.test(ss);
@@ -1401,6 +1404,7 @@ function omAutoFetchProducts() {
   if (_omFetched.length === 1 && (o.products||[]).length === 0) { _omFetched[0]._checked = true; omCommitProducts(); }
   _omLastSrc = src;
   _omSyncQtyField();
+  if (typeof omRenderProductLines === 'function') omRenderProductLines();
   omRenderFetchPanel();
   _omTranslateRemaining();  // 残留英文异步 AI 翻译
 }
@@ -1447,6 +1451,7 @@ async function omManualFetch() {
     _omState = 'ok'; _omLastSrc = 'Shopify后台'; _omNo = no;
     if (_omFetched.length === 1 && (o.products || []).length === 0) { _omFetched[0]._checked = true; omCommitProducts(); }
     _omSyncQtyField();
+    if (typeof omRenderProductLines === 'function') omRenderProductLines();
     omRenderFetchPanel();
     _omTranslateRemaining();  // 残留英文异步 AI 翻译
   } catch (e) {
@@ -1512,8 +1517,9 @@ function omCommitProducts() {
   const cur = currentOrder();
   const pe = document.getElementById('omProduct'); if (pe && cur.product) pe.value = cur.product;
   const qe = document.getElementById('omQty'); if (qe && cur.qty) qe.value = cur.qty;
-  // V20260602:实时同步 · 不用刷新(更新弹窗头部 + 主页列表卡片/图)
+  // V20260602:实时同步 · 不用刷新(更新弹窗头部 + 主页列表卡片/图 + SKU 明细)
   if (typeof renderOrderModalContent === 'function') renderOrderModalContent();
+  if (typeof omRenderProductLines === 'function') omRenderProductLines();
   if (typeof renderOrders === 'function') renderOrders();
 }
 
@@ -1574,6 +1580,60 @@ function _omSyncQtyField() {
   if (Number(o.qty) !== tq) persistCurrentOrder(oo => oo.qty = tq);
   const qe = document.getElementById('omQty'); if (qe) qe.value = tq;
 }
+
+// V20260602:已选 SKU 明细列表(每个产品独立规格+数量 · 可编辑/增删 · 多 SKU 不再合并求和)
+function omRenderProductLines() {
+  const wrap = document.getElementById('omProductLines'); if (!wrap) return;
+  const o = (typeof currentOrder === 'function') ? currentOrder() : null;
+  const prods = (o && o.products) || [];
+  const pe = document.getElementById('omProduct'), qe = document.getElementById('omQty');
+  if (prods.length === 0) {
+    wrap.innerHTML = '';
+    if (pe) { pe.readOnly = false; pe.style.background = ''; }
+    if (qe) { qe.readOnly = false; qe.style.background = ''; }
+    return;
+  }
+  const total = prods.reduce((s, p) => s + (Number(p.qty) || 0), 0);
+  if (pe) { pe.value = prods.map(p => p.spec).filter(Boolean).join(' / '); pe.readOnly = true; pe.style.background = '#f5f5f4'; }
+  if (qe) { qe.value = total; qe.readOnly = true; qe.style.background = '#f5f5f4'; }
+  wrap.innerHTML = `
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:7px 10px; background:var(--bg-elevated); font-size:12px; font-weight:600; color:var(--text-secondary);">
+        <span>📦 已选产品明细(${prods.length} 个 SKU)· 每项规格 / 数量独立 · 发供应商更清楚</span>
+        <button type="button" class="btn small" onclick="omAddLine()" style="padding:2px 9px; font-size:11px;">+ 手动加一行</button>
+      </div>
+      ${prods.map((p, i) => `
+        <div style="display:flex; align-items:center; gap:8px; padding:6px 10px; border-top:1px solid var(--border-subtle);">
+          ${p.image_url ? `<img src="${p.image_url}" style="width:42px; height:42px; object-fit:cover; border-radius:5px; flex:0 0 auto;">` : '<span style="width:42px; text-align:center; flex:0 0 auto; font-size:18px;">📷</span>'}
+          <input type="text" value="${escapeHtml(p.spec || '')}" oninput="omSetLineSpec(${i}, this.value)" placeholder="规格参数" style="flex:1; padding:5px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;">
+          <span style="font-size:11px; color:var(--text-tertiary);">数量</span>
+          <input type="number" min="0" value="${p.qty || ''}" oninput="omSetLineQty(${i}, this.value)" style="width:62px; padding:5px 6px; font-size:12px; border:1px solid var(--border); border-radius:5px; text-align:center;">
+          <button type="button" onclick="omRemoveLine(${i})" title="移除此 SKU" style="border:none; background:transparent; color:#dc2626; cursor:pointer; font-size:17px; flex:0 0 auto; padding:0 4px;">×</button>
+        </div>`).join('')}
+    </div>`;
+}
+function omSetLineQty(i, val) {
+  persistCurrentOrder(o => { if (o.products && o.products[i]) o.products[i].qty = (val === '' ? '' : Number(val)); o.qty = (o.products || []).reduce((s, p) => s + (Number(p.qty) || 0), 0); });
+  const o = currentOrder(); const qe = document.getElementById('omQty'); if (qe && o) qe.value = o.qty;
+  if (typeof renderOrders === 'function') renderOrders();
+}
+function omSetLineSpec(i, val) {
+  persistCurrentOrder(o => { if (o.products && o.products[i]) o.products[i].spec = val; o.product = (o.products || []).map(p => p.spec).filter(Boolean).join(' / '); });
+  const o = currentOrder(); const pe = document.getElementById('omProduct'); if (pe && o) pe.value = o.product;
+}
+function omRemoveLine(i) {
+  persistCurrentOrder(o => { if (o.products) o.products.splice(i, 1); o.product = (o.products || []).map(p => p.spec).filter(Boolean).join(' / '); o.qty = (o.products || []).reduce((s, p) => s + (Number(p.qty) || 0), 0); });
+  omRenderProductLines();
+  if (typeof renderOrderModalContent === 'function') renderOrderModalContent();
+  if (typeof renderOrders === 'function') renderOrders();
+}
+function omAddLine() {
+  persistCurrentOrder(o => { if (!o.products) o.products = []; o.products.push({ spec: '', qty: '', image_url: '', sku: '' }); });
+  omRenderProductLines();
+}
+window.omRenderProductLines = omRenderProductLines;
+window.omSetLineQty = omSetLineQty; window.omSetLineSpec = omSetLineSpec;
+window.omRemoveLine = omRemoveLine; window.omAddLine = omAddLine;
 
 function onOrderField(field, value) {
   persistCurrentOrder(o => {

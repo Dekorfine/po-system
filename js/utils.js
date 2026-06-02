@@ -2043,11 +2043,17 @@ function _renderExportGridCardHTML(item, index, type) {
   if (imgs.length === 0) imgs = [...(item.screenshots || []), ...((item.followups || []).flatMap(f => f.screenshots || []))];
   const cover = imgs[0] || '';
   // 规格(无 sku/标题)
-  let spec = '';
-  if (Array.isArray(item.products) && item.products.length) spec = item.products.map(p => p.spec).filter(Boolean).join(' / ');
-  if (!spec && item.product && item.product !== '(无产品)') spec = item.product;
   const supplier = item.supplier || '';
-  const qty = item.qty || (Array.isArray(item.products) ? item.products.reduce((s, p) => s + (Number(p.qty) || 0), 0) : '') || '';
+  const _prodList = (Array.isArray(item.products) && item.products.length) ? item.products : null;
+  const _totalQty = _prodList ? _prodList.reduce((s, p) => s + (Number(p.qty) || 0), 0) : (item.qty || '');
+  let specHtml;
+  if (_prodList) {
+    specHtml = _prodList.map(p => `<div style="margin-bottom:2px;">• ${p.spec ? _esc(p.spec) : '（见图）'}${p.qty ? ` <b style="color:#dc2626;">×${_esc(String(p.qty))}</b>` : ''}</div>`).join('');
+  } else if (item.product && item.product !== '(无产品)') {
+    specHtml = _esc(item.product);
+  } else {
+    specHtml = '<span style="color:#a8a29e;">（见图 · 待补规格）</span>';
+  }
   const statusLabel = (typeof ORDER_STATUS_LABELS !== 'undefined' && ORDER_STATUS_LABELS[item.status]) || item.status || '';
   const date = _fd(item.orderDate || item.created_at);
   const note = item.notes || '';
@@ -2070,8 +2076,8 @@ function _renderExportGridCardHTML(item, index, type) {
     <div style="border:1px solid #e7e5e4; border-radius:12px; overflow:hidden; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       ${coverHtml}
       <div style="padding:9px 11px;">
-        <div style="font-size:13px; font-weight:600; color:#1c1917; line-height:1.4; min-height:36px;">${spec ? _esc(spec) : '<span style="color:#a8a29e;">（见图 · 待补规格）</span>'}</div>
-        <div style="font-size:12px; color:#44403c; margin-top:5px;">供应商：${_esc(supplier)}${qty ? ` · 数量：<b style="color:#dc2626;">${_esc(String(qty))}</b>` : ''}</div>
+        <div style="font-size:12.5px; font-weight:600; color:#1c1917; line-height:1.45; min-height:36px;">${specHtml}</div>
+        <div style="font-size:12px; color:#44403c; margin-top:5px;">供应商：${_esc(supplier)}${_prodList && _prodList.length > 1 ? ` · 共 <b style="color:#dc2626;">${_totalQty}</b> 件 / ${_prodList.length} 个 SKU` : (_totalQty ? ` · 数量：<b style="color:#dc2626;">${_esc(String(_totalQty))}</b>` : '')}</div>
         ${note ? `<div style="font-size:11px; color:#78716c; margin-top:3px;">备注：${_esc(note)}</div>` : ''}
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:7px;">
           <span style="font-size:11px; background:#f5f5f4; padding:2px 9px; border-radius:4px; color:#44403c;">${_esc(statusLabel)}</span>
