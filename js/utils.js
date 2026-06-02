@@ -2051,9 +2051,21 @@ function _renderExportGridCardHTML(item, index, type) {
   const statusLabel = (typeof ORDER_STATUS_LABELS !== 'undefined' && ORDER_STATUS_LABELS[item.status]) || item.status || '';
   const date = _fd(item.orderDate || item.created_at);
   const note = item.notes || '';
-  const coverHtml = cover
-    ? `<div style="height:240px; display:flex; align-items:center; justify-content:center; background:#f8f8f6; padding:6px; box-sizing:border-box;"><img src="${_esc(cover)}" crossorigin="anonymous" style="max-width:100%; max-height:100%; width:auto; height:auto; display:block;" onerror="this.parentElement.style.opacity=0.3;"></div>`
-    : `<div style="height:240px; display:flex; align-items:center; justify-content:center; color:#a8a29e; font-size:34px; background:#f5f5f4;">📷</div>`;
+  // V20260602:多 SKU 智能排版 · 全部图都进卡片(1张大图 · 2张并排 · 3-4张田字 · >4张+N)
+  const uniqImgs = [...new Set(imgs.filter(Boolean))];
+  let coverHtml;
+  if (uniqImgs.length === 0) {
+    coverHtml = `<div style="height:240px; display:flex; align-items:center; justify-content:center; color:#a8a29e; font-size:34px; background:#f5f5f4;">📷</div>`;
+  } else if (uniqImgs.length === 1) {
+    coverHtml = `<div style="height:240px; display:flex; align-items:center; justify-content:center; background:#f8f8f6; padding:6px; box-sizing:border-box;"><img src="${_esc(uniqImgs[0])}" crossorigin="anonymous" style="max-width:100%; max-height:100%; width:auto; height:auto; display:block;" onerror="this.parentElement.style.opacity=0.3;"></div>`;
+  } else {
+    const show = uniqImgs.slice(0, 4);
+    const cellH = (show.length <= 2) ? 232 : 116;
+    const extra = uniqImgs.length - show.length;
+    coverHtml = `<div style="display:grid; grid-template-columns:repeat(2,1fr); gap:4px; padding:5px; background:#f8f8f6;">` +
+      show.map((im, k) => `<div style="height:${cellH}px; display:flex; align-items:center; justify-content:center; background:#fff; border-radius:6px; position:relative; overflow:hidden;"><img src="${_esc(im)}" crossorigin="anonymous" style="max-width:100%; max-height:100%; width:auto; height:auto;" onerror="this.parentElement.style.opacity=0.3;">${(k === show.length - 1 && extra > 0) ? `<span style="position:absolute; right:4px; bottom:4px; background:rgba(0,0,0,0.6); color:#fff; font-size:11px; padding:1px 6px; border-radius:8px;">+${extra}</span>` : ''}</div>`).join('') +
+    `</div>`;
+  }
   return `
     <div style="border:1px solid #e7e5e4; border-radius:12px; overflow:hidden; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       ${coverHtml}
