@@ -10,6 +10,36 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260601-issuefix',
+    date: '2026-06-01',
+    type: 'fix',
+    title: '🛠 供应商问题/反馈 6 项修复 + 图片体验升级',
+    notes: [
+      '① 反馈提交失败(找不到 system_feedback 表)→ 随附 SQL 在【跨部门库】建表',
+      '② 填字段被清空(最严重):点问题大类/加图片会重渲弹窗 · 没先存输入值 →',
+      '   新增 _captureIssueDraftFromDOM() · 重渲前先抓 DOM · 供应商/详细描述不再丢',
+      '③ 图片删不掉:× 按钮 onclick 调的 rmIssueScreenshot 不存在 → 改回 delIssueDescScreenshot',
+      '④ 保存后图片丢失:saveDraftIssue 写死 screenshots:[] → 改为带上草稿图片',
+      '⑤ 大图被弹窗挡住:.img-lightbox z-index 9998→100000 · 盖住任何弹窗',
+      '⑥ 列表行加缩略图(模仿售后)· 点击看大图 + 新增网格视图(图墙)',
+    ],
+    files: ['issues.js', 'utils.js', 'index.html', 'help.js'],
+  },
+  {
+    v: '20260601-loadfix3',
+    date: '2026-06-01',
+    type: 'fix',
+    title: '🔄 刷新页面直接读库显示 · 不用点同步',
+    notes: [
+      '🎯 进页面/刷新后列表空、要点[同步]才出 → 是加载层之前坏的连带问题。',
+      '✅ ① 旧 localStorage 缓存(空/旧格式)会挡住新查询 → 缓存版本 v2→v3 作废旧缓存',
+      '   ② 空数组缓存不再返回 · 强制走库查询',
+      '   ③ 进页面初始化按界面默认近30天范围读库(快 + 和列表一致)',
+      '   → 刷新后直接从数据库显示所有订单 · 同步只是去 Shopify 拉新增,不再是查看的前提',
+    ],
+    files: ['shopify.js', 'core.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260601-loadfix2',
     date: '2026-06-01',
     type: 'fix',

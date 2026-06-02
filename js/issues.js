@@ -385,6 +385,8 @@ function renderIssues() {
         </div>
       `;
     }).join('');
+  } else if (view === 'grid') {
+    container.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; padding:4px;">${list.map((it, i) => renderIssueCard(it, i)).join('')}<div class="add-row" style="display:flex; align-items:center; justify-content:center; border:2px dashed var(--border); border-radius:10px; min-height:120px; cursor:pointer;" onclick="addIssue()">+ 新增问题</div></div>`;
   } else {
     container.innerHTML = `
       <div class="records-card">
@@ -402,6 +404,33 @@ function renderIssues() {
     const dateEl = document.getElementById('isDateFilter');
     if (dateEl) populateDateFilterSelect(dateEl, _issuesDatePreset || 'all');
   }
+}
+
+// V20260601-issuefix #6:网格卡片
+function renderIssueCard(it, i) {
+  const catMeta = _getIssueCategoryMeta(it);
+  const cat = catMeta ? `${catMeta.icon} ${catMeta.label}` : (it.issueType || '—');
+  const desc = (it.description || it.requirement || '').slice(0, 60);
+  const shots = it.screenshots || [];
+  const cover = shots[0];
+  const siteBadge = it.site ? `<span class="site-badge s-${it.site}">${escapeHtml(it.site)}</span>` : '';
+  const overdue = _isIssueOverdue(it);
+  return `
+    <div class="issue-card s-${it.status}" onclick="openIssueModal('${it._id}', '${escapeHtml(it._agent || '')}')"
+         style="border:1px solid ${overdue ? '#dc2626' : 'var(--border)'}; border-radius:10px; overflow:hidden; cursor:pointer; background:var(--bg-card); transition:box-shadow .15s;"
+         onmouseover="this.style.boxShadow='var(--shadow-lg)'" onmouseout="this.style.boxShadow=''">
+      <div style="height:130px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative;">
+        ${cover
+          ? `<img src="${cover}" style="width:100%; height:100%; object-fit:cover;" onclick="event.stopPropagation(); viewImage('${cover}')">${shots.length>1 ? `<span style="position:absolute; right:6px; bottom:6px; background:rgba(0,0,0,0.6); color:#fff; font-size:10px; padding:1px 6px; border-radius:8px;">📷 ${shots.length}</span>` : ''}`
+          : '<span style="color:var(--text-tertiary); font-size:12px;">📭 无图</span>'}
+      </div>
+      <div style="padding:8px 10px;">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">${siteBadge}<b style="font-size:13px;">${escapeHtml(it.supplier || '⚠ 待补充')}</b></div>
+        <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">${escapeHtml(cat)}</div>
+        <div style="font-size:11.5px; color:var(--text-primary); line-height:1.4; min-height:32px;">${escapeHtml(desc)}${desc.length >= 60 ? '...' : ''}</div>
+        <div style="margin-top:6px;"><span class="status-pill s-${it.status}">${ISSUE_STATUS_LABELS[it.status]}</span></div>
+      </div>
+    </div>`;
 }
 
 function renderIssueRow(it, i) {
@@ -442,6 +471,11 @@ function renderIssueRow(it, i) {
   const descHtml = desc 
     ? escapeHtml(desc.slice(0, 100)) + (desc.length > 100 ? '...' : '')
     : '<span style="color:var(--text-tertiary);">未填写描述</span>';
+  // V20260601-issuefix #6:行内问题截图缩略图(模仿售后 · 点击看大图)
+  const shots = it.screenshots || [];
+  const thumbHtml = shots.length > 0
+    ? `<div style="display:flex; gap:3px; margin-top:5px; flex-wrap:wrap;">${shots.slice(0,3).map(sc => `<img src="${sc}" style="width:42px; height:42px; object-fit:cover; border-radius:4px; cursor:zoom-in; border:1px solid var(--border);" onclick="event.stopPropagation(); viewImage('${sc}')">`).join('')}${shots.length>3 ? `<span style="font-size:10px; color:var(--text-tertiary); align-self:center;">+${shots.length-3}</span>` : ''}</div>`
+    : '';
   
   const lastFuHtml = lastFu 
     ? `<div style="margin-top: 6px; padding: 6px 10px; background: var(--bg-elevated); border-radius: 6px; font-size: 11.5px; color: var(--text-secondary); line-height: 1.4;">
@@ -474,6 +508,7 @@ function renderIssueRow(it, i) {
       <div class="cell-text">${categoryHtml}${subTagsHtml}</div>
       <div class="cell-text" style="line-height:1.4;">
         <div>${descHtml}</div>
+        ${thumbHtml}
         ${lastFuHtml}
       </div>
       <div class="cell-text mono" style="text-align:center;">${fuBadge}</div>
@@ -516,7 +551,21 @@ function addIssue() {
   document.getElementById('issueModal').classList.add('show');
 }
 
+// V20260601-issuefix:重渲前把输入框里已敲的值存进草稿 · 否则点问题大类/加图片会清空供应商和详细描述
+function _captureIssueDraftFromDOM() {
+  if (!_issueDraft) return;
+  const site = document.getElementById('ismSite');
+  const sup  = document.getElementById('ismSupplier');
+  const cd   = document.getElementById('ismCreatedDate');
+  const desc = document.getElementById('ismDescription');
+  if (site) _issueDraft.site = site.value;
+  if (sup)  _issueDraft.supplier = sup.value;
+  if (cd)   _issueDraft.createdDate = cd.value;
+  if (desc) _issueDraft.description = desc.value;
+}
+
 async function saveDraftIssue() {
+  _captureIssueDraftFromDOM();  // V20260601-issuefix:先抓 DOM 值
   if (!_issueDraft) return;
   
   _issueDraft.site = document.getElementById('ismSite').value;
@@ -544,7 +593,7 @@ async function saveDraftIssue() {
     nextFollowDate: _issueDraft.nextFollowDate || '',  // R2: 下次跟进日期
     status: 'pending',
     followups: [],
-    screenshots: [],
+    screenshots: _issueDraft.screenshots || [],  // V20260601-issuefix:保存草稿里的图片(原来写死 [] 把图丢了)
     createdAt: new Date().toISOString(),
   };
   
@@ -578,6 +627,7 @@ function closeDraftIssue() {
 
 function selectIssueCategory(value) {
   if (_issueDraft) {
+    _captureIssueDraftFromDOM();  // V20260601-issuefix
     _issueDraft.category = value;
     _issueDraft.subTags = [];
     _renderIssueModal({ isDraft: true });
@@ -593,6 +643,7 @@ function selectIssueCategory(value) {
 
 function toggleIssueSubTag(tag) {
   if (_issueDraft) {
+    _captureIssueDraftFromDOM();  // V20260601-issuefix
     const i = _issueDraft.subTags.indexOf(tag);
     if (i >= 0) _issueDraft.subTags.splice(i, 1);
     else _issueDraft.subTags.push(tag);
@@ -845,7 +896,7 @@ function _renderIssueModal({ isDraft }) {
                 : (data.screenshots || []).map((s, i) => `
                   <div class="ism-photo-tile">
                     <img src="${s}" onclick="viewImage('${s}')">
-                    <button class="rm" onclick="rmIssueScreenshot(${i})">×</button>
+                    <button class="rm" onclick="event.stopPropagation(); delIssueDescScreenshot(${i})">×</button>
                   </div>
                 `).join('')
               }
@@ -1020,6 +1071,7 @@ function delIssueDescScreenshot(idx) {
   if (!confirm('删除这张图片?')) return;
   // V22-CY+ 修:支持 draft 和已保存模式
   if (typeof _issueDraft !== 'undefined' && _issueDraft && !_currentItemId) {
+    _captureIssueDraftFromDOM();  // V20260601-issuefix
     if (_issueDraft.screenshots && _issueDraft.screenshots[idx] !== undefined) {
       _issueDraft.screenshots.splice(idx, 1);
       _renderIssueModal({ isDraft: true });

@@ -386,6 +386,7 @@ function attachScreenshot(dataURL, target) {
       // Draft 模式 — 写到 _issueDraft.screenshots
       if (!_issueDraft.screenshots) _issueDraft.screenshots = [];
       _issueDraft.screenshots.push(dataURL);
+      if (typeof _captureIssueDraftFromDOM === 'function') _captureIssueDraftFromDOM();  // V20260601-issuefix:加图前保留供应商/描述
       _renderIssueModal({ isDraft: true });
     } else {
       // V28u:已保存模式 — 直接 await 写库 · 确保不会丢图
