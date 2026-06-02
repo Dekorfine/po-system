@@ -1215,15 +1215,16 @@ function omAutoFetchProducts() {
   if (!no) { _omFetched = []; _omState = 'empty'; if (panel) omRenderFetchPanel(); return; }
 
   let lineItems = [], src = '';
-  // 1) 先 PO
+  // 1) 先抓 PO(优先)· 一个订单可能拆成多个 PO,全收 · PO 已按供应商拆分,直接可用
   if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
-    const po = PO_LIST.find(p => String(p.po_number||'').trim()===no || String(p.order_no||'').trim()===no);
-    if (po && po.line_items && po.line_items.length) { lineItems = po.line_items; src = 'PO'; }
+    const pos = PO_LIST.filter(p => String(p.po_number||'').trim()===no || String(p.order_no||'').trim()===no);
+    const poItems = pos.flatMap(p => p.line_items || []);
+    if (poItems.length) { lineItems = poItems; src = pos.length > 1 ? `PO（${pos.length}张·已拆分）` : 'PO'; }
   }
-  // 2) 再销售单
+  // 2) PO 没下过 = 旧系统订单 → 再抓销售单页面的产品
   if (lineItems.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
     const so = SHOPIFY._orders.find(s => String(s.shopify_order_number||'').replace('#','')===no || String(s.name||'').replace('#','')===no);
-    if (so && so.line_items && so.line_items.length) { lineItems = so.line_items; src = '销售单'; }
+    if (so && so.line_items && so.line_items.length) { lineItems = so.line_items; src = '销售单（旧系统订单）'; }
   }
   // 过滤保险/运费险等
   lineItems = (lineItems||[]).filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
