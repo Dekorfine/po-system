@@ -2045,8 +2045,8 @@ function _renderExportGridCardHTML(item, index, type) {
   const date = _fd(item.orderDate || item.created_at);
   const note = item.notes || '';
   const coverHtml = cover
-    ? `<img src="${_esc(cover)}" crossorigin="anonymous" style="width:100%; height:230px; object-fit:cover; display:block;" onerror="this.style.opacity=0.3;">`
-    : `<div style="height:230px; display:flex; align-items:center; justify-content:center; color:#a8a29e; font-size:34px; background:#f5f5f4;">📷</div>`;
+    ? `<img src="${_esc(cover)}" crossorigin="anonymous" style="width:100%; height:220px; object-fit:contain; display:block; background:#f8f8f6; padding:8px; box-sizing:border-box;" onerror="this.style.opacity=0.3;">`
+    : `<div style="height:220px; display:flex; align-items:center; justify-content:center; color:#a8a29e; font-size:34px; background:#f5f5f4;">📷</div>`;
   return `
     <div style="border:1px solid #e7e5e4; border-radius:12px; overflow:hidden; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       ${coverHtml}

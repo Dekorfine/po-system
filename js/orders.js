@@ -1433,6 +1433,9 @@ function omCommitProducts() {
   const cur = currentOrder();
   const pe = document.getElementById('omProduct'); if (pe && cur.product) pe.value = cur.product;
   const qe = document.getElementById('omQty'); if (qe && cur.qty) qe.value = cur.qty;
+  // V20260602:实时同步 · 不用刷新(更新弹窗头部 + 主页列表卡片/图)
+  if (typeof renderOrderModalContent === 'function') renderOrderModalContent();
+  if (typeof renderOrders === 'function') renderOrders();
 }
 
 function onOrderField(field, value) {

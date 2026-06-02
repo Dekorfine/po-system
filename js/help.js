@@ -10,6 +10,17 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260602-chase8',
+    date: '2026-06-02',
+    type: 'fix',
+    title: '⚡ 选产品实时同步(免刷新)+ 导出网格图自适应(不再压扁)',
+    notes: [
+      '🐛 修:选/抓产品后要刷新网页才看到 → 现在选完实时更新弹窗头部 + 主页卡片/图(renderOrderModalContent + renderOrders)',
+      '🐛 修:导出网格图被压扁(object-fit:cover 固定高裁切)→ 改 contain · 完整显示产品图 + 浅底留白 · 自适应不变形',
+    ],
+    files: ['orders.js', 'utils.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260602-chase7',
     date: '2026-06-02',
     type: 'fix',
