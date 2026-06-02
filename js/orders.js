@@ -1399,6 +1399,11 @@ function omAutoFetchProducts() {
     const checked = (o.products||[]).some(x => (x.sku && x.sku===li.sku) || (x.spec && x.spec===spec));
     return { spec, qty: li.qty || li.quantity || '', image_url: img, sku: li.sku || '', _checked: checked };
   });
+  // V20260602:本地没抓到 · 但已保存过产品 → 显示已保存的(不报"没找到 · 重新拉取")
+  if (_omFetched.length === 0 && (o.products || []).length > 0) {
+    _omFetched = o.products.map(p => ({ spec: p.spec, qty: p.qty, image_url: p.image_url, sku: p.sku, _checked: true }));
+    _omLastSrc = '已保存';
+  }
   _omState = (_omFetched.length === 0) ? 'nomatch' : 'ok';
   // 单个产品且未选过 → 默认勾上
   if (_omFetched.length === 1 && (o.products||[]).length === 0) { _omFetched[0]._checked = true; omCommitProducts(); }
