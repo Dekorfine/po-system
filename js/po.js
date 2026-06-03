@@ -3502,6 +3502,11 @@ async function renderPo() {
   try {
     const { data } = await sb.from('orders').select('*').not('po_number', 'is', null).order('created_at', { ascending: false }).limit(500);
     PO_LIST = data || [];
+    // V20260603:空闲预热最新 PO 的订单图,让"复制订单图"秒出
+    try {
+      const _newest = PO_LIST.find(pp => (pp.line_items || []).length);
+      if (_newest) { const _warm = () => _poWarmImage(_newest); (window.requestIdleCallback || ((f) => setTimeout(f, 900)))(_warm); }
+    } catch (e) {}
 
     // 预加载相关销售单的 shopify_order_id + shop_domain（用于点击销售单号跳转 Shopify 后台）
     // V5-W3-2026-05-26: 多取 shipping_address(老 PO 打印时兜底算电气标准用)
@@ -5115,37 +5120,73 @@ async function _loadHtml2Canvas() {
 }
 
 // 把 DOM 元素截图 → 复制到剪贴板（剪贴板失败则下载）
-async function _captureAndCopy(el, filename) {
+// V20260603:订单图缓存(渲染一次 → 秒调)· key = poId + updated_at + 配色 · PO 改动/换色自动失效
+const _poImgCache = new Map();
+function _poCacheKey(po) { return `${po.id}_${po.updated_at || ''}_${typeof PO_IMG_SCHEME !== 'undefined' ? PO_IMG_SCHEME : 'green'}`; }
+function _poCachePut(key, blob) {
+  if (!key || !blob) return;
+  _poImgCache.set(key, blob);
+  if (_poImgCache.size > 40) { const fk = _poImgCache.keys().next().value; _poImgCache.delete(fk); }
+}
+async function _copyOrDownloadBlob(blob, filename) {
+  if (!blob) return { ok: false, err: '生成图片失败' };
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    return { ok: true, mode: 'clipboard' };
+  } catch (e) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename || `图片_${Date.now()}.png`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    return { ok: true, mode: 'download' };
+  }
+}
+async function _captureAndCopy(el, filename, cacheKey) {
   const canvas = await window.html2canvas(el, {
     backgroundColor: '#ffffff',
-    scale: 3, useCORS: true, logging: false,
+    scale: 2, useCORS: true, imageTimeout: 6000, logging: false,   // V20260603:分辨率与预览一致(2x)
   });
-  return new Promise((resolve) => {
-    canvas.toBlob(async (blob) => {
-      if (!blob) { resolve({ ok: false, err: '生成图片失败' }); return; }
-      try {
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        resolve({ ok: true, mode: 'clipboard' });
-      } catch (e) {
-        // 降级：下载
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = filename || `图片_${Date.now()}.png`;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        resolve({ ok: true, mode: 'download' });
-      }
-    }, 'image/png');
-  });
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+  if (cacheKey) _poCachePut(cacheKey, blob);
+  return _copyOrDownloadBlob(blob, filename);
 }
+// 预热:屏幕外渲染并缓存(不复制)· 让"复制订单图"秒出
+async function _poWarmImage(po) {
+  try {
+    if (!po || !(po.line_items || []).length) return;
+    await poLoadImgScheme();
+    const key = _poCacheKey(po);
+    if (_poImgCache.has(key)) return;
+    if (typeof window.html2canvas === 'undefined') { try { await _loadHtml2Canvas(); } catch (e) { return; } }
+    const wrap = _buildSinglePoExportNode(po, true);
+    document.body.appendChild(wrap);
+    try {
+      const imgs = wrap.querySelectorAll('img');
+      await Promise.all([...imgs].map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 1500); })));
+      const canvas = await window.html2canvas(wrap.querySelector('.po-print'), { backgroundColor: '#ffffff', scale: 2, useCORS: true, imageTimeout: 6000, logging: false });
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      _poCachePut(key, blob);
+    } finally { document.body.removeChild(wrap); }
+  } catch (e) { /* 预热失败不影响主流程 */ }
+}
+window._poWarmImage = _poWarmImage;
 
 // 🚀 一键复制订单图（PO 卡片上调用）
 async function poQuickCopyImage(poId) {
   const po = PO_LIST.find(x => x.id === poId);
   if (!po) { toast('找不到 PO', 'err'); return; }
-  toast('正在生成订单图…', 'info');
 
   await poLoadImgScheme();
+  // V20260603:缓存命中 → 秒出(不重新渲染)
+  const _ck = _poCacheKey(po);
+  const _cachedBlob = _poImgCache.get(_ck);
+  if (_cachedBlob) {
+    const r = await _copyOrDownloadBlob(_cachedBlob, `采购单_${po.po_number}.png`);
+    if (r.ok) toast(r.mode === 'clipboard' ? `✓ ${po.po_number} 已复制图片(秒出),去微信群 Ctrl+V 粘贴` : `✓ ${po.po_number} 已下载图片`);
+    return;
+  }
+  toast('正在生成订单图…', 'info');
   // 加载 html2canvas
   try {
     await _loadHtml2Canvas();
@@ -5236,11 +5277,11 @@ async function poQuickCopyImage(poId) {
   const imgs = wrap.querySelectorAll('img');
   await Promise.all([...imgs].map(img => {
     if (img.complete) return Promise.resolve();
-    return new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 3000); });
+    return new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 1500); });
   }));
 
   try {
-    const result = await _captureAndCopy(wrap.querySelector('.po-print'), `采购单_${po.po_number}.png`);
+    const result = await _captureAndCopy(wrap.querySelector('.po-print'), `采购单_${po.po_number}.png`, _ck);
     if (result.ok) {
       if (result.mode === 'clipboard') toast(`✓ ${po.po_number} 已复制图片，去微信群 Ctrl+V 粘贴`);
       else toast(`✓ ${po.po_number} 已下载图片`);
@@ -5493,7 +5534,7 @@ async function _poBatchExportPDF(list, includeImages) {
         const imgs = wrap.querySelectorAll('img');
         await Promise.all([...imgs].map(img => {
           if (img.complete) return Promise.resolve();
-          return new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 3000); });
+          return new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 1500); });
         }));
       }
       
@@ -5751,14 +5792,15 @@ async function poPreviewImage(poId) {
   const imgs = wrap.querySelectorAll('img');
   await Promise.all([...imgs].map(img => {
     if (img.complete) return Promise.resolve();
-    return new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 3000); });
+    return new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 1500); });
   }));
 
   try {
     const canvas = await window.html2canvas(wrap.querySelector('.po-print'), {
-      backgroundColor: '#ffffff', scale: 2, useCORS: true, logging: false,
+      backgroundColor: '#ffffff', scale: 2, useCORS: true, imageTimeout: 6000, logging: false,
     });
     const dataUrl = canvas.toDataURL('image/png');
+    try { canvas.toBlob(b => { if (b) _poCachePut(_poCacheKey(po), b); }, 'image/png'); } catch (e) {}  // V20260603:预览也填缓存
     _showPoPreviewModal(po, canvas, dataUrl);
   } catch (e) {
     toast('生成失败：' + (e.message || e), 'err');
