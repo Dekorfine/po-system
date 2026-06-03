@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260603-poedit',
+    date: '2026-06-03',
+    type: 'feature',
+    title: '✏️ 采购单「改单」+ SKU 描述记忆',
+    notes: [
+      '✅ PO 列表「改价」升级为「改单」:可改 数量/单价 + 描述(中文名/英文名/规格)+ 供应商',
+      '✅ 功能1记忆:改过描述的真实 SKU → 中文名/英文名回写为该 SKU 标准名(全系统通用),规格记到 spec_default',
+      '✅ 下次开同 SKU 采购单,描述三框自动带出已存值,不用每次手动改',
+      '⚠️ 需在 Supabase 跑:products-spec_default列-20260603.sql(products 加 spec_default 列)',
+      'ℹ️ 已建单里增删产品行(方案B)暂未做,需要再单独提',
+    ],
+    files: ['po.js', 'index.html', 'help.js', 'products-spec_default列-20260603.sql'],
+  },
+  {
     v: '20260602-asfetch1',
     date: '2026-06-02',
     type: 'feature',

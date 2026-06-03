@@ -1098,8 +1098,8 @@ function renderPoForm() {
             const liid = li.shopify_line_item_id;
             const d = PO_FORM_STATE.lineDescriptions[liid] || {};
             const defaultTitleCn = d.title_cn !== undefined ? d.title_cn : ((PO_FORM_STATE.lineItemSelections[liid]?.customTitleCn) || eff.name_cn || '');
-            const defaultTitleEn = d.title_en !== undefined ? d.title_en : (li.title || '');
-            const defaultVariant = d.variant !== undefined ? d.variant : (li.variant_title || '');
+            const defaultTitleEn = d.title_en !== undefined ? d.title_en : (eff.name_en || li.title || '');               // V20260603:优先该 SKU 已存英文名
+            const defaultVariant = d.variant !== undefined ? d.variant : (eff.spec_default || li.variant_title || '');    // V20260603:优先该 SKU 已存规格(改单时记住的)
             return `
             <div style="margin-top:6px; padding:6px 8px; background:rgba(124,58,237,0.04); border:1px dashed rgba(124,58,237,0.3); border-radius:5px;">
               <div style="font-size:10.5px; color:#7c3aed; font-weight:600; margin-bottom:4px;">✏️ 改描述(打印件 / 订单图用):</div>
@@ -3964,7 +3964,7 @@ function renderPoList() {
             ${isRejected ? `<button class="so-action-btn primary" onclick="poResubmit('${p.id}')">↻ 重新提交审批</button>` : ''}
             ${next ? `<button class="so-action-btn primary" onclick="poAdvance('${p.id}', '${next.value}', '${next.label}')" title="推进到下一步">▶ ${next.label}</button>` : ''}
             ${prev ? `<button class="so-action-btn" onclick="poRevert('${p.id}', '${prev.value}', '${prev.label}')" title="退回上一步">↩ 退回</button>` : ''}
-            ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditPrices('${p.id}')" title="修改 PO 内每个产品的数量和单价">✏️ 改价</button>` : ''}
+            ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditPrices('${p.id}')" title="修改采购单:数量/单价/描述(中文名·英文名·规格)/供应商">✏️ 改单</button>` : ''}
             <!-- V20260601-desc:移除 [📝 改描述] 按钮 · 改描述已搬到创建 PO 弹窗内每行 · 创建时直接编辑 -->
             <button class="so-action-btn primary" onclick="poQuickCopyImage('${p.id}')" title="一键生成订单图,直接复制到剪贴板,粘贴到供应商群">📋 复制订单图</button>
             <button class="so-action-btn" onclick="poOpenPrint('${p.id}')" title="预览 + 打印 PO(纸质单据 / 也是预览效果最准的方式)">🖨 打印</button>
@@ -4722,40 +4722,35 @@ async function poEditPrices(poId) {
   const items = po.line_items || [];
   if (items.length === 0) { toast('该 PO 无产品行', 'warn'); return; }
 
-  // 构建 fields 数组：每个产品 2 个字段（数量 + 单价）
+  // V20260603:扩展为「改单」· 每行 数量+单价+描述(中文名/英文名/规格)+ 顶部供应商
   const fields = [];
+  fields.push({ key: 'supplier', label: '🏭 供应商', value: po.supplier || po.default_supplier || '', type: 'text' });
   items.forEach((li, idx) => {
-    fields.push({
-      key: `qty_${idx}`,
-      label: `${idx + 1}. ${li.title_cn || li.title_en || li.sku} 数量`,
-      value: li.qty,
-      type: 'number',
-      min: 1,
-      required: true,
-    });
-    fields.push({
-      key: `price_${idx}`,
-      label: `${idx + 1}. ${li.title_cn || li.title_en || li.sku} 单价 ¥`,
-      value: li.price,
-      type: 'number',
-      min: 0,
-      required: true,
-    });
+    const nm = li.title_cn || li.title_en || li.sku || `产品${idx+1}`;
+    fields.push({ key: `qty_${idx}`,   label: `${idx + 1}. 「${nm}」数量`, value: li.qty,   type: 'number', min: 1, required: true });
+    fields.push({ key: `price_${idx}`, label: `${idx + 1}. 「${nm}」单价 ¥`, value: li.price, type: 'number', min: 0, required: true });
+    fields.push({ key: `tcn_${idx}`,   label: `${idx + 1}. 中文名`, value: li.title_cn || '', type: 'text' });
+    fields.push({ key: `ten_${idx}`,   label: `${idx + 1}. 英文名`, value: li.title_en || '', type: 'text' });
+    fields.push({ key: `var_${idx}`,   label: `${idx + 1}. 规格`,   value: li.variant  || '', type: 'text' });
   });
 
   const result = await showPrompt({
-    title: `✏️ 修改 ${po.po_number} 价格/数量`,
-    message: `供应商：${po.supplier || ''} · 当前状态：${poStatusInfo(po.status).label}\n注意：修改后会重新计算 PO 总金额。如金额超过 ¥5000 或某产品数量超 20，会进入待审批。`,
+    title: `✏️ 修改采购单 ${po.po_number}`,
+    message: `当前状态：${poStatusInfo(po.status).label}\n改数量/单价会重算总金额(超 ¥5000 或单品数量超 20 → 待审批)。\n改中文名/英文名会同步更新该 SKU 的标准名(全系统通用),规格记到该 SKU,下次开单自动带出。`,
     fields,
   });
   if (!result) return;
 
-  // 重组 line_items
+  // 重组 line_items(数量/单价/描述)
   const newLineItems = items.map((li, idx) => {
     const qty = Number(result[`qty_${idx}`]) || li.qty;
     const price = Number(result[`price_${idx}`]) || li.price;
-    return { ...li, qty, price, subtotal: qty * price };
+    const title_cn = (result[`tcn_${idx}`] ?? li.title_cn ?? '').trim();
+    const title_en = (result[`ten_${idx}`] ?? li.title_en ?? '').trim();
+    const variant  = (result[`var_${idx}`] ?? li.variant  ?? '').trim();
+    return { ...li, qty, price, subtotal: qty * price, title_cn, title_en, variant };
   });
+  const newSupplier = (result.supplier ?? po.supplier ?? '').trim();
   const newTotal = newLineItems.reduce((s, x) => s + x.subtotal, 0);
 
   // 判断是否需要重新审批（数量过大或金额过大）
@@ -4782,8 +4777,31 @@ async function poEditPrices(poId) {
       status: newStatus,
       approval_note: approvalNote,
       approved_by: approvedBy,
+      supplier: newSupplier || po.supplier || null,
+      default_supplier: newSupplier || po.default_supplier || null,
       updated_at: new Date().toISOString(),
     }).eq('id', poId);
+
+    // V20260603 功能1:被改过描述的真实 SKU 行 → 回写 products(中文名/英文名→标准名 · 规格→spec_default)· 下次开单自动带出
+    try {
+      for (let idx = 0; idx < items.length; idx++) {
+        const orig = items[idx], now = newLineItems[idx];
+        const sku = (now.sku || '').trim();
+        if (!sku || now._custom || now.is_custom) continue;  // 自定义行不回写
+        const upd = {};
+        if ((now.title_cn || '') !== (orig.title_cn || '') && now.title_cn) { upd.name_cn = now.title_cn; upd.name_cn_locked = true; upd.translation_source = 'manual'; }
+        if ((now.title_en || '') !== (orig.title_en || '') && now.title_en) { upd.name_en = now.title_en; }
+        if ((now.variant  || '') !== (orig.variant  || '')) { upd.spec_default = now.variant || null; }
+        if (Object.keys(upd).length === 0) continue;
+        const eff = (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) ? PRODUCTS_CACHE.effectiveBySku(sku) : null;
+        if (!eff || !eff.id) continue;
+        const { error: pe } = await sb.from('products').update(upd).eq('id', eff.id);
+        if (pe) { if (String(pe.message||'').includes('spec_default') || String(pe.message||'').includes('column')) { console.warn('[改单回写] products 缺 spec_default 列,请跑 sql/products-spec_default列.sql'); } else { console.warn('[改单回写] products 失败:', pe.message); } continue; }
+        if (upd.name_cn !== undefined) { eff.name_cn = upd.name_cn; eff.name_cn_locked = true; }
+        if (upd.name_en !== undefined) eff.name_en = upd.name_en;
+        if (upd.spec_default !== undefined) eff.spec_default = upd.spec_default;
+      }
+    } catch (we) { console.warn('[改单] 回写 products 异常:', we); }
 
     // 🔑 关键：同步更新销售单的 po_assignments.qty（按 SKU 匹配）
     if (po.sales_order_id) {
