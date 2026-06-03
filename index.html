@@ -22,18 +22,18 @@
 <link rel="preconnect" href="https://xyhbwqugbnowfjuhqhsj.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
-<link rel="preload" href="js/core.js?v=20260602perf2" as="script">
+<link rel="preload" href="js/core.js?v=20260603chasedef" as="script">
 <link rel="preload" href="js/utils.js?v=20260603img" as="script">
 <link rel="preload" href="js/shopify.js?v=20260602perf5" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="js/core.js?v=20260602perf2"></script>
+<script defer src="js/core.js?v=20260603chasedef"></script>
 <script defer src="js/utils.js?v=20260603img"></script>
 <script defer src="js/reset-system.js"></script>
-<script defer src="js/settings.js?v=20260525z"></script>
+<script defer src="js/settings.js?v=20260603chasedef"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260603pofast"></script>
+<script defer src="js/help.js?v=20260603chasedef"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -44,7 +44,7 @@
 <script defer src="js/aftersales-shared.js?v=20260531ase2"></script>
 <script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260527i"></script>
-<script defer src="js/orders.js?v=20260602perf4"></script>
+<script defer src="js/orders.js?v=20260603chasedef"></script>
 <script defer src="js/shopify.js?v=20260602perf5"></script>
 <script defer src="js/po.js?v=20260603pofast"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
@@ -8350,6 +8350,20 @@ HOGO
           <button class="btn primary" onclick="if(typeof addChaseThreshold === 'function') addChaseThreshold();">+ 添加</button>
         </div>
         <div class="tag-list" id="chaseThresholdsTags"></div>
+
+        <!-- V20260603:默认待催阈值(进催单页自动按它过滤) -->
+        <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--border);">
+          <label style="display:block; margin-bottom:4px;">🎯 默认待催阈值(进催单页自动过滤)</label>
+          <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:8px;">
+            💡 打开催单 tab 时,<b>默认只显示「下单距今 ≥ N 天还没到货」</b>的单 · 旺季订单多时,没到 N 天的还在正常周期内不显示,避免全堆进来。<br>
+            设 <b>0</b> = 显示全部(不过滤)。进页面后仍可点顶部 chip 临时切换(含「全部」)。按<b>下单日期</b>计算。
+          </div>
+          <div class="add-agent-input" style="display:flex; gap:6px; align-items:center;">
+            <input type="number" id="chaseDefaultDays" placeholder="如 14" min="0" max="365" style="flex:1;">
+            <button class="btn primary" onclick="if(typeof setChaseDefaultDays === 'function') setChaseDefaultDays();">保存默认</button>
+          </div>
+          <div id="chaseDefaultDaysHint" style="font-size:11px; color:var(--text-secondary); margin-top:6px;"></div>
+        </div>
       </div>
       
       <div style="margin-top: 16px; padding: 14px; border: 1.5px dashed var(--danger, #dc2626); border-radius: 8px; background: rgba(220,38,38,0.03);">
