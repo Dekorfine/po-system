@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260603img"></script>
+<script defer src="js/help.js?v=20260603invfix"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -48,7 +48,7 @@
 <script defer src="js/shopify.js?v=20260602perf5"></script>
 <script defer src="js/po.js?v=20260603poedit"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
-<script defer src="js/inventory.js?v=20260601po"></script>
+<script defer src="js/inventory.js?v=20260603invfix"></script>
 <script defer src="js/inspection.js?v=20260528kappa"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script defer src="js/cross-dept.js?v=20260601fix2"></script>
@@ -4289,22 +4289,20 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 /* leftcol 容器 — checkbox 绝对定位在图上 */
 .so-prod-leftcol {
-  position: relative;
-  flex: 0 0 90px;      /* 固定 90px,不缩不伸 */
-  width: 90px;
-  height: 90px;
+  /* V20260603:勾选框与图分开 · 横向排列 · 不再绝对定位压在图上(多灯订单好勾选) */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
 }
 .so-prod-leftcol .so-split-checkbox {
-  position: absolute !important;
-  top: 4px;
-  left: 4px;
-  z-index: 3;
-  width: 18px; height: 18px;
+  position: static !important;
+  width: 22px; height: 22px;      /* 放大,好点中 */
   cursor: pointer;
-  background: white;
-  border-radius: 3px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  flex-shrink: 0;
+  accent-color: var(--accent);
   margin: 0 !important;
+  box-shadow: none;
 }
 .so-prod-img {
   width: 90px; height: 90px; border-radius: 8px;
@@ -4385,8 +4383,8 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   /* V5-W3:手机端 — flex 换行模式,info 占满第一行右半,qty 换到第二行 */
   .so-product-line { flex-wrap: wrap; }
   .so-prod-leftcol { 
-    flex: 0 0 70px;
-    width: 70px; height: 70px; 
+    flex: 0 0 auto;
+    gap: 8px;
   }
   .so-prod-leftcol .so-prod-img,
   .so-prod-leftcol .so-prod-noimg { width: 70px !important; height: 70px !important; }
