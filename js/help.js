@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260603-invfix',
+    date: '2026-06-03',
+    type: 'fix',
+    title: '🔧 修库存保存失败 + 拆单勾选框防重叠',
+    notes: [
+      '🐛 库存保存报错 "Could not find the title column":写了 products 不存在的 title/title_cn 列',
+      '✅ 改为写真实列 name_cn · 读取也改 p.name_cn · 库存录入/编辑可正常保存',
+      '🐛 拆单勾选框绝对定位压在产品图上 → 多灯订单难勾、点了就放大图',
+      '✅ 勾选框改到图左侧独立一列(横向排列 · 放大到 22px)· 图保持点击放大 · 互不干扰',
+    ],
+    files: ['inventory.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260603-img',
     date: '2026-06-03',
     type: 'feature',

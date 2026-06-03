@@ -124,7 +124,7 @@ function _invRenderList() {
   if (q) {
     list = list.filter(p => {
       if ((p.sku || '').toLowerCase().includes(q)) return true;
-      if ((p.title_cn || p.title || '').toLowerCase().includes(q)) return true;
+      if ((p.name_cn || '').toLowerCase().includes(q)) return true;
       const platSkus = Array.isArray(p.platform_skus) ? p.platform_skus : [];
       return platSkus.some(ps => (ps.sku || '').toLowerCase().includes(q));
     });
@@ -179,7 +179,7 @@ function _invCardHtml(p) {
       <div style="min-width:0;">
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px; flex-wrap:wrap;">
           ${statusText ? `<span style="background:${statusColor}; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700;">${statusText}</span>` : ''}
-          <span style="font-size:14px; font-weight:600; color:var(--text-primary);">${escapeHtml(p.title_cn || p.title || '(无名)')}</span>
+          <span style="font-size:14px; font-weight:600; color:var(--text-primary);">${escapeHtml(p.name_cn || '(无名)')}</span>
         </div>
         <div style="font-size:11px; color:var(--text-tertiary); font-family:monospace; margin-bottom:6px;">内部 SKU: ${escapeHtml(p.sku || '')}</div>
         
@@ -247,7 +247,7 @@ function invOpenEdit(productId = null) {
     INV_EDIT = {
       id: p.id,
       sku: p.sku || '',
-      title: p.title_cn || p.title || '',
+      title: p.name_cn || '',
       image_url: p.image_url || '',
       stock_qty: Number(p.stock_qty || 0),
       stock_alert_threshold: Number(p.stock_alert_threshold || 5),
@@ -453,8 +453,7 @@ async function invSaveEdit() {
         // 新建产品
         const { error } = await sb.from('products').insert({
           sku: s.sku.trim(),
-          title_cn: s.title.trim(),
-          title: s.title.trim(),
+          name_cn: s.title.trim(),
           image_url: s.image_url || null,
           is_inventory_item: true,
           stock_qty: s.stock_qty,
@@ -467,7 +466,7 @@ async function invSaveEdit() {
     } else {
       // 编辑现有
       const { error } = await sb.from('products').update({
-        title_cn: s.title.trim(),
+        name_cn: s.title.trim(),
         image_url: s.image_url || null,
         stock_qty: s.stock_qty,
         stock_alert_threshold: s.stock_alert_threshold,
@@ -513,7 +512,7 @@ let INV_ADJUST = null;
 function invOpenAdjust(productId) {
   const p = INVENTORY._list.find(x => String(x.id) === String(productId));
   if (!p) { toast('找不到产品', 'err'); return; }
-  INV_ADJUST = { id: p.id, sku: p.sku, title: p.title_cn || p.title, current: Number(p.stock_qty || 0), delta: 0, mode: 'add' };
+  INV_ADJUST = { id: p.id, sku: p.sku, title: p.name_cn, current: Number(p.stock_qty || 0), delta: 0, mode: 'add' };
   document.getElementById('inventoryAdjustModal').style.display = 'flex';
   _invRenderAdjust();
 }
