@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260603-img',
+    date: '2026-06-03',
+    type: 'feature',
+    title: '🖼️ 统一图片处理(所见即所得 · 杜绝裂图)',
+    notes: [
+      '✅ imgDisplaySrc(v):字符串URL/dataURL/JSON字符串/对象{url|dataUrl|base64} 全兼容 · 杜绝 [object Object] 裂图',
+      '✅ collectRecordImages(rec):汇总一条记录所有图(screenshots/realPhotos/products图/跟进图/附件)· 附件按 mime 只收 image/*',
+      '✅ renderThumbStrip(rec):一排 48×48 缩略图 · loading=lazy · 点击全屏 · stopPropagation 防误触',
+      '✅ viewImage 全屏看图入口包一层 imgDisplaySrc(对象/JSON 也能看)· 加 setPreviewImg 别名(对齐 worktrack)',
+      'ℹ️ 审计:催单/问题/售后/缺货列表早已铺缩略图;跨部门工单列表为性能不在列表加载图(详情按需);网购无独立列表',
+    ],
+    files: ['utils.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260603-poedit',
     date: '2026-06-03',
     type: 'feature',

@@ -507,13 +507,91 @@ function compressImage(file) {
 //   原因:用户希望催单/售后/找灯/会议/供应商问题/销售单/PO/产品库 全部共享一个 lightbox
 //   原 #imageViewer DOM 保留作为 dormant 元素(防止某处直接引用报错)
 //   所有 JS 调用点(viewImage / viewImageGallery)接口不变,内部全部代理到 #imgLightbox
+// V20260603:统一取图函数 · 兼容 字符串URL/dataURL · JSON字符串 · 对象{url|dataUrl|base64} · 杜绝 [object Object] 裂图
+function imgDisplaySrc(v) {
+  if (v == null) return null;
+  if (typeof v === 'string') {
+    const str = v.trim();
+    if (!str) return null;
+    if (/^(https?:|data:|blob:|\/)/i.test(str)) return str;            // 直接是 URL/dataURL/路径
+    if (str[0] === '{' || str[0] === '[') {                            // 像 JSON → 解析后递归
+      try { return imgDisplaySrc(JSON.parse(str)); } catch (e) { return str; }
+    }
+    return str;                                                        // 其它字符串原样(兜底)
+  }
+  if (Array.isArray(v)) { for (const it of v) { const r = imgDisplaySrc(it); if (r) return r; } return null; }
+  if (typeof v === 'object') {
+    if (v.url) return v.url;
+    if (v.dataUrl) return v.dataUrl;
+    if (v.dataURL) return v.dataURL;
+    if (v.src) return v.src;
+    if (v.image_url) return v.image_url;
+    if (v.base64) return `data:${v.mimeType || v.mime || 'image/jpeg'};base64,${v.base64}`;
+    return null;
+  }
+  return null;
+}
+window.imgDisplaySrc = imgDisplaySrc;
+
+// V20260603:把一条记录的所有图字段汇总成 [{src,label}] · 附件按 mime 只收 image/* · 去重
+function collectRecordImages(rec) {
+  if (!rec) return [];
+  const out = [];
+  const seen = new Set();
+  const add = (v, label) => {
+    // 附件类对象:非图片(PDF 等)不收
+    if (v && typeof v === 'object' && (v.mime || v.mimeType)) {
+      const m = String(v.mime || v.mimeType || '').toLowerCase();
+      if (m && !m.startsWith('image/')) return;
+    }
+    const src = imgDisplaySrc(v);
+    if (!src || seen.has(src)) return;
+    seen.add(src);
+    out.push({ src, label: label || '' });
+  };
+  const addArr = (arr, label) => { (Array.isArray(arr) ? arr : []).forEach(x => add(x, label)); };
+  // 各业务对象通用图字段
+  addArr(rec.screenshots, '截图');
+  addArr(rec.realPhotos, '实拍');
+  addArr(rec.attachments, '附件');           // 跨部门工单 {url,mime}
+  addArr(rec.images, '图片');
+  (rec.products || []).forEach(p => { if (p && p.image_url) add(p.image_url, '产品图'); });
+  (rec.followups || []).forEach(f => addArr(f && f.screenshots, '跟进图'));
+  (rec.comments || []).forEach(c => addArr(c && c.screenshots, '评论图'));
+  if (rec.image_url) add(rec.image_url, '产品图');
+  return out;
+}
+window.collectRecordImages = collectRecordImages;
+
+// V20260603:渲染一排 48×48 缩略图(点击全屏 · stopPropagation 防误触卡片)· 性能:loading=lazy
+function renderThumbStrip(rec, opts) {
+  const o = opts || {};
+  const size = o.size || 48;
+  const max = o.max || 8;
+  let imgs = collectRecordImages(rec);
+  if (!imgs.length) return o.emptyHtml || '';
+  const more = imgs.length > max ? imgs.length - max : 0;
+  if (more) imgs = imgs.slice(0, max);
+  const cells = imgs.map(it => {
+    const s = String(it.src).replace(/'/g, "\\'");
+    return `<img src="${it.src}" loading="lazy" title="${escapeHtml(it.label||'')}" onclick="event.stopPropagation(); viewImage('${s}')" `
+      + `style="width:${size}px;height:${size}px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:pointer;flex-shrink:0;transition:transform .12s,box-shadow .12s;" `
+      + `onmouseover="this.style.transform='scale(1.08)';this.style.boxShadow='0 2px 8px rgba(0,0,0,0.18)';" onmouseout="this.style.transform='';this.style.boxShadow='';">`;
+  }).join('');
+  const moreBadge = more ? `<span style="width:${size}px;height:${size}px;display:inline-flex;align-items:center;justify-content:center;background:var(--bg-subtle,rgba(0,0,0,0.05));border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text-secondary);flex-shrink:0;">+${more}</span>` : '';
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;${o.wrapStyle||''}">${cells}${moreBadge}</div>`;
+}
+window.renderThumbStrip = renderThumbStrip;
+
 function viewImage(src) {
+  src = imgDisplaySrc(src) || src;   // V20260603:兼容对象/JSON 形态,杜绝裂图
   // 单图:清空多图状态(防止还残留 prev/next 按钮),然后用 openImgLightbox 显示
   _galleryImages = [];
   _galleryIndex = 0;
   _ensureLightboxNav(false);  // 隐藏多图导航
   openImgLightbox(src);
 }
+window.setPreviewImg = viewImage;   // V20260603:对齐 worktrack 命名
 
 // V4：通过订单号查关联销售单/PO 的产品图（售后、催单等模块用）
 // 输入：orderNo (string) 如 "K115302"
