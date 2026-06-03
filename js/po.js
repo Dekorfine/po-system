@@ -4882,8 +4882,9 @@ function poOpenPrint(poId) {
     <div class="po-print" id="poPrintContent">
       <!-- 紧凑顶栏：左标题号 右日期/跟单 -->
       <div class="po-header">
-        <div class="po-title">
-          📋 采购单 <span class="po-no">${escapeHtml(po.po_number)}</span>
+        <div class="po-h-left">
+          <div class="po-icon">📋</div>
+          <div class="po-title">采购单 <span class="po-no">${escapeHtml(po.po_number)}</span></div>
         </div>
         <div class="po-meta-right">
           开单 ${new Date(po.created_at).toLocaleDateString()} · 跟单 ${escapeHtml(po.creator_name || '')}
@@ -4891,10 +4892,9 @@ function poOpenPrint(poId) {
       </div>
       <!-- 关键信息一行展示 -->
       <div class="meta-bar">
-        <span><b>供应商：</b>${escapeHtml(po.supplier)}</span>
-        <span><b>关联销售：</b>${escapeHtml(po.order_no || '—')}</span>
-        
-        <span><b>合计：</b><span style="color:#dc2626; font-weight:700;">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span></span>
+        <span class="pill"><span class="pill-dot">🏭</span><b>供应商：</b><span class="pill-val">${escapeHtml(po.supplier)}</span></span>
+        <span class="pill"><span class="pill-dot">🏷</span><b>关联销售：</b><span class="pill-val">${escapeHtml(po.order_no || '—')}</span></span>
+        <span class="pill"><span class="pill-dot pill-dot-y">¥</span><b>合计：</b><span class="pill-val red">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span></span>
       </div>
       <!-- 产品表格 -->
       <table>
@@ -4943,11 +4943,9 @@ function poOpenPrint(poId) {
       <!-- V5-W3-2026-05-26: 移除黄色"其他备注"框(内容已并入备注列 per-line)
            只保留红框 订单备注(纸箱用),并简化为只显示销售单号 -->
       <!-- 订单备注：紧贴合计行下方，独占整行 -->
-      <div style="background:#fff5f5; border:1px solid #fecaca; padding:12px 14px; margin-top:8px; border-radius:6px;">
-        <div style="display:flex; align-items:flex-start; gap:10px;">
-          <span style="font-weight:700; color:#dc2626; font-size:13px; white-space:nowrap; flex-shrink:0;">⚠ 订单备注（请写在纸箱上）：</span>
-          <div style="flex:1; color:#7f1d1d; font-weight:600; white-space:pre-wrap; word-break:break-all; font-family:monospace; font-size:14px;">${escapeHtml(po.box_note || '—')}</div>
-        </div>
+      <div class="po-boxnote">
+        <span class="po-boxnote-label">⚠ 订单备注（请写在纸箱上）：</span>
+        <div class="po-boxnote-val">${escapeHtml(po.box_note || '—')}</div>
       </div>
     </div>
   `;
@@ -5175,14 +5173,16 @@ async function poQuickCopyImage(poId) {
   wrap.innerHTML = `
     <div class="po-print">
       <div class="po-header">
-        <div class="po-title">📋 采购单 <span class="po-no">${escapeHtml(po.po_number)}</span></div>
+        <div class="po-h-left">
+          <div class="po-icon">📋</div>
+          <div class="po-title">采购单 <span class="po-no">${escapeHtml(po.po_number)}</span></div>
+        </div>
         <div class="po-meta-right">开单 ${new Date(po.created_at).toLocaleDateString()} · 跟单 ${escapeHtml(po.creator_name || '')}</div>
       </div>
       <div class="meta-bar">
-        <span><b>供应商：</b>${escapeHtml(po.supplier)}</span>
-        <span><b>关联销售：</b>${escapeHtml(po.order_no || '—')}</span>
-        
-        <span><b>合计：</b><span style="color:#dc2626; font-weight:700;">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span></span>
+        <span class="pill"><span class="pill-dot">🏭</span><b>供应商：</b><span class="pill-val">${escapeHtml(po.supplier)}</span></span>
+        <span class="pill"><span class="pill-dot">🏷</span><b>关联销售：</b><span class="pill-val">${escapeHtml(po.order_no || '—')}</span></span>
+        <span class="pill"><span class="pill-dot pill-dot-y">¥</span><b>合计：</b><span class="pill-val red">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span></span>
       </div>
       <table>
         <thead><tr>
@@ -5223,11 +5223,9 @@ async function poQuickCopyImage(poId) {
         </tbody>
       </table>
       <!-- 订单备注：紧贴合计行下方，独占整行 -->
-      <div style="background:#fff5f5; border:1px solid #fecaca; padding:12px 14px; margin-top:8px; border-radius:6px;">
-        <div style="display:flex; align-items:flex-start; gap:10px;">
-          <span style="font-weight:700; color:#dc2626; font-size:13px; white-space:nowrap; flex-shrink:0;">⚠ 订单备注（请写在纸箱上）：</span>
-          <div style="flex:1; color:#7f1d1d; font-weight:600; white-space:pre-wrap; word-break:break-all;">${escapeHtml(po.box_note || '—')}</div>
-        </div>
+      <div class="po-boxnote">
+        <span class="po-boxnote-label">⚠ 订单备注（请写在纸箱上）：</span>
+        <div class="po-boxnote-val">${escapeHtml(po.box_note || '—')}</div>
       </div>
     </div>`;
   document.body.appendChild(wrap);
@@ -5323,14 +5321,16 @@ function _buildSinglePoExportNode(po, includeImages) {
   wrap.innerHTML = `
     <div class="po-print">
       <div class="po-header">
-        <div class="po-title">📋 采购单 <span class="po-no">${escapeHtml(po.po_number)}</span></div>
+        <div class="po-h-left">
+          <div class="po-icon">📋</div>
+          <div class="po-title">采购单 <span class="po-no">${escapeHtml(po.po_number)}</span></div>
+        </div>
         <div class="po-meta-right">开单 ${new Date(po.created_at).toLocaleDateString()} · 跟单 ${escapeHtml(po.creator_name || '')}</div>
       </div>
       <div class="meta-bar">
-        <span><b>供应商：</b>${escapeHtml(po.supplier)}</span>
-        <span><b>关联销售：</b>${escapeHtml(po.order_no || '—')}</span>
-        
-        <span><b>合计：</b><span style="color:#dc2626; font-weight:700;">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span></span>
+        <span class="pill"><span class="pill-dot">🏭</span><b>供应商：</b><span class="pill-val">${escapeHtml(po.supplier)}</span></span>
+        <span class="pill"><span class="pill-dot">🏷</span><b>关联销售：</b><span class="pill-val">${escapeHtml(po.order_no || '—')}</span></span>
+        <span class="pill"><span class="pill-dot pill-dot-y">¥</span><b>合计：</b><span class="pill-val red">${totalQty} 件 / ¥ ${totalAmount.toFixed(2)}</span></span>
       </div>
       <table>
         <thead><tr>
@@ -5374,11 +5374,9 @@ function _buildSinglePoExportNode(po, includeImages) {
           </tr>
         </tbody>
       </table>
-      <div style="background:#fff5f5; border:1px solid #fecaca; padding:12px 14px; margin-top:8px; border-radius:6px;">
-        <div style="display:flex; align-items:flex-start; gap:10px;">
-          <span style="font-weight:700; color:#dc2626; font-size:13px; white-space:nowrap; flex-shrink:0;">⚠ 订单备注（请写在纸箱上）：</span>
-          <div style="flex:1; color:#7f1d1d; font-weight:600; white-space:pre-wrap; word-break:break-all;">${escapeHtml(_stripSkus(po.box_note || '') || '—')}</div>
-        </div>
+      <div class="po-boxnote">
+        <span class="po-boxnote-label">⚠ 订单备注（请写在纸箱上）：</span>
+        <div class="po-boxnote-val">${escapeHtml(_stripSkus(po.box_note || '') || '—')}</div>
       </div>
     </div>`;
   return wrap;
