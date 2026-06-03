@@ -110,6 +110,12 @@ function chaseDaysSince(o) {
 function renderChaseThresholdChips() {
   const el = document.getElementById('chaseThresholdChips');
   if (!el) return;
+  // V20260603:首次进催单页 → 套用主管设的"默认待催阈值"(只一次,之后用户可自由点 chip 覆盖,含"全部")
+  if (!_chaseDefaultApplied) {
+    _chaseDefaultApplied = true;
+    const def = (typeof DATA !== 'undefined' && DATA.getChaseDefaultDays) ? DATA.getChaseDefaultDays() : 0;
+    if (def > 0) _chaseThresholdFilter = def;
+  }
   const thresholds = (typeof DATA !== 'undefined' && DATA.getChaseThresholds) ? DATA.getChaseThresholds() : [3, 7, 10, 14, 21, 30, 60];
   const total = CHASE_ORDERS.length;
   const poCnt = CHASE_ORDERS.filter(o => o._isPO).length;

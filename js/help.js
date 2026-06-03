@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260603-chasedef',
+    date: '2026-06-03',
+    type: 'feature',
+    title: '🎯 催单「默认待催阈值」· 主管可设(旺季防堆积)',
+    notes: [
+      '✅ 主管可在「设置」里设默认待催阈值 N 天 · 进催单页自动只显示「下单 ≥ N 天还没到货」的单',
+      '✅ 旺季订单多时,没到 N 天的单还在正常周期内不显示,避免全堆进催单页',
+      '✅ 按下单日期(order_date)计算 · 进页面后仍可点顶部 chip 临时切换(含「全部」)',
+      '✅ 设 0 = 显示全部(不过滤)· 全员生效 · 仅主管可改',
+      '⚠️ 需在 Supabase 跑:config-chase_default_days列-20260603.sql',
+    ],
+    files: ['core.js', 'orders.js', 'settings.js', 'index.html', 'help.js', 'config-chase_default_days列-20260603.sql'],
+  },
+  {
     v: '20260603-pofast',
     date: '2026-06-03',
     type: 'fix',

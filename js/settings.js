@@ -169,6 +169,14 @@ function renderSettings() {
     chaseWrap.style.display = IS_ADMIN ? 'block' : 'none';
     if (IS_ADMIN) {
       const list = (typeof DATA !== 'undefined' && DATA.getChaseThresholds) ? DATA.getChaseThresholds() : [3, 7, 15, 30];
+      // V20260603:默认待催阈值当前值
+      const ddInput = document.getElementById('chaseDefaultDays');
+      const ddHint = document.getElementById('chaseDefaultDaysHint');
+      const curDef = (typeof DATA !== 'undefined' && DATA.getChaseDefaultDays) ? DATA.getChaseDefaultDays() : 0;
+      if (ddInput && document.activeElement !== ddInput) ddInput.value = curDef || '';
+      if (ddHint) ddHint.innerHTML = curDef > 0
+        ? `当前:催单页默认只显示<b>下单 ≥ ${curDef} 天</b>还没到货的单`
+        : `当前:<b>显示全部</b>(未启用默认过滤)`;
       const tagsEl = document.getElementById('chaseThresholdsTags');
       if (tagsEl) {
         tagsEl.innerHTML = list.map(d => `
@@ -216,6 +224,26 @@ async function removeChaseThreshold(days) {
   } catch (err) {
     console.error(err);
     toast('保存失败：' + (err.message || err), 'err');
+  }
+}
+
+async function setChaseDefaultDays() {
+  if (!IS_ADMIN) { toast('只有主管能修改', 'err'); return; }
+  const input = document.getElementById('chaseDefaultDays');
+  const v = parseInt((input?.value || '0').trim()) || 0;
+  if (v < 0 || v > 365) { toast('请输入 0-365 之间的天数(0=显示全部)', 'warn'); return; }
+  try {
+    await DATA.saveChaseDefaultDays(v);
+    toast(v > 0 ? `✓ 默认待催阈值已设为 ${v} 天(全员生效)` : '✓ 已关闭默认过滤(显示全部)');
+    // 立即套用到催单页
+    if (typeof _chaseThresholdFilter !== 'undefined') { _chaseThresholdFilter = v; }
+    if (typeof _chaseDefaultApplied !== 'undefined') { _chaseDefaultApplied = true; }
+    if (typeof renderOrders === 'function') renderOrders();
+    if (typeof renderChaseThresholdChips === 'function') renderChaseThresholdChips();
+    renderSettings();
+  } catch (err) {
+    console.error(err);
+    toast('保存失败:' + (err.message || err), 'err');
   }
 }
 

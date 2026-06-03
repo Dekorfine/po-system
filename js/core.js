@@ -424,6 +424,20 @@ const DATA = {
     if (error) throw error;
     return sorted;
   },
+  // V20260603:催单"默认待催阈值"(进催单页自动按 N 天过滤 · 0=显示全部)· 主管可设
+  getChaseDefaultDays() {
+    const v = this._cache.config && this._cache.config.chase_default_days;
+    const n = parseInt(v);
+    return (!isNaN(n) && n >= 0) ? n : 0;
+  },
+  async saveChaseDefaultDays(days) {
+    if (!IS_ADMIN) throw new Error('只有主管能修改默认待催阈值');
+    const n = Math.max(0, parseInt(days) || 0);
+    if (this._cache.config) this._cache.config.chase_default_days = n;
+    const { error } = await sb.from('config').update({ chase_default_days: n }).eq('id', 1);
+    if (error) throw error;
+    return n;
+  },
 
   // 主管聚合视图
   listAllAgents() { return this._cache.agents; },
@@ -807,6 +821,7 @@ let PURCHASES = [];             // 线上采购
 let CHASE_ORDERS = [];          // 派生的催单数据（来自 PO 表 po_number IS NOT NULL 且未发货）
 let ALL_PO_ORDERS = [];         // 所有 PO（含已发货已到货）—— 供绩效统计等需要历史数据的模块用
 let _chaseThresholdFilter = 0;  // 0=全部，>0=按 N 天阈值过滤
+let _chaseDefaultApplied = false;  // V20260603:主管默认阈值是否已套用(只首次)
 let _chaseLastLoad = 0;         // 上次加载时间（用于缓存判断）
 
 let _currentItemId = null;
