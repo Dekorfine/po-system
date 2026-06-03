@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260525z"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260603invorder"></script>
+<script defer src="js/help.js?v=20260603poimg"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -46,7 +46,7 @@
 <script defer src="js/missing.js?v=20260527i"></script>
 <script defer src="js/orders.js?v=20260602perf4"></script>
 <script defer src="js/shopify.js?v=20260602perf5"></script>
-<script defer src="js/po.js?v=20260603poedit"></script>
+<script defer src="js/po.js?v=20260603poimg"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
 <script defer src="js/inventory.js?v=20260603invorder"></script>
 <script defer src="js/inspection.js?v=20260528kappa"></script>
@@ -4749,62 +4749,87 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 
 /* 采购单截图预览 - 紧凑横版，方便快速截图发供应商 */
 .po-print {
-  background: white; color: #000; padding: 18px 22px; font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  background: #fff; color: #1c1917; padding: 26px 30px;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
   max-width: 920px;
 }
+/* 头部:红色图标 + 大标题 + 右侧开单信息 · 圆角分隔 */
 .po-print .po-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding-bottom: 10px; border-bottom: 2px solid #1c1917; margin-bottom: 10px;
+  padding: 14px 18px; margin-bottom: 16px;
+  background: #fff; border: 1px solid #f1e4e4; border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(220,38,38,0.05);
 }
-.po-print .po-title {
-  font-size: 17px; font-weight: 700; letter-spacing: 1px;
+.po-print .po-h-left { display: flex; align-items: center; gap: 14px; }
+.po-print .po-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: #fdecec; color: #dc2626;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; flex-shrink: 0;
 }
-.po-print .po-title .po-no {
-  margin-left: 10px; font-size: 14px; color: #2563eb; font-family: monospace;
-}
-.po-print .po-header .po-meta-right {
-  font-size: 11px; color: #555;
-}
+.po-print .po-title { font-size: 24px; font-weight: 800; letter-spacing: 1px; color: #1c1917; }
+.po-print .po-title .po-no { margin-left: 12px; font-size: 17px; color: #dc2626; font-family: monospace; font-weight: 700; letter-spacing: 0; }
+.po-print .po-header .po-meta-right { font-size: 13px; color: #78716c; white-space: nowrap; }
+/* 信息胶囊条:供应商 / 关联销售 / 合计 */
 .po-print .meta-bar {
-  display: flex; flex-wrap: wrap; gap: 4px 18px;
-  font-size: 12px; padding: 6px 10px; background: #f5f5f4; border-radius: 4px;
-  margin-bottom: 8px;
+  display: flex; flex-wrap: wrap; gap: 12px;
+  background: #fdf4f4; border: 1px solid #f7e3e3; border-radius: 12px;
+  padding: 14px 18px; margin-bottom: 16px;
 }
-.po-print .meta-bar span { white-space: nowrap; }
-.po-print .meta-bar b { color: #333; font-weight: 600; }
+.po-print .meta-bar .pill { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #44403c; white-space: nowrap; }
+.po-print .meta-bar .pill b { font-weight: 600; color: #57534e; }
+.po-print .meta-bar .pill-dot {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: #fdecec; color: #dc2626;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; flex-shrink: 0;
+}
+.po-print .meta-bar .pill-dot-y { background: #fef3e2; color: #d97706; }
+.po-print .meta-bar .pill-val { font-weight: 600; color: #1c1917; }
+.po-print .meta-bar .pill-val.red { color: #dc2626; font-weight: 800; font-size: 15px; }
+/* 表格:横线为主 · 表头浅灰 · 圆角容器感 */
 .po-print table {
-  width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px;
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: 13px; margin-bottom: 16px;
+  border: 1px solid #ececec; border-radius: 12px; overflow: hidden;
 }
 .po-print th {
-  background: #f0f0f0; padding: 5px 6px; text-align: left; border: 1px solid #ccc;
-  font-weight: 600; font-size: 11px;
+  background: #f7f7f8; padding: 11px 10px; text-align: center;
+  border-bottom: 1px solid #e9e9ec;
+  font-weight: 700; font-size: 12px; color: #57534e;
 }
+.po-print th:nth-child(3) { text-align: left; }
 .po-print td {
-  padding: 5px 6px; border: 1px solid #ddd; vertical-align: middle;
+  padding: 12px 10px; border-bottom: 1px solid #f0f0f0; vertical-align: middle;
 }
+.po-print tbody tr:last-child td { border-bottom: none; }
+.po-print td.spec-cell { text-align: left; }
 .po-print td img {
-  width: 56px; height: 56px; object-fit: cover; border-radius: 3px; display: block;
+  width: 64px; height: 64px; object-fit: cover; border-radius: 10px;
+  display: block; margin: 0 auto; border: 1px solid #eee; background: #faf7f2;
 }
 .po-print .total-row td {
-  background: #f7f7f7; font-weight: 700; font-size: 13px;
+  background: #faf7f7; font-weight: 800; font-size: 14px; border-top: 1px solid #e9e9ec;
 }
-.po-print .notes-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-  margin-bottom: 4px;
+/* 底部订单备注红框 */
+.po-print .po-boxnote {
+  background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px;
+  padding: 14px 18px; display: flex; align-items: flex-start; gap: 12px;
 }
-.po-print .note-box {
-  border: 1px solid #fbbf24; padding: 6px 9px; min-height: 36px;
-  font-size: 12px; color: #1c1917;
-  background: #fffbeb; border-radius: 3px;
+.po-print .po-boxnote-label {
+  font-weight: 800; color: #dc2626; font-size: 14px; white-space: nowrap; flex-shrink: 0;
+  display: flex; align-items: center; gap: 4px;
 }
+.po-print .po-boxnote-val {
+  flex: 1; color: #991b1b; font-weight: 600; white-space: pre-wrap; word-break: break-all; font-size: 14px;
+}
+/* 兼容旧 note-box(打印模板仍可能用) */
+.po-print .notes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px; }
+.po-print .note-box { border: 1px solid #fbbf24; padding: 6px 9px; min-height: 36px; font-size: 12px; color: #1c1917; background: #fffbeb; border-radius: 6px; }
 .po-print .note-box.danger { border-color: #dc2626; background: #fef2f2; }
-.po-print .note-box .label {
-  font-size: 10px; color: #92400e; font-weight: 700; margin-bottom: 2px; display: block;
-}
+.po-print .note-box .label { font-size: 10px; color: #92400e; font-weight: 700; margin-bottom: 2px; display: block; }
 .po-print .note-box.danger .label { color: #dc2626; }
-.po-print .note-box .content {
-  font-size: 13px; font-weight: 600; font-family: monospace; word-break: break-all;
-}
+.po-print .note-box .content { font-size: 13px; font-weight: 600; font-family: monospace; word-break: break-all; }
 .po-print .note-box.danger .content { font-family: inherit; font-weight: 500; }
 
 @media print {
