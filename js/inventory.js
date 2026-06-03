@@ -308,6 +308,18 @@ function _invRenderEdit() {
                       style="padding:6px 10px; background:var(--accent); color:#fff; border:none; border-radius:5px; cursor:pointer; font-size:11px;">拉</button>
             </div>
           </details>
+          <details style="margin-top:6px;" open>
+            <summary style="font-size:10.5px;color:var(--accent);cursor:pointer;font-weight:600;">📦 用订单号拉取(填订单号 → 选产品 → 自动带入 SKU/名称/图)</summary>
+            <div style="display:flex; gap:6px; margin-top:5px;">
+              <input type="text" id="invOrderNoInput"
+                     placeholder="订单号 如 K117094 / MH4526"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();invFetchByOrderNo();}"
+                     style="flex:1; padding:6px 8px; font-size:11.5px; border:1px solid var(--border); border-radius:5px; font-family:monospace;">
+              <button onclick="invFetchByOrderNo()"
+                      style="padding:6px 10px; background:var(--accent); color:#fff; border:none; border-radius:5px; cursor:pointer; font-size:11px; white-space:nowrap;">📦 拉取</button>
+            </div>
+            <div id="invOrderFetchResult" style="margin-top:6px;"></div>
+          </details>
         ` : ''}
       </div>
       <div>
@@ -485,6 +497,73 @@ async function invSaveEdit() {
   }
 }
 window.invSaveEdit = invSaveEdit;
+
+// ===== V20260603:库存录入 · 用订单号拉取产品(复用催单抓取逻辑)=====
+let _invOrderFetched = [];
+function invFetchByOrderNo() {
+  const box = document.getElementById('invOrderFetchResult');
+  const rawNo = (document.getElementById('invOrderNoInput')?.value || '').trim();
+  const nos = rawNo.split(/[\/,，、\s]+/).map(x => x.trim().replace(/^#/, '')).filter(Boolean);
+  if (nos.length === 0) { if (box) box.innerHTML = '<span style="font-size:11px;color:var(--danger);">请先填订单号</span>'; return; }
+  let lineItems = [];
+  nos.forEach(n => {
+    let got = [];
+    if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
+      const pos = PO_LIST.filter(pp => String(pp.po_number||'').trim()===n || String(pp.order_no||'').trim()===n);
+      got = pos.flatMap(pp => pp.line_items || []);
+    }
+    if (got.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
+      const so = SHOPIFY._orders.find(x => String(x.shopify_order_number||'').replace('#','')===n || String(x.name||'').replace('#','')===n);
+      if (so && so.line_items) got = so.line_items;
+    }
+    lineItems = lineItems.concat(got);
+  });
+  lineItems = (lineItems||[]).filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
+  if (lineItems.length === 0) {
+    if (box) box.innerHTML = `<span style="font-size:11px;color:var(--warning);">⚠ 本地没找到订单「${escapeHtml(nos.join(' / '))}」的产品 · 可改用上面的 SKU 拉取</span>`;
+    _invOrderFetched = []; return;
+  }
+  const productMap = (typeof SHOPIFY !== 'undefined' && SHOPIFY._productMap) ? SHOPIFY._productMap : {};
+  _invOrderFetched = lineItems.map(li => {
+    const eff = (li.sku && typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) ? (PRODUCTS_CACHE.effectiveBySku(li.sku) || {}) : {};
+    const name = eff.name_cn || li.title_cn || li.title || li.title_en || '';
+    let img = li.image_url || li.image || eff.image_url || '';
+    if (!img && li.sku && productMap[li.sku] && productMap[li.sku].image_url) img = productMap[li.sku].image_url;
+    const variant = (typeof _cleanFetchedSpec === 'function') ? _cleanFetchedSpec(li, li.variant || li.variant_title || '') : (li.variant || li.variant_title || '');
+    return { sku: li.sku || '', name, image_url: img, variant };
+  }).filter(x => x.sku);
+  if (_invOrderFetched.length === 0) { if (box) box.innerHTML = '<span style="font-size:11px;color:var(--warning);">⚠ 该订单产品没有 SKU,无法带入</span>'; return; }
+  if (box) box.innerHTML = `
+    <div style="font-size:10.5px;color:var(--text-tertiary);margin-bottom:4px;">点一个产品 → 自动填入 SKU / 名称 / 图:</div>
+    <div style="display:flex;flex-direction:column;gap:5px;max-height:220px;overflow-y:auto;">
+      ${_invOrderFetched.map((p,i)=>`
+        <div onclick="invPickOrderLine(${i})" style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:7px;padding:5px 8px;cursor:pointer;background:var(--bg-card);"
+             onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--bg-elevated)';" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--bg-card)';">
+          ${p.image_url?`<img src="${p.image_url}" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:5px;flex-shrink:0;">`:'<span style="width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;">📷</span>'}
+          <div style="min-width:0;flex:1;">
+            <div style="font-family:monospace;font-size:11px;color:var(--accent);">${escapeHtml(p.sku)}</div>
+            <div style="font-size:11.5px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.name||'(无名)')}</div>
+            ${p.variant?`<div style="font-size:10px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.variant)}</div>`:''}
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+window.invFetchByOrderNo = invFetchByOrderNo;
+
+function invPickOrderLine(i) {
+  const p = _invOrderFetched[i];
+  if (!p || !INV_EDIT) return;
+  INV_EDIT.sku = p.sku;
+  INV_EDIT.title = p.name || p.sku;
+  if (p.image_url) INV_EDIT.image_url = p.image_url;
+  // 重渲染弹窗,字段自动带入
+  if (typeof _invRenderEdit === 'function') _invRenderEdit();
+  setTimeout(() => {
+    const st = document.getElementById('invFetchStatus');
+    if (st) { st.textContent = `✓ 已带入 ${p.sku} · 可继续填库存数量后保存`; st.style.color = 'var(--success)'; }
+  }, 60);
+}
+window.invPickOrderLine = invPickOrderLine;
 
 async function invDelete() {
   const s = INV_EDIT;
