@@ -3498,6 +3498,7 @@ function poPrevStatus(value) {
 }
 
 async function renderPo() {
+  poLoadImgScheme();  // V20260603:预加载订单图配色(不阻塞)
   try {
     const { data } = await sb.from('orders').select('*').not('po_number', 'is', null).order('created_at', { ascending: false }).limit(500);
     PO_LIST = data || [];
@@ -4879,7 +4880,7 @@ function poOpenPrint(poId) {
   }
 
   document.getElementById('poPrintBody').innerHTML = `
-    <div class="po-print" id="poPrintContent">
+    <div class="po-print${(typeof PO_IMG_SCHEME!=='undefined'&&PO_IMG_SCHEME==='red')?' scheme-red':''}" id="poPrintContent">
       <!-- 紧凑顶栏：左标题号 右日期/跟单 -->
       <div class="po-header">
         <div class="po-h-left">
@@ -4924,7 +4925,7 @@ function poOpenPrint(poId) {
               <td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}">` : '<span style="color:#aaa;">—</span>'}</td>
               <td class="spec-cell">${cleanTitle ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(cleanTitle)}</div>` : ''}${cleanSpecs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(cleanSpecs)}</div>` : (cleanTitle ? '' : '<span style="color:#888;">—</span>')}</td>
               <td style="text-align:center; background:#fef9f3; padding:4px 3px; vertical-align:middle; word-break:keep-all;">${lineStd ? `<b style="color:#c2410c; font-family:monospace; font-size:11px; font-weight:600; line-height:1.3; display:inline-block;">${escapeHtml(lineStd)}</b>` : '<span style="color:#aaa;">—</span>'}</td>
-              <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px; display:inline-block;">${li.qty}</span>` : li.qty}</td>
+              <td style="text-align:center;">${li.qty >= 2 ? `<span class="po-qty-badge">${li.qty}</span>` : li.qty}</td>
               <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
               <td style="text-align:right; font-family:monospace; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
               <td style="background:#fffdf7; font-size:10.5px; color:#444; vertical-align:top; padding:5px 7px; white-space:pre-wrap; line-height:1.4;">${lineNote ? escapeHtml(lineNote) : '<span style="color:#bbb; font-style:italic;">(无)</span>'}</td>
@@ -5144,6 +5145,7 @@ async function poQuickCopyImage(poId) {
   if (!po) { toast('找不到 PO', 'err'); return; }
   toast('正在生成订单图…', 'info');
 
+  await poLoadImgScheme();
   // 加载 html2canvas
   try {
     await _loadHtml2Canvas();
@@ -5171,7 +5173,7 @@ async function poQuickCopyImage(poId) {
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; left:-99999px; top:0; width:920px; z-index:-1;';
   wrap.innerHTML = `
-    <div class="po-print">
+    <div class="po-print${(typeof PO_IMG_SCHEME!=='undefined'&&PO_IMG_SCHEME==='red')?' scheme-red':''}">
       <div class="po-header">
         <div class="po-h-left">
           <div class="po-icon">📋</div>
@@ -5206,7 +5208,7 @@ async function poQuickCopyImage(poId) {
               <td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}" crossorigin="anonymous">` : '<span style="color:#aaa;">—</span>'}</td>
               <td>${li.title_cn ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(li.title_cn)}</div>` : ''}${specs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(specs)}</div>` : ''}</td>
               <td style="text-align:center; background:#fef9f3; padding:4px 3px; vertical-align:middle; word-break:keep-all;">${lineStd ? `<b style="color:#c2410c; font-family:monospace; font-size:11px; font-weight:600; line-height:1.3; display:inline-block;">${escapeHtml(lineStd)}</b>` : '<span style="color:#aaa;">—</span>'}</td>
-              <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px;">${li.qty}</span>` : li.qty}</td>
+              <td style="text-align:center;">${li.qty >= 2 ? `<span class="po-qty-badge">${li.qty}</span>` : li.qty}</td>
               <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
               <td style="text-align:right; font-family:monospace; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
               <td style="background:#fffdf7; font-size:10.5px; color:#444; vertical-align:top; padding:5px 7px; white-space:pre-wrap; line-height:1.4;">${lineNote ? escapeHtml(lineNote) : '<span style="color:#bbb; font-style:italic;">(无)</span>'}</td>
@@ -5284,6 +5286,40 @@ async function _loadJsPdf() {
 }
 
 // 构建单个 PO 的导出 HTML（屏幕外渲染，html2canvas 截图用）
+// ===== V20260603:订单图配色(浅绿默认 / 红色备用 · 主管可切 · 存 app_config 全员通用)=====
+let PO_IMG_SCHEME = 'green';
+let _poSchemeLoaded = false;
+async function poLoadImgScheme() {
+  if (_poSchemeLoaded) return PO_IMG_SCHEME;
+  try {
+    if (typeof cdmClient !== 'undefined' && cdmClient) {
+      const { data } = await cdmClient.from('app_config').select('value').eq('key', 'po_image_scheme').maybeSingle();
+      const v = data && data.value ? (typeof data.value === 'string' ? data.value : (data.value.scheme || '')) : '';
+      if (v === 'red' || v === 'green') PO_IMG_SCHEME = v;
+    }
+  } catch (e) { console.warn('[PO配色] 读取失败,用默认浅绿', e); }
+  _poSchemeLoaded = true;
+  return PO_IMG_SCHEME;
+}
+window.poLoadImgScheme = poLoadImgScheme;
+async function poSetImgScheme(scheme) {
+  if (typeof IS_ADMIN !== 'undefined' && !IS_ADMIN) { toast('只有主管能修改订单图配色', 'warn'); return; }
+  if (scheme !== 'red' && scheme !== 'green') return;
+  PO_IMG_SCHEME = scheme;
+  try {
+    if (typeof cdmClient !== 'undefined' && cdmClient) {
+      await cdmClient.from('app_config').upsert({ key: 'po_image_scheme', value: { scheme } });
+    }
+  } catch (e) { console.warn('[PO配色] 保存失败', e); toast('配色保存失败:' + (e.message || e), 'err'); }
+  toast(`✓ 订单图配色已切换为${scheme === 'green' ? '浅绿' : '红色'}(全员生效)`);
+  if (window._poPreviewCache && window._poPreviewCache.po) {
+    const poId = window._poPreviewCache.po.id;
+    poClosePreview();
+    setTimeout(() => poPreviewImage(poId), 120);
+  }
+}
+window.poSetImgScheme = poSetImgScheme;
+
 function _buildSinglePoExportNode(po, includeImages) {
   const items = po.line_items || [];
   const totalQty = items.reduce((s, x) => s + (x.qty || 0), 0);
@@ -5319,7 +5355,7 @@ function _buildSinglePoExportNode(po, includeImages) {
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; left:-99999px; top:0; width:920px; z-index:-1; background:#fff;';
   wrap.innerHTML = `
-    <div class="po-print">
+    <div class="po-print${(typeof PO_IMG_SCHEME!=='undefined'&&PO_IMG_SCHEME==='red')?' scheme-red':''}">
       <div class="po-header">
         <div class="po-h-left">
           <div class="po-icon">📋</div>
@@ -5358,7 +5394,7 @@ function _buildSinglePoExportNode(po, includeImages) {
               ${includeImages ? `<td>${li.image_url ? `<img src="${escapeHtml(li.image_url)}" crossorigin="anonymous">` : '<span style="color:#aaa;">—</span>'}</td>` : ''}
               <td class="spec-cell">${cleanTitle ? `<div style="font-weight:600; font-size:12px;">${escapeHtml(cleanTitle)}</div>` : ''}${cleanSpecs ? `<div style="color:#555; font-size:11px; line-height:1.5; white-space:pre-line; margin-top:1px;">${escapeHtml(cleanSpecs)}</div>` : ''}</td>
               <td style="text-align:center; background:#fef9f3; padding:4px 3px; vertical-align:middle; word-break:keep-all;">${lineStd ? `<b style="color:#c2410c; font-family:monospace; font-size:11px; font-weight:600; line-height:1.3; display:inline-block;">${escapeHtml(lineStd)}</b>` : '<span style="color:#aaa;">—</span>'}</td>
-              <td style="text-align:center;">${li.qty >= 2 ? `<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:4px; font-weight:700; font-size:13px;">${li.qty}</span>` : li.qty}</td>
+              <td style="text-align:center;">${li.qty >= 2 ? `<span class="po-qty-badge">${li.qty}</span>` : li.qty}</td>
               <td style="text-align:right; font-family:monospace;">¥ ${Number(li.price).toFixed(2)}</td>
               <td style="text-align:right; font-family:monospace; font-weight:600;">¥ ${Number(li.subtotal).toFixed(2)}</td>
               <td style="background:#fffdf7; font-size:10.5px; color:#444; vertical-align:top; padding:5px 7px; white-space:pre-wrap; line-height:1.4;">${lineNote ? escapeHtml(lineNote) : '<span style="color:#bbb; font-style:italic;">(无)</span>'}</td>
@@ -5698,6 +5734,7 @@ async function poPreviewImage(poId) {
   const po = PO_LIST.find(x => x.id === poId);
   if (!po) { toast('找不到 PO', 'err'); return; }
   toast('正在生成预览…', 'info');
+  await poLoadImgScheme();
 
   try {
     await _loadHtml2Canvas();
@@ -5753,7 +5790,13 @@ function _showPoPreviewModal(po, canvas, dataUrl) {
         <img src="${dataUrl}" alt="采购单预览">
       </div>
       <div class="po-preview-actions">
-        <span class="po-preview-hint">💡 确认无误后选择复制或下载（取消请点关闭/Esc）</span>
+        ${(typeof IS_ADMIN !== 'undefined' && IS_ADMIN) ? `
+          <span style="display:flex; align-items:center; gap:6px; margin-right:auto; font-size:12px; color:#6b7280;">
+            配色:
+            <button class="so-action-btn" onclick="poSetImgScheme('green')" style="padding:4px 11px;${PO_IMG_SCHEME==='green'?'background:#e9f4ee;border-color:#43906d;color:#43906d;font-weight:700;':''}">🟢 浅绿</button>
+            <button class="so-action-btn" onclick="poSetImgScheme('red')" style="padding:4px 11px;${PO_IMG_SCHEME==='red'?'background:#fdecec;border-color:#dc2626;color:#dc2626;font-weight:700;':''}">🔴 红色</button>
+          </span>` : ''}
+        <span class="po-preview-hint"${(typeof IS_ADMIN !== 'undefined' && IS_ADMIN) ? ' style="flex:0;"' : ''}>💡 确认无误后选择复制或下载（取消请点关闭/Esc）</span>
         <button class="so-action-btn" onclick="poClosePreview()">← 返回修改</button>
         <button class="so-action-btn" onclick="poPreviewDownload()">📥 下载图片</button>
         <button class="so-action-btn primary" onclick="poPreviewCopyToClipboard()" title="把图复制到剪贴板，去微信群 Ctrl+V 粘贴">📋 复制到剪贴板</button>
