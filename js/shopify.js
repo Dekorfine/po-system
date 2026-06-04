@@ -134,7 +134,7 @@ const SHOPIFY = {
     const shops = (opts.shops || []).filter(Boolean);
     // V20260602-perf:精简列(排除 raw_payload 大字段)· Shopify 列表/催单都不用它 · egress 大幅下降
     // 列错会 400 → 自动回退 select(*) 兜底 · WooCommerce 详情/运费用到的 raw_payload 之后按需补
-    const LEAN = 'id,shop_domain,shopify_order_id,shopify_order_number,customer_name,customer_email,customer_phone,shipping_address,line_items,financial_status,fulfillment_status,local_status,total_price,currency,customer_note,internal_note,shopify_created_at,imported_by,imported_at,updated_at,deleted_at,deleted_by,platform,wp_order_id,store_label,store_code';
+    const LEAN = 'id,shop_domain,shopify_order_id,shopify_order_number,customer_name,customer_email,customer_phone,shipping_address,line_items,financial_status,fulfillment_status,local_status,total_price,shipping_fee,currency,customer_note,internal_note,shopify_created_at,imported_by,imported_at,updated_at,deleted_at,deleted_by,platform,wp_order_id,store_label,store_code';
     let all = [];
     let offset = 0;
     let useLean = true;
@@ -1414,6 +1414,10 @@ function getPaymentTime(o) {
 // V28k: 提取运费金额(多来源 fallback · 兼容 Shopify 各种字段 + WooCommerce)
 function getShippingFee(o) {
   if (!o) return 0;
+  // V20260604:优先用入库时存好的 shipping_fee 小列(精简查询带得到 · 不依赖 raw_payload)
+  if (o.shipping_fee !== undefined && o.shipping_fee !== null && o.shipping_fee !== '') {
+    return Number(o.shipping_fee) || 0;
+  }
   const raw = o.raw_payload || {};
 
   // ── WooCommerce ──
