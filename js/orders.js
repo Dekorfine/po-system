@@ -2094,8 +2094,8 @@ function _fetchImageSmall(url, maxPx = 56) {
     img.src = url;
   });
 }
-// V20260605:取催单订单的首张产品图 URL
-function _chaseOrderImageUrl(o) {
+// V20260605:取催单订单的首张产品图 URL · products → lineItems → 按 SKU 反查产品库(pmap)
+function _chaseOrderImageUrl(o, pmap) {
   if (Array.isArray(o.products) && o.products.length) {
     const u = o.products.map(p => p && p.image_url).filter(Boolean)[0];
     if (u) return u;
@@ -2103,8 +2103,27 @@ function _chaseOrderImageUrl(o) {
   if (Array.isArray(o.lineItems) && o.lineItems.length) {
     const u = o.lineItems.map(li => li.image_url || li.image).filter(Boolean)[0];
     if (u) return u;
+    // 兜底:用 SKU 反查产品库的图(PO 派生单 line_items 常没存图)
+    if (pmap) {
+      const bySku = o.lineItems.map(li => li.sku).filter(Boolean).map(sku => pmap[sku] && pmap[sku].image_url).filter(Boolean)[0];
+      if (bySku) return bySku;
+    }
+  }
+  // products 也按 sku 兜底
+  if (pmap && Array.isArray(o.products)) {
+    const bySku = o.products.map(p => p && p.sku).filter(Boolean).map(sku => pmap[sku] && pmap[sku].image_url).filter(Boolean)[0];
+    if (bySku) return bySku;
   }
   return '';
+}
+// 收集一批催单订单涉及的所有 SKU(给 loadProductImageMap 反查图用)
+function _chaseOrdersSkus(orders) {
+  const set = new Set();
+  orders.forEach(o => {
+    (o.lineItems || []).forEach(li => { if (li.sku) set.add(li.sku); });
+    (o.products || []).forEach(p => { if (p && p.sku) set.add(p.sku); });
+  });
+  return [...set];
 }
 
 async function exportSupplierAccounting(supplier) {
@@ -2170,17 +2189,24 @@ async function exportSupplierAccounting(supplier) {
   const dataStartRow = ws.rowCount + 1;   // 数据首行(1-based)
 
   // 数据行
+  const dataRowRefs = [];
   rows.forEach((r) => {
     const row = ws.addRow(r);
     row.alignment = { vertical: 'middle', wrapText: true };
+    dataRowRefs.push(row);
   });
 
   // 列宽(对应:序号/订单号/产品图/产品·SKU/下单/承诺/状态/逾期/催次/最后跟进/备注)
   const widths = [6, 16, 10, 28, 12, 12, 11, 10, 9, 36, 26];
   widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
-  // 贴图:抓服务器图 → 压小 → 嵌入对应行(并行抓取,提速)
-  const urls = orders.map(o => _chaseOrderImageUrl(o));
+  // 贴图:先按 SKU 反查产品库图(PO 派生单 line_items 常没存图)· 再抓服务器图压小嵌入
+  let pmap = {};
+  try {
+    const skus = _chaseOrdersSkus(orders);
+    if (skus.length && SHOPIFY.loadProductImageMap) pmap = await SHOPIFY.loadProductImageMap(skus);
+  } catch (e) { console.warn('[对账单] 产品图反查失败:', e); }
+  const urls = orders.map(o => _chaseOrderImageUrl(o, pmap));
   const dataURLs = await Promise.all(urls.map(u => _fetchImageSmall(u, 56)));
   let embedded = 0;
   for (let i = 0; i < orders.length; i++) {
@@ -2200,6 +2226,40 @@ async function exportSupplierAccounting(supplier) {
       } catch (e) { /* 单张失败不影响整体 */ }
     }
   }
+
+  // ===== 美化排版 =====
+  const thin = { style: 'thin', color: { argb: 'FFD0D7DE' } };
+  const allBorder = { top: thin, left: thin, bottom: thin, right: thin };
+  const N2 = headers.length;
+  // 表头描边 + 颜色(覆盖之前的浅色,改成主题绿)
+  headerRow.eachCell({ includeEmpty: true }, (c) => {
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D9488' } };
+    c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    c.border = allBorder;
+  });
+  headerRow.height = 24;
+  // 各列对齐(序号/订单号/产品图/下单/承诺/状态/逾期/催次 居中;产品·SKU/最后跟进/备注 左对齐)
+  const centerCols = [1, 2, 3, 5, 6, 7, 8, 9];
+  dataRowRefs.forEach((row, idx) => {
+    // 斑马纹
+    if (idx % 2 === 1) {
+      for (let c = 1; c <= N2; c++) row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF6F8FA' } };
+    }
+    for (let c = 1; c <= N2; c++) {
+      const cell = row.getCell(c);
+      cell.border = allBorder;
+      cell.alignment = { vertical: 'middle', wrapText: true, horizontal: centerCols.includes(c) ? 'center' : 'left' };
+      cell.font = cell.font || { size: 10.5 };
+    }
+    // 逾期天数(第7列)>0 标红加粗
+    const od = row.getCell(7).value;
+    if (od && Number(od) > 0) row.getCell(7).font = { bold: true, color: { argb: 'FFDC2626' } };
+  });
+  // 冻结表头行(及其上方标题)
+  ws.views = [{ state: 'frozen', ySplit: dataStartRow - 1 }];
+  // 自动筛选(表头整行)
+  try { ws.autoFilter = { from: { row: dataStartRow - 1, column: 1 }, to: { row: dataStartRow - 1, column: N2 } }; } catch (e) {}
 
   // 说明(数据行之后)
   ws.addRow([]);
