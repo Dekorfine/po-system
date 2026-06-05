@@ -723,7 +723,7 @@ function setSalesDefaultDates() {
   }
   if (!from.value) {
     const d = new Date();
-    d.setDate(d.getDate() - 30);
+    d.setDate(d.getDate() - 15);   // V20260605:默认只快速加载近 15 天(下单看最新单足够)· 更早的用日期筛选按需拉
     from.value = _ymdLocal(d);  // V20260601-tzfix
   }
 }
