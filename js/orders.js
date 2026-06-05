@@ -2059,7 +2059,55 @@ function renderUrgentBanner() {
 }
 
 // ============ 📋 导出供应商对账单 ============
-function exportSupplierAccounting(supplier) {
+// V20260605:ExcelJS 懒加载(嵌图用 · SheetJS 不支持嵌图)
+function _loadExcelJS() {
+  if (window.ExcelJS) return Promise.resolve(true);
+  return new Promise((resolve, reject) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+    sc.onload = () => resolve(true);
+    sc.onerror = () => reject(new Error('ExcelJS CDN 加载失败'));
+    document.head.appendChild(sc);
+    setTimeout(() => reject(new Error('ExcelJS 加载超时')), 15000);
+  });
+}
+// V20260605:抓服务器图 → 压成小图 dataURL(不存库 · 仅导出时嵌入)· CORS 受限则返回 null 跳过
+function _fetchImageSmall(url, maxPx = 56) {
+  return new Promise((resolve) => {
+    if (!url) return resolve(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    let done = false;
+    const fin = (v) => { if (!done) { done = true; resolve(v); } };
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxPx / Math.max(img.width || 1, img.height || 1));
+        const w = Math.max(1, Math.round((img.width || 1) * scale));
+        const h = Math.max(1, Math.round((img.height || 1) * scale));
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        fin(c.toDataURL('image/jpeg', 0.8));
+      } catch (e) { fin(null); }  // 跨域污染 → 跳过
+    };
+    img.onerror = () => fin(null);
+    setTimeout(() => fin(null), 4000);
+    img.src = url;
+  });
+}
+// V20260605:取催单订单的首张产品图 URL
+function _chaseOrderImageUrl(o) {
+  if (Array.isArray(o.products) && o.products.length) {
+    const u = o.products.map(p => p && p.image_url).filter(Boolean)[0];
+    if (u) return u;
+  }
+  if (Array.isArray(o.lineItems) && o.lineItems.length) {
+    const u = o.lineItems.map(li => li.image_url || li.image).filter(Boolean)[0];
+    if (u) return u;
+  }
+  return '';
+}
+
+async function exportSupplierAccounting(supplier) {
   // V3：从 PO 派生数据找该供应商所有未发货订单
   const orders = CHASE_ORDERS.filter(o => o.supplier === supplier && !['cancelled','shipped','arrived'].includes(o.status));
   
@@ -2085,14 +2133,14 @@ function exportSupplierAccounting(supplier) {
   });
   const avgOverdue = overdueCount > 0 ? Math.round(totalOverdueDays / overdueCount) : 0;
   
-  const headers = ['序号','订单号','产品 / SKU','下单日期','原承诺发货日','当前状态','已逾期(天)','已催次数','最后跟进','我方备注'];
+  const headers = ['序号','订单号','产品图','产品 / SKU','下单日期','原承诺发货日','当前状态','已逾期(天)','已催次数','最后跟进','我方备注'];
   
   const rows = orders.map((o, i) => {
     const days = o.promisedDate && o.promisedDate < today ? Math.floor((new Date(today) - new Date(o.promisedDate)) / 86400000) : 0;
     const chaseCount = (o.followups || []).filter(f => f.type === 'chase').length;
     const last = o.followups && o.followups.length > 0 ? o.followups[o.followups.length - 1] : null;
     return [
-      i + 1, o.orderNo || '', o.product || '',
+      i + 1, o.orderNo || '', '', o.product || '',
       o.orderDate || '', o.promisedDate || '',
       ORDER_STATUS_LABELS[o.status] || '',
       days > 0 ? days : '',
@@ -2102,43 +2150,82 @@ function exportSupplierAccounting(supplier) {
     ];
   });
   
-  // 构造工作表
-  const wb = XLSX.utils.book_new();
-  const data = [
-    [`${supplier} - 滞留订单对账清单`],
-    [`生成日期: ${dateStr}    共 ${orders.length} 单待发货    其中逾期 ${overdueCount} 单    平均逾期 ${avgOverdue} 天    累计催单 ${totalChase} 次`],
-    [''],
-    ['请贵司核对以下订单并尽快回复发货计划：'],
-    [''],
-    headers,
-    ...rows,
-    [''],
-    ['说明：'],
-    ['1. 以上订单均为我司已下采购单但贵司尚未发货的订单'],
-    ['2. 「原承诺发货日」为贵司当初承诺的发货日期，请贵司确认'],
-    ['3. 请于收到此表 3 个工作日内回复每单的最新发货计划'],
-    ['4. 如有特殊情况，请及时与对接跟单员联系'],
-  ];
-  
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  
-  // 合并标题
-  ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } },
-    { s: { r: 3, c: 0 }, e: { r: 3, c: headers.length - 1 } },
-    { s: { r: 6 + rows.length + 1, c: 0 }, e: { r: 6 + rows.length + 1, c: headers.length - 1 } },
-    { s: { r: 6 + rows.length + 2, c: 0 }, e: { r: 6 + rows.length + 2, c: headers.length - 1 } },
-    { s: { r: 6 + rows.length + 3, c: 0 }, e: { r: 6 + rows.length + 3, c: headers.length - 1 } },
-    { s: { r: 6 + rows.length + 4, c: 0 }, e: { r: 6 + rows.length + 4, c: headers.length - 1 } },
-    { s: { r: 6 + rows.length + 5, c: 0 }, e: { r: 6 + rows.length + 5, c: headers.length - 1 } },
-  ];
-  
-  ws['!cols'] = [{wch:5},{wch:14},{wch:26},{wch:11},{wch:11},{wch:10},{wch:10},{wch:8},{wch:35},{wch:25}];
-  
-  XLSX.utils.book_append_sheet(wb, ws, supplier.slice(0, 30) || 'sheet');
-  XLSX.writeFile(wb, `${supplier}_滞留订单对账_${today}.xlsx`);
-  toast(`✓ 已导出 ${orders.length} 单对账清单`);
+  // 构造工作表(ExcelJS · 嵌入小产品图)
+  try { await _loadExcelJS(); }
+  catch (e) { toast('Excel 组件加载失败:' + (e.message || e) + ' · 请检查网络', 'err', 6000); return; }
+  toast(`正在生成对账单(含 ${orders.length} 张产品图)…`, 'info', 8000);
+  const ExcelJS = window.ExcelJS;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet((supplier || 'sheet').slice(0, 30));
+  const IMG_COL = 3;   // 产品图列(第3列)
+
+  ws.addRow([`${supplier} - 滞留订单对账清单`]);
+  ws.addRow([`生成日期: ${dateStr}    共 ${orders.length} 单待发货    其中逾期 ${overdueCount} 单    平均逾期 ${avgOverdue} 天    累计催单 ${totalChase} 次`]);
+  ws.addRow([]);
+  ws.addRow(['请贵司核对以下订单并尽快回复发货计划：']);
+  ws.addRow([]);
+  const headerRow = ws.addRow(headers);
+  headerRow.font = { bold: true };
+  headerRow.eachCell(c => { c.alignment = { horizontal: 'center', vertical: 'middle' }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; });
+  const dataStartRow = ws.rowCount + 1;   // 数据首行(1-based)
+
+  // 数据行
+  rows.forEach((r) => {
+    const row = ws.addRow(r);
+    row.alignment = { vertical: 'middle', wrapText: true };
+  });
+
+  // 列宽(对应:序号/订单号/产品图/产品·SKU/下单/承诺/状态/逾期/催次/最后跟进/备注)
+  const widths = [6, 16, 10, 28, 12, 12, 11, 10, 9, 36, 26];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  // 贴图:抓服务器图 → 压小 → 嵌入对应行(并行抓取,提速)
+  const urls = orders.map(o => _chaseOrderImageUrl(o));
+  const dataURLs = await Promise.all(urls.map(u => _fetchImageSmall(u, 56)));
+  let embedded = 0;
+  for (let i = 0; i < orders.length; i++) {
+    const du = dataURLs[i];
+    const rowNo = dataStartRow + i;     // 1-based
+    if (du) {
+      try {
+        const imageId = wb.addImage({ base64: du, extension: 'jpeg' });
+        ws.getRow(rowNo).height = 44;
+        // 锚点用 0-based · 在产品图列居中放一张 ~52px 的小图
+        ws.addImage(imageId, {
+          tl: { col: (IMG_COL - 1) + 0.12, row: (rowNo - 1) + 0.08 },
+          ext: { width: 52, height: 52 },
+          editAs: 'oneCell',
+        });
+        embedded++;
+      } catch (e) { /* 单张失败不影响整体 */ }
+    }
+  }
+
+  // 说明(数据行之后)
+  ws.addRow([]);
+  ['说明：',
+   '1. 以上订单均为我司已下采购单但贵司尚未发货的订单',
+   '2. 「原承诺发货日」为贵司当初承诺的发货日期，请贵司确认',
+   '3. 请于收到此表 3 个工作日内回复每单的最新发货计划',
+   '4. 如有特殊情况，请及时与对接跟单员联系'].forEach(t => ws.addRow([t]));
+
+  // 合并标题/说明行(跨所有列)
+  const N = headers.length;
+  ws.mergeCells(1, 1, 1, N);
+  ws.mergeCells(2, 1, 2, N);
+  ws.mergeCells(4, 1, 4, N);
+  ws.getRow(1).font = { bold: true, size: 14 };
+  ws.getRow(1).alignment = { horizontal: 'center' };
+
+  // 导出
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${supplier}_滞留订单对账_${today}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+  toast(`✓ 已导出 ${orders.length} 单对账清单 · 嵌入 ${embedded} 张产品图`);
 }
 
 // ============ 批量催单 ============
