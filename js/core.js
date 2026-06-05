@@ -2606,6 +2606,8 @@ function refreshAllSupplierDropdowns() {
   });
   AFTERSALES.forEach(a => {
     if (!a.supplier) return;
+    // V20260605:售N 只算"未解决"(活动数)· 避免"全处理完却显示有数字、默认视图却空"的困惑
+    if (['resolved', 'cancelled'].includes(a.status)) return;
     if (!counts[a.supplier]) counts[a.supplier] = { orders: 0, after: 0, issues: 0 };
     counts[a.supplier].after++;
   });

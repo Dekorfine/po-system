@@ -266,7 +266,19 @@ function renderAftersales() {
   });
   
   if (list.length === 0) {
-    body.innerHTML = `<div class="empty-state"><div class="icon">🔧</div><div class="text">${AFTERSALES.length === 0 ? '还没有售后单，点 "+ 新增售后" 开始' : '没有匹配的售后单'}</div>${AFTERSALES.length === 0 ? '<button class="btn primary" onclick="addAftersales()">+ 新增第一个售后单</button>' : ''}</div>`;
+    // V20260605:选了供应商/筛选条件但列表空 — 若该范围下其实有"已解决"的售后,明确提示"已全部处理",别让人以为是 bug
+    let _emptyMsg;
+    if (AFTERSALES.length === 0) {
+      _emptyMsg = '还没有售后单，点 "+ 新增售后" 开始';
+    } else {
+      const _resolvedInScope = AFTERSALES.some(a =>
+        (!fSupp || a.supplier === fSupp) && (!fSite || a.site === fSite) &&
+        ['resolved', 'cancelled'].includes(a.status));
+      _emptyMsg = _resolvedInScope
+        ? '该范围的售后已全部处理完成 ✓ · 想看历史请把状态切到「全部」'
+        : '没有匹配的售后单';
+    }
+    body.innerHTML = `<div class="empty-state"><div class="icon">🔧</div><div class="text">${_emptyMsg}</div>${AFTERSALES.length === 0 ? '<button class="btn primary" onclick="addAftersales()">+ 新增第一个售后单</button>' : ''}</div>`;
     // V4-2026-05-24: 清空可见数据
     window._lastVisibleAftersales = [];
     return;
