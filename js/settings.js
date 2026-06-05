@@ -182,7 +182,18 @@ function renderSettings() {
       const fdHint = document.getElementById('chaseFreightDaysHint');
       const curFd = (typeof DATA !== 'undefined' && DATA.getChaseFreightDays) ? DATA.getChaseFreightDays() : 3;
       if (fdInput && document.activeElement !== fdInput) fdInput.value = curFd;
-      if (fdHint) fdHint.innerHTML = `当前:付运费单<b>下单 ≥ ${curFd} 天</b>就进催单(比普通单更早)`;
+      if (fdHint) fdHint.innerHTML = `当前:加急单<b>下单 ≥ ${curFd} 天</b>就进催单(比普通单更早)`;
+      // V20260605:高客单价 / 多产品阈值当前值
+      const hvInput = document.getElementById('chaseHighValue');
+      const hvHint = document.getElementById('chaseHighValueHint');
+      const curHv = (typeof DATA !== 'undefined' && DATA.getChaseHighValue) ? DATA.getChaseHighValue() : 2000;
+      if (hvInput && document.activeElement !== hvInput) hvInput.value = curHv;
+      if (hvHint) hvHint.innerHTML = `当前:订单金额 <b>≥ ${curHv.toLocaleString()}</b> 算加急(💰)`;
+      const miInput = document.getElementById('chaseManyItems');
+      const miHint = document.getElementById('chaseManyItemsHint');
+      const curMi = (typeof DATA !== 'undefined' && DATA.getChaseManyItems) ? DATA.getChaseManyItems() : 10;
+      if (miInput && document.activeElement !== miInput) miInput.value = curMi;
+      if (miHint) miHint.innerHTML = `当前:SKU数 或 件数 <b>≥ ${curMi}</b> 算加急(📦)`;
       const tagsEl = document.getElementById('chaseThresholdsTags');
       if (tagsEl) {
         tagsEl.innerHTML = list.map(d => `
@@ -231,6 +242,30 @@ async function removeChaseThreshold(days) {
     console.error(err);
     toast('保存失败：' + (err.message || err), 'err');
   }
+}
+
+async function setChaseHighValue() {
+  if (!IS_ADMIN) { toast('只有主管能修改', 'err'); return; }
+  const v = parseFloat((document.getElementById('chaseHighValue')?.value || '0').trim()) || 0;
+  if (v < 0) { toast('请输入有效金额', 'warn'); return; }
+  try {
+    await DATA.saveChaseHighValue(v);
+    toast(`✓ 高客单价阈值已设为 ${v.toLocaleString()}(全员生效)`);
+    if (typeof renderOrders === 'function') renderOrders();
+    renderSettings();
+  } catch (err) { console.error(err); toast('保存失败:' + (err.message || err), 'err'); }
+}
+
+async function setChaseManyItems() {
+  if (!IS_ADMIN) { toast('只有主管能修改', 'err'); return; }
+  const v = parseInt((document.getElementById('chaseManyItems')?.value || '0').trim()) || 0;
+  if (v < 0) { toast('请输入有效数量', 'warn'); return; }
+  try {
+    await DATA.saveChaseManyItems(v);
+    toast(`✓ 多产品/SKU 阈值已设为 ${v}(全员生效)`);
+    if (typeof renderOrders === 'function') renderOrders();
+    renderSettings();
+  } catch (err) { console.error(err); toast('保存失败:' + (err.message || err), 'err'); }
 }
 
 async function setChaseFreightDays() {

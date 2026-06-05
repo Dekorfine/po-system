@@ -452,6 +452,33 @@ const DATA = {
     if (error) throw error;
     return n;
   },
+  // V20260605:高客单价阈值(默认 2000)· 多产品/SKU 阈值(默认 10)· 满足任一也算加急单
+  getChaseHighValue() {
+    const v = this._cache.config && this._cache.config.chase_high_value;
+    const n = parseFloat(v);
+    return (!isNaN(n) && n > 0) ? n : 2000;
+  },
+  async saveChaseHighValue(amount) {
+    if (!IS_ADMIN) throw new Error('只有主管能修改高客单价阈值');
+    const n = Math.max(0, parseFloat(amount) || 0);
+    if (this._cache.config) this._cache.config.chase_high_value = n;
+    const { error } = await sb.from('config').update({ chase_high_value: n }).eq('id', 1);
+    if (error) throw error;
+    return n;
+  },
+  getChaseManyItems() {
+    const v = this._cache.config && this._cache.config.chase_many_items;
+    const n = parseInt(v);
+    return (!isNaN(n) && n > 0) ? n : 10;
+  },
+  async saveChaseManyItems(count) {
+    if (!IS_ADMIN) throw new Error('只有主管能修改多产品/SKU 阈值');
+    const n = Math.max(0, parseInt(count) || 0);
+    if (this._cache.config) this._cache.config.chase_many_items = n;
+    const { error } = await sb.from('config').update({ chase_many_items: n }).eq('id', 1);
+    if (error) throw error;
+    return n;
+  },
 
   // 主管聚合视图
   listAllAgents() { return this._cache.agents; },

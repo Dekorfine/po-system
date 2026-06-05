@@ -89,6 +89,8 @@ function _toChaseOrder(row, userIdToName) {
     screenshots: row.screenshots || [],
     createdAt: row.created_at,
     totalAmount: parseFloat(row.total_amount) || 0,
+    orderValue: parseFloat(row.order_value) || 0,   // V20260605:客单价(销售单金额·判高客单价用)
+    orderCurrency: row.order_currency || '',
     lineItems: row.line_items || [],
     qty: (row.qty != null ? row.qty : null),          // V20260602:催单数量
     products: row.products || [],                     // V20260602:多选产品 [{spec,qty,image_url,sku}]
@@ -121,7 +123,7 @@ function renderChaseThresholdChips() {
   const thresholds = (typeof DATA !== 'undefined' && DATA.getChaseThresholds) ? DATA.getChaseThresholds() : [3, 7, 10, 14, 21, 30, 60];
   const total = CHASE_ORDERS.length;
   const poCnt = CHASE_ORDERS.filter(o => o._isPO).length;
-  const expressCnt = CHASE_ORDERS.filter(o => o.isExpress).length;  // V20260604
+  const expressCnt = CHASE_ORDERS.filter(o => _chaseUrgentInfo(o).isUrgent).length;  // V20260605:加急单(运费/高价/多品)
   const manualCnt = total - poCnt;
   
   // V5-2026-05-24: 阈值 chip 的计数 - 如果"仅 PO 派生"开了,只算 PO 派生的(AND 组合下的实时计数)
@@ -189,9 +191,9 @@ function renderChaseThresholdChips() {
 
     <button class="rule-chip ${_onlyExpress ? 'active' : ''}"
             onclick="toggleOnlyExpress()"
-            title="只显示客户付了运费的快速单 · 优先处理(避免退款)"
+            title="只显示加急单:客户付运费 / 高客单价 / 多产品多SKU · 优先处理"
             style="${_onlyExpress ? 'background:#dc2626; color:white; border-color:#dc2626; box-shadow:0 2px 8px #dc262666, 0 0 0 3px #dc262622; font-weight:600;' : 'border-left:3px solid #dc2626; color:#dc2626;'}">
-      🚚 仅付运费单 <span class="cnt-mini" style="${_onlyExpress ? 'background:rgba(255,255,255,0.25); color:white;' : ''}">${expressCnt}</span>
+      🔥 仅加急单 <span class="cnt-mini" style="${_onlyExpress ? 'background:rgba(255,255,255,0.25); color:white;' : ''}">${expressCnt}</span>
     </button>
     
     <span style="margin-left:auto; font-size: 11px; color: var(--text-tertiary);">
@@ -231,6 +233,20 @@ function toggleOnlyPoSource() {
   _onlyPoSource = !_onlyPoSource;
   renderOrders();
 }
+
+// V20260605:综合加急判定(付运费 / 高客单价 / 多产品多SKU 任一)· 阈值实时读主管设置
+function _chaseUrgentInfo(o) {
+  const hv = (typeof DATA !== 'undefined' && DATA.getChaseHighValue) ? DATA.getChaseHighValue() : 2000;
+  const mi = (typeof DATA !== 'undefined' && DATA.getChaseManyItems) ? DATA.getChaseManyItems() : 10;
+  const items = o.lineItems || [];
+  const skuCount = items.length;
+  const totalQty = items.reduce((s, li) => s + (Number(li.quantity != null ? li.quantity : li.qty) || 0), 0);
+  const isExpress   = !!o.isExpress;
+  const isHighValue = (Number(o.orderValue) || 0) >= hv;
+  const isManyItems = skuCount >= mi || totalQty >= mi;
+  return { isExpress, isHighValue, isManyItems, isUrgent: isExpress || isHighValue || isManyItems, skuCount, totalQty };
+}
+window._chaseUrgentInfo = _chaseUrgentInfo;
 
 // V20260604: 切换"仅看付运费/快速单"
 function toggleOnlyExpress() {
@@ -493,12 +509,13 @@ function renderOrders() {
     if (_isOrderBlank(o)) return false;  // V20260602:默认隐藏空白草稿(没填任何东西的)
     // V5-2026-05-24: "仅看 PO 派生" 过滤(与阈值 AND 组合)
     if (_onlyPoSource && !o._isPO) return false;
-    // V20260604: 仅看付运费/快速单
-    if (_onlyExpress && !o.isExpress) return false;
-    // 阈值过滤 · 付运费单用更激进的 freight 阈值(更早进催单)
+    // V20260605: 仅看加急单(付运费/高客单价/多产品多SKU)
+    const _u = _chaseUrgentInfo(o);
+    if (_onlyExpress && !_u.isUrgent) return false;
+    // 阈值过滤 · 加急单用更激进的 freight 阈值(更早进催单)
     if (_chaseThresholdFilter > 0) {
       const _fd = (typeof DATA !== 'undefined' && DATA.getChaseFreightDays) ? DATA.getChaseFreightDays() : 3;
-      const _eff = o.isExpress ? Math.min(_fd, _chaseThresholdFilter) : _chaseThresholdFilter;
+      const _eff = _u.isUrgent ? Math.min(_fd, _chaseThresholdFilter) : _chaseThresholdFilter;
       if (chaseDaysSince(o) < _eff) return false;
     }
     if (q) {
@@ -550,7 +567,8 @@ function renderOrders() {
   if (sortBy === 'urgency') {
     list.sort((a, b) => {
       // V20260604:付运费/快速单永远置顶
-      if (!!a.isExpress !== !!b.isExpress) return a.isExpress ? -1 : 1;
+      const _ua = _chaseUrgentInfo(a).isUrgent, _ub = _chaseUrgentInfo(b).isUrgent;
+      if (_ua !== _ub) return _ua ? -1 : 1;   // V20260605:加急单(运费/高价/多品)置顶
       const sa = getOrderEffStatus(a), sb = getOrderEffStatus(b);
       const aIsCatch = !['cancelled','shipped','arrived'].includes(a.status);
       const bIsCatch = !['cancelled','shipped','arrived'].includes(b.status);
@@ -750,6 +768,10 @@ function renderOrderRow(o, i) {
   const amountBadge = (o._isPO && o.totalAmount > 0) ? `<span class="site-badge" style="background: rgba(16,185,129,0.10); color: #059669; border: 1px solid rgba(16,185,129,0.3);">¥${o.totalAmount.toLocaleString('zh-CN', {maximumFractionDigits: 0})}</span>` : '';
   // V20260604:付运费/快速单徽章 · 本身即手动开关(已标=红实心"快速·优先" / 未标=虚线"标快速"可点)
   const expressBadge = `<span class="site-badge" onclick="chaseToggleExpress('${o._id}', event)" title="客户付运费的快速单需优先催 · 点击切换标记" style="cursor:pointer; ${o.isExpress ? 'background:#dc2626; color:#fff; border:1px solid #dc2626; font-weight:700;' : 'background:rgba(220,38,38,0.06); color:#dc2626; border:1px dashed rgba(220,38,38,0.45);'}">${o.isExpress ? '🚚 快速·优先' : '🚚 标快速'}</span>`;
+  // V20260605:高客单价 / 多产品多SKU 加急徽章(自动判定)
+  const _urg = _chaseUrgentInfo(o);
+  const highValueBadge = _urg.isHighValue ? `<span class="site-badge" title="高客单价订单 · 优先催(避免大额退款)" style="background:#fef3c7; color:#b45309; border:1px solid #fcd34d; font-weight:700;">💰 高客价 ${o.orderCurrency || ''}${Math.round(o.orderValue).toLocaleString()}</span>` : '';
+  const manyItemsBadge = _urg.isManyItems ? `<span class="site-badge" title="多产品/多SKU 订单(${_urg.skuCount} SKU · ${_urg.totalQty} 件)· 优先催" style="background:#e0e7ff; color:#4338ca; border:1px solid #c7d2fe; font-weight:700;">📦 多品 ${_urg.skuCount}SKU</span>` : '';
   
   // 已 N 天（下单至今）—— V3 用阈值高亮：超过最大阈值标红，超过最小阈值标黄
   const days = chaseDaysSince(o);
@@ -860,6 +882,8 @@ function renderOrderRow(o, i) {
           <span class="order-no-big">${escapeHtml(o.orderNo || '⚠ 待填订单号')}</span>
           ${poBadge}
           ${expressBadge}
+          ${highValueBadge}
+          ${manyItemsBadge}
           ${siteBadge}
           ${amountBadge}
           ${afterBadge}
