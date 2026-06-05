@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260604express"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260604express"></script>
+<script defer src="js/help.js?v=20260605poimg2"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -46,7 +46,7 @@
 <script defer src="js/missing.js?v=20260527i"></script>
 <script defer src="js/orders.js?v=20260604express"></script>
 <script defer src="js/shopify.js?v=20260604shipfee"></script>
-<script defer src="js/po.js?v=20260604express"></script>
+<script defer src="js/po.js?v=20260605poimg2"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
 <script defer src="js/inventory.js?v=20260603invorder"></script>
 <script defer src="js/inspection.js?v=20260528kappa"></script>
@@ -4824,13 +4824,14 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .po-print th {
   background: var(--po-th-bg); padding: 11px 10px; text-align: center;
-  border-bottom: 1px solid #e9e9ec;
+  border-bottom: 2px solid #d8d8dc; border-right: 1px solid #e0e0e3;
   font-weight: 700; font-size: 12px; color: var(--po-th-text);
 }
-.po-print th:nth-child(3) { text-align: left; }
-.po-print td { padding: 12px 10px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+.po-print th { text-align: center; }
+.po-print td { padding: 12px 10px; border-bottom: 1px solid #e2e2e2; border-right: 1px solid #ececec; vertical-align: middle; text-align: center; }
 .po-print tbody tr:last-child td { border-bottom: none; }
-.po-print td.spec-cell { text-align: left; }
+.po-print th:last-child, .po-print td:last-child { border-right: none; }
+.po-print td.spec-cell { text-align: center; }
 .po-print td img {
   width: 64px; height: 64px; object-fit: cover; border-radius: 10px;
   display: block; margin: 0 auto; border: 1px solid #eee; background: #faf7f2;
@@ -4851,7 +4852,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   display: flex; align-items: center; gap: 4px;
 }
 .po-print .po-boxnote-val {
-  flex: 1; color: var(--po-box-text); font-weight: 600; white-space: pre-wrap; word-break: break-all; font-size: 14px;
+  flex: 1; color: var(--po-box-text); font-weight: 600; white-space: pre-wrap; word-break: break-all; font-size: 14px; text-align: center;
 }
 .po-print .notes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px; }
 .po-print .note-box { border: 1px solid #fbbf24; padding: 6px 9px; min-height: 36px; font-size: 12px; color: #1c1917; background: #fffbeb; border-radius: 6px; }
@@ -6608,6 +6609,11 @@ if ('serviceWorker' in navigator) {
     </div>
     <div class="modal-body" id="poPrintBody" style="max-height: 75vh; overflow-y: auto;"></div>
     <div class="modal-footer">
+      <span id="poPrintSchemeToggle" style="margin-right:auto; display:none; align-items:center; gap:6px; font-size:12px; color:var(--text-tertiary);">
+        🎨 配色(主管):
+        <button class="btn" id="poSchemeGreenBtn" onclick="poSetImgSchemePrint('green')">🟢 浅绿</button>
+        <button class="btn" id="poSchemeRedBtn" onclick="poSetImgSchemePrint('red')">🔴 红色</button>
+      </span>
       <button class="btn" onclick="closePoPrint()">关闭</button>
       <button class="btn" onclick="poPrintNow()" title="如果需要纸质打印">🖨 打印</button>
       <button class="btn primary" onclick="poScreenshot()" title="把预览区域复制为图片，可直接粘贴到微信/QQ">📸 截图复制</button>
