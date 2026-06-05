@@ -2525,8 +2525,14 @@ async function exportPreviewDownloadExcel() {
   const ws = wb.addWorksheet('催单清单');
 
   // 列定义(订单号/网站/产品图/产品/供应商/状态/下单/承诺/催单次数/备注)
-  const headers = ['订单号', '网站', '产品图', '产品 / 规格', '供应商', '状态', '下单日期', '承诺日期', '催单次数', '备注'];
+  const headers = ['订单号', '网站', '产品图', '产品 / 规格', '数量', '供应商', '状态', '下单日期', '承诺日期', '催单次数', '备注'];
   const IMG_COL = 3;
+  // V20260605:数量 = 该单各产品 qty 求和(与预览一致),兜底 o.qty
+  const _qtyOf = (o) => {
+    const pl = Array.isArray(o.products) ? o.products : null;
+    if (pl && pl.length) { const t = pl.reduce((sum, pp) => sum + (Number(pp.qty) || 0), 0); return t || (o.qty || ''); }
+    return o.qty || '';
+  };
   const STATUS_LABELS = (typeof ORDER_STATUS_LABELS !== 'undefined') ? ORDER_STATUS_LABELS : {};
 
   ws.addRow([`催单清单 · 发供应商`]);
@@ -2538,7 +2544,7 @@ async function exportPreviewDownloadExcel() {
   const dataRowRefs = [];
   items.forEach(o => {
     const r = [
-      o.orderNo || '', o.site || '', '', o.product || '', o.supplier || '',
+      o.orderNo || '', o.site || '', '', o.product || '', _qtyOf(o), o.supplier || '',
       STATUS_LABELS[o.status] || o.status || '',
       o.orderDate || '', o.promisedDate || '',
       (o.followups || []).filter(f => f.type === 'chase').length || (o.followups || []).length || '',
@@ -2548,7 +2554,7 @@ async function exportPreviewDownloadExcel() {
   });
 
   // 列宽
-  [16, 7, 10, 30, 12, 11, 12, 12, 9, 28].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+  [16, 7, 13, 30, 7, 12, 11, 12, 12, 9, 28].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   // SKU 反查产品图(和卡片/对账单一致的兜底)
   let pmap = {};
@@ -2559,7 +2565,7 @@ async function exportPreviewDownloadExcel() {
 
   // 抓图(并行)→ 嵌入
   const urls = items.map(o => (typeof _chaseOrderImageUrl === 'function') ? _chaseOrderImageUrl(o, pmap) : '');
-  const dataURLs = await Promise.all(urls.map(u => _fetchImageSmall(u, 56)));
+  const dataURLs = await Promise.all(urls.map(u => _fetchImageSmall(u, 96)));   // V20260605:抓大图更清晰
   let embedded = 0;
   for (let i = 0; i < items.length; i++) {
     const du = dataURLs[i];
@@ -2567,8 +2573,8 @@ async function exportPreviewDownloadExcel() {
     if (du) {
       try {
         const id = wb.addImage({ base64: du, extension: 'jpeg' });
-        ws.getRow(rowNo).height = 44;
-        ws.addImage(id, { tl: { col: (IMG_COL - 1) + 0.12, row: (rowNo - 1) + 0.08 }, ext: { width: 52, height: 52 }, editAs: 'oneCell' });
+        ws.getRow(rowNo).height = 64;   // V20260605:行高加大放图
+        ws.addImage(id, { tl: { col: (IMG_COL - 1) + 0.1, row: (rowNo - 1) + 0.06 }, ext: { width: 72, height: 72 }, editAs: 'oneCell' });
         embedded++;
       } catch (e) {}
     }
@@ -2585,7 +2591,7 @@ async function exportPreviewDownloadExcel() {
     c.border = allBorder;
   });
   headerRow.height = 24;
-  const centerCols = [1, 2, 3, 6, 7, 8, 9];
+  const centerCols = [1, 2, 3, 5, 7, 8, 9, 10];   // V20260605:含数量列(5),其余因插列右移
   dataRowRefs.forEach((row, idx) => {
     if (idx % 2 === 1) for (let c = 1; c <= N; c++) row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF6F8FA' } };
     for (let c = 1; c <= N; c++) {
