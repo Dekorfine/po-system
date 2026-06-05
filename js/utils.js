@@ -2254,13 +2254,13 @@ async function _buildExportPageAndPreview(opts) {
   }
   
   // 显示预览
-  _showExportPreview({ canvas, fileName: opts.fileName, title: opts.title, count: opts.items.length });
+  _showExportPreview({ canvas, fileName: opts.fileName, title: opts.title, count: opts.items.length, items: opts.items, type: opts.type });
 }
 
 // ============================================================
 // 预览框
 // ============================================================
-function _showExportPreview({ canvas, fileName, title, count }) {
+function _showExportPreview({ canvas, fileName, title, count, items, type }) {
   document.getElementById('exportPreviewModal')?.remove();
   
   const dataUrl = canvas.toDataURL('image/png');
@@ -2283,13 +2283,14 @@ function _showExportPreview({ canvas, fileName, title, count }) {
         <span class="ep-hint">💡 确认无误后下载 PDF / 复制图到剪贴板</span>
         <button class="ep-btn" onclick="closeExportPreview()">← 返回</button>
         <button class="ep-btn" onclick="exportPreviewCopyImage()">📋 复制图片</button>
+        <button class="ep-btn" onclick="exportPreviewDownloadExcel()">📊 下载 Excel(带图)</button>
         <button class="ep-btn primary" onclick="exportPreviewDownloadPDF()">📥 下载 PDF</button>
       </div>
     </div>
   `;
   document.body.appendChild(modal);
   
-  window._exportPreviewCache = { canvas, fileName, title, count };
+  window._exportPreviewCache = { canvas, fileName, title, count, items: items || [], type: type || '' };
   
   // Esc 关闭
   const handler = (e) => { if (e.key === 'Escape') closeExportPreview(); };
@@ -2442,18 +2443,120 @@ async function exportOrdersPDF() {
     layout: viewMode === 'grid' ? 'grid-cards' : 'table',  // V20260602:网格→大图卡片(所见即所得)· 列表→表格
   });
 }
-function exportOrdersExcel() {
+async function exportOrdersExcel() {
   if (typeof ORDERS === 'undefined' || !ORDERS) { toast('催单数据未加载', 'warn'); return; }
-  const source = (window._lastVisibleOrders && window._lastVisibleOrders.length > 0) 
-    ? window._lastVisibleOrders 
+  // V20260605:改为先预览(表格布局)· 预览里可选 下载Excel(带图) / 下载PDF / 复制图
+  const items = (window._lastVisibleOrders && window._lastVisibleOrders.length > 0)
+    ? window._lastVisibleOrders
     : ORDERS.filter(o => !o.deletedAt);
-  const rows = source.map(o => [
-    o.orderNo || '', o.site || '', o.product || '', o.supplier || '', o.status || '',
-    o.orderDate || '', o.promisedDate || '', (o.followups || []).length, o.notes || '',
-  ]);
-  exportToCSV(rows, ['订单号', '网站', '产品', '供应商', '状态', '下单日期', '承诺日期', '催单次数', '备注'],
-    `催单清单_${new Date().toISOString().slice(0,10)}.csv`);
+  await _buildExportPageAndPreview({
+    type: 'orders',
+    items,
+    title: '📋 催单清单（发供应商）' + (window._lastVisibleOrders ? ` (已筛选 ${items.length} 条)` : ''),
+    fileName: `催单清单_${new Date().toISOString().slice(0,10)}.pdf`,
+    layout: 'table',
+  });
 }
+
+// V20260605:从预览弹窗导出 Excel(带产品图)· 复用 orders.js 的 ExcelJS/抓图/SKU反查
+async function exportPreviewDownloadExcel() {
+  const cache = window._exportPreviewCache;
+  if (!cache || !cache.items || cache.items.length === 0) { toast('没有可导出的数据', 'warn'); return; }
+  const items = cache.items, type = cache.type || 'orders';
+  if (typeof _loadExcelJS !== 'function' || typeof _fetchImageSmall !== 'function') { toast('Excel 组件不可用', 'err'); return; }
+  try { await _loadExcelJS(); } catch (e) { toast('Excel 组件加载失败:' + (e.message || e), 'err', 6000); return; }
+  toast(`正在生成 Excel(含产品图)…`, 'info', 8000);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const ExcelJS = window.ExcelJS;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('催单清单');
+
+  // 列定义(订单号/网站/产品图/产品/供应商/状态/下单/承诺/催单次数/备注)
+  const headers = ['订单号', '网站', '产品图', '产品 / 规格', '供应商', '状态', '下单日期', '承诺日期', '催单次数', '备注'];
+  const IMG_COL = 3;
+  const STATUS_LABELS = (typeof ORDER_STATUS_LABELS !== 'undefined') ? ORDER_STATUS_LABELS : {};
+
+  ws.addRow([`催单清单 · 发供应商`]);
+  ws.addRow([`生成日期: ${today.replace(/-/g, '/')}    共 ${items.length} 条`]);
+  ws.addRow([]);
+  const headerRow = ws.addRow(headers);
+  const dataStartRow = ws.rowCount + 1;
+
+  const dataRowRefs = [];
+  items.forEach(o => {
+    const r = [
+      o.orderNo || '', o.site || '', '', o.product || '', o.supplier || '',
+      STATUS_LABELS[o.status] || o.status || '',
+      o.orderDate || '', o.promisedDate || '',
+      (o.followups || []).filter(f => f.type === 'chase').length || (o.followups || []).length || '',
+      o.notes || o.note || '',
+    ];
+    dataRowRefs.push(ws.addRow(r));
+  });
+
+  // 列宽
+  [16, 7, 10, 30, 12, 11, 12, 12, 9, 28].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  // SKU 反查产品图(和卡片/对账单一致的兜底)
+  let pmap = {};
+  try {
+    const skus = (typeof _chaseOrdersSkus === 'function') ? _chaseOrdersSkus(items) : [];
+    if (skus.length && typeof SHOPIFY !== 'undefined' && SHOPIFY.loadProductImageMap) pmap = await SHOPIFY.loadProductImageMap(skus);
+  } catch (e) { console.warn('[催单清单] 产品图反查失败:', e); }
+
+  // 抓图(并行)→ 嵌入
+  const urls = items.map(o => (typeof _chaseOrderImageUrl === 'function') ? _chaseOrderImageUrl(o, pmap) : '');
+  const dataURLs = await Promise.all(urls.map(u => _fetchImageSmall(u, 56)));
+  let embedded = 0;
+  for (let i = 0; i < items.length; i++) {
+    const du = dataURLs[i];
+    const rowNo = dataStartRow + i;
+    if (du) {
+      try {
+        const id = wb.addImage({ base64: du, extension: 'jpeg' });
+        ws.getRow(rowNo).height = 44;
+        ws.addImage(id, { tl: { col: (IMG_COL - 1) + 0.12, row: (rowNo - 1) + 0.08 }, ext: { width: 52, height: 52 }, editAs: 'oneCell' });
+        embedded++;
+      } catch (e) {}
+    }
+  }
+
+  // 美化:边框/表头/斑马/对齐/冻结
+  const thin = { style: 'thin', color: { argb: 'FFD0D7DE' } };
+  const allBorder = { top: thin, left: thin, bottom: thin, right: thin };
+  const N = headers.length;
+  headerRow.eachCell({ includeEmpty: true }, (c) => {
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D9488' } };
+    c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    c.border = allBorder;
+  });
+  headerRow.height = 24;
+  const centerCols = [1, 2, 3, 6, 7, 8, 9];
+  dataRowRefs.forEach((row, idx) => {
+    if (idx % 2 === 1) for (let c = 1; c <= N; c++) row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF6F8FA' } };
+    for (let c = 1; c <= N; c++) {
+      const cell = row.getCell(c);
+      cell.border = allBorder;
+      cell.alignment = { vertical: 'middle', wrapText: true, horizontal: centerCols.includes(c) ? 'center' : 'left' };
+    }
+  });
+  ws.views = [{ state: 'frozen', ySplit: dataStartRow - 1 }];
+  try { ws.autoFilter = { from: { row: dataStartRow - 1, column: 1 }, to: { row: dataStartRow - 1, column: N } }; } catch (e) {}
+  ws.mergeCells(1, 1, 1, N); ws.mergeCells(2, 1, 2, N);
+  ws.getRow(1).font = { bold: true, size: 14 }; ws.getRow(1).alignment = { horizontal: 'center' };
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `催单清单_${today}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+  toast(`✓ 已导出 ${items.length} 条 · 嵌入 ${embedded} 张产品图`);
+}
+window.exportPreviewDownloadExcel = exportPreviewDownloadExcel;
 
 // 售后
 async function exportAftersalesPDF() {
