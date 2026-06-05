@@ -10,6 +10,21 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260605-suffix',
+    date: '2026-06-05',
+    type: 'fix',
+    title: '🔎 单号归一化:BU补配件 / -N分包裹 也能查到',
+    notes: [
+      '🐛 RD18106BU(补配件)、RD19855-2(分包裹)不是真实 Shopify 单号 → 查本地/Shopify 都查不到',
+      '✅ 单查归一化:剥掉 BU / -N 后缀 → 用基础单号(RD18106/RD19855)查本地 + 按名实时拉',
+      '✅ 按名实时拉不受时间限制 → 很老的基础单也能拉到并缓存入库',
+      '✅ Edge Function 的 ?name= 查询同样加后缀归一化重试(发票工具走这条也受益)',
+      'ℹ️ 补配件/分包裹的明细差异请人工核对(基础单提供正确客户/地址/基础明细)',
+      '⚠️ Edge Function 已更新 · 需 supabase functions deploy shopify-api',
+    ],
+    files: ['shopify-api/index.ts', 'shopify.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260605-halfyear',
     date: '2026-06-05',
     type: 'feature',

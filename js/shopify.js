@@ -1100,6 +1100,18 @@ window.normalizeOrderShape = function(raw, shopDomain) {
 window._orderLookupCache = window._orderLookupCache || {};  // 内存缓存 5 分钟 · key = `${shop}|${orderNo}`
 const _LOOKUP_CACHE_TTL = 5 * 60 * 1000;
 
+// V20260605:单号归一化 — 剥掉业务后缀拿到 Shopify 基础单号
+//   RD19855-2(第二包裹) → RD19855 ; V83820BU(补配件) → V83820 ; RD18106BU → RD18106
+//   返回候选列表 [原始, 基础](去重)· 查询时都试一遍
+window._orderNoCandidates = function(no) {
+  no = String(no || '').replace(/^#/, '').trim();
+  const cands = [no];
+  let base = no.replace(/-?BU$/i, '');   // 去补配件后缀 BU / -BU
+  base = base.replace(/-\d+$/, '');      // 去分包裹后缀 -2 / -3 …
+  if (base && base !== no) cands.push(base);
+  return [...new Set(cands.filter(Boolean))];
+};
+
 window.lookupOrderByName = async function(orderNo, shopDomain = null, opts = {}) {
   if (!orderNo) return { ok: false, error: '订单号为空' };
   orderNo = String(orderNo).replace(/^#/, '').trim();
@@ -1119,8 +1131,11 @@ window.lookupOrderByName = async function(orderNo, shopDomain = null, opts = {})
   if (!forceRemote) {
     try {
       let q = sb.from('shopify_orders').select('*').is('deleted_at', null);
-      // 订单号在多个字段里:shopify_order_number / order_no / name
-      q = q.or(`shopify_order_number.eq.${orderNo},shopify_order_number.eq.#${orderNo}`);
+      // V20260605:订单号归一化 — 原始 + 剥后缀的基础单 都试(带/不带#)
+      const _cands = window._orderNoCandidates(orderNo);
+      const _orParts = [];
+      _cands.forEach(c => { _orParts.push(`shopify_order_number.eq.${c}`, `shopify_order_number.eq.#${c}`); });
+      q = q.or(_orParts.join(','));
       if (shopDomain) q = q.eq('shop_domain', shopDomain);
       const { data, error } = await q.limit(5);
       if (!error && data && data.length > 0) {
@@ -1144,7 +1159,9 @@ window.lookupOrderByName = async function(orderNo, shopDomain = null, opts = {})
   }
 
   try {
-    for (const tryName of [orderNo, '#' + orderNo]) {
+    const _names = [];
+    window._orderNoCandidates(orderNo).forEach(c => { _names.push(c, '#' + c); });
+    for (const tryName of _names) {
       const r = await SHOPIFY.call('list_orders', {
         name: tryName,
         status: 'any',
