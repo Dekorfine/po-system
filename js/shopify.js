@@ -40,27 +40,39 @@ const SHOPIFY = {
   _currentFilter: 'all',
 
   async call(action, params = {}, shop = null, timeoutMs = 45000) {
-    const { data: { session } } = await sb.auth.getSession();
+    let { data: { session } } = await sb.auth.getSession();
     if (!session) throw new Error('未登录');
     const body = { shop, action, params };
-    // V28d: 加 45 秒超时 · 避免卡死无限转圈(用户以为坏了狂点)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    // V20260605:封装一次请求 · 便于 401 刷新后重试
+    const doFetch = async (token) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(this.FN_URL, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        const json = await res.json().catch(() => ({}));
+        return { res, json };
+      } finally { clearTimeout(timeoutId); }
+    };
     try {
-      const res = await fetch(this.FN_URL, {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      const json = await res.json().catch(() => ({}));
+      let { res, json } = await doFetch(session.access_token);
+      // V20260605:401/会话过期 → 刷新 token 重试一次(修"挂几小时后同步不了")
+      if (res.status === 401 || (json && /jwt|token|expired|unauthor/i.test(json.error || ''))) {
+        console.warn('[同步] token 可能过期 · 刷新会话后重试…');
+        const { data: refreshed } = await sb.auth.refreshSession();
+        const newToken = refreshed?.session?.access_token;
+        if (newToken) { ({ res, json } = await doFetch(newToken)); }
+        else throw new Error('登录已过期 · 请刷新页面重新登录');
+      }
       if (!res.ok || !json.ok) throw new Error(json.error || ('HTTP ' + res.status));
       return json;
     } catch (e) {
-      if (e.name === 'AbortError') throw new Error('同步超时(45秒)· 店铺订单可能太多 · 请缩小日期范围重试');
+      if (e.name === 'AbortError') throw new Error('同步超时· 店铺订单可能太多 · 请缩小日期范围重试');
       throw e;
-    } finally {
-      clearTimeout(timeoutId);
     }
   },
 
@@ -170,6 +182,64 @@ const SHOPIFY = {
     return { rows: all, truncated };
   },
 
+  // V20260605-incr:算游标 = 一批订单里最大的 updated_at(ISO 字符串可直接比大小)
+  _computeOrdersCursor(rows) {
+    let mx = '';
+    for (const o of (rows || [])) {
+      const u = o.updated_at || '';
+      if (u > mx) mx = u;
+    }
+    return mx;
+  },
+
+  // V20260605-incr:增量拉取 —— 只拉 updated_at >= cursor 的单,合并进 base(按 id 覆盖/追加,deleted 移除)
+  //   这就是店小秘那类 ERP 的做法:本地累积,每次只补变动的(新单+状态变更),不再全量重拉
+  async _fetchOrdersIncremental(opts, baseRows, cursor) {
+    const PAGE = 1000, MAX_ROWS = 8000;
+    const shops = (opts.shops || []).filter(Boolean);
+    const LEAN = 'id,shop_domain,shopify_order_id,shopify_order_number,customer_name,customer_email,customer_phone,shipping_address,line_items,financial_status,fulfillment_status,local_status,total_price,shipping_fee,currency,customer_note,internal_note,shopify_created_at,imported_by,imported_at,updated_at,deleted_at,deleted_by,platform,wp_order_id,store_label,store_code';
+    const byId = new Map((baseRows || []).map(o => [o.id, o]));
+    let fetched = [], offset = 0, useLean = true;
+    while (offset < MAX_ROWS) {
+      // 注意:增量【不过滤 deleted_at】· 否则删除/退单的单看不到、本地清不掉
+      let q = sb.from('shopify_orders').select(useLean ? LEAN : '*');
+      if (shops.length) q = q.in('shop_domain', shops);
+      if (opts.from) q = q.gte('shopify_created_at', opts.from + 'T00:00:00Z');
+      if (opts.to)   q = q.lte('shopify_created_at', opts.to + 'T23:59:59Z');
+      if (cursor)    q = q.gte('updated_at', cursor);   // 只要变动过的
+      q = q.order('updated_at', { ascending: false }).range(offset, offset + PAGE - 1);
+      const { data, error } = await q;
+      if (error) { if (useLean && offset === 0) { useLean = false; continue; } throw error; }
+      const batch = data || [];
+      fetched = fetched.concat(batch);
+      if (batch.length < PAGE) break;
+      offset += PAGE;
+    }
+    // 合并:deleted 的移除,其余按 id 覆盖/追加
+    let newCursor = cursor || '';
+    let removed = 0;
+    for (const o of fetched) {
+      if (o.updated_at && o.updated_at > newCursor) newCursor = o.updated_at;
+      if (o.deleted_at) { if (byId.delete(o.id)) removed++; continue; }
+      byId.set(o.id, o);
+    }
+    let merged = Array.from(byId.values());
+    // WooCommerce 新/变动单补 raw_payload(量小)
+    if (useLean) {
+      const wooIds = fetched.filter(o => o.platform === 'woo' && !o.deleted_at).map(o => o.id).filter(Boolean);
+      if (wooIds.length) {
+        try {
+          const { data: woo } = await sb.from('shopify_orders').select('id,raw_payload').in('id', wooIds);
+          const rpMap = {}; (woo || []).forEach(w => { rpMap[w.id] = w.raw_payload; });
+          merged.forEach(o => { if (o.platform === 'woo' && rpMap[o.id]) o.raw_payload = rpMap[o.id]; });
+        } catch (e) { console.warn('[订单增量] woo raw_payload 补全失败:', e); }
+      }
+    }
+    // 列表期望最新在前(按创建时间倒序)
+    merged.sort((a, b) => (b.shopify_created_at || '').localeCompare(a.shopify_created_at || ''));
+    return { rows: merged, cursor: newCursor, fetchedCount: fetched.length, removed };
+  },
+
   async loadOrdersFromDB(force = false, opts = {}) {
     const CACHE_MS = 5 * 60 * 1000;  // V20260601-perf:60s→5min · 减少全表 select(*) 重复拉(省 egress/CPU)
     const cacheKey = JSON.stringify({ from: opts.from || '', to: opts.to || '', shops: (opts.shops || []).slice().sort() });  // V20260601-loadfix2:含 shops 分桶
@@ -187,6 +257,7 @@ const SHOPIFY = {
             this._orders = cache.byKey[cacheKey].data;
             this._ordersLoadedAt = cache.byKey[cacheKey].ts || Date.now();
             this._ordersCacheKey = cacheKey;
+            this._ordersCursor = cache.byKey[cacheKey].cursor || this._computeOrdersCursor(this._orders);  // V20260605-incr
             // V20260601-perf:缓存够新(<5min)就不再后台全表刷新 · 大幅减少 raw_payload egress
             const cacheAge = Date.now() - (cache.byKey[cacheKey].ts || 0);
             if (cacheAge > CACHE_MS) {
@@ -202,24 +273,36 @@ const SHOPIFY = {
     // V20260601-loadfix2:按 shops + 日期下推 + 分页拉全(选店只查该店 · 不被大店挤出 limit 500)
     const { rows } = await this._fetchOrdersScoped(opts);
     this._orders = rows;
+    this._ordersCursor = this._computeOrdersCursor(rows);   // V20260605-incr:首次/强制全量后记录游标
     this._ordersLoadedAt = Date.now();
     this._ordersCacheKey = cacheKey;
     this._persistOrdersCache(cacheKey);
+    console.log(`[订单 全量] ${rows.length} 单 · 游标 ${this._ordersCursor.slice(0,19)}`);
     return this._orders;
   },
 
   // V28x:后台异步刷新 · 不阻塞 UI
   async _bgRefreshFromSupabase(opts, cacheKey) {
     try {
-      // V20260601-loadfix:后台刷新也按 shops + 日期分页拉全
-      const { rows: fresh } = await this._fetchOrdersScoped(opts);
-      // 比对是否有更新(数量或最新订单 id 变了 → 重渲)
-      const old = this._orders || [];
-      const changed = old.length !== fresh.length || (fresh[0] && old[0] && fresh[0].id !== old[0].id);
+      // V20260605-incr:后台刷新改【增量】· 只拉 updated_at >= 游标 的变动单,合并进本地(不再全量重拉 8000)
+      const base = this._orders || [];
+      const cursor = this._ordersCursor || this._computeOrdersCursor(base);
+      const before = base.length;
+      let fresh, newCursor, fetchedCount = 0, removed = 0;
+      if (cursor && before > 0) {
+        const r = await this._fetchOrdersIncremental(opts, base, cursor);
+        fresh = r.rows; newCursor = r.cursor; fetchedCount = r.fetchedCount; removed = r.removed;
+      } else {
+        const r = await this._fetchOrdersScoped(opts);   // 无游标/空缓存 → 全量一次
+        fresh = r.rows; newCursor = this._computeOrdersCursor(fresh);
+      }
+      const changed = before !== fresh.length || fetchedCount > 0 || removed > 0;
       this._orders = fresh;
+      this._ordersCursor = newCursor;
       this._ordersLoadedAt = Date.now();
       this._ordersCacheKey = cacheKey;
       this._persistOrdersCache(cacheKey);
+      if (fetchedCount > 0 || removed > 0) console.log(`[订单 ⚡增量刷新] 补 ${fetchedCount} 变动 · 删 ${removed} · 共 ${fresh.length} 单`);
       if (changed) {
         console.log(`[订单 🔄后台同步] 数据已更新 · ${fresh.length} 单`);
         if (typeof renderShopifyOrders === 'function') renderShopifyOrders();
@@ -244,14 +327,14 @@ const SHOPIFY = {
         const oldest = keys.sort((a, b) => (cache.byKey[a].ts || 0) - (cache.byKey[b].ts || 0))[0];
         delete cache.byKey[oldest];
       }
-      cache.byKey[cacheKey] = { data: this._orders, ts: Date.now() };
+      cache.byKey[cacheKey] = { data: this._orders, ts: Date.now(), cursor: this._ordersCursor || this._computeOrdersCursor(this._orders) };
       localStorage.setItem('shopify_orders_cache_v3', JSON.stringify(cache));
     } catch (e) {
       // localStorage 满了 · 清空重写
       if (e.name === 'QuotaExceededError' || /quota|storage/i.test(e.message || '')) {
         try {
           localStorage.removeItem('shopify_orders_cache_v3');
-          localStorage.setItem('shopify_orders_cache_v3', JSON.stringify({ byKey: { [cacheKey]: { data: this._orders, ts: Date.now() } } }));
+          localStorage.setItem('shopify_orders_cache_v3', JSON.stringify({ byKey: { [cacheKey]: { data: this._orders, ts: Date.now(), cursor: this._ordersCursor || this._computeOrdersCursor(this._orders) } } }));
         } catch (_) { /* 还是写不进 · 放弃 */ }
       }
     }
