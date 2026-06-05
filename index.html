@@ -24,7 +24,7 @@
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
 <link rel="preload" href="js/core.js?v=20260605urgent" as="script">
 <link rel="preload" href="js/utils.js?v=20260605halfyear" as="script">
-<link rel="preload" href="js/shopify.js?v=20260605suffix" as="script">
+<link rel="preload" href="js/shopify.js?v=20260605win15" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260605suffix"></script>
+<script defer src="js/help.js?v=20260605win15"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -45,7 +45,7 @@
 <script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260605cmtfix"></script>
 <script defer src="js/orders.js?v=20260605xlsimg2"></script>
-<script defer src="js/shopify.js?v=20260605suffix"></script>
+<script defer src="js/shopify.js?v=20260605win15"></script>
 <script defer src="js/po.js?v=20260605pdffast"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
 <script defer src="js/inventory.js?v=20260603invorder"></script>
@@ -6146,9 +6146,9 @@ if ('serviceWorker' in navigator) {
           <option value="365">近 1 年</option>
           <option value="custom">自定义</option>
         </select>
-        <input type="date" class="filter-select" id="salesFetchFrom" style="min-width: 130px;">
+        <input type="date" class="filter-select" id="salesFetchFrom" onchange="if(typeof shopifyReloadOrdersAndRender==='function')shopifyReloadOrdersAndRender(false)" title="改日期从本地库按需加载该范围(更早的订单)" style="min-width: 130px;">
         <span style="color: var(--text-tertiary); font-size: 12px;">至</span>
-        <input type="date" class="filter-select" id="salesFetchTo" style="min-width: 130px;">
+        <input type="date" class="filter-select" id="salesFetchTo" onchange="if(typeof shopifyReloadOrdersAndRender==='function')shopifyReloadOrdersAndRender(false)" title="改日期从本地库按需加载该范围" style="min-width: 130px;">
         <select class="filter-select" id="salesFetchStatus">
           <option value="open">未关闭</option>
           <option value="any">全部</option>
