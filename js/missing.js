@@ -937,12 +937,10 @@ async function addMissingComment() {
     content,
     suggestedSupplier: supplier || '',
   });
-  // 如果加了推荐供应商 + 当前是搜寻中，提示是否切到"已找到"
+  // V20260605:评论【不再自动切换状态】· 避免评论后任务跑进折叠的"已找到"组、看起来"消失/点不开"
+  //   要标记已找到,请用卡片上的 ✓ 按钮显式操作
   if (supplier && m.status === 'searching') {
-    if (confirm('已找到供应商，要切换状态为「已找到」吗？')) {
-      m.status = 'found';
-      document.getElementById('mmStatus').value = 'found';
-    }
+    toast('💡 已记录推荐供应商 · 任务仍在「搜寻中」· 如已确认可点卡片 ✓ 标为已找到', 'info', 4000);
   }
   DATA.saveMissingLights(MISSING_LIGHTS);
   document.getElementById('mmNewComment').value = '';
