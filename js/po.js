@@ -3974,7 +3974,6 @@ function renderPoList() {
             ${prev ? `<button class="so-action-btn" onclick="poRevert('${p.id}', '${prev.value}', '${prev.label}')" title="退回上一步">↩ 退回</button>` : ''}
             ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditPrices('${p.id}')" title="修改采购单:数量/单价/描述(中文名·英文名·规格)/供应商">✏️ 改单</button>` : ''}
             <!-- V20260601-desc:移除 [📝 改描述] 按钮 · 改描述已搬到创建 PO 弹窗内每行 · 创建时直接编辑 -->
-            <button class="so-action-btn primary" onclick="poQuickCopyImage('${p.id}')" title="一键生成订单图,直接复制到剪贴板,粘贴到供应商群">📋 复制订单图</button>
             <button class="so-action-btn" onclick="poOpenPrint('${p.id}')" title="预览 + 打印 PO(纸质单据 / 也是预览效果最准的方式)">🖨 打印</button>
             ${!isCancelled ? `<button class="so-action-btn danger" onclick="poCancel('${p.id}')">⊘ 取消</button>` : ''}
           </div>
@@ -4857,6 +4856,8 @@ async function poEditPrices(poId) {
 function poOpenPrint(poId) {
   const po = PO_LIST.find(x => x.id === poId);
   if (!po) return;
+  window._poPrintCurrentId = poId;   // V20260605:记住当前单,配色切换后可重渲
+  if (typeof poLoadImgScheme === 'function') poLoadImgScheme();
   const items = po.line_items || [];
   const totalQty = items.reduce((s,x) => s + (x.qty||0), 0);
   const totalAmount = items.reduce((s,x) => s + (x.subtotal||0), 0);
@@ -4958,6 +4959,17 @@ function poOpenPrint(poId) {
     </div>
   `;
   document.getElementById('poPrintModal').style.display = 'flex';
+  // V20260605:配色开关(主管可见)
+  try {
+    const tg = document.getElementById('poPrintSchemeToggle');
+    if (tg) {
+      tg.style.display = (typeof IS_ADMIN !== 'undefined' && IS_ADMIN) ? 'inline-flex' : 'none';
+      const g = document.getElementById('poSchemeGreenBtn'), r = document.getElementById('poSchemeRedBtn');
+      const cur = (typeof PO_IMG_SCHEME !== 'undefined') ? PO_IMG_SCHEME : 'green';
+      if (g) g.style.cssText = cur === 'green' ? 'background:#e9f4ee;border-color:#43906d;color:#43906d;font-weight:700;' : '';
+      if (r) r.style.cssText = cur === 'red' ? 'background:#fdecec;border-color:#dc2626;color:#dc2626;font-weight:700;' : '';
+    }
+  } catch (e) {}
   // V28z:扫描产品规格残留英文 · 提示拼写问题 + 一键 AI 翻译
   setTimeout(() => _scanPoPrintEnglishResidue(po), 150);
 }
@@ -5103,6 +5115,12 @@ async function _copyEngWordsForArtist(words) {
   }
 }
 window._copyEngWordsForArtist = _copyEngWordsForArtist;
+
+async function poSetImgSchemePrint(scheme) {
+  await poSetImgScheme(scheme);                       // 存配色(主管限)+ 全员生效
+  if (window._poPrintCurrentId) poOpenPrint(window._poPrintCurrentId);  // 重渲打印预览
+}
+window.poSetImgSchemePrint = poSetImgSchemePrint;
 
 function closePoPrint() { document.getElementById('poPrintModal').style.display = 'none'; }
 function poPrintNow() { window.print(); }
