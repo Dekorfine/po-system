@@ -5192,6 +5192,16 @@ async function _poWarmImage(po) {
 }
 window._poWarmImage = _poWarmImage;
 
+// V20260605:blob → dataURL(批量 PDF 复用缓存图用)
+function _blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+}
+
 // 🚀 一键复制订单图（PO 卡片上调用）
 async function poQuickCopyImage(poId) {
   const po = PO_LIST.find(x => x.id === poId);
@@ -5543,39 +5553,53 @@ async function _poBatchExportPDF(list, includeImages) {
   const MARGIN = 8;
   const USABLE_WIDTH = A4_WIDTH_MM - MARGIN * 2;
   
+  await poLoadImgScheme();
   for (let i = 0; i < list.length; i++) {
     const po = list[i];
-    const wrap = _buildSinglePoExportNode(po, includeImages);
-    document.body.appendChild(wrap);
-    
+    let imgData = null, imgW = 0, imgH = 0;
+
+    // V20260605:优先复用已渲染缓存(复制/预览/预热过的 PO → 秒拼,不再重渲精致版的阴影/渐变)
     try {
-      // 等图片加载
-      if (includeImages) {
-        const imgs = wrap.querySelectorAll('img');
-        await Promise.all([...imgs].map(img => {
-          if (img.complete) return Promise.resolve();
-          return new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 1500); });
-        }));
+      const ck = (typeof _poCacheKey === 'function') ? _poCacheKey(po) : null;
+      const cachedBlob = ck && _poImgCache.get(ck);
+      if (cachedBlob) {
+        imgData = await _blobToDataURL(cachedBlob);
+        const dim = await new Promise(res => { const im = new Image(); im.onload = () => res({ w: im.width, h: im.height }); im.onerror = () => res({ w: 0, h: 0 }); im.src = imgData; });
+        imgW = dim.w; imgH = dim.h;
       }
-      
-      const canvas = await window.html2canvas(wrap.querySelector('.po-print'), {
-        backgroundColor: '#ffffff',
-        scale: 1.6, useCORS: true, logging: false,
-      });
-      
-      const imgHeight = canvas.height * USABLE_WIDTH / canvas.width;
-      const imgData = canvas.toDataURL('image/jpeg', 0.85);
-      
-      if (i > 0) pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', MARGIN, MARGIN, USABLE_WIDTH, imgHeight);
-      
-      // 页脚：页码
-      pdf.setFontSize(8);
-      pdf.setTextColor(120, 113, 108);
-      pdf.text(`${i + 1} / ${list.length} · ${po.po_number}`, A4_WIDTH_MM / 2, 290, { align: 'center' });
-    } finally {
-      wrap.remove();
+    } catch (e) { imgData = null; }
+
+    // 缓存没有 → 现渲染一张(加 imageTimeout 防 15 秒卡死)
+    if (!imgData) {
+      const wrap = _buildSinglePoExportNode(po, includeImages);
+      document.body.appendChild(wrap);
+      try {
+        if (includeImages) {
+          const imgs = wrap.querySelectorAll('img');
+          await Promise.all([...imgs].map(img => {
+            if (img.complete) return Promise.resolve();
+            return new Promise(res => { img.onload = res; img.onerror = res; setTimeout(res, 1500); });
+          }));
+        }
+        const canvas = await window.html2canvas(wrap.querySelector('.po-print'), {
+          backgroundColor: '#ffffff',
+          scale: 1.5, useCORS: true, imageTimeout: 6000, logging: false,   // V20260605:加 imageTimeout 防卡死 + 降 scale 提速
+        });
+        imgData = canvas.toDataURL('image/jpeg', 0.85);
+        imgW = canvas.width; imgH = canvas.height;
+        // 顺便写入缓存(下次复制/预览/再导出秒出)
+        try { if (typeof _poCacheKey === 'function') canvas.toBlob(b => { if (b) _poCachePut(_poCacheKey(po), b); }, 'image/png'); } catch (e) {}
+      } finally { wrap.remove(); }
     }
+
+    if (!imgData || !imgW) continue;
+    const imgHeight = imgH * USABLE_WIDTH / imgW;
+    if (i > 0) pdf.addPage();
+    pdf.addImage(imgData, imgData.indexOf('image/png') > -1 ? 'PNG' : 'JPEG', MARGIN, MARGIN, USABLE_WIDTH, imgHeight);
+    pdf.setFontSize(8);
+    pdf.setTextColor(120, 113, 108);
+    pdf.text(`${i + 1} / ${list.length} · ${po.po_number}`, A4_WIDTH_MM / 2, 290, { align: 'center' });
+    if (list.length > 5 && (i + 1) % 5 === 0) toast(`导出中… ${i + 1}/${list.length}`, 'info', 1200);
   }
   
   const filename = `${PO_SUPPLIER_FILTER}_采购单_${list.length}张_${new Date().toISOString().slice(0,10)}.pdf`;
