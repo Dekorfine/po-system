@@ -10,6 +10,21 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260604-express',
+    date: '2026-06-04',
+    type: 'feature',
+    title: '🚚 催单·付运费/快速单优先(防退款)',
+    notes: [
+      '✅ 催单加「🚚 仅付运费单」筛选 · 一键只看客户付了运费的优先单',
+      '✅ 付运费单走独立更短阈值(主管设·默认3天):下单3天没回就进催单,普通单仍按默认阈值',
+      '✅ 付运费单在催单页 🚚 红徽章 + 永远排最前',
+      '✅ 跟单可手动点「🚚 标快速」标记(解决客户单独下运费订单这类自动判不出的)',
+      '✅ 开 PO 时按销售单运费(shipping_fee)自动判定是否快速单',
+      '⚠️ 需在 Supabase 跑:催单-付运费快速单-20260604.sql(orders 加 is_express · config 加 chase_freight_days)',
+    ],
+    files: ['core.js', 'orders.js', 'settings.js', 'po.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260603-chasedef',
     date: '2026-06-03',
     type: 'feature',

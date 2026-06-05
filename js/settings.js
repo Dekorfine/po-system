@@ -177,6 +177,12 @@ function renderSettings() {
       if (ddHint) ddHint.innerHTML = curDef > 0
         ? `当前:催单页默认只显示<b>下单 ≥ ${curDef} 天</b>还没到货的单`
         : `当前:<b>显示全部</b>(未启用默认过滤)`;
+      // V20260604:付运费单阈值当前值
+      const fdInput = document.getElementById('chaseFreightDays');
+      const fdHint = document.getElementById('chaseFreightDaysHint');
+      const curFd = (typeof DATA !== 'undefined' && DATA.getChaseFreightDays) ? DATA.getChaseFreightDays() : 3;
+      if (fdInput && document.activeElement !== fdInput) fdInput.value = curFd;
+      if (fdHint) fdHint.innerHTML = `当前:付运费单<b>下单 ≥ ${curFd} 天</b>就进催单(比普通单更早)`;
       const tagsEl = document.getElementById('chaseThresholdsTags');
       if (tagsEl) {
         tagsEl.innerHTML = list.map(d => `
@@ -224,6 +230,22 @@ async function removeChaseThreshold(days) {
   } catch (err) {
     console.error(err);
     toast('保存失败：' + (err.message || err), 'err');
+  }
+}
+
+async function setChaseFreightDays() {
+  if (!IS_ADMIN) { toast('只有主管能修改', 'err'); return; }
+  const input = document.getElementById('chaseFreightDays');
+  const v = parseInt((input?.value || '3').trim());
+  if (isNaN(v) || v < 0 || v > 365) { toast('请输入 0-365 之间的天数', 'warn'); return; }
+  try {
+    await DATA.saveChaseFreightDays(v);
+    toast(`✓ 付运费单待催阈值已设为 ${v} 天(全员生效)`);
+    if (typeof renderOrders === 'function') renderOrders();
+    renderSettings();
+  } catch (err) {
+    console.error(err);
+    toast('保存失败:' + (err.message || err), 'err');
   }
 }
 

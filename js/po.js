@@ -1895,6 +1895,8 @@ async function poFormDoSave(groups, common) {
         order_no: so.shopify_order_number,
         note: common.note,
         followups: [],
+        // V20260604:开 PO 时按销售单运费自动判定"快速单"(客户付了运费=true)· 跟单后续可手动改
+        is_express: (typeof isExpressShipping === 'function' ? isExpressShipping(so) : (Number(so.shipping_fee) || 0) > 0),
       };
       console.log('保存采购单：', poRow);
       const { data: created, error: err } = await sb.from('orders').insert(poRow).select().single();

@@ -11,6 +11,7 @@ let _ordersQuickMode = '';
 
 // V5-2026-05-24: "仅看 PO 派生" 独立开关(可与阈值组合 AND)
 let _onlyPoSource = false;
+let _onlyExpress = false;  // V20260604:仅看付运费/快速单
 
 // ============================================================
 // PO 派生催单 · 数据加载层
@@ -26,7 +27,7 @@ async function loadChaseOrders(force = false) {
   try {
     // V20260602-perf:禁止 select('*') · 只取列表/弹窗渲染实际用到的列(orders 表本身无 base64/大字段,但减少传输)
     // 列名写错会 400 → 自动回退 select('*') 兜底
-    const COLS = 'id,agent_id,order_no,site,product,supplier,status,order_date,promised_date,shipped_date,arrived_date,next_follow,notes,screenshots,followups,created_at,updated_at,deleted_at,deleted_by,shopify_order_id,shopify_order_name,shopify_shop_domain,customer_name,customer_email,shipping_address,shipping_country,order_value,order_currency,shopify_financial_status,shopify_fulfillment_status,shopify_order_number,line_items,source,po_number,box_note,total_amount,freight,other_fees,creator_name,sales_order_id,note,approved_by,approval_note,finance_deposit_paid,finance_deposit_paid_at,finance_payment_completed,finance_payment_completed_at,finance_total_paid,finance_recorded,finance_order_uuid,finance_recorded_at,qty,products';
+    const COLS = 'id,agent_id,order_no,site,product,supplier,status,order_date,promised_date,shipped_date,arrived_date,next_follow,notes,screenshots,followups,created_at,updated_at,deleted_at,deleted_by,shopify_order_id,shopify_order_name,shopify_shop_domain,customer_name,customer_email,shipping_address,shipping_country,order_value,order_currency,shopify_financial_status,shopify_fulfillment_status,shopify_order_number,line_items,source,po_number,box_note,total_amount,freight,other_fees,creator_name,sales_order_id,note,approved_by,approval_note,finance_deposit_paid,finance_deposit_paid_at,finance_payment_completed,finance_payment_completed_at,finance_total_paid,finance_recorded,finance_order_uuid,finance_recorded_at,qty,products,is_express';
     let q = sb.from('orders').select(COLS)
       .is('deleted_at', null);
     // V20260526p: 催单完全开放 · 所有人可看 + 改所有催单(应业务需求 · 之前只看自己的)
@@ -93,6 +94,7 @@ function _toChaseOrder(row, userIdToName) {
     products: row.products || [],                     // V20260602:多选产品 [{spec,qty,image_url,sku}]
     poNumber: row.po_number,
     salesOrderId: row.sales_order_id,
+    isExpress: !!row.is_express,   // V20260604:客户付运费/快速单(开PO时自动算 或 跟单手动标)
   };
 }
 
@@ -119,6 +121,7 @@ function renderChaseThresholdChips() {
   const thresholds = (typeof DATA !== 'undefined' && DATA.getChaseThresholds) ? DATA.getChaseThresholds() : [3, 7, 10, 14, 21, 30, 60];
   const total = CHASE_ORDERS.length;
   const poCnt = CHASE_ORDERS.filter(o => o._isPO).length;
+  const expressCnt = CHASE_ORDERS.filter(o => o.isExpress).length;  // V20260604
   const manualCnt = total - poCnt;
   
   // V5-2026-05-24: 阈值 chip 的计数 - 如果"仅 PO 派生"开了,只算 PO 派生的(AND 组合下的实时计数)
@@ -183,6 +186,13 @@ function renderChaseThresholdChips() {
             style="${_onlyPoSource ? 'background:#7c3aed; color:white; border-color:#7c3aed; box-shadow:0 2px 8px #7c3aed66, 0 0 0 3px #7c3aed22; font-weight:600;' : 'border-left:3px solid #7c3aed; color:#7c3aed;'}">
       📦 仅 PO 派生 <span class="cnt-mini" style="${_onlyPoSource ? 'background:rgba(255,255,255,0.25); color:white;' : ''}">${poCnt}</span>
     </button>
+
+    <button class="rule-chip ${_onlyExpress ? 'active' : ''}"
+            onclick="toggleOnlyExpress()"
+            title="只显示客户付了运费的快速单 · 优先处理(避免退款)"
+            style="${_onlyExpress ? 'background:#dc2626; color:white; border-color:#dc2626; box-shadow:0 2px 8px #dc262666, 0 0 0 3px #dc262622; font-weight:600;' : 'border-left:3px solid #dc2626; color:#dc2626;'}">
+      🚚 仅付运费单 <span class="cnt-mini" style="${_onlyExpress ? 'background:rgba(255,255,255,0.25); color:white;' : ''}">${expressCnt}</span>
+    </button>
     
     <span style="margin-left:auto; font-size: 11px; color: var(--text-tertiary);">
       📦 PO 派生 <b style="color:#7c3aed;">${poCnt}</b> · 📝 手动 <b style="color:#d97706;">${manualCnt}</b>
@@ -221,6 +231,32 @@ function toggleOnlyPoSource() {
   _onlyPoSource = !_onlyPoSource;
   renderOrders();
 }
+
+// V20260604: 切换"仅看付运费/快速单"
+function toggleOnlyExpress() {
+  _onlyExpress = !_onlyExpress;
+  renderOrders();
+}
+window.toggleOnlyExpress = toggleOnlyExpress;
+
+// V20260604: 跟单手动把某单标为/取消"快速(付运费)"· 解决客户单独下运费订单那种自动抓不到的
+async function chaseToggleExpress(id, ev) {
+  if (ev) ev.stopPropagation();
+  const o = CHASE_ORDERS.find(x => String(x._id) === String(id));
+  if (!o) return;
+  const next = !o.isExpress;
+  try {
+    const { error } = await sb.from('orders').update({ is_express: next, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
+    o.isExpress = next;
+    toast(next ? '🚚 已标为快速单(优先催)' : '已取消快速标记');
+    await loadChaseOrders(true);
+    renderOrders();
+  } catch (e) {
+    console.error(e); toast('操作失败:' + (e.message || e), 'err');
+  }
+}
+window.chaseToggleExpress = chaseToggleExpress;
 
 // MODULE 1: 催单
 // ============================================================
@@ -457,8 +493,14 @@ function renderOrders() {
     if (_isOrderBlank(o)) return false;  // V20260602:默认隐藏空白草稿(没填任何东西的)
     // V5-2026-05-24: "仅看 PO 派生" 过滤(与阈值 AND 组合)
     if (_onlyPoSource && !o._isPO) return false;
-    // 阈值过滤
-    if (_chaseThresholdFilter > 0 && chaseDaysSince(o) < _chaseThresholdFilter) return false;
+    // V20260604: 仅看付运费/快速单
+    if (_onlyExpress && !o.isExpress) return false;
+    // 阈值过滤 · 付运费单用更激进的 freight 阈值(更早进催单)
+    if (_chaseThresholdFilter > 0) {
+      const _fd = (typeof DATA !== 'undefined' && DATA.getChaseFreightDays) ? DATA.getChaseFreightDays() : 3;
+      const _eff = o.isExpress ? Math.min(_fd, _chaseThresholdFilter) : _chaseThresholdFilter;
+      if (chaseDaysSince(o) < _eff) return false;
+    }
     if (q) {
       const t = [o.orderNo, o.product, o.supplier, o.notes, o._agent, o.site].join(' ').toLowerCase();
       if (!t.includes(q)) return false;
@@ -507,6 +549,8 @@ function renderOrders() {
   // 排序
   if (sortBy === 'urgency') {
     list.sort((a, b) => {
+      // V20260604:付运费/快速单永远置顶
+      if (!!a.isExpress !== !!b.isExpress) return a.isExpress ? -1 : 1;
       const sa = getOrderEffStatus(a), sb = getOrderEffStatus(b);
       const aIsCatch = !['cancelled','shipped','arrived'].includes(a.status);
       const bIsCatch = !['cancelled','shipped','arrived'].includes(b.status);
@@ -704,6 +748,8 @@ function renderOrderRow(o, i) {
     ? `<span class="site-badge" style="background: rgba(124,58,237,0.12); color: #7c3aed; border: 1px solid rgba(124,58,237,0.3);" title="数据来自采购单 PO">📦 PO</span>`
     : `<span class="site-badge" style="background: rgba(245,158,11,0.12); color: #d97706; border: 1px solid rgba(245,158,11,0.3);" title="手动录入的旧催单（建议未来用 PO 流程）">📝 手动</span>`;
   const amountBadge = (o._isPO && o.totalAmount > 0) ? `<span class="site-badge" style="background: rgba(16,185,129,0.10); color: #059669; border: 1px solid rgba(16,185,129,0.3);">¥${o.totalAmount.toLocaleString('zh-CN', {maximumFractionDigits: 0})}</span>` : '';
+  // V20260604:付运费/快速单徽章 · 本身即手动开关(已标=红实心"快速·优先" / 未标=虚线"标快速"可点)
+  const expressBadge = `<span class="site-badge" onclick="chaseToggleExpress('${o._id}', event)" title="客户付运费的快速单需优先催 · 点击切换标记" style="cursor:pointer; ${o.isExpress ? 'background:#dc2626; color:#fff; border:1px solid #dc2626; font-weight:700;' : 'background:rgba(220,38,38,0.06); color:#dc2626; border:1px dashed rgba(220,38,38,0.45);'}">${o.isExpress ? '🚚 快速·优先' : '🚚 标快速'}</span>`;
   
   // 已 N 天（下单至今）—— V3 用阈值高亮：超过最大阈值标红，超过最小阈值标黄
   const days = chaseDaysSince(o);
@@ -813,6 +859,7 @@ function renderOrderRow(o, i) {
         <div class="order-line">
           <span class="order-no-big">${escapeHtml(o.orderNo || '⚠ 待填订单号')}</span>
           ${poBadge}
+          ${expressBadge}
           ${siteBadge}
           ${amountBadge}
           ${afterBadge}

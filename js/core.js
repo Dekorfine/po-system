@@ -438,6 +438,20 @@ const DATA = {
     if (error) throw error;
     return n;
   },
+  // V20260604:付运费/快速单的独立待催阈值(更短·更激进)· 默认 3 天
+  getChaseFreightDays() {
+    const v = this._cache.config && this._cache.config.chase_freight_days;
+    const n = parseInt(v);
+    return (!isNaN(n) && n >= 0) ? n : 3;
+  },
+  async saveChaseFreightDays(days) {
+    if (!IS_ADMIN) throw new Error('只有主管能修改付运费单阈值');
+    const n = Math.max(0, parseInt(days) || 0);
+    if (this._cache.config) this._cache.config.chase_freight_days = n;
+    const { error } = await sb.from('config').update({ chase_freight_days: n }).eq('id', 1);
+    if (error) throw error;
+    return n;
+  },
 
   // 主管聚合视图
   listAllAgents() { return this._cache.agents; },
