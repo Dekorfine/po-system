@@ -1458,6 +1458,40 @@ function shopifyUpdateAutoSyncIndicator() {
 }
 
 // V28ξ-4:多店静默增量同步(不要求待在 sales tab · 不打扰用户)
+// V20260605:深度回扫 — 遍历店铺调 backfill_orders(近N天所有订单,补全本地库)
+//   解决 B2B 导入单/部分发货/数周前的单 不被7天自动同步覆盖 → 发票工具查不到
+async function shopifyDeepBackfill(days = 60, silent = false) {
+  if (SHOPIFY._backfilling) { if (!silent) toast('回扫进行中…', 'info'); return; }
+  // 只回扫 Shopify 店(B2B 导入单都在 Shopify 侧;woo 另走 woo-api)
+  const stores = (SHOPIFY._stores || []).filter(st => st.connected && (st.shop_domain || st.domain) && st.platform !== 'woo');
+  if (stores.length === 0) { if (!silent) toast('没有可回扫的店铺', 'warn'); return; }
+  SHOPIFY._backfilling = true;
+  const btn = document.querySelector('[onclick="shopifyDeepBackfill()"]');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn && !silent) { btn.disabled = true; btn.innerHTML = '回扫中…'; }
+  let totalSaved = 0, totalFetched = 0;
+  try {
+    for (let i = 0; i < stores.length; i++) {
+      const shop = stores[i].shop_domain || stores[i].domain;
+      if (!silent) toast(`回扫 ${stores[i].display_name || shop}(${i + 1}/${stores.length})…`, 'info', 3000);
+      try {
+        const r = await SHOPIFY.backfillStore(shop, days);
+        totalSaved += (r.saved || 0); totalFetched += (r.fetched || 0);
+      } catch (e) { console.warn('[深度回扫]', shop, e.message || e); }
+    }
+    try { localStorage.setItem('shopify_last_backfill', String(Date.now())); } catch (_) {}
+    if (!silent) toast(`✓ 回扫完成 · 近 ${days} 天共扫 ${totalFetched} 单 · 入库/更新 ${totalSaved} 单`, 'success', 6000);
+    else console.log(`[深度回扫·自动] 近${days}天 扫${totalFetched} 入库${totalSaved}`);
+    // 刷新本地(回扫写进了 DB,清缓存让下次增量补上)
+    SHOPIFY.invalidateOrders();
+    if (!silent && typeof shopifyReloadOrdersAndRender === 'function') await shopifyReloadOrdersAndRender(true);
+  } finally {
+    SHOPIFY._backfilling = false;
+    if (btn && !silent) { btn.disabled = false; btn.innerHTML = orig || '🧹 深度回扫'; }
+  }
+}
+window.shopifyDeepBackfill = shopifyDeepBackfill;
+
 async function shopifyQuickSyncAllStores() {
   if (!SHOPIFY._initialized) return;
   const stores = (SHOPIFY._stores || []).filter(s => (s.connected || s.platform === 'woo') && (s.shop_domain || s.domain));
@@ -1526,6 +1560,16 @@ function shopifyStartAutoSync() {
   setTimeout(() => {
     if (shopifyAutoSyncOn()) shopifyQuickSyncAllStores();
   }, 3000);
+
+  // V20260605:每日自动深度回扫一次(静默)· 让 B2B 导入单/部分发货/数周前的单自愈
+  setTimeout(() => {
+    try {
+      const last = parseInt(localStorage.getItem('shopify_last_backfill') || '0', 10);
+      if (Date.now() - last > 20 * 3600 * 1000) {   // 距上次 >20 小时才跑
+        if (typeof shopifyDeepBackfill === 'function') shopifyDeepBackfill(60, true);
+      }
+    } catch (e) {}
+  }, 15000);   // 延迟 15 秒 · 让首屏/快速同步先完成
   
   // 周期同步(每 5 分钟跑全店增量)
   SHOPIFY._autoSyncTimer = setInterval(() => {

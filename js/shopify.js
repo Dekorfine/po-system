@@ -346,6 +346,11 @@ const SHOPIFY = {
     try { localStorage.removeItem('shopify_orders_cache_v3'); } catch (_) {}
   },
 
+  // V20260605:深度回扫单店(调 Edge Function backfill_orders · since_id 分页拉全近 N 天)
+  async backfillStore(shop, days = 60) {
+    return await this.call('backfill_orders', { days }, shop, 180000);  // 给 3 分钟(分页+逐单入库)
+  },
+
   async loadProductImageMap(skus) {
     if (!skus || skus.length === 0) return {};
     // V20260601-fix:分批查询 · 避免 .in() 把所有 SKU 塞 URL 导致 HTTP 414 URL Too Long

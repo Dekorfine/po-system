@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260605-backfill',
+    date: '2026-06-05',
+    type: 'feature',
+    title: '🧹 深度回扫:B2B导入单/部分发货/数周前的单 也能入库',
+    notes: [
+      '🐛 自动同步只拉近7天 → B2B(BSS)导入单、部分发货、数周前的单不入库 → 发票工具查不到',
+      '✅ Edge Function 加 backfill_orders:status=any · updated_at_min 近60天 · since_id 分页拉全 · 按 shopify_order_id 去重 upsert',
+      '✅ 不按 financial/fulfillment/source 过滤 · 部分发货/B2B导入单照常入库 · 图片只存URL',
+      '✅ 销售单页加「🧹 深度回扫」按钮 · 每日自动静默回扫一次(缺口自愈)',
+      '⚠️ 需用 Supabase CLI 重新部署 shopify-api Edge Function',
+    ],
+    files: ['shopify-api/index.ts', 'shopify.js', 'utils.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260605-xlspreview',
     date: '2026-06-05',
     type: 'feature',
