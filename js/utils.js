@@ -1473,11 +1473,19 @@ async function shopifyDeepBackfill(days = 60, silent = false) {
   try {
     for (let i = 0; i < stores.length; i++) {
       const shop = stores[i].shop_domain || stores[i].domain;
-      if (!silent) toast(`回扫 ${stores[i].display_name || shop}(${i + 1}/${stores.length})…`, 'info', 3000);
-      try {
-        const r = await SHOPIFY.backfillStore(shop, days);
+      const name = stores[i].display_name || shop;
+      // 自动续扫:一批到上限(more=true)就带 last_since_id 接着扫,直到拉完(安全上限 30 批)
+      let sinceId = 0, batch = 0;
+      while (batch < 30) {
+        if (!silent) toast(`回扫 ${name}(${i + 1}/${stores.length})${batch > 0 ? ' 第' + (batch + 1) + '批' : ''}…`, 'info', 3000);
+        let r;
+        try {
+          r = await SHOPIFY.backfillStore(shop, days, sinceId);
+        } catch (e) { console.warn('[深度回扫]', shop, e.message || e); break; }
         totalSaved += (r.saved || 0); totalFetched += (r.fetched || 0);
-      } catch (e) { console.warn('[深度回扫]', shop, e.message || e); }
+        if (r.more && r.last_since_id) { sinceId = r.last_since_id; batch++; continue; }
+        break;
+      }
     }
     try { localStorage.setItem('shopify_last_backfill', String(Date.now())); } catch (_) {}
     if (!silent) toast(`✓ 回扫完成 · 近 ${days} 天共扫 ${totalFetched} 单 · 入库/更新 ${totalSaved} 单`, 'success', 6000);

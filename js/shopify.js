@@ -347,8 +347,8 @@ const SHOPIFY = {
   },
 
   // V20260605:深度回扫单店(调 Edge Function backfill_orders · since_id 分页拉全近 N 天)
-  async backfillStore(shop, days = 60) {
-    return await this.call('backfill_orders', { days }, shop, 180000);  // 给 3 分钟(分页+逐单入库)
+  async backfillStore(shop, days = 60, sinceId = 0) {
+    return await this.call('backfill_orders', { days, since_id: sinceId, skip_enrich: true }, shop, 150000);  // 2.5 分钟/批
   },
 
   async loadProductImageMap(skus) {

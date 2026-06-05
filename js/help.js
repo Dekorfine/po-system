@@ -10,6 +10,21 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260605-halfyear',
+    date: '2026-06-05',
+    type: 'feature',
+    title: '📦 半年订单灌入本地库(发票/查单不再打 Shopify)',
+    notes: [
+      '✅ 「📦 灌满半年」按钮:把近180天所有订单一次性灌进 Supabase 本地库',
+      '✅ 自动分批续扫(since_id)直到拉完 · 每页限流 0.55 秒防 Shopify 封 · 429 自动等待重试',
+      '✅ 回扫跳过逐产品图抓取(skip_enrich)→ 大幅提速防超时 · 产品图用 SKU 反查兜底',
+      '✅ 之后发票工具/查单/列表都读本地库,不再实时打 Shopify(避开频率限制)',
+      'ℹ️ 每日自动轻量回扫(60天)继续保留 · 地址等如需修正可人工核对',
+      '⚠️ 需用 Supabase CLI 重新部署 shopify-api Edge Function',
+    ],
+    files: ['shopify-api/index.ts', 'shopify.js', 'utils.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260605-backfill',
     date: '2026-06-05',
     type: 'feature',
