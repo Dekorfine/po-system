@@ -23,17 +23,17 @@
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
 <link rel="preload" href="js/core.js?v=20260605urgent" as="script">
-<link rel="preload" href="js/utils.js?v=20260605backfill" as="script">
-<link rel="preload" href="js/shopify.js?v=20260605backfill" as="script">
+<link rel="preload" href="js/utils.js?v=20260605halfyear" as="script">
+<link rel="preload" href="js/shopify.js?v=20260605halfyear" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="js/core.js?v=20260605urgent"></script>
-<script defer src="js/utils.js?v=20260605backfill"></script>
+<script defer src="js/utils.js?v=20260605halfyear"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260605backfill"></script>
+<script defer src="js/help.js?v=20260605halfyear"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -45,7 +45,7 @@
 <script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260605cmtfix"></script>
 <script defer src="js/orders.js?v=20260605xlsimg2"></script>
-<script defer src="js/shopify.js?v=20260605backfill"></script>
+<script defer src="js/shopify.js?v=20260605halfyear"></script>
 <script defer src="js/po.js?v=20260605pdffast"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
 <script defer src="js/inventory.js?v=20260603invorder"></script>
@@ -6156,7 +6156,7 @@ if ('serviceWorker' in navigator) {
         </select>
         <button class="btn" onclick="shopifyReloadOrdersAndRender(true)" title="只从本地读取（毫秒级）">📂 本地</button>
         <button class="btn primary" onclick="shopifyFetchOrders()" title="拉 Shopify 最新数据">🔄 同步</button>
-        <button class="btn" onclick="shopifyDeepBackfill()" style="background:#fef3c7; border-color:#f59e0b; color:#92400e;" title="回扫近60天所有订单(含 B2B 导入单/部分发货/数周前的单)· 补全本地库 · 解决发票工具查不到">🧹 深度回扫</button>
+        <button class="btn" onclick="shopifyDeepBackfill(180)" style="background:#fef3c7; border-color:#f59e0b; color:#92400e;" title="把近半年(180天)所有订单灌进本地库(含 B2B 导入单/部分发货)· 之后发票工具/查单都走本地、不打 Shopify · 自动分批续扫+限流">📦 灌满半年</button>
         <button class="btn" onclick="openFetchByOrderNo()" style="background:#dcfce7; border-color:#10b981; color:#065f46;" title="客服查发票/订单 · 输入订单号实时查询 · 不批量入库 · 本地优先 · 找不到才拉 Shopify">🔍 订单单查</button>
       </div>
       <!-- V28β:跟单常用快筛 · 今天/昨天/本周/本月/昨天未下完 -->
