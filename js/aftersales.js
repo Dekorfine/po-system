@@ -851,15 +851,26 @@ function afAutoFetchProducts() {
   let lineItems = [];
   const srcSet = new Set();
   nos.forEach(n => {
+    // V20260606:以"完整订单"为准 + PO 合并去重 — 修"客户买了多个SKU,售后只显示6个(PO只覆盖部分SKU)"
+    //   先取 Shopify 完整订单的全部 line_items,再并入 PO 里订单没有的(按 SKU/规格去重),保证所有 SKU 都出现
     let got = [];
+    const _seen = new Set();
+    const _key = (li) => String(li.sku || li.variant || li.variant_title || li.title || '').trim().toLowerCase();
+    // ① Shopify 完整订单(全部 SKU)
+    if (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
+      const so = SHOPIFY._orders.find(x => String(x.shopify_order_number||'').replace('#','')===n || String(x.name||'').replace('#','')===n);
+      if (so && so.line_items && so.line_items.length) {
+        so.line_items.forEach(li => { const k=_key(li); if(k && !_seen.has(k)){ _seen.add(k); got.push(li); } });
+        srcSet.add('销售单');
+      }
+    }
+    // ② PO 里有、但订单没覆盖到的 SKU 也并进来(按 SKU 去重)
     if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
       const pos = PO_LIST.filter(pp => String(pp.po_number||'').trim()===n || String(pp.order_no||'').trim()===n);
-      got = pos.flatMap(pp => pp.line_items || []);
-      if (got.length) srcSet.add('PO');
-    }
-    if (got.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
-      const so = SHOPIFY._orders.find(x => String(x.shopify_order_number||'').replace('#','')===n || String(x.name||'').replace('#','')===n);
-      if (so && so.line_items && so.line_items.length) { got = so.line_items; srcSet.add('销售单'); }
+      const poItems = pos.flatMap(pp => pp.line_items || []);
+      let added = 0;
+      poItems.forEach(li => { const k=_key(li); if(k && !_seen.has(k)){ _seen.add(k); got.push(li); added++; } });
+      if (got.length && (added > 0 || !srcSet.has('销售单'))) srcSet.add('PO');
     }
     got.forEach(li => { try { li._fromOrder = n; } catch(e){} });
     lineItems = lineItems.concat(got);

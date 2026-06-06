@@ -1927,7 +1927,36 @@ async function poFormDoSave(groups, common) {
         }).eq('sku', li.sku);
         if (pErr) console.warn('更新产品上次单价失败（不影响主流程）：', li.sku, pErr.message);
       }
-      
+
+      // V20260606:创建 PO 时"改描述"回写到 SKU(全局生效)· 与"改单"一致 · 下次任何订单用到该 SKU 自动带出改好的中文名/英文名/规格
+      for (const li of liData) {
+        const liid = li.shopify_line_item_id;
+        if (!liid) continue;   // 自定义产品行不回写
+        const desc = (PO_FORM_STATE.lineDescriptions && PO_FORM_STATE.lineDescriptions[liid]) || {};
+        if (desc.title_cn === undefined && desc.title_en === undefined && desc.variant === undefined) continue;  // 没改描述
+        const sku = (li.sku || '').trim();
+        if (!sku) continue;
+        const eff = (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) ? PRODUCTS_CACHE.effectiveBySku(sku) : null;
+        if (!eff || !eff.id) continue;
+        const upd = {};
+        if (desc.title_cn !== undefined && desc.title_cn && desc.title_cn !== eff.name_cn) { upd.name_cn = desc.title_cn; upd.name_cn_locked = true; upd.translation_source = 'manual'; }
+        if (desc.title_en !== undefined && desc.title_en && desc.title_en !== eff.name_en) { upd.name_en = desc.title_en; }
+        if (desc.variant !== undefined && desc.variant !== eff.spec_default) { upd.spec_default = desc.variant || null; }
+        if (Object.keys(upd).length === 0) continue;
+        try {
+          const { error: pe } = await sb.from('products').update(upd).eq('id', eff.id);
+          if (pe) {
+            if (String(pe.message||'').includes('spec_default') || String(pe.message||'').includes('column')) console.warn('[创建PO改描述回写] products 缺 spec_default 列,请跑 sql/products-spec_default列.sql');
+            else console.warn('[创建PO改描述回写] 失败:', sku, pe.message);
+          } else {
+            if (upd.name_cn !== undefined) { eff.name_cn = upd.name_cn; eff.name_cn_locked = true; }
+            if (upd.name_en !== undefined) eff.name_en = upd.name_en;
+            if (upd.spec_default !== undefined) eff.spec_default = upd.spec_default;
+            console.log(`[创建PO] ✓ 改描述已回写 SKU ${sku}(全局生效,下次开单自动带出)`);
+          }
+        } catch (we) { console.warn('[创建PO改描述回写] 异常:', we); }
+      }
+
       // V4-2026-05-24: 如果跟单手动改过"其他备注"且是单 SKU PO
       // → 把这个改动同步回 products.notes + 标记 notes_locked
       // (多 SKU PO 不自动同步,因为无法判断哪段对应哪个 SKU)

@@ -1239,10 +1239,16 @@ function _photoReqRenderEdit() {
         </select>
       </div>
       <div>
-        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">产品图 URL</label>
-        <input type="text" value="${escapeHtml(s.product_image)}" oninput="PHOTOREQ_EDIT.product_image=this.value"
-               placeholder="https://...png"
-               style="width:100%; padding:7px 10px; font-size:12px; border-radius:5px; ${editBorder}">
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">产品图 URL <span style="color:var(--text-tertiary);font-weight:400;">(可粘 URL 或上传图片)</span></label>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <input type="text" value="${escapeHtml(s.product_image)}" oninput="PHOTOREQ_EDIT.product_image=this.value"
+                 placeholder="https://...png"
+                 style="flex:1; padding:7px 10px; font-size:12px; border-radius:5px; ${editBorder}">
+          <label class="btn small" style="white-space:nowrap; cursor:pointer; ${s._imgUploading?'opacity:.6;pointer-events:none;':''}">${s._imgUploading?'上传中…':'📤 上传图片'}
+            <input type="file" accept="image/*" style="display:none;" onchange="photoReqEditPickImage(this)">
+          </label>
+        </div>
+        ${s.product_image ? `<img src="${escapeHtml(s.product_image)}" style="margin-top:6px; width:64px; height:64px; object-fit:cover; border-radius:6px; border:1px solid var(--border);">` : ''}
       </div>
     </div>
     
@@ -1322,6 +1328,23 @@ function _photoReqRenderEdit() {
     </div>
   `;
 }
+
+// V20260606:编辑拍摄需求 · 上传产品图(复用批量行上传逻辑)· 修"忘记加图、编辑时加不进去"
+async function photoReqEditPickImage(input) {
+  const file = input && input.files && input.files[0];
+  if (!file || !PHOTOREQ_EDIT) { if (input) input.value=''; return; }
+  try {
+    PHOTOREQ_EDIT._imgUploading = true; _photoReqRenderEdit();
+    const url = await _photoReqBatchUploadOne(file);
+    PHOTOREQ_EDIT.product_image = url;
+    PHOTOREQ_EDIT._imgUploading = false; _photoReqRenderEdit();
+    if (typeof toast === 'function') toast('✓ 图片已上传', 'success');
+  } catch (e) {
+    PHOTOREQ_EDIT._imgUploading = false; _photoReqRenderEdit();
+    if (typeof toast === 'function') toast('上传失败:' + (e.message || e), 'err', 5000);
+  }
+}
+window.photoReqEditPickImage = photoReqEditPickImage;
 
 function _photoReqEditToggleShop(shop) {
   if (!PHOTOREQ_EDIT) return;
