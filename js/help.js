@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260606-tabwrap',
+    date: '2026-06-06',
+    type: 'fix',
+    title: '🚚 运费精算 tab 之前被横向溢出藏到右边 → 顶栏改自动换行,全部可见',
+    notes: [
+      '桌面端顶部 tab 栏是横向滚动(overflow-x:auto),置顶 tab 多时 报价单/运费精算 被挤到最右、滚动条又细,看不到',
+      '改为 flex-wrap 换行:排不下就换到第二行,所有置顶 tab(含 🚚 运费精算)都直接可见,不用滚',
+      '侧栏 tab 仍隐藏(只显示 7 个置顶 tab)· 仅改 index.html CSS · 无 JS/SQL',
+    ],
+    files: ['index.html', 'help.js'],
+  },
+  {
     v: '20260606-nobox',
     date: '2026-06-06',
     type: 'change',
