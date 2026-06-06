@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260606arch"></script>
+<script defer src="js/help.js?v=20260606freightfix"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -5123,6 +5123,13 @@ body.has-side-tabs .section-block {
 }
 /* 当 tab 被指定为 'side' 时,从顶栏隐藏 */
 .tab-nav .tab-item[data-zone="side"] { display: none; }
+
+/* V20260606:强制 🚚运费精算 / 📄报价单 工具 tab 在顶栏显示
+   (排查发现 freight 被某处误设 display:none · 它确定属于顶栏 zone=top · 非 hr 模式 · 此处兜底强制可见) */
+body:not(.hr-mode) .tab-nav .tab-item[data-tab="freight"]:not([data-zone="side"]),
+body:not(.hr-mode) .tab-nav .tab-item[data-tab="quotation"]:not([data-zone="side"]) {
+  display: flex !important;
+}
 
 /* V20260531-hr:HR 模式 · 隐藏业务 tab · 只保留绩效/数据/工作流 */
 body.hr-mode .tab-nav .tab-item[data-tab="sales"],
