@@ -3895,6 +3895,7 @@ function renderPoList() {
         </span>
         ${PO_SUPPLIER_FILTER ? `
           <button class="btn small" onclick="poExportSupplier()" title="导出该供应商的对单表(用于催单/对账)">📤 对单表</button>
+          <button class="btn small" onclick="poExportSupplierExcel()" style="background:#dbeafe; border-color:#3b82f6; color:#1e40af;" title="把该供应商所有采购单导出成一张带图 Excel(产品图/SKU/中文名/规格/数量/单价/小计/备注/电气标准/PO编号/销售单号全在表里)· 旺季一键发供应商,不用一张张截图">📊 采购表(带图Excel)</button>
           <button class="btn small primary" onclick="poBatchExportOpenDialog()" title="把所有 PO 打包成一个 PDF/Word 发给供应商">📑 批量导出 PO</button>
         ` : ''}
       ` : ''}
@@ -4048,6 +4049,134 @@ function renderPoList() {
 }
 
 // 导出当前筛选的供应商所有 PO（生成对单表，新窗口打开，可打印 PDF / 复制到 Excel）
+// V20260606:按供应商导出"带图采购表 Excel"(旺季一键发供应商 · 不用一张张截图)
+//   每个产品一行 · 含产品图/SKU/中文名/规格/数量/单价/小计/本行备注/电气标准/订单备注(纸箱)/PO编号/销售单号
+async function poExportSupplierExcel() {
+  if (!PO_SUPPLIER_FILTER) { toast('请先选择供应商', 'warn'); return; }
+  const supplier = PO_SUPPLIER_FILTER;
+  let list = PO_LIST.filter(p => (p.supplier || '') === supplier);
+  if (PO_FILTER === 'pending') list = list.filter(p => p.status === 'pending_approval');
+  else if (PO_FILTER === 'producing') list = list.filter(p => p.status === 'producing');
+  else if (PO_FILTER === 'ordered') list = list.filter(p => ['sent', 'confirmed', 'arrived'].includes(p.status));
+  else if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
+  else if (PO_FILTER === 'done') list = list.filter(p => p.status === 'received');
+  else list = list.filter(p => p.status !== 'cancelled');
+  if (list.length === 0) { toast(`供应商「${supplier}」下没有符合条件的 PO`, 'warn'); return; }
+  if (typeof _loadExcelJS !== 'function' || typeof _fetchImageSmall !== 'function') { toast('Excel 组件不可用', 'err'); return; }
+  try { await _loadExcelJS(); } catch (e) { toast('Excel 组件加载失败:' + (e.message || e), 'err', 6000); return; }
+  // 按 PO 创建时间排序(老的在前,方便对单)
+  list = list.slice().sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+
+  toast('正在生成采购表(含产品图)…', 'info', 8000);
+  const today = new Date().toISOString().slice(0, 10);
+  const ExcelJS = window.ExcelJS;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('采购表');
+
+  const headers = ['PO编号', '状态', '下单日期', '产品图', 'SKU', '中文名', '规格', '数量', '单价¥', '小计¥', '本行备注', '电气标准', '订单备注(纸箱)', '销售单号'];
+  const IMG_COL = 4;
+  const N = headers.length;
+
+  // 展开:每个 PO 的每个产品一行(记录所属 PO 序号,用于分组斑马)
+  const rows = [];   // { vals:[], img:url, poIdx }
+  let totalQty = 0, totalAmt = 0;
+  list.forEach((p, poIdx) => {
+    const created = p.created_at ? new Date(p.created_at).toISOString().slice(0, 10) : '';
+    const statusLabel = (typeof poStatusInfo === 'function') ? (poStatusInfo(p.status).label || p.status || '') : (p.status || '');
+    const items = p.line_items || [];
+    if (items.length === 0) {
+      rows.push({ vals: [p.po_number || '', statusLabel, created, '', '', '(无明细)', '', '', '', '', p.note || '', '', p.box_note || '', p.order_no || ''], img: '', poIdx });
+      return;
+    }
+    items.forEach((li, liIdx) => {
+      const qty = Number(li.qty) || 0;
+      const price = Number(li.price) || 0;
+      const sub = (li.subtotal != null) ? Number(li.subtotal) : (qty * price);
+      totalQty += qty; totalAmt += sub;
+      rows.push({
+        vals: [
+          liIdx === 0 ? (p.po_number || '') : '',          // PO编号只在该 PO 首行显示
+          liIdx === 0 ? statusLabel : '',
+          liIdx === 0 ? created : '',
+          '',                                               // 产品图(占位,后面嵌图)
+          li.sku || '',
+          li.title_cn || '',
+          li.variant || '',
+          qty || '',
+          price || '',
+          sub || '',
+          li.line_note || '',
+          li.electrical_standard || '',
+          liIdx === 0 ? (p.box_note || '') : '',           // 订单备注(纸箱)PO 级,首行显示
+          liIdx === 0 ? (p.order_no || '') : '',
+        ],
+        img: li.image_url || '',
+        poIdx,
+      });
+    });
+  });
+
+  ws.addRow([`采购表 · 供应商:${supplier}`]);
+  ws.addRow([`生成日期: ${today.replace(/-/g, '/')}    共 ${list.length} 张 PO · ${rows.length} 个产品行 · 合计 ${totalQty} 件 · ¥${totalAmt.toFixed(2)}`]);
+  ws.addRow([]);
+  const headerRow = ws.addRow(headers);
+  const dataStartRow = ws.rowCount + 1;
+  const dataRowRefs = rows.map(r => ws.addRow(r.vals));
+
+  [14, 9, 12, 13, 16, 24, 22, 7, 9, 10, 20, 11, 18, 14].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  // 抓产品图(并行)→ 嵌入
+  const dataURLs = await Promise.all(rows.map(r => r.img ? _fetchImageSmall(r.img, 96) : Promise.resolve(null)));
+  let embedded = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const du = dataURLs[i];
+    if (!du) continue;
+    const rowNo = dataStartRow + i;
+    try {
+      const id = wb.addImage({ base64: du, extension: 'jpeg' });
+      ws.getRow(rowNo).height = 64;
+      ws.addImage(id, { tl: { col: (IMG_COL - 1) + 0.1, row: (rowNo - 1) + 0.06 }, ext: { width: 72, height: 72 }, editAs: 'oneCell' });
+      embedded++;
+    } catch (e) {}
+  }
+
+  // 美化:表头/边框/按 PO 分组斑马/对齐/冻结/筛选
+  const thin = { style: 'thin', color: { argb: 'FFD0D7DE' } };
+  const allBorder = { top: thin, left: thin, bottom: thin, right: thin };
+  headerRow.eachCell({ includeEmpty: true }, (c) => {
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
+    c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    c.border = allBorder;
+  });
+  headerRow.height = 24;
+  const centerCols = [1, 2, 3, 4, 5, 8, 9, 10, 12, 14];
+  dataRowRefs.forEach((row, idx) => {
+    const zebra = (rows[idx].poIdx % 2 === 1);   // 按 PO 分组交替底色(供应商一眼看出 PO 边界)
+    for (let c = 1; c <= N; c++) {
+      const cell = row.getCell(c);
+      if (zebra) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF4FF' } };
+      cell.border = allBorder;
+      cell.alignment = { vertical: 'middle', wrapText: true, horizontal: centerCols.includes(c) ? 'center' : 'left' };
+    }
+  });
+  ws.views = [{ state: 'frozen', ySplit: dataStartRow - 1 }];
+  try { ws.autoFilter = { from: { row: dataStartRow - 1, column: 1 }, to: { row: dataStartRow - 1, column: N } }; } catch (e) {}
+  ws.mergeCells(1, 1, 1, N); ws.mergeCells(2, 1, 2, N);
+  ws.getRow(1).font = { bold: true, size: 14 }; ws.getRow(1).alignment = { horizontal: 'center' };
+  ws.getRow(2).alignment = { horizontal: 'center' };
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `采购表_${supplier}_${today}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+  toast(`✓ 已导出「${supplier}」${list.length} 张 PO · ${rows.length} 行 · 嵌入 ${embedded} 张图`);
+}
+window.poExportSupplierExcel = poExportSupplierExcel;
+
 function poExportSupplier() {
   if (!PO_SUPPLIER_FILTER) { toast('请先选择供应商', 'warn'); return; }
   const supplier = PO_SUPPLIER_FILTER;
