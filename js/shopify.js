@@ -27,7 +27,7 @@ const SHOPIFY = {
     { domain: 'decormote.myshopify.com',      site_code: 'RS', app: 'dm', public_domain: 'rayonshine.com' },
     { domain: 'janedecor.myshopify.com',      site_code: 'JD', app: 'jd', public_domain: 'janedecor.com' },
     // V20260606:第二个独立 Shopify Partner 账号 · vakkerlimited.com(app=vl · 独立 client id/secret)
-    { domain: 'vakkerlimited.myshopify.com',  site_code: 'VL', app: 'vl', public_domain: 'vakkerlimited.com' },
+    { domain: 'k9fvat-ia.myshopify.com',       site_code: 'VL', app: 'vl', public_domain: 'vakkerlimited.com' },
     // V20260528b: WooCommerce 接入 · mooielight 是 WordPress + WooCommerce(不是 Shopify)
     // platform='woo' 走 woo-api Edge Function · 不走 shopify-api
     { domain: 'mooielight.com', site_code: 'ML', platform: 'woo', woo_store_id: 'mooielight', display_name: 'Mooielight', public_domain: 'mooielight.com' },

@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260606-vl2',
+    date: '2026-06-06',
+    type: 'fix',
+    title: '🏬 VL 店真实 myshopify 域名修正:k9fvat-ia.myshopify.com',
+    notes: [
+      '安装报 "shop currently unavailable" = 域名填错 · vakkerlimited 不是真实 myshopify 域名',
+      '真实域名 = k9fvat-ia.myshopify.com(public_domain 仍 vakkerlimited.com · site_code 仍 VL)',
+      'STORES_META + callback SITE_MAP 两处域名同步改 · callback 需重新部署',
+    ],
+    files: ['shopify.js', 'index.html', 'help.js', 'shopify-oauth-callback.ts'],
+  },
+  {
     v: '20260606-vl',
     date: '2026-06-06',
     type: 'feature',
