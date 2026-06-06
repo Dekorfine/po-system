@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260606-nobox',
+    date: '2026-06-06',
+    type: 'change',
+    title: '🧊→🚚 移除「合箱」tab · 改用「运费精算」',
+    notes: [
+      '跟单反馈合箱规划器看不懂/用不来 → 移除 🧊 合箱 tab(按钮+面板)',
+      '🚚 运费精算(cs-system freight-calc · 已嵌入)顶上其位置,正常显示',
+      '仅改 index.html · 无 JS / SQL 改动',
+    ],
+    files: ['index.html', 'help.js'],
+  },
+  {
     v: '20260606-fix3',
     date: '2026-06-06',
     type: 'fix',
