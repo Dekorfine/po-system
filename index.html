@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260606fix3"></script>
+<script defer src="js/help.js?v=20260606nobox"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -5645,7 +5645,7 @@ if ('serviceWorker' in navigator) {
     <div class="tab-item" data-tab="issues" onclick="switchTab('issues')">⚠ 供应商问题 <span class="badge zero" id="badgeIssues">0</span><a href="?tab=issues" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="finance" onclick="switchTab('finance')">✓ 财务收货 <span class="badge zero" id="badgeFinance">0</span><a href="?tab=finance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="products" onclick="switchTab('products')">📚 产品 <span class="badge zero" id="badgeProducts">0</span><a href="?tab=products" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
-    <div class="tab-item" data-tab="consolidation" onclick="switchTab('consolidation')">🧊 合箱<a href="?tab=consolidation" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <!-- V20260606:🧊 合箱 tab 已移除(跟单反馈看不懂/用不来)· 改用 🚚 运费精算 -->
     <div class="tab-item" data-tab="quotation" onclick="switchTab('quotation')">📄 报价单<a href="?tab=quotation" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块(独立工具 · 美工/客服共用同一数据)">↗</a></div>
     <div class="tab-item" data-tab="freight" onclick="switchTab('freight')">🚚 运费精算<a href="?tab=freight" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块(客服侧统一维护)">↗</a></div>
     <div class="tab-item" data-tab="inventory" onclick="switchTab('inventory')">📦 库存 <span class="badge zero" id="badgeInventory">0</span><a href="?tab=inventory" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
@@ -6787,15 +6787,6 @@ if ('serviceWorker' in navigator) {
 </div>
 
 <!-- ============ TAB 10: 合箱（iframe 嵌入独立 React 应用） ============ -->
-<div class="tab-content" data-tab="consolidation">
-  <div class="section-block" style="padding: 0;">
-    <iframe id="consolidationFrame" src="consolidation.html"
-      style="width:100%; height: calc(100vh - 130px); min-height: 600px; border: none; background: transparent; border-radius: 12px; display: block;"
-      loading="lazy">
-    </iframe>
-  </div>
-</div>
-
 <!-- V20260531-workflows:工作流速查页(本地 HTML · iframe 嵌入) -->
 <div class="tab-content" data-tab="workflows">
   <div class="section-block" style="padding: 0;">
