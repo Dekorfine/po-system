@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260606-vl',
+    date: '2026-06-06',
+    type: 'feature',
+    title: '🏬 接入第二个独立 Shopify 账号:vakkerlimited.com(前缀 VL · app=vl)',
+    notes: [
+      'STORES_META 新增 VL 店(vakkerlimited.myshopify.com · public_domain vakkerlimited.com)',
+      '独立账号店(df/jd/dm/vl)加 app 字段;installUrl 自动带 &app=xx · VK 共享 6 店无 app 字段→默认 vk(向后兼容)',
+      'Edge: shopify-install + shopify-oauth-callback 的 APP_REGISTRY 加 vl 行;callback SITE_MAP 加 vakkerlimited→VL(需各自部署 --no-verify-jwt)',
+      '安装:销售单 tab → VL 灰 chip 点「+ 安装」→ 跳 Shopify 授权(?app=vl)→ 回跳入库 · VL App 须勾 read_all_orders',
+    ],
+    files: ['shopify.js', 'index.html', 'help.js', 'shopify-install.ts', 'shopify-oauth-callback.ts'],
+  },
+  {
     v: '20260606-poxls',
     date: '2026-06-06',
     type: 'feature',

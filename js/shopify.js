@@ -15,7 +15,7 @@ const SHOPIFY = {
   STORES_META: [
     // V20260601:加 public_domain · 用于前端直拉公开 /products.json API(Edge Function 不支持产品查询)
     { domain: 'vakkerlighting.myshopify.com', site_code: 'VK', public_domain: 'vakkerlighting.com' },
-    { domain: 'dekorfine.myshopify.com',      site_code: 'DF', public_domain: 'dekorfine.com' },
+    { domain: 'dekorfine.myshopify.com',      site_code: 'DF', app: 'df', public_domain: 'dekorfine.com' },
     { domain: 'docolight.myshopify.com',      site_code: 'DC', public_domain: 'docolight.com' },
     { domain: 'vkfrench.myshopify.com',       site_code: 'PL', public_domain: 'pinlighting.com' },
     { domain: 'vakkerge.myshopify.com',       site_code: 'RD', public_domain: 'radilum.com' },
@@ -24,8 +24,10 @@ const SHOPIFY = {
     // V20260527e: mooijane.myshopify.com 已被 janedecor.myshopify.com (JD app) 接管
     // 保留 site_code='MJ' 用于历史订单解析,但不在 chip 条显示 "+ 安装" 入口
     { domain: 'mooijane.myshopify.com',       site_code: 'MJ', legacyOnly: true },
-    { domain: 'decormote.myshopify.com',      site_code: 'RS', public_domain: 'rayonshine.com' },
-    { domain: 'janedecor.myshopify.com',      site_code: 'JD', public_domain: 'janedecor.com' },
+    { domain: 'decormote.myshopify.com',      site_code: 'RS', app: 'dm', public_domain: 'rayonshine.com' },
+    { domain: 'janedecor.myshopify.com',      site_code: 'JD', app: 'jd', public_domain: 'janedecor.com' },
+    // V20260606:第二个独立 Shopify Partner 账号 · vakkerlimited.com(app=vl · 独立 client id/secret)
+    { domain: 'vakkerlimited.myshopify.com',  site_code: 'VL', app: 'vl', public_domain: 'vakkerlimited.com' },
     // V20260528b: WooCommerce 接入 · mooielight 是 WordPress + WooCommerce(不是 Shopify)
     // platform='woo' 走 woo-api Edge Function · 不走 shopify-api
     { domain: 'mooielight.com', site_code: 'ML', platform: 'woo', woo_store_id: 'mooielight', display_name: 'Mooielight', public_domain: 'mooielight.com' },
@@ -389,7 +391,10 @@ const SHOPIFY = {
   },
 
   installUrl(domain) {
-    return `https://pyfmuknvjqfwcqvbrsvw.supabase.co/functions/v1/shopify-install?shop=${domain}`;
+    // V20260606:独立账号店带 &app=xx(df/jd/dm/vl)· VK 共享 app 的 6 店无 app 字段 → 不加 → Edge 默认 vk(向后兼容)
+    const meta = this.STORES_META.find(s => s.domain === domain);
+    const appParam = (meta && meta.app) ? `&app=${meta.app}` : '';
+    return `https://pyfmuknvjqfwcqvbrsvw.supabase.co/functions/v1/shopify-install?shop=${domain}${appParam}`;
   },
 
   shopifyAdminUrl(domain, shopifyOrderId) {
