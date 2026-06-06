@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260606-freightfix',
+    date: '2026-06-06',
+    type: 'fix',
+    title: '🚚 运费精算 tab 看不到 → 强制顶栏显示',
+    notes: [
+      '诊断:freight 按钮在 DOM、zone=top、非 hr 模式、无自定义布局,但 computed display:none(被某处误设)',
+      '加高优先级 CSS 强制 🚚运费精算 / 📄报价单 在顶栏显示(非 hr 模式且未指派侧栏时)',
+      '仅 index.html CSS · 无 JS/SQL',
+    ],
+    files: ['index.html', 'help.js'],
+  },
+  {
     v: '20260606-arch',
     date: '2026-06-06',
     type: 'feature',
