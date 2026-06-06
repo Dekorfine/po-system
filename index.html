@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260606nobox"></script>
+<script defer src="js/help.js?v=20260606tabwrap"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -152,7 +152,9 @@ body {
 .tab-nav {
   max-width: 1480px; margin: 0 auto; padding: 0 32px;
   display: flex; gap: 4px; border-bottom: 1px solid var(--border);
-  overflow-x: auto;
+  /* V20260606:桌面端自动换行,保证所有 tab(含 🚚 运费精算)都可见,不再被横向溢出藏到右边 */
+  flex-wrap: wrap;
+  overflow-x: visible;
   scrollbar-width: thin;
 }
 .tab-nav::-webkit-scrollbar { height: 6px; }
