@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260606-arch',
+    date: '2026-06-06',
+    type: 'feature',
+    title: '🚫📦 销售单:Shopify取消醒目标识 + 存档(参考Shopify · 默认隐藏)',
+    notes: [
+      '🐛 在 Shopify 取消的订单同步过来没标识(Edge 没抓 cancelled_at)→ 现已抓取,卡片显醒目红色「🚫 已取消」',
+      '📦 存档(独立标记,不改订单状态,参考 Shopify):卡片「📦 存档」/ 批量「📦 批量存档」· 存档后从列表隐藏',
+      '新增「📦 已存档」筛选 tab 查看/还原(📤 取消存档)· 默认所有视图都隐藏已存档,只看要下单的',
+      '⚠ 需先跑 SQL(销售单-存档字段.sql:加 cancelled_at + archived 列)+ 重新部署 shopify-api(抓 cancelled_at)· 老单需重新同步才会有取消标识',
+    ],
+    files: ['shopify.js', 'index.html', 'help.js', 'shopify-api-index.ts', '销售单-存档字段.sql'],
+  },
+  {
     v: '20260606-vl2',
     date: '2026-06-06',
     type: 'fix',

@@ -148,7 +148,7 @@ const SHOPIFY = {
     const shops = (opts.shops || []).filter(Boolean);
     // V20260602-perf:精简列(排除 raw_payload 大字段)· Shopify 列表/催单都不用它 · egress 大幅下降
     // 列错会 400 → 自动回退 select(*) 兜底 · WooCommerce 详情/运费用到的 raw_payload 之后按需补
-    const LEAN = 'id,shop_domain,shopify_order_id,shopify_order_number,customer_name,customer_email,customer_phone,shipping_address,line_items,financial_status,fulfillment_status,local_status,total_price,shipping_fee,currency,customer_note,internal_note,shopify_created_at,imported_by,imported_at,updated_at,deleted_at,deleted_by,platform,wp_order_id,store_label,store_code';
+    const LEAN = 'id,shop_domain,shopify_order_id,shopify_order_number,customer_name,customer_email,customer_phone,shipping_address,line_items,financial_status,fulfillment_status,local_status,cancelled_at,archived,total_price,shipping_fee,currency,customer_note,internal_note,shopify_created_at,imported_by,imported_at,updated_at,deleted_at,deleted_by,platform,wp_order_id,store_label,store_code';
     let all = [];
     let offset = 0;
     let useLean = true;
@@ -199,7 +199,7 @@ const SHOPIFY = {
   async _fetchOrdersIncremental(opts, baseRows, cursor) {
     const PAGE = 1000, MAX_ROWS = 8000;
     const shops = (opts.shops || []).filter(Boolean);
-    const LEAN = 'id,shop_domain,shopify_order_id,shopify_order_number,customer_name,customer_email,customer_phone,shipping_address,line_items,financial_status,fulfillment_status,local_status,total_price,shipping_fee,currency,customer_note,internal_note,shopify_created_at,imported_by,imported_at,updated_at,deleted_at,deleted_by,platform,wp_order_id,store_label,store_code';
+    const LEAN = 'id,shop_domain,shopify_order_id,shopify_order_number,customer_name,customer_email,customer_phone,shipping_address,line_items,financial_status,fulfillment_status,local_status,cancelled_at,archived,total_price,shipping_fee,currency,customer_note,internal_note,shopify_created_at,imported_by,imported_at,updated_at,deleted_at,deleted_by,platform,wp_order_id,store_label,store_code';
     const byId = new Map((baseRows || []).map(o => [o.id, o]));
     let fetched = [], offset = 0, useLean = true;
     while (offset < MAX_ROWS) {
@@ -1445,8 +1445,9 @@ function shopifyRefreshCounts() {
   if (typeof SHOPIFY_DATE_PRESET !== 'undefined' && SHOPIFY_DATE_PRESET && SHOPIFY_DATE_PRESET !== 'all' && typeof isDateInRange === 'function') {
     orders = orders.filter(o => isDateInRange(o.shopify_created_at || o.created_at, SHOPIFY_DATE_PRESET));
   }
-  const counts = { all: 0, pending: 0, processing: 0, done: 0, cancelled: 0 };
+  const counts = { all: 0, pending: 0, processing: 0, done: 0, cancelled: 0, archived: 0 };
   orders.forEach(o => {
+    if (o.archived) { counts.archived++; return; }
     if (o.local_status === 'cancelled') counts.cancelled++;
     else if (o.local_status === 'done') counts.done++;
     else {
@@ -1461,6 +1462,8 @@ function shopifyRefreshCounts() {
   document.getElementById('cntDone').textContent = counts.done;
   const cancelledEl = document.getElementById('cntCancelled');
   if (cancelledEl) cancelledEl.textContent = counts.cancelled;
+  const archivedEl = document.getElementById('cntArchived');
+  if (archivedEl) archivedEl.textContent = counts.archived;
   if (typeof setBadge === 'function') setBadge('badgeSales', counts.pending);
   // 同步规则计数
   if (typeof shopifyRefreshRuleCounts === 'function') shopifyRefreshRuleCounts();
@@ -1897,8 +1900,10 @@ function shopifyRefreshRuleCounts() {
   const filter = SHOPIFY._currentFilter || 'all';
   // 当前 sub-tab 范围
   const currentScope = filter === 'all'
-    ? all.filter(o => o.local_status !== 'cancelled' && o.local_status !== 'done')
-    : all.filter(o => o.local_status === filter);
+    ? all.filter(o => !o.archived && o.local_status !== 'cancelled' && o.local_status !== 'done')
+    : (filter === 'archived'
+        ? all.filter(o => o.archived === true)
+        : all.filter(o => !o.archived && o.local_status === filter));
   // 全局 active 范围（待审核 + 待处理，不含已完成/已取消）
   const globalActive = all.filter(o => o.local_status !== 'cancelled' && o.local_status !== 'done');
 
@@ -2056,7 +2061,7 @@ function shopifyUpdateBatchUI() {
   const cntEl = document.getElementById('salesSelectedCount');
   if (cntEl) cntEl.textContent = n;
   const disabled = n === 0;
-  ['batchApproveBtn', 'batchDoneBtn', 'batchCancelBtn', 'batchOpenPoBtn'].forEach(id => {
+  ['batchApproveBtn', 'batchDoneBtn', 'batchCancelBtn', 'batchOpenPoBtn', 'batchArchiveBtn'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = disabled;
   });
@@ -2113,6 +2118,41 @@ async function shopifyBatchCancel() {
     renderShopifyOrders();
   } catch (e) { toast('批量取消失败：' + (e.message || e), 'err'); }
 }
+
+// V20260606:存档(参考 Shopify · archived 独立标记 · 默认隐藏 · 不改订单状态)
+async function shopifyArchiveOrder(orderId, val) {
+  const archived = (val !== false);
+  try {
+    const { error } = await sb.from('shopify_orders').update({ archived, updated_at: new Date().toISOString() }).eq('id', orderId);
+    if (error) throw error;
+    const o = (SHOPIFY._orders || []).find(x => x.id === orderId);
+    if (o) o.archived = archived;
+    toast(archived ? '📦 已存档(在「已存档」里查看)' : '📤 已取消存档');
+    shopifyRefreshCounts(); renderShopifyOrders();
+  } catch (e) {
+    if (/column .*archived|archived.*does not exist/i.test(e.message || '')) toast('存档需要先建字段 · 请跑 sql/销售单-存档字段.sql', 'err', 7000);
+    else toast('存档失败：' + (e.message || e), 'err');
+  }
+}
+
+async function shopifyBatchArchive() {
+  const ids = [...SHOPIFY_SELECTED];
+  if (ids.length === 0) return;
+  if (!confirm(`确认把所选 ${ids.length} 个订单存档？\n存档后从列表隐藏,可在「📦 已存档」里查看/还原。`)) return;
+  try {
+    const { error } = await sb.from('shopify_orders').update({ archived: true, updated_at: new Date().toISOString() }).in('id', ids);
+    if (error) throw error;
+    (SHOPIFY._orders || []).forEach(o => { if (ids.includes(o.id)) o.archived = true; });
+    toast(`📦 已存档 ${ids.length} 个订单`);
+    SHOPIFY_SELECTED.clear();
+    shopifyRefreshCounts(); shopifyRefreshRuleCounts(); renderShopifyOrders();
+  } catch (e) {
+    if (/column .*archived|archived.*does not exist/i.test(e.message || '')) toast('存档需要先建字段 · 请跑 sql/销售单-存档字段.sql', 'err', 7000);
+    else toast('批量存档失败：' + (e.message || e), 'err');
+  }
+}
+window.shopifyArchiveOrder = shopifyArchiveOrder;
+window.shopifyBatchArchive = shopifyBatchArchive;
 
 // 导出当前筛选结果（新窗口打开 HTML 表格，可打印 PDF / 复制到 Excel）
 function shopifyExportOrders() {
@@ -2712,6 +2752,8 @@ function renderShopifyOrders() {
             })()}
           </div>
           <div class="so-top-status">
+            ${o.cancelled_at ? `<span style="display:inline-block; padding:2px 9px; border-radius:4px; background:#dc2626; color:#fff; font-size:11px; font-weight:700; margin-right:4px;" title="此订单已在 Shopify 取消（${new Date(o.cancelled_at).toLocaleDateString()}）">🚫 已取消</span>` : ''}
+            ${o.archived ? `<span style="display:inline-block; padding:2px 8px; border-radius:4px; background:rgba(120,113,108,0.18); color:var(--text-secondary); font-size:11px; font-weight:600; margin-right:4px;">📦 已存档</span>` : ''}
             ${refund.level !== 'none' ? `<span style="display:inline-block; padding:2px 8px; border-radius:4px; background:${refund.bg}; color:${refund.color}; font-size:11px; font-weight:600; margin-right:4px;">${refund.label}</span>` : ''}
             ${o.financial_status && refund.level === 'none' ? `<span class="so-status-pill ${o.financial_status}">${o.financial_status}</span>` : ''}
             ${localStatusPill}
@@ -2776,6 +2818,9 @@ function renderShopifyOrders() {
           <div class="so-progress">${items.length > 0 ? `PO 进度：${lineWithPo} / ${items.length} 行已分配` : ''}</div>
           <div class="so-actions-right">
             <button class="so-action-btn" onclick="editInternalNote('${o.id}')" title="跟单内部备注（不会同步回 Shopify）">📝 内部备注</button>
+            ${o.archived
+              ? `<button class="so-action-btn" onclick="shopifyArchiveOrder('${o.id}', false)" title="还原到正常列表">📤 取消存档</button>`
+              : `<button class="so-action-btn" onclick="shopifyArchiveOrder('${o.id}', true)" title="存档:从列表隐藏(参考 Shopify)· 可在「已存档」还原">📦 存档</button>`}
             ${actionsHtml}
           </div>
         </div>
