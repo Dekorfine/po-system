@@ -87,6 +87,7 @@ async function renderInventory() {
         { k: 'out',     label: '🔴 缺货' },
         { k: 'today',   label: '📅 今日消耗' },
         { k: 'unbound', label: '🔗 未绑定平台SKU' },
+        { k: 'trash',   label: '🗑 回收站' },
       ].map(f => `
         <button onclick="invSetFilter('${f.k}')" 
                 style="padding:6px 12px; font-size:12px; border:1px solid ${INVENTORY._filter === f.k ? 'var(--accent)' : 'var(--border)'}; border-radius:18px; background:${INVENTORY._filter === f.k ? 'var(--accent)' : 'var(--bg-card)'}; color:${INVENTORY._filter === f.k ? 'white' : 'var(--text-secondary)'}; cursor:pointer; font-weight:${INVENTORY._filter === f.k ? '600' : '400'};">
@@ -142,12 +143,12 @@ window.invSetFilter = invSetFilter;
 
 async function _invLoadData() {
   try {
-    // 库存产品 = is_inventory_item = true
-    const { data, error } = await sb.from('products')
-      .select('*')
-      .eq('is_inventory_item', true)
-      .is('deleted_at', null)
-      .order('stock_qty', { ascending: true });  // 库存少的排前面
+    // 库存产品 = is_inventory_item = true · 回收站则查 deleted_at NOT null
+    let qy = sb.from('products').select('*').eq('is_inventory_item', true);
+    qy = (INVENTORY._filter === 'trash')
+      ? qy.not('deleted_at', 'is', null).order('deleted_at', { ascending: false })
+      : qy.is('deleted_at', null).order('stock_qty', { ascending: true });
+    const { data, error } = await qy;
     if (error) throw error;
     INVENTORY._list = data || [];
     INVENTORY._loadedAt = Date.now();
@@ -178,6 +179,10 @@ function _invRenderList() {
   // 今日消耗 = 单独渲染
   if (INVENTORY._filter === 'today') {
     return _invRenderTodayMoves();
+  }
+  // 回收站 = 单独渲染
+  if (INVENTORY._filter === 'trash') {
+    return _invRenderTrash();
   }
   
   let list = INVENTORY._list;
@@ -314,6 +319,41 @@ function _invCardHtml(p) {
         <button class="btn small" onclick="invOpenEdit('${p.id}')" style="font-size:11px; padding:3px 10px;">📝 编辑</button>
       </div>
     </div>
+  `;
+}
+
+// V20260607三期:回收站渲染(已删库存 · 主管可恢复/彻底移出)
+function _invRenderTrash() {
+  const listEl = document.getElementById('inventoryList');
+  if (!listEl) return;
+  let list = INVENTORY._list || [];
+  const q = (INVENTORY._search || '').trim().toLowerCase();
+  if (q) list = list.filter(p => (p.sku||'').toLowerCase().includes(q) || (p.name_cn||'').toLowerCase().includes(q));
+  if (list.length === 0) {
+    listEl.innerHTML = `<div style="padding:48px; text-align:center; color:var(--text-tertiary); background:var(--bg-card); border:1px dashed var(--border); border-radius:10px;"><div style="font-size:32px; margin-bottom:8px;">🗑</div><div style="font-size:14px;">回收站是空的</div></div>`;
+    return;
+  }
+  const canAdmin = (typeof IS_ADMIN === 'undefined') || IS_ADMIN;
+  listEl.innerHTML = `
+    <div style="padding:8px 12px; margin-bottom:10px; background:rgba(120,113,108,0.08); border:1px solid var(--border); border-radius:8px; font-size:12px; color:var(--text-secondary);">
+      🗑 回收站:删除的库存会保留在这里(数量/绑定都在)· ${canAdmin ? '主管可「♻ 恢复」或「彻底移出」' : '仅主管可恢复 · 你可查看'}
+    </div>
+    ${list.map(p => {
+      const when = p.deleted_at ? new Date(p.deleted_at).toLocaleString() : '';
+      return `
+      <div style="display:grid; grid-template-columns:56px 1fr auto; gap:12px; padding:12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; margin-bottom:8px; opacity:.85;">
+        <div>${p.image_url ? `<img src="${escapeHtml(p.image_url)}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;">` : `<div style="width:56px;height:56px;background:var(--bg-elevated);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);">📦</div>`}</div>
+        <div style="min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${escapeHtml(p.name_cn || '(无名)')}</div>
+          <div style="font-size:11px;color:var(--text-tertiary);font-family:monospace;">${escapeHtml(p.sku || '')} · 库存 ${Number(p.stock_qty||0)}</div>
+          <div style="font-size:11px;color:var(--text-tertiary);">🗑 删除于 ${escapeHtml(when)}${p.deleted_by ? ' · by ' + escapeHtml(p.deleted_by) : ''}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+          ${canAdmin ? `<button class="btn small" onclick="invRestore('${p.id}')" style="font-size:11px;padding:4px 12px;background:rgba(22,163,74,0.1);border-color:rgba(22,163,74,0.4);color:var(--success);">♻ 恢复</button>
+          <button class="btn small" onclick="invPurge('${p.id}')" style="font-size:11px;padding:4px 12px;color:var(--danger);border-color:rgba(220,38,38,0.3);">彻底移出</button>` : `<span style="font-size:11px;color:var(--text-tertiary);">仅主管可恢复</span>`}
+        </div>
+      </div>`;
+    }).join('')}
   `;
 }
 
@@ -552,7 +592,7 @@ function _invRenderEdit() {
     
     ${!s.isNew ? `
     <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border-subtle);">
-      <button onclick="invDelete()" class="btn small" style="font-size:11px; color:var(--danger); border-color:rgba(220,38,38,0.3);">🗑 从库存移除(不删产品)</button>
+      <button onclick="invDelete()" class="btn small" style="font-size:11px; color:var(--danger); border-color:rgba(220,38,38,0.3);">🗑 删除(可在回收站恢复)</button>
     </div>` : ''}
   `;
 }
@@ -712,22 +752,53 @@ window.invPickOrderLine = invPickOrderLine;
 async function invDelete() {
   const s = INV_EDIT;
   if (!s || s.isNew) return;
-  if (!confirm('确认把这个产品从库存管理移除?\n\n(产品本身不删 · 只是不再跟踪库存 + 解除平台 SKU 绑定)')) return;
+  if (!confirm('确认删除这条库存?\n\n会移到「🗑 回收站」· 库存数量/平台绑定都保留 · 主管可随时恢复。')) return;
   try {
+    const who = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) ? CURRENT_AGENT : '?';
     const { error } = await sb.from('products').update({
-      is_inventory_item: false,
-      platform_skus: [],
+      deleted_at: new Date().toISOString(),   // V20260607三期:软删除 → 进回收站,可恢复
+      deleted_by: who,
     }).eq('id', s.id);
     if (error) throw error;
     if (typeof PRODUCTS_CACHE !== 'undefined') PRODUCTS_CACHE.invalidate();
-    toast('✓ 已从库存移除', 'success');
+    toast('🗑 已移到回收站 · 主管可在「回收站」恢复', 'success');
     invCloseEdit();
     setTimeout(() => renderInventory(), 150);
   } catch (e) {
-    toast('移除失败:' + (e.message || e), 'err');
+    if (/deleted_by/.test(e.message || '')) { /* 没有 deleted_by 列也不影响,重试只写 deleted_at */
+      try { await sb.from('products').update({ deleted_at: new Date().toISOString() }).eq('id', s.id); toast('🗑 已移到回收站', 'success'); invCloseEdit(); setTimeout(() => renderInventory(), 150); return; } catch(_) {}
+    }
+    toast('删除失败:' + (e.message || e), 'err');
   }
 }
 window.invDelete = invDelete;
+
+// V20260607三期:恢复(主管)· 从回收站还原
+async function invRestore(id) {
+  if (typeof IS_ADMIN !== 'undefined' && !IS_ADMIN) { toast('只有主管能恢复', 'warn'); return; }
+  try {
+    const { error } = await sb.from('products').update({ deleted_at: null }).eq('id', id);
+    if (error) throw error;
+    if (typeof PRODUCTS_CACHE !== 'undefined') PRODUCTS_CACHE.invalidate();
+    toast('♻ 已恢复');
+    renderInventory();
+  } catch (e) { toast('恢复失败:' + (e.message || e), 'err'); }
+}
+window.invRestore = invRestore;
+
+// V20260607三期:彻底移出库存(主管)· 不再跟踪库存(产品本身保留),不再出现在回收站
+async function invPurge(id) {
+  if (typeof IS_ADMIN !== 'undefined' && !IS_ADMIN) { toast('只有主管能彻底删除', 'warn'); return; }
+  if (!confirm('彻底移出库存管理?\n\n该产品将不再跟踪库存、解除平台绑定,也不在回收站显示。\n(产品资料本身不删 · 但此操作不可在库存里恢复)')) return;
+  try {
+    const { error } = await sb.from('products').update({ is_inventory_item: false, deleted_at: null, platform_skus: [] }).eq('id', id);
+    if (error) throw error;
+    if (typeof PRODUCTS_CACHE !== 'undefined') PRODUCTS_CACHE.invalidate();
+    toast('已彻底移出库存');
+    renderInventory();
+  } catch (e) { toast('操作失败:' + (e.message || e), 'err'); }
+}
+window.invPurge = invPurge;
 
 // ─────────────── 快速调整库存 modal ───────────────
 let INV_ADJUST = null;
