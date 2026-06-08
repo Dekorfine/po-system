@@ -10,6 +10,9 @@ const INVENTORY = {
   _filter: 'all',     // all / low / out / today / unbound
   _loadedAt: 0,
   _search: '',
+  _view: 'list',      // V20260607一期:list(列表) / grid(网格)
+  _page: 1,
+  _pageSize: 50,      // 50 / 100
 };
 
 // 店铺列表(用于绑定 UI · 从 SHOPIFY.STORES_META 取)
@@ -36,7 +39,11 @@ async function renderInventory() {
           <span style="font-size:11px; font-weight:400; color:var(--text-tertiary);">多店同款绑定一个内部 SKU · 下单自动扣减</span>
         </h2>
       </div>
-      <div style="display:flex; gap:8px;">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <div style="display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+          <button onclick="invSetView('list')" title="列表视图" style="padding:6px 12px; font-size:12px; border:none; cursor:pointer; background:${INVENTORY._view==='list'?'var(--accent)':'var(--bg-card)'}; color:${INVENTORY._view==='list'?'#fff':'var(--text-secondary)'};">☰ 列表</button>
+          <button onclick="invSetView('grid')" title="网格视图" style="padding:6px 12px; font-size:12px; border:none; border-left:1px solid var(--border); cursor:pointer; background:${INVENTORY._view==='grid'?'var(--accent)':'var(--bg-card)'}; color:${INVENTORY._view==='grid'?'#fff':'var(--text-secondary)'};">▦ 网格</button>
+        </div>
         <button class="btn primary" onclick="invOpenEdit()">+ 录入库存</button>
       </div>
     </div>
@@ -55,10 +62,10 @@ async function renderInventory() {
           ${f.label}
         </button>
       `).join('')}
-      <input type="text" id="invSearchInput" placeholder="🔍 内部SKU / 名称 / 平台SKU" 
+      <input type="text" id="invSearchInput" placeholder="🔍 SKU / 产品名 / 平台SKU / 供应商" 
              value="${escapeHtml(INVENTORY._search)}"
-             oninput="INVENTORY._search=this.value; _invRenderList()"
-             style="margin-left:auto; padding:6px 12px; font-size:12px; border:1px solid var(--border); border-radius:18px; width:240px;">
+             oninput="INVENTORY._search=this.value; INVENTORY._page=1; _invRenderList()"
+             style="margin-left:auto; padding:6px 12px; font-size:12px; border:1px solid var(--border); border-radius:18px; width:280px;">
     </div>
 
     <div id="inventoryList">
@@ -73,8 +80,13 @@ window.renderInventory = renderInventory;
 
 function invSetFilter(f) {
   INVENTORY._filter = f;
+  INVENTORY._page = 1;
   renderInventory();
 }
+function invSetView(v) { INVENTORY._view = v; renderInventory(); }
+function invSetPage(p) { INVENTORY._page = Math.max(1, p); _invRenderList(); const el=document.getElementById('inventoryList'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }
+function invSetPageSize(n) { INVENTORY._pageSize = parseInt(n)||50; INVENTORY._page = 1; _invRenderList(); }
+window.invSetView = invSetView; window.invSetPage = invSetPage; window.invSetPageSize = invSetPageSize;
 window.invSetFilter = invSetFilter;
 
 async function _invLoadData() {
@@ -119,12 +131,14 @@ function _invRenderList() {
   
   let list = INVENTORY._list;
   
-  // 搜索
+  // 搜索(SKU / 产品名 / 平台SKU / 供应商)
   const q = (INVENTORY._search || '').trim().toLowerCase();
   if (q) {
     list = list.filter(p => {
       if ((p.sku || '').toLowerCase().includes(q)) return true;
       if ((p.name_cn || '').toLowerCase().includes(q)) return true;
+      if ((p.name_en || '').toLowerCase().includes(q)) return true;
+      if ((p.default_supplier || '').toLowerCase().includes(q)) return true;
       const platSkus = Array.isArray(p.platform_skus) ? p.platform_skus : [];
       return platSkus.some(ps => (ps.sku || '').toLowerCase().includes(q));
     });
@@ -149,7 +163,28 @@ function _invRenderList() {
     return;
   }
   
-  listEl.innerHTML = list.map(p => _invCardHtml(p)).join('');
+  // 分页
+  const total = list.length;
+  const pageSize = INVENTORY._pageSize || 50;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (INVENTORY._page > totalPages) INVENTORY._page = totalPages;
+  const cur = INVENTORY._page;
+  const pageItems = list.slice((cur - 1) * pageSize, cur * pageSize);
+  
+  const pager = (typeof renderPaginationBar === 'function') ? renderPaginationBar({
+    total, currentPage: cur, pageSize,
+    onPageChange: 'invSetPage(__PAGE__)', onSizeChange: 'invSetPageSize(__SIZE__)',
+  }) : '';
+  
+  // 列表 / 网格
+  let bodyHtml;
+  if (INVENTORY._view === 'grid') {
+    bodyHtml = `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:12px;">${pageItems.map(p => _invGridCardHtml(p)).join('')}</div>`;
+  } else {
+    bodyHtml = pageItems.map(p => _invCardHtml(p)).join('');
+  }
+  
+  listEl.innerHTML = `${pager}${bodyHtml}${total > pageSize ? pager : ''}`;
 }
 
 function _invCardHtml(p) {
@@ -181,7 +216,7 @@ function _invCardHtml(p) {
           ${statusText ? `<span style="background:${statusColor}; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700;">${statusText}</span>` : ''}
           <span style="font-size:14px; font-weight:600; color:var(--text-primary);">${escapeHtml(p.name_cn || '(无名)')}</span>
         </div>
-        <div style="font-size:11px; color:var(--text-tertiary); font-family:monospace; margin-bottom:6px;">内部 SKU: ${escapeHtml(p.sku || '')}</div>
+        <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:6px;"><span style="font-family:monospace;">内部 SKU: ${escapeHtml(p.sku || '')}</span>${p.default_supplier ? ` · <span style="color:var(--text-secondary);">🏭 ${escapeHtml(p.default_supplier)}</span>` : ''}</div>
         
         <!-- 库存条 -->
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
@@ -207,6 +242,39 @@ function _invCardHtml(p) {
       </div>
     </div>
   `;
+}
+
+// V20260607一期:网格视图卡片(竖向 · 图大 · 库存色块 · 供应商)
+function _invGridCardHtml(p) {
+  const stock = Number(p.stock_qty || 0);
+  const threshold = Number(p.stock_alert_threshold || 5);
+  const platSkus = Array.isArray(p.platform_skus) ? p.platform_skus : [];
+  let statusColor = 'var(--success)', statusText = '充足';
+  if (stock <= 0) { statusColor = 'var(--danger)'; statusText = '🔴 缺货'; }
+  else if (stock <= threshold) { statusColor = '#f59e0b'; statusText = '⚠️ 低库存'; }
+  const barMax = Math.max(stock, threshold * 4, 10);
+  const barPct = Math.min(100, Math.round(stock / barMax * 100));
+  return `
+    <div style="background:var(--bg-card); border:1px solid var(--border); border-top:3px solid ${statusColor}; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+      <div style="position:relative; width:100%; aspect-ratio:1/1; background:var(--bg-elevated); border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center;">
+        ${p.image_url
+          ? `<img src="${escapeHtml(p.image_url)}" style="width:100%; height:100%; object-fit:cover; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(p.image_url)}')">`
+          : `<span style="color:var(--text-tertiary); font-size:32px;">📦</span>`}
+        <span style="position:absolute; top:6px; left:6px; background:${statusColor}; color:#fff; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700;">${statusText} ${stock}</span>
+      </div>
+      <div style="font-size:13px; font-weight:600; color:var(--text-primary); line-height:1.3; min-height:34px; overflow:hidden;">${escapeHtml(p.name_cn || '(无名)')}</div>
+      <div style="font-size:10.5px; color:var(--text-tertiary); font-family:monospace;">${escapeHtml(p.sku || '')}</div>
+      <div style="height:6px; background:var(--bg-elevated); border-radius:3px; overflow:hidden;"><div style="width:${barPct}%; height:100%; background:${statusColor};"></div></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; font-size:10.5px; color:var(--text-secondary);">
+        <span title="供应商">${p.default_supplier ? '🏭 ' + escapeHtml(p.default_supplier) : '<span style=\'color:var(--text-tertiary)\'>无供应商</span>'}</span>
+        <span style="color:var(--text-tertiary);">预警 ${threshold}</span>
+      </div>
+      ${platSkus.length === 0 ? `<div style="font-size:10px; color:#92400e;">🔗 未绑定平台SKU</div>` : `<div style="font-size:10px; color:var(--text-tertiary);">🔗 绑定 ${platSkus.length} 个平台SKU</div>`}
+      <div style="display:flex; gap:6px; margin-top:auto;">
+        <button class="btn small" onclick="invOpenAdjust('${p.id}')" style="flex:1; font-size:11px; padding:4px;">± 调整</button>
+        <button class="btn small" onclick="invOpenEdit('${p.id}')" style="flex:1; font-size:11px; padding:4px;">📝 编辑</button>
+      </div>
+    </div>`;
 }
 
 function _invRenderTodayMoves() {
