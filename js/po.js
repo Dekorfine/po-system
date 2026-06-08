@@ -18,7 +18,7 @@ async function openCustomPoModal() {
   CUSTOM_PO_STATE = {
     supplierName: '',
     supplierId: null,
-    promisedDate: today,
+    promisedDate: '',   // V20260607:不再默认今天 · 约交期留空,跟单后续填(避免催单误判逾期)
     boxNote: '',
     otherNote: '',
     lineItems: [
@@ -84,7 +84,7 @@ function renderCustomPo() {
         </div>
       </div>
       <div>
-        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:3px;">下单日期 <span style="color:var(--danger);">*</span></label>
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:3px;">约交期 <span style="font-weight:400;color:var(--text-tertiary);">(供应商承诺发货日 · 可留空)</span></label>
         <input type="date" value="${s.promisedDate}" oninput="CUSTOM_PO_STATE.promisedDate=this.value" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">
       </div>
     </div>
@@ -330,7 +330,6 @@ async function saveCustomPo() {
   }
 
   // 校验：日期 + 产品行
-  if (!s.promisedDate) { toast('请填下单日期', 'warn'); return; }
   const validLines = s.lineItems.filter(li => li.sku.trim() && li.title.trim() && li.qty > 0 && li.price > 0);
   if (validLines.length === 0) { toast('至少需要一条有效的产品行（SKU、名称、数量、单价必填且 >0）', 'warn'); return; }
 
@@ -378,7 +377,7 @@ async function saveCustomPo() {
     supplier: supName,
     product: liData.map(x => x.title_cn).join(' / '),
     status: initialStatus,
-    promised_date: s.promisedDate,
+    promised_date: s.promisedDate || null,
     line_items: liData,
     box_note: s.boxNote.trim(),
     total_amount: totalAmount,
@@ -1278,8 +1277,8 @@ function renderPoForm() {
         </div>
       </div>
       <div>
-        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">下单日期 *</label>
-        <input type="date" id="poFormPromisedDate" class="form-control" value="${new Date().toISOString().slice(0, 10)}">
+        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">约交期 <span style="font-weight:400;color:var(--text-tertiary);">(可留空)</span></label>
+        <input type="date" id="poFormPromisedDate" class="form-control" value="">
       </div>
       <div style="grid-column: 1/-1;">
         <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">
@@ -1722,7 +1721,6 @@ async function _poFormSaveInner() {
   const promisedDate = document.getElementById('poFormPromisedDate').value;
   const note = document.getElementById('poFormNote').value.trim();
 
-  if (!promisedDate) { toast('请填下单日期', 'warn'); return; }
   for (const [liid, sel] of selected) {
     if (!sel.price || Number(sel.price) <= 0) { toast('请填所有勾选产品的单价', 'warn'); return; }
   }
@@ -1885,7 +1883,7 @@ async function poFormDoSave(groups, common) {
         supplier: g.supplierName,
         product: liData.map(x => x.title_cn || x.title_en).join(' / '),
         status: initialStatus,
-        promised_date: common.promisedDate,
+        promised_date: common.promisedDate || null,
         line_items: liData,
         box_note: common.boxNote,
         total_amount: totalAmount,

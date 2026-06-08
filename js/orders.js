@@ -435,6 +435,7 @@ function _renderOrderCard(o, i) {
           ${o.site ? `<span class="site">🌐 ${escapeHtml(o.site)}</span>` : ''}
           ${o.nextFollow ? `<span class="date" style="color:#dc2626;">⏰ 下次 ${escapeHtml(o.nextFollow)}</span>` : ''}
         </div>
+        ${o.status !== 'arrived' ? `<button class="btn small" style="margin-top:8px;width:100%;font-size:12px;padding:5px;background:rgba(22,163,74,0.1);border-color:rgba(22,163,74,0.4);color:#16a34a;" title="${o.status === 'shipped' ? '已发货 → 已到货' : '标为已发货'}" onclick="event.stopPropagation(); quickCompleteOrder('${o._id}', '${escapeHtml(o._agent || '')}')">✓ ${o.status === 'shipped' ? '确认到货' : '标记发货'}</button>` : ''}
       </div>
     </div>
   `;
@@ -581,6 +582,8 @@ function renderOrders() {
     });
   } else if (sortBy === 'promised_asc') {
     list.sort((a, b) => (a.promisedDate || '9999').localeCompare(b.promisedDate || '9999'));
+  } else if (sortBy === 'promised_desc') {
+    list.sort((a, b) => (b.promisedDate || '0000').localeCompare(a.promisedDate || '0000'));
   } else if (sortBy === 'order_date_desc') {
     list.sort((a, b) => (b.orderDate || '0000').localeCompare(a.orderDate || '0000'));
   }
@@ -928,7 +931,7 @@ async function addOrder() {
     site: defaultSite,
     product: '',
     supplier: '',
-    status: 'pending',
+    status: 'producing',
     order_date: new Date().toISOString().slice(0, 10),
     notes: '',
     screenshots: [],
@@ -1949,7 +1952,7 @@ function refreshOrdersFb() {
     list.innerHTML = `<div class="fb-empty">✓ ${_ordersFbTab === 'overdue' ? '没有逾期订单' : _ordersFbTab === 'today' ? '今天没有要跟进的' : '没有未来跟进计划'}</div>`;
     return;
   }
-  list.innerHTML = items.slice(0, 12).map(o => {
+  list.innerHTML = items.map(o => {
     const eff = getOrderEffStatus(o);
     const td = o.nextFollow || o.promisedDate || '';
     const days = diffDays(td);
@@ -2029,7 +2032,7 @@ function renderUrgentBanner() {
   });
   
   const today = new Date().toISOString().slice(0, 10);
-  const items = urgent.slice(0, 8).map(o => {
+  const items = urgent.map(o => {
     const lvl = getOrderUrgencyLevel(o);
     const days = o.promisedDate ? Math.max(0, Math.floor((new Date(today) - new Date(o.promisedDate)) / 86400000)) : 0;
     const chaseCount = (o.followups || []).filter(f => f.type === 'chase').length;
@@ -2051,11 +2054,7 @@ function renderUrgentBanner() {
     `;
   }).join('');
   
-  let html = items;
-  if (urgent.length > 8) {
-    html += `<div class="urgent-more">⚠ 还有 ${urgent.length - 8} 个紧急订单，请用「按供应商分组」视图查看完整列表</div>`;
-  }
-  document.getElementById('urgentList').innerHTML = html;
+  document.getElementById('urgentList').innerHTML = items;
 }
 
 // ============ 📋 导出供应商对账单 ============

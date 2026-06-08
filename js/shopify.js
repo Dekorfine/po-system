@@ -3255,7 +3255,7 @@ async function shopifyBatchOpenPo() {
     groups: validGroups.map(([k, g]) => ({ key: k, ...g })),
     supplierName: '',
     supplierId: null,
-    promisedDate: new Date().toISOString().slice(0, 10),
+    promisedDate: '',   // V20260607:约交期默认留空
     globalNote: '',
   };
   
@@ -3556,7 +3556,7 @@ async function batchPoSubmit() {
         supplier: supName,
         product: liData.map(x => x.title_cn).filter(Boolean).join(' / ').slice(0, 200),
         status: initialStatus,
-        promised_date: s.promisedDate,
+        promised_date: s.promisedDate || null,
         line_items: liData,
         box_note: orderNoStr,  // 多订单号用 / 连
         total_amount: totalAmount,
