@@ -1417,6 +1417,100 @@ function exportSupplierAfter(supplier) {
   toast(`✓ 已导出 ${data.length} 条`);
 }
 
+// V20260608:售后清单导出 Excel(带产品图)· 镜像催单清单导出 · 没图也能一眼看出是哪个产品
+async function exportAftersalesExcelImg() {
+  const source = (window._lastVisibleAftersales && window._lastVisibleAftersales.length > 0)
+    ? window._lastVisibleAftersales
+    : (typeof AFTERSALES !== 'undefined' ? AFTERSALES.filter(a => !a.deletedAt) : []);
+  if (!source || source.length === 0) { toast('当前没有可导出的售后记录', 'warn'); return; }
+  if (typeof _loadExcelJS !== 'function' || typeof _fetchImageSmall !== 'function') { toast('Excel 组件不可用', 'err'); return; }
+  try { await _loadExcelJS(); } catch (e) { toast('Excel 组件加载失败:' + (e.message || e), 'err', 6000); return; }
+  toast('正在生成售后 Excel(含产品图)…', 'info', 8000);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const ExcelJS = window.ExcelJS;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('售后清单');
+  const STATUS = (typeof AFTER_STATUS_LABELS !== 'undefined') ? AFTER_STATUS_LABELS : {};
+
+  const headers = ['订单号', '网站', '产品图', '产品 / 规格', '供应商', '售后原因', '原因详情', '发起日', '状态', '解决日', '跟单员', '处理记录'];
+  const IMG_COL = 3;
+
+  ws.addRow(['售后清单']);
+  ws.addRow([`生成日期: ${today.replace(/-/g, '/')}    共 ${source.length} 条`]);
+  ws.addRow([]);
+  const headerRow = ws.addRow(headers);
+  const dataStartRow = ws.rowCount + 1;
+
+  const dataRowRefs = [];
+  source.forEach(a => {
+    dataRowRefs.push(ws.addRow([
+      a.orderNo || '', a.site || '', '', a.product || '', a.supplier || '',
+      a.reason || '', a.reasonDetail || '', a.createdDate || '',
+      STATUS[a.status] || a.status || '', a.resolvedDate || '', a._agent || '',
+      (a.followups || []).map(f => `[${f.date}] ${f.note || ''}`).join(' || '),
+    ]));
+  });
+
+  [16, 7, 13, 30, 12, 12, 30, 11, 10, 11, 10, 50].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  // 每行取一张图:优先产品图(a.products[].image_url),没有就用首张售后截图兜底
+  const urls = source.map(a => {
+    const pimg = (a.products || []).map(p => p.image_url).filter(Boolean)[0];
+    if (pimg) return pimg;
+    const shot = (a.screenshots || [])[0] || ((a.followups || []).flatMap(f => f.screenshots || [])[0]);
+    return shot || '';
+  });
+  const dataURLs = await Promise.all(urls.map(u => _fetchImageSmall(u, 96)));
+  let embedded = 0;
+  for (let i = 0; i < source.length; i++) {
+    const du = dataURLs[i];
+    const rowNo = dataStartRow + i;
+    if (du) {
+      try {
+        const id = wb.addImage({ base64: du, extension: 'jpeg' });
+        ws.getRow(rowNo).height = 64;
+        ws.addImage(id, { tl: { col: (IMG_COL - 1) + 0.1, row: (rowNo - 1) + 0.06 }, ext: { width: 72, height: 72 }, editAs: 'oneCell' });
+        embedded++;
+      } catch (e) {}
+    }
+  }
+
+  const thin = { style: 'thin', color: { argb: 'FFD0D7DE' } };
+  const allBorder = { top: thin, left: thin, bottom: thin, right: thin };
+  const N = headers.length;
+  headerRow.eachCell({ includeEmpty: true }, (c) => {
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB91C1C' } };
+    c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    c.border = allBorder;
+  });
+  headerRow.height = 24;
+  const centerCols = [1, 2, 3, 8, 9, 10, 11];
+  dataRowRefs.forEach((row, idx) => {
+    if (idx % 2 === 1) for (let c = 1; c <= N; c++) row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDF2F2' } };
+    for (let c = 1; c <= N; c++) {
+      const cell = row.getCell(c);
+      cell.border = allBorder;
+      cell.alignment = { vertical: 'middle', wrapText: true, horizontal: centerCols.includes(c) ? 'center' : 'left' };
+    }
+  });
+  ws.views = [{ state: 'frozen', ySplit: dataStartRow - 1 }];
+  try { ws.autoFilter = { from: { row: dataStartRow - 1, column: 1 }, to: { row: dataStartRow - 1, column: N } }; } catch (e) {}
+  ws.mergeCells(1, 1, 1, N); ws.mergeCells(2, 1, 2, N);
+  ws.getRow(1).font = { bold: true, size: 14 }; ws.getRow(1).alignment = { horizontal: 'center' };
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const el = document.createElement('a');
+  el.href = URL.createObjectURL(blob);
+  el.download = `售后清单_${today}.xlsx`;
+  document.body.appendChild(el); el.click(); el.remove();
+  setTimeout(() => URL.revokeObjectURL(el.href), 8000);
+  toast(`✓ 已导出 ${source.length} 条 · 嵌入 ${embedded} 张图`);
+}
+window.exportAftersalesExcelImg = exportAftersalesExcelImg;
+
 function exportAfterReport() {
   const thisMonth = new Date().toISOString().slice(0, 7);
   const data = AFTERSALES.filter(a => a.createdDate && a.createdDate.startsWith(thisMonth));
