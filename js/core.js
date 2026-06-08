@@ -424,6 +424,20 @@ const DATA = {
     if (error) throw error;
     return sorted;
   },
+  // V20260607二期:库存"压货"阈值(库龄超过 N 天算压货 · 默认 90)· 主管可设
+  getInventoryStaleDays() {
+    const v = this._cache.config && this._cache.config.inventory_stale_days;
+    const n = parseInt(v);
+    return (!isNaN(n) && n > 0) ? n : 90;
+  },
+  async saveInventoryStaleDays(days) {
+    if (!IS_ADMIN) throw new Error('只有主管能修改库存压货阈值');
+    const n = Math.max(1, parseInt(days) || 90);
+    if (this._cache.config) this._cache.config.inventory_stale_days = n;
+    const { error } = await sb.from('config').update({ inventory_stale_days: n }).eq('id', 1);
+    if (error) throw error;
+    return n;
+  },
   // V20260603:催单"默认待催阈值"(进催单页自动按 N 天过滤 · 0=显示全部)· 主管可设
   getChaseDefaultDays() {
     const v = this._cache.config && this._cache.config.chase_default_days;

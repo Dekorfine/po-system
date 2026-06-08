@@ -13,7 +13,38 @@ const INVENTORY = {
   _view: 'list',      // V20260607一期:list(列表) / grid(网格)
   _page: 1,
   _pageSize: 50,      // 50 / 100
+  _store: '',         // V20260607二期:按平台店铺筛(domain · 空=全部)
+  _ageFilter: 0,      // V20260607二期:库龄筛 0=不限 / 30 / 60 / 90 / 180 / 365
 };
+
+// V20260607二期:库龄(天)· 无 stock_in_at 返回 null(未知)
+function _invAgeDays(p) {
+  if (!p.stock_in_at) return null;
+  const ms = Date.now() - new Date(p.stock_in_at).getTime();
+  return Math.floor(ms / 86400000);
+}
+// 是否压货:有库存 + 库龄 ≥ 主管阈值
+function _invIsStale(p) {
+  if (Number(p.stock_qty || 0) <= 0) return false;
+  const age = _invAgeDays(p);
+  if (age == null) return false;
+  const thr = (typeof DATA !== 'undefined' && DATA.getInventoryStaleDays) ? DATA.getInventoryStaleDays() : 90;
+  return age >= thr;
+}
+function invSetStore(v) { INVENTORY._store = v; INVENTORY._page = 1; _invRenderList(); }
+function invSetAgeFilter(n) { INVENTORY._ageFilter = parseInt(n) || 0; INVENTORY._page = 1; _invRenderList(); }
+window.invSetStore = invSetStore; window.invSetAgeFilter = invSetAgeFilter;
+async function invSetStaleThreshold() {
+  if (typeof IS_ADMIN !== 'undefined' && !IS_ADMIN) { toast('只有主管能设置压货阈值', 'warn'); return; }
+  const cur = (typeof DATA !== 'undefined' && DATA.getInventoryStaleDays) ? DATA.getInventoryStaleDays() : 90;
+  const v = prompt('库存压货阈值(库龄超过多少天算"压货"并标红提醒):', String(cur));
+  if (v == null) return;
+  const n = parseInt(v);
+  if (isNaN(n) || n <= 0) { toast('请输入正整数天数', 'warn'); return; }
+  try { await DATA.saveInventoryStaleDays(n); toast('✓ 压货阈值已设为 ' + n + ' 天'); renderInventory(); }
+  catch (e) { toast('保存失败:' + (e.message || e), 'err'); }
+}
+window.invSetStaleThreshold = invSetStaleThreshold;
 
 // 店铺列表(用于绑定 UI · 从 SHOPIFY.STORES_META 取)
 function _invShopOptions() {
@@ -66,6 +97,26 @@ async function renderInventory() {
              value="${escapeHtml(INVENTORY._search)}"
              oninput="INVENTORY._search=this.value; INVENTORY._page=1; _invRenderList()"
              style="margin-left:auto; padding:6px 12px; font-size:12px; border:1px solid var(--border); border-radius:18px; width:280px;">
+    </div>
+
+    <!-- V20260607二期:店铺筛 + 库龄筛 + 压货阈值 -->
+    <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:center;">
+      <select onchange="invSetStore(this.value)" title="按绑定的平台店铺筛" style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:8px; background:var(--bg-card); color:var(--text-secondary);">
+        <option value="">🏬 全部店铺</option>
+        ${(SHOPIFY.STORES_META || []).filter(st => !st.legacyOnly).map(st => `<option value="${escapeHtml(st.domain)}" ${INVENTORY._store === st.domain ? 'selected' : ''}>${escapeHtml(st.display_name || st.site_code || st.domain)}</option>`).join('')}
+      </select>
+      <span style="font-size:11px; color:var(--text-tertiary);">库龄:</span>
+      ${[
+        { d: 0,   label: '不限' },
+        { d: 30,  label: '>30天' },
+        { d: 60,  label: '>60天' },
+        { d: 90,  label: '>90天' },
+        { d: 180, label: '>半年' },
+        { d: 365, label: '>1年' },
+      ].map(a => `
+        <button onclick="invSetAgeFilter(${a.d})" style="padding:5px 11px; font-size:12px; border:1px solid ${INVENTORY._ageFilter === a.d ? '#dc2626' : 'var(--border)'}; border-radius:16px; background:${INVENTORY._ageFilter === a.d ? '#dc2626' : 'var(--bg-card)'}; color:${INVENTORY._ageFilter === a.d ? '#fff' : 'var(--text-secondary)'}; cursor:pointer; font-weight:${INVENTORY._ageFilter === a.d ? '600' : '400'};">${a.label}</button>
+      `).join('')}
+      <button onclick="invSetStaleThreshold()" title="主管设置:库龄超过多少天算压货并标红" style="margin-left:auto; padding:5px 11px; font-size:12px; border:1px dashed var(--border); border-radius:16px; background:var(--bg-card); color:var(--text-secondary); cursor:pointer;">⚙ 压货阈值 ${(typeof DATA !== 'undefined' && DATA.getInventoryStaleDays) ? DATA.getInventoryStaleDays() : 90}天</button>
     </div>
 
     <div id="inventoryList">
@@ -152,6 +203,18 @@ function _invRenderList() {
   } else if (INVENTORY._filter === 'unbound') {
     list = list.filter(p => !Array.isArray(p.platform_skus) || p.platform_skus.length === 0);
   }
+  // 按平台店铺筛(绑定了该店 domain 的)
+  if (INVENTORY._store) {
+    list = list.filter(p => Array.isArray(p.platform_skus) && p.platform_skus.some(ps => (ps.shop || ps.shop_domain || '') === INVENTORY._store));
+  }
+  // 按库龄筛(只看有库存且库龄≥N天的)
+  if (INVENTORY._ageFilter > 0) {
+    list = list.filter(p => {
+      if (Number(p.stock_qty || 0) <= 0) return false;
+      const age = _invAgeDays(p);
+      return age != null && age >= INVENTORY._ageFilter;
+    });
+  }
   
   if (list.length === 0) {
     listEl.innerHTML = `
@@ -171,6 +234,15 @@ function _invRenderList() {
   const cur = INVENTORY._page;
   const pageItems = list.slice((cur - 1) * pageSize, cur * pageSize);
   
+  // 压货汇总(整库,不受当前筛选影响)
+  const staleAll = (INVENTORY._list || []).filter(_invIsStale);
+  const staleBanner = staleAll.length > 0 ? `
+    <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; margin-bottom:10px; background:rgba(220,38,38,0.07); border:1px solid rgba(220,38,38,0.3); border-radius:8px;">
+      <span style="font-size:18px;">🐢</span>
+      <span style="font-size:13px; color:#dc2626; font-weight:600;">有 ${staleAll.length} 款库存压货超过 ${(typeof DATA!=='undefined'&&DATA.getInventoryStaleDays)?DATA.getInventoryStaleDays():90} 天</span>
+      <button onclick="invSetAgeFilter(${(typeof DATA!=='undefined'&&DATA.getInventoryStaleDays)?DATA.getInventoryStaleDays():90})" style="margin-left:auto; padding:4px 12px; font-size:12px; border:1px solid #dc2626; border-radius:14px; background:#fff; color:#dc2626; cursor:pointer;">只看压货 →</button>
+    </div>` : '';
+
   const pager = (typeof renderPaginationBar === 'function') ? renderPaginationBar({
     total, currentPage: cur, pageSize,
     onPageChange: 'invSetPage(__PAGE__)', onSizeChange: 'invSetPageSize(__SIZE__)',
@@ -184,7 +256,7 @@ function _invRenderList() {
     bodyHtml = pageItems.map(p => _invCardHtml(p)).join('');
   }
   
-  listEl.innerHTML = `${pager}${bodyHtml}${total > pageSize ? pager : ''}`;
+  listEl.innerHTML = `${staleBanner}${pager}${bodyHtml}${total > pageSize ? pager : ''}`;
 }
 
 function _invCardHtml(p) {
@@ -214,6 +286,7 @@ function _invCardHtml(p) {
       <div style="min-width:0;">
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:3px; flex-wrap:wrap;">
           ${statusText ? `<span style="background:${statusColor}; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700;">${statusText}</span>` : ''}
+          ${_invIsStale(p) ? `<span style="background:#dc2626; color:#fff; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700;" title="库龄超过压货阈值">🐢 压货 ${_invAgeDays(p)}天</span>` : (_invAgeDays(p) != null ? `<span style="color:var(--text-tertiary); font-size:10.5px;">库龄 ${_invAgeDays(p)}天</span>` : '')}
           <span style="font-size:14px; font-weight:600; color:var(--text-primary);">${escapeHtml(p.name_cn || '(无名)')}</span>
         </div>
         <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:6px;"><span style="font-family:monospace;">内部 SKU: ${escapeHtml(p.sku || '')}</span>${p.default_supplier ? ` · <span style="color:var(--text-secondary);">🏭 ${escapeHtml(p.default_supplier)}</span>` : ''}</div>
@@ -264,6 +337,7 @@ function _invGridCardHtml(p) {
       </div>
       <div style="font-size:13px; font-weight:600; color:var(--text-primary); line-height:1.3; min-height:34px; overflow:hidden;">${escapeHtml(p.name_cn || '(无名)')}</div>
       <div style="font-size:10.5px; color:var(--text-tertiary); font-family:monospace;">${escapeHtml(p.sku || '')}</div>
+      ${_invIsStale(p) ? `<div style="font-size:10.5px; color:#dc2626; font-weight:700;">🐢 压货 ${_invAgeDays(p)}天</div>` : (_invAgeDays(p) != null ? `<div style="font-size:10.5px; color:var(--text-tertiary);">库龄 ${_invAgeDays(p)}天</div>` : '')}
       <div style="height:6px; background:var(--bg-elevated); border-radius:3px; overflow:hidden;"><div style="width:${barPct}%; height:100%; background:${statusColor};"></div></div>
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:10.5px; color:var(--text-secondary);">
         <span title="供应商">${p.default_supplier ? '🏭 ' + escapeHtml(p.default_supplier) : '<span style=\'color:var(--text-tertiary)\'>无供应商</span>'}</span>
@@ -526,6 +600,7 @@ async function invSaveEdit() {
           stock_alert_threshold: s.stock_alert_threshold,
           platform_skus: cleanPlatSkus,
           image_url: s.image_url || null,
+          stock_in_at: new Date().toISOString(),   // V20260607二期:入库时间(库龄起算)
         }).eq('id', existing.id);
         if (error) throw error;
         toast('✓ 已把现有产品纳入库存管理', 'success');
@@ -539,6 +614,7 @@ async function invSaveEdit() {
           stock_qty: s.stock_qty,
           stock_alert_threshold: s.stock_alert_threshold,
           platform_skus: cleanPlatSkus,
+          stock_in_at: new Date().toISOString(),   // V20260607二期:入库时间(库龄起算)
         });
         if (error) throw error;
         toast('✓ 库存产品已创建', 'success');
@@ -724,7 +800,9 @@ async function invSaveAdjust() {
   const myName = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) ? CURRENT_AGENT : '?';
   
   try {
-    const { error } = await sb.from('products').update({ stock_qty: newQty }).eq('id', s.id);
+    const _invUpd = { stock_qty: newQty };
+    if (change > 0) _invUpd.stock_in_at = new Date().toISOString();   // V20260607二期:补货重置库龄起算
+    const { error } = await sb.from('products').update(_invUpd).eq('id', s.id);
     if (error) throw error;
     
     // 记流水
