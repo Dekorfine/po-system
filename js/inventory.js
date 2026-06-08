@@ -684,12 +684,13 @@ window.invSaveEdit = invSaveEdit;
 
 // ===== V20260603:库存录入 · 用订单号拉取产品(复用催单抓取逻辑)=====
 let _invOrderFetched = [];
-function invFetchByOrderNo() {
+async function invFetchByOrderNo() {
   const box = document.getElementById('invOrderFetchResult');
   const rawNo = (document.getElementById('invOrderNoInput')?.value || '').trim();
   const nos = rawNo.split(/[\/,，、\s]+/).map(x => x.trim().replace(/^#/, '')).filter(Boolean);
   if (nos.length === 0) { if (box) box.innerHTML = '<span style="font-size:11px;color:var(--danger);">请先填订单号</span>'; return; }
   let lineItems = [];
+  // ① 先查本地(PO_LIST + 已缓存订单)
   nos.forEach(n => {
     let got = [];
     if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
@@ -702,9 +703,34 @@ function invFetchByOrderNo() {
     }
     lineItems = lineItems.concat(got);
   });
+  // ② 本地没有 → 实时拉 Shopify(老单也能抓 · 按订单号前缀优先定位店铺 · auto_save 顺便入库带图)
+  if (lineItems.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY.call) {
+    const n = nos[0];
+    if (box) box.innerHTML = '<span style="font-size:11px;color:var(--text-secondary);">⏳ 本地没有,正在实时拉取(老单稍慢几秒)…</span>';
+    const letters = ((n.match(/^[A-Za-z]+/) || [''])[0]).toUpperCase();
+    const stores = (SHOPIFY.STORES_META || []).filter(st => !st.legacyOnly);
+    // 前缀匹配的店排前面(K→VK 这类:site_code 是订单字母的前缀或相等)
+    stores.sort((a, b) => {
+      const am = letters && (letters === a.site_code || letters.startsWith(a.site_code)) ? 1 : 0;
+      const bm = letters && (letters === b.site_code || letters.startsWith(b.site_code)) ? 1 : 0;
+      return bm - am;
+    });
+    for (let i = 0; i < stores.length; i++) {
+      const st = stores[i];
+      if (box) box.innerHTML = `<span style="font-size:11px;color:var(--text-secondary);">⏳ 实时拉取中… (${i+1}/${stores.length} ${escapeHtml(st.site_code || st.domain)})</span>`;
+      try {
+        const r = await SHOPIFY.call('list_orders', { name: n, status: 'any', limit: 10, auto_save: true }, st.domain, 30000);
+        const ords = (r && (r.orders || r.data)) || [];
+        if (ords.length) {
+          ords.forEach(o => { if (o.line_items) lineItems = lineItems.concat(o.line_items); });
+          if (lineItems.length) break;
+        }
+      } catch (e) { /* 该店没有/超时 → 试下一个 */ }
+    }
+  }
   lineItems = (lineItems||[]).filter(li => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(li));
   if (lineItems.length === 0) {
-    if (box) box.innerHTML = `<span style="font-size:11px;color:var(--warning);">⚠ 本地没找到订单「${escapeHtml(nos.join(' / '))}」的产品 · 可改用上面的 SKU 拉取</span>`;
+    if (box) box.innerHTML = `<span style="font-size:11px;color:var(--warning);">⚠ 没找到订单「${escapeHtml(nos.join(' / '))}」(本地+实时都没有)· 核对单号,或改用上面的 SKU 拉取</span>`;
     _invOrderFetched = []; return;
   }
   const productMap = (typeof SHOPIFY !== 'undefined' && SHOPIFY._productMap) ? SHOPIFY._productMap : {};
