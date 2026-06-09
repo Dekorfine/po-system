@@ -39,7 +39,7 @@ const SHOPIFY = {
   _orders: [],
   _autoSyncTimer: null,
   _initialized: false,
-  _currentFilter: 'all',
+  _currentFilter: 'pending',   // V20260608:删了"待办"聚合 · 默认"待审核"(店小秘式)
 
   async call(action, params = {}, shop = null, timeoutMs = 45000) {
     let { data: { session } } = await sb.auth.getSession();
@@ -1426,6 +1426,11 @@ function salesQuickRangeChange() {
   const fromEl = document.getElementById('salesFetchFrom');
   const toEl = document.getElementById('salesFetchTo');
   if (v === 'custom') return;  // 让用户自己选
+  // V20260608:命名预设(今天/昨天/本周/本月)走 shopifyQuickRange
+  if (['today','yesterday','week','month'].includes(v)) {
+    if (typeof shopifyQuickRange === 'function') shopifyQuickRange(v);
+    return;
+  }
   const days = parseInt(v, 10);
   const today = new Date();
   const from = new Date(today.getTime() - days * 86400000);

@@ -1999,7 +1999,10 @@ async function poFormDoSave(groups, common) {
       const totalAssigned = (li.po_assignments || []).reduce((s, a) => s + (Number(a.qty) || 0), 0);
       return totalAssigned >= (Number(li.quantity) || 0);
     });
-    const newLocalStatus = allFullyAssigned ? 'done' : 'processing';
+    // V20260608:有退款(部分/全额)的订单不自动跳"已完成" — 留在"待处理"挂退款标识,由人工核对后手动完成
+    const _fs = (so.financial_status || '').toLowerCase();
+    const _hasRefund = _fs.includes('refund');   // refunded / partially_refunded
+    const newLocalStatus = (allFullyAssigned && !_hasRefund) ? 'done' : 'processing';
 
     // 把更新后的 line_items 写回 shopify_orders
     const { error: soErr } = await sb.from('shopify_orders').update({
