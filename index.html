@@ -24,7 +24,7 @@
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
 <link rel="preload" href="js/core.js?v=20260607inv2" as="script">
 <link rel="preload" href="js/utils.js?v=20260605qty" as="script">
-<link rel="preload" href="js/shopify.js?v=20260607chase" as="script">
+<link rel="preload" href="js/shopify.js?v=20260608sales" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260608afimg"></script>
+<script defer src="js/help.js?v=20260608sales"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -45,8 +45,8 @@
 <script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260605cmtfix"></script>
 <script defer src="js/orders.js?v=20260607chase"></script>
-<script defer src="js/shopify.js?v=20260607chase"></script>
-<script defer src="js/po.js?v=20260607chase"></script>
+<script defer src="js/shopify.js?v=20260608sales"></script>
+<script defer src="js/po.js?v=20260608sales"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
 <script defer src="js/inventory.js?v=20260607inv4"></script>
 <script defer src="js/inspection.js?v=20260528kappa"></script>
@@ -4163,7 +4163,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .country-chip:hover { background: var(--bg-elevated); color: var(--text-primary); }
 .country-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
 .sub-tab-btn {
-  flex: 1; padding: 8px 12px; font-size: 13px; border-radius: 6px;
+  flex: 1; padding: 12px 14px; font-size: 15px; border-radius: 8px;
   background: transparent; border: none; cursor: pointer; color: var(--text-secondary);
   font-family: inherit; font-weight: 500; transition: all 0.15s;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -4171,7 +4171,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .sub-tab-btn:hover { background: rgba(255,255,255,0.5); color: var(--text-primary); }
 .sub-tab-btn.active { background: var(--bg-card); color: var(--accent); box-shadow: var(--shadow-sm); }
 .sub-tab-btn .cnt {
-  font-size: 11px; padding: 1px 7px; border-radius: 9px;
+  font-size: 13px; padding: 2px 9px; border-radius: 10px;
   background: var(--bg-elevated); color: var(--text-tertiary);
   font-family: 'JetBrains Mono', monospace; min-width: 18px; text-align: center;
 }
@@ -6148,6 +6148,10 @@ if ('serviceWorker' in navigator) {
           <option value="">— 选择店铺 —</option>
         </select>
         <select class="filter-select" id="salesQuickRange" onchange="salesQuickRangeChange()" style="min-width:130px;">
+          <option value="today">今天</option>
+          <option value="yesterday">昨天</option>
+          <option value="week">本周</option>
+          <option value="month">本月</option>
           <option value="7">近 7 天</option>
           <option value="15">近 15 天</option>
           <option value="30" selected>近 30 天</option>
@@ -6167,16 +6171,10 @@ if ('serviceWorker' in navigator) {
         <button class="btn" onclick="shopifyReloadOrdersAndRender(true)" title="只从本地读取（毫秒级）">📂 本地</button>
         <button class="btn primary" onclick="shopifyFetchOrders()" title="拉 Shopify 最新数据">🔄 同步</button>
         <button class="btn" onclick="shopifyDeepBackfill(180)" style="background:#fef3c7; border-color:#f59e0b; color:#92400e;" title="把近半年(180天)所有订单灌进本地库(含 B2B 导入单/部分发货)· 之后发票工具/查单都走本地、不打 Shopify · 自动分批续扫+限流">📦 灌满半年</button>
-        <button class="btn" onclick="openFetchByOrderNo()" style="background:#dcfce7; border-color:#10b981; color:#065f46;" title="客服查发票/订单 · 输入订单号实时查询 · 不批量入库 · 本地优先 · 找不到才拉 Shopify">🔍 订单单查</button>
       </div>
       <!-- V28β:跟单常用快筛 · 今天/昨天/本周/本月/昨天未下完 -->
       <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; align-items:center;">
         <span style="font-size:12px; color:var(--text-secondary); font-weight:600;">🚀 快筛:</span>
-        <button class="btn small" onclick="shopifyQuickRange('today')" title="今天下的单">📅 今天</button>
-        <button class="btn small" onclick="shopifyQuickRange('yesterday')" title="昨天下的单(继续昨晚没下完的)">📅 昨天</button>
-        <button class="btn small" onclick="shopifyQuickRange('week')" title="本周(周一开始)">📅 本周</button>
-        <button class="btn small" onclick="shopifyQuickRange('month')" title="本月">📅 本月</button>
-        <span style="border-left:1px solid var(--border-subtle); height:18px; margin:0 4px;"></span>
         <button class="btn small" onclick="shopifyClearDateRange()" style="background:#fee2e2; color:#991b1b; border-color:#dc2626; font-weight:700;" title="清空日期 · 同步该店所有历史订单(可能较慢 · 分页拉)">📅 全部历史</button>
         <span style="border-left:1px solid var(--border-subtle); height:18px; margin:0 4px;"></span>
         <button class="btn small" onclick="shopifyQuickRange('yesterday_pending')" style="background:#fef3c7; color:#92400e; border-color:#fbbf24;" title="昨天的订单 + 还没下PO的(继续昨晚没下完)">⏰ 昨天没下完</button>
@@ -6184,9 +6182,9 @@ if ('serviceWorker' in navigator) {
         <span id="salesQuickRangeHint" style="margin-left:8px; font-size:11.5px; color:var(--text-tertiary);"></span>
       </div>
 
+      <span id="cntAll" style="display:none;"></span>
       <div class="sales-subtabs" id="salesSubtabs" style="margin-top: 14px;">
-        <button class="sub-tab-btn active" data-filter="all" onclick="shopifyShowFilter('all')" title="店小秘式待办:待审核 + 待处理(不含已完成/已取消)">🎯 待办 <span class="cnt" id="cntAll">0</span></button>
-        <button class="sub-tab-btn" data-filter="pending" onclick="shopifyShowFilter('pending')">🔵 待审核 <span class="cnt" id="cntPending">0</span></button>
+        <button class="sub-tab-btn active" data-filter="pending" onclick="shopifyShowFilter('pending')" title="待审核(店小秘式):刚同步进来、待核对开PO的订单">🔵 待审核 <span class="cnt" id="cntPending">0</span></button>
         <button class="sub-tab-btn" data-filter="processing" onclick="shopifyShowFilter('processing')">🟡 待处理 <span class="cnt" id="cntProcessing">0</span></button>
         <button class="sub-tab-btn" data-filter="done" onclick="shopifyShowFilter('done')" title="所有产品都已开 PO 的订单(自动归档)">✅ 已完成 <span class="cnt" id="cntDone">0</span></button>
         <button class="sub-tab-btn" data-filter="cancelled" onclick="shopifyShowFilter('cancelled')">⊘ 已取消 <span class="cnt" id="cntCancelled">0</span></button>
