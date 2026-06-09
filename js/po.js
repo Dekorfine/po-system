@@ -3493,7 +3493,7 @@ window.poQuickRangeClear = function() {
 
 // ============ 采购单 tab ============
 let PO_LIST = [];
-let PO_FILTER = 'active';  // V20260526c: 默认从 'all' 改为 'active' (店小秘式待办)
+let PO_FILTER = 'producing';  // V20260608:删「待办」聚合(方案A·跟销售订单统一)· 默认落「待发供应商」(待审批常年0,避免开局空白)
 // V20260526q: PO 店铺过滤(参考销售单)· 支持单店/多店 · manual PO(无 sales_order_id)不受影响
 let PO_SHOP_FILTER = new Set();
 let PO_SALES_ORDERS_MAP = {};
@@ -3702,10 +3702,10 @@ function poFilterByPeriod(days) {
   const presetMap = { 1: 'today', 7: 'last_7', 30: 'last_30', 90: 'last_90', 365: 'last_365' };
   const preset = presetMap[days] || 'last_' + days;
   PO_DATE_FILTER = { preset, creator: CURRENT_AGENT, days };  // days 留着兜底
-  PO_FILTER = 'active';  // V20260526c: 业绩卡切换到待办 tab（仍然排除已取消）
+  PO_FILTER = 'producing';  // V20260608:删待办后默认落「待发供应商」
   PO_PAGE = 1;
   // 同步 sub-tab UI
-  document.querySelectorAll('.sub-tab-btn[data-pofilter]').forEach(b => b.classList.toggle('active', b.dataset.pofilter === 'all'));
+  document.querySelectorAll('.sub-tab-btn[data-pofilter]').forEach(b => b.classList.toggle('active', b.dataset.pofilter === 'producing'));
   renderPoList();
   setTimeout(() => {
     const el = document.getElementById('poListBody');
@@ -3750,9 +3750,9 @@ function poClearAllFilters() {
   PO_DATE_FILTER = null;
   PO_SUPPLIER_FILTER = '';
   PO_SEARCH = '';
-  PO_FILTER = 'active';  // 默认到"未完成"
+  PO_FILTER = 'producing';  // V20260608:默认落「待发供应商」
   PO_PAGE = 1;
-  document.querySelectorAll('.sub-tab-btn[data-pofilter]').forEach(b => b.classList.toggle('active', b.dataset.pofilter === 'active'));
+  document.querySelectorAll('.sub-tab-btn[data-pofilter]').forEach(b => b.classList.toggle('active', b.dataset.pofilter === 'producing'));
   renderPoList();
   toast('✓ 已清除所有筛选');
 }
