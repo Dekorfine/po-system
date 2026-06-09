@@ -5169,6 +5169,10 @@ function poOpenPrint(poId) {
         <span class="po-boxnote-label">⚠ 订单备注（请写在纸箱上）：</span>
         <div class="po-boxnote-val">${escapeHtml(po.box_note || '—')}</div>
       </div>
+      <div class="po-boxnote" style="background:#eff6ff; border-color:#bfdbfe;">
+        <span class="po-boxnote-label" style="color:#1d4ed8;">🚚 收货地址（送货到）：</span>
+        <div class="po-boxnote-val" style="color:#1e3a8a;">${escapeHtml(po.ship_to || (typeof DATA !== 'undefined' && DATA.getDefaultShipAddress ? DATA.getDefaultShipAddress() : '') || '—')}</div>
+      </div>
     </div>
   `;
   document.getElementById('poPrintModal').style.display = 'flex';
@@ -5513,6 +5517,10 @@ async function poQuickCopyImage(poId) {
         <span class="po-boxnote-label">⚠ 订单备注（请写在纸箱上）：</span>
         <div class="po-boxnote-val">${escapeHtml(po.box_note || '—')}</div>
       </div>
+      <div class="po-boxnote" style="background:#eff6ff; border-color:#bfdbfe;">
+        <span class="po-boxnote-label" style="color:#1d4ed8;">🚚 收货地址（送货到）：</span>
+        <div class="po-boxnote-val" style="color:#1e3a8a;">${escapeHtml(po.ship_to || (typeof DATA !== 'undefined' && DATA.getDefaultShipAddress ? DATA.getDefaultShipAddress() : '') || '—')}</div>
+      </div>
     </div>`;
   document.body.appendChild(wrap);
 
@@ -5697,6 +5705,10 @@ function _buildSinglePoExportNode(po, includeImages) {
       <div class="po-boxnote">
         <span class="po-boxnote-label">⚠ 订单备注（请写在纸箱上）：</span>
         <div class="po-boxnote-val">${escapeHtml(_stripSkus(po.box_note || '') || '—')}</div>
+      </div>
+      <div class="po-boxnote" style="background:#eff6ff; border-color:#bfdbfe;">
+        <span class="po-boxnote-label" style="color:#1d4ed8;">🚚 收货地址（送货到）：</span>
+        <div class="po-boxnote-val" style="color:#1e3a8a;">${escapeHtml(po.ship_to || (typeof DATA !== 'undefined' && DATA.getDefaultShipAddress ? DATA.getDefaultShipAddress() : '') || '—')}</div>
       </div>
     </div>`;
   return wrap;
