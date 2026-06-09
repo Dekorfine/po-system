@@ -1417,6 +1417,68 @@ function exportSupplierAfter(supplier) {
   toast(`✓ 已导出 ${data.length} 条`);
 }
 
+// V20260608:售后"瘦身" — 把 screenshots/followups 里残留的 base64 老图迁到云存储(存URL),根治"越用越慢"
+//   幂等:没有 base64 就什么都不改;失败的跳过不影响其余。主管操作。
+async function migrateAftersalesBase64() {
+  if (typeof IS_ADMIN !== 'undefined' && !IS_ADMIN) { toast('只有主管能执行瘦身', 'warn'); return; }
+  if (typeof uploadScreenshotToStorage !== 'function') { toast('上传组件不可用', 'err'); return; }
+  if (!confirm('扫描所有售后,把残留的 base64 老图迁移到云存储(存URL)。\n\n这会让售后加载变快、减小数据库体积。\n过程可能几分钟,期间别关页面。继续?')) return;
+
+  toast('正在扫描售后…', 'info', 6000);
+  let rows;
+  try {
+    const { data, error } = await sb.from('aftersales').select('id, screenshots, followups');
+    if (error) throw error;
+    rows = data || [];
+  } catch (e) { toast('读取失败:' + (e.message || e), 'err', 6000); return; }
+
+  const isB64 = (x) => typeof x === 'string' && x.startsWith('data:image');
+  let scanned = 0, foundImgs = 0, migrated = 0, failed = 0, changedRows = 0;
+
+  for (const r of rows) {
+    scanned++;
+    let changed = false;
+    // screenshots[]
+    let shots = Array.isArray(r.screenshots) ? r.screenshots.slice() : [];
+    for (let i = 0; i < shots.length; i++) {
+      if (isB64(shots[i])) {
+        foundImgs++;
+        try { shots[i] = await uploadScreenshotToStorage(shots[i]); migrated++; changed = true; }
+        catch (e) { failed++; console.warn('迁移失败(screenshot)', r.id, e); }
+      }
+    }
+    // followups[].screenshots[]
+    let fus = Array.isArray(r.followups) ? JSON.parse(JSON.stringify(r.followups)) : [];
+    for (const f of fus) {
+      if (!Array.isArray(f.screenshots)) continue;
+      for (let j = 0; j < f.screenshots.length; j++) {
+        if (isB64(f.screenshots[j])) {
+          foundImgs++;
+          try { f.screenshots[j] = await uploadScreenshotToStorage(f.screenshots[j]); migrated++; changed = true; }
+          catch (e) { failed++; console.warn('迁移失败(followup)', r.id, e); }
+        }
+      }
+    }
+    if (changed) {
+      try {
+        const { error } = await sb.from('aftersales').update({ screenshots: shots, followups: fus }).eq('id', r.id);
+        if (error) throw error;
+        changedRows++;
+      } catch (e) { failed++; console.warn('保存失败', r.id, e); }
+    }
+    if (scanned % 20 === 0) toast(`扫描中… ${scanned}/${rows.length} · 已迁移 ${migrated} 张`, 'info', 4000);
+  }
+
+  if (foundImgs === 0) {
+    toast(`✓ 扫描 ${scanned} 条售后,没有 base64 老图(数据已经是干净的URL)`, 'success', 7000);
+  } else {
+    toast(`✓ 瘦身完成:扫描 ${scanned} 条 · 发现 ${foundImgs} 张 base64 · 迁移 ${migrated} 张 · 更新 ${changedRows} 条${failed ? ` · 失败 ${failed}(看控制台)` : ''}`, 'success', 9000);
+    if (typeof DATA !== 'undefined' && DATA.loadAll) { try { await DATA.loadAll(); } catch(_){} }
+    if (typeof renderAftersales === 'function') renderAftersales();
+  }
+}
+window.migrateAftersalesBase64 = migrateAftersalesBase64;
+
 // V20260608:售后清单导出 Excel(带产品图)· 镜像催单清单导出 · 没图也能一眼看出是哪个产品
 async function exportAftersalesExcelImg() {
   const source = (window._lastVisibleAftersales && window._lastVisibleAftersales.length > 0)
