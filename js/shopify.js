@@ -316,28 +316,45 @@ const SHOPIFY = {
   },
 
   // V28x:持久化订单缓存到 localStorage(可能撑爆 · try-catch 保护)
+  // V20260608:缓存瘦身 — 只存列表/搜索/PO 必需的 line_item 字段,砍掉大字段(properties/tax_lines/raw_payload 等)
+  //   内存 this._orders 仍是完整数据;仅"存进 localStorage 秒开缓存"的副本瘦身 → 8.7MB → ~2MB,不再超 5MB 写不进
+  _trimOrderForCache(o) {
+    const lite = { ...o };
+    delete lite.raw_payload;   // woo 大字段 · 加载时按需补
+    if (Array.isArray(o.line_items)) {
+      lite.line_items = o.line_items.map(li => ({
+        sku: li.sku, title: li.title, name_cn: li.name_cn,
+        variant_title: li.variant_title, variant_id: li.variant_id, product_id: li.product_id,
+        image_url: li.image_url, quantity: li.quantity, price: li.price,
+        fulfillable_quantity: li.fulfillable_quantity,
+        shopify_line_item_id: li.shopify_line_item_id,
+        po_assignments: li.po_assignments,
+      }));
+    }
+    return lite;
+  },
   _persistOrdersCache(cacheKey) {
+    // 瘦身副本 + 只缓存最近 5000 单(按创建时间已倒序)· 双保险防超限
+    const trimmed = (this._orders || []).slice(0, 5000).map(o => this._trimOrderForCache(o));
+    const entry = { data: trimmed, ts: Date.now(), cursor: this._ordersCursor || this._computeOrdersCursor(this._orders) };
     try {
       let cacheRaw = localStorage.getItem('shopify_orders_cache_v3');
       let cache = cacheRaw ? JSON.parse(cacheRaw) : { byKey: {} };
       if (!cache.byKey) cache.byKey = {};
-      // 瘦身:line_items 保留(渲染要) · raw_payload 大头 · 留着否则运费/税废了
-      // 限制最多缓存 3 个 key(防止历史 key 累积撑爆)
       const keys = Object.keys(cache.byKey);
       if (keys.length > 3) {
-        // 删最旧的
         const oldest = keys.sort((a, b) => (cache.byKey[a].ts || 0) - (cache.byKey[b].ts || 0))[0];
         delete cache.byKey[oldest];
       }
-      cache.byKey[cacheKey] = { data: this._orders, ts: Date.now(), cursor: this._ordersCursor || this._computeOrdersCursor(this._orders) };
+      cache.byKey[cacheKey] = entry;
       localStorage.setItem('shopify_orders_cache_v3', JSON.stringify(cache));
     } catch (e) {
-      // localStorage 满了 · 清空重写
+      // 满了 · 只留当前这一个 key 重写
       if (e.name === 'QuotaExceededError' || /quota|storage/i.test(e.message || '')) {
         try {
           localStorage.removeItem('shopify_orders_cache_v3');
-          localStorage.setItem('shopify_orders_cache_v3', JSON.stringify({ byKey: { [cacheKey]: { data: this._orders, ts: Date.now(), cursor: this._ordersCursor || this._computeOrdersCursor(this._orders) } } }));
-        } catch (_) { /* 还是写不进 · 放弃 */ }
+          localStorage.setItem('shopify_orders_cache_v3', JSON.stringify({ byKey: { [cacheKey]: entry } }));
+        } catch (_) { /* 还写不进 → 放弃缓存(不影响功能,只是不秒开) */ }
       }
     }
   },

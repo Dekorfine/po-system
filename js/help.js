@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260608-cache',
+    date: '2026-06-08',
+    type: 'fix',
+    title: '⚡ 销售订单秒开:缓存瘦身(根治每次冷加载4.7秒)',
+    notes: [
+      '实测根因:localStorage 秒开缓存写入失败(8.74MB 超 5MB 上限 QuotaExceededError)→ 缓存一直是空的 → 每次进订单冷加载 5000+ 单约 4.7 秒',
+      '修:缓存只存列表/搜索/PO 必需的 line_item 字段(sku/标题/数量/图/PO分配等),砍掉大字段(properties/tax_lines/raw_payload)+ 最多缓存最近5000单',
+      '体积 8.7MB → ~2MB,稳进 5MB → 秒开缓存真正生效:之后进订单从 localStorage 毫秒级打开,后台增量刷新',
+      '内存数据仍完整(只是存进缓存的副本瘦身),不影响卡片/搜索/开PO',
+    ],
+    files: ['shopify.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260608-imgfix',
     date: '2026-06-08',
     type: 'fix',
