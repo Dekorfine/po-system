@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260608-imgfix',
+    date: '2026-06-08',
+    type: 'fix',
+    title: '📦 库存:坏图地址显占位 + 渲染兜底过滤(治白块/幽灵卡)',
+    notes: [
+      '根因:个别库存 image_url 存的是产品网页地址(如 docos.us/products/xxx)而非图片 → <img> 加载失败留白块',
+      '修:image_url 不像图片(无图片后缀/非已知图床)就显示 📦 占位,不再塞 img 留白',
+      '加渲染兜底:即使内存列表混进 is_inventory_item=false/已删的脏数据,也只显示真库存品(防幽灵卡)',
+      '库存图片统一加 loading=lazy',
+    ],
+    files: ['inventory.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260608-noai',
     date: '2026-06-08',
     type: 'fix',

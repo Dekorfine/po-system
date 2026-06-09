@@ -17,6 +17,20 @@ const INVENTORY = {
   _ageFilter: 0,      // V20260607二期:库龄筛 0=不限 / 30 / 60 / 90 / 180 / 365
 };
 
+// V20260608:判断 image_url 是不是真图片(防止"产品网页地址"被当图渲染成白块)
+function _invIsImageUrl(u) {
+  if (!u || typeof u !== 'string') return false;
+  if (/\.(jpg|jpeg|png|webp|gif|avif|bmp|svg)(\?|#|$)/i.test(u)) return true;   // 图片后缀
+  if (/\/storage\/|\/cdn\/|\/files\/|shopify|supabase\.co\/storage/i.test(u)) return true;  // 已知图床/存储
+  return false;  // 其它(如 https://docos.us/products/xxx 产品网页)→ 当作没有有效图
+}
+function _invImgCell(u, size) {
+  if (_invIsImageUrl(u)) {
+    return `<img src="${escapeHtml(u)}" style="width:${size}px; height:${size}px; object-fit:cover; border-radius:6px; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(u)}')" loading="lazy">`;
+  }
+  return `<div style="width:${size}px;height:${size}px;background:var(--bg-elevated);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:${Math.round(size/3)}px;">📦</div>`;
+}
+
 // V20260607二期:库龄(天)· 无 stock_in_at 返回 null(未知)
 function _invAgeDays(p) {
   if (!p.stock_in_at) return null;
@@ -186,6 +200,8 @@ function _invRenderList() {
   }
   
   let list = INVENTORY._list;
+  // V20260608:兜底过滤 — 即使 _list 混进了非库存/已删的脏数据,也只显示真正的库存品(回收站视图除外)
+  if (INVENTORY._filter !== 'trash') list = (list || []).filter(p => p.is_inventory_item && !p.deleted_at);
   
   // 搜索(SKU / 产品名 / 平台SKU / 供应商)
   const q = (INVENTORY._search || '').trim().toLowerCase();
@@ -283,9 +299,7 @@ function _invCardHtml(p) {
     <div style="display:grid; grid-template-columns: 72px 1fr auto; gap:14px; padding:14px; background:${statusBg}; border:1px solid var(--border); border-left:4px solid ${statusColor}; border-radius:8px; margin-bottom:8px;">
       <!-- 图 -->
       <div>
-        ${p.image_url 
-          ? `<img src="${escapeHtml(p.image_url)}" style="width:72px; height:72px; object-fit:cover; border-radius:6px; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(p.image_url)}')">` 
-          : `<div style="width:72px; height:72px; background:var(--bg-elevated); border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:24px;">📦</div>`}
+        ${_invImgCell(p.image_url, 72)}
       </div>
       <!-- 主信息 -->
       <div style="min-width:0;">
@@ -370,8 +384,8 @@ function _invGridCardHtml(p) {
   return `
     <div style="background:var(--bg-card); border:1px solid var(--border); border-top:3px solid ${statusColor}; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
       <div style="position:relative; width:100%; aspect-ratio:1/1; background:var(--bg-elevated); border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center;">
-        ${p.image_url
-          ? `<img src="${escapeHtml(p.image_url)}" style="width:100%; height:100%; object-fit:cover; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(p.image_url)}')">`
+        ${_invIsImageUrl(p.image_url)
+          ? `<img src="${escapeHtml(p.image_url)}" style="width:100%; height:100%; object-fit:cover; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(p.image_url)}')" loading="lazy">`
           : `<span style="color:var(--text-tertiary); font-size:32px;">📦</span>`}
         <span style="position:absolute; top:6px; left:6px; background:${statusColor}; color:#fff; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700;">${statusText} ${stock}</span>
       </div>
