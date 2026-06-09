@@ -10,6 +10,33 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260608-idb',
+    date: '2026-06-08',
+    type: 'fix',
+    title: '⚡ 销售订单真·秒开:缓存改用 IndexedDB(根治冷加载4.7秒)',
+    notes: [
+      '根因:订单缓存 8MB 超 localStorage 5MB 上限,一直写失败 → 每次进订单冷加载 5000+ 单约 4.7 秒',
+      '改:秒开缓存从 localStorage 换成 IndexedDB(几百MB容量),存完整订单(含 line_items)不再瘦身/不再超限',
+      '效果:首次冷加载后写入 IDB → 之后进订单从 IndexedDB 毫秒级秒开,后台增量刷新',
+      '同步:invalidateOrders/同步时清 IDB;旧 localStorage 缓存自动清掉',
+    ],
+    files: ['shopify.js', 'index.html', 'help.js'],
+  },
+  {
+    v: '20260608-addr',
+    date: '2026-06-08',
+    type: 'feature',
+    title: '🚚 PO 收货地址(默认古镇·超量提醒送江门厂·可维护)',
+    notes: [
+      '需跑 SQL:PO收货地址.sql(config 加 ship_addresses/factory_ship_threshold,orders 加 ship_to)',
+      'PO 表单(销售单开PO + 自定义PO)新增「收货地址」下拉,默认填默认地址(古镇开元M236-237卡)',
+      'PO 总件数 > 阈值(默认20·主管可改) → 提醒建议送江门工厂(江海区龙溪路80号4栋401号)· 一键切换 · 只提醒不强制',
+      '「⚙ 管理地址」弹窗:增删改/设默认 · 任何人可维护地址;阈值仅主管可改',
+      '供应商对单表导出顶部显示收货地址',
+    ],
+    files: ['po.js', 'core.js', 'index.html', 'help.js', 'PO收货地址.sql'],
+  },
+  {
     v: '20260608-potab',
     date: '2026-06-08',
     type: 'fix',

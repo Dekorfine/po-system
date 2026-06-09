@@ -438,6 +438,52 @@ const DATA = {
     if (error) throw error;
     return n;
   },
+
+  // V20260608:PO 收货地址库(存 config.ship_addresses)· 任何人可维护
+  getShipAddresses() {
+    const a = this._cache.config && this._cache.config.ship_addresses;
+    if (Array.isArray(a) && a.length) return a;
+    // 默认两条(库里还没有时)
+    return [
+      { id: 'guzhen',   label: '古镇仓',   address: '古镇开元M236-237卡',        is_default: true },
+      { id: 'jiangmen', label: '江门工厂', address: '江海区龙溪路80号4栋401号', is_default: false },
+    ];
+  },
+  async saveShipAddresses(arr) {   // 任何人可维护地址
+    const clean = (arr || []).filter(x => x && (x.address || '').trim()).map(x => ({
+      id: x.id || ('a' + Math.random().toString(36).slice(2, 8)),
+      label: (x.label || '').trim() || '(未命名)',
+      address: (x.address || '').trim(),
+      is_default: !!x.is_default,
+    }));
+    if (!clean.some(x => x.is_default) && clean.length) clean[0].is_default = true;   // 至少一个默认
+    if (this._cache.config) this._cache.config.ship_addresses = clean;
+    const { error } = await sb.from('config').update({ ship_addresses: clean }).eq('id', 1);
+    if (error) throw error;
+    return clean;
+  },
+  getDefaultShipAddress() {
+    const list = this.getShipAddresses();
+    return ((list.find(a => a.is_default) || list[0] || {}).address) || '';
+  },
+  getFactoryShipAddress() {   // "江门工厂"那条(label 含 工厂/江门 · 兜底取第二条)
+    const list = this.getShipAddresses();
+    return ((list.find(a => /工厂|江门/.test(a.label || '') || /江门|龙溪/.test(a.address || '')) || list[1] || {}).address) || '';
+  },
+  // V20260608:超阈值送江门工厂的"件数阈值"(存 config.factory_ship_threshold)· 主管可改
+  getFactoryThreshold() {
+    const v = this._cache.config && this._cache.config.factory_ship_threshold;
+    const n = parseInt(v);
+    return (!isNaN(n) && n > 0) ? n : 20;
+  },
+  async saveFactoryThreshold(num) {
+    if (!IS_ADMIN) throw new Error('只有主管能修改送厂阈值');
+    const v = Math.max(1, parseInt(num) || 20);
+    if (this._cache.config) this._cache.config.factory_ship_threshold = v;
+    const { error } = await sb.from('config').update({ factory_ship_threshold: v }).eq('id', 1);
+    if (error) throw error;
+    return v;
+  },
   // V20260603:催单"默认待催阈值"(进催单页自动按 N 天过滤 · 0=显示全部)· 主管可设
   getChaseDefaultDays() {
     const v = this._cache.config && this._cache.config.chase_default_days;

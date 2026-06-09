@@ -21,6 +21,8 @@ async function openCustomPoModal() {
     promisedDate: '',   // V20260607:不再默认今天 · 约交期留空,跟单后续填(避免催单误判逾期)
     boxNote: '',
     otherNote: '',
+    shipTo: (typeof DATA !== 'undefined' && DATA.getDefaultShipAddress) ? DATA.getDefaultShipAddress() : '',   // V20260608:收货地址
+
     lineItems: [
       { id: 'cpo-1', sku: '', title: '', variant: '', image_url: '', qty: 1, price: 0, note: '' }
     ],
@@ -87,6 +89,20 @@ function renderCustomPo() {
         <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:3px;">约交期 <span style="font-weight:400;color:var(--text-tertiary);">(供应商承诺发货日 · 可留空)</span></label>
         <input type="date" value="${s.promisedDate}" oninput="CUSTOM_PO_STATE.promisedDate=this.value" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">
       </div>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <label style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:3px; display:flex; justify-content:space-between; align-items:center;">
+        <span>🚚 收货地址</span>
+        <a href="javascript:void(0)" onclick="openShipAddrManager()" style="font-size:11px; color:var(--accent); text-decoration:none; font-weight:600;">⚙ 管理</a>
+      </label>
+      ${(() => {
+        const addrs = (typeof DATA !== 'undefined' && DATA.getShipAddresses) ? DATA.getShipAddresses() : [];
+        const cur = s.shipTo || ((typeof DATA !== 'undefined' && DATA.getDefaultShipAddress) ? DATA.getDefaultShipAddress() : '');
+        return `<select onchange="CUSTOM_PO_STATE.shipTo=this.value" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">
+          ${addrs.map(a => `<option value="${escapeHtml(a.address)}" ${cur === a.address ? 'selected' : ''}>${escapeHtml(a.label)} — ${escapeHtml(a.address)}</option>`).join('')}
+        </select>`;
+      })()}
     </div>
 
     <div style="margin-bottom: 16px;">
@@ -378,6 +394,7 @@ async function saveCustomPo() {
     product: liData.map(x => x.title_cn).join(' / '),
     status: initialStatus,
     promised_date: s.promisedDate || null,
+    ship_to: s.shipTo || null,
     line_items: liData,
     box_note: s.boxNote.trim(),
     total_amount: totalAmount,
@@ -982,6 +999,7 @@ async function openPoForm(salesOrderId, selectedLineItemIds = null) {
     // V5-W3-2026-05-26 BUG FIX: 跟单改过的 boxNote 不能在 renderPoForm 重渲时被冲掉
     boxNote: '',
     boxNoteManuallyEdited: false,
+    shipTo: (typeof DATA !== 'undefined' && DATA.getDefaultShipAddress) ? DATA.getDefaultShipAddress() : '',   // V20260608:收货地址·默认地址
     invalidPoIds: new Set(), // 已取消/已驳回 PO 的 ID 集合（用于渲染时过滤显示）
     splitMode: !!selectedSet, // V4：是否是拆单模式（影响表单顶部提示）
     supplierHistory: supplierHistoryMap, // V5: 本订单 SKU 的历史供应商映射
@@ -1281,6 +1299,21 @@ function renderPoForm() {
         <input type="date" id="poFormPromisedDate" class="form-control" value="">
       </div>
       <div style="grid-column: 1/-1;">
+        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary); display:flex; justify-content:space-between; align-items:center;">
+          <span>🚚 收货地址 <span style="font-weight:400;color:var(--text-tertiary);">(供应商送货到)</span></span>
+          <a href="javascript:void(0)" onclick="openShipAddrManager()" style="font-size:11px; color:var(--accent); text-decoration:none; font-weight:600;">⚙ 管理地址</a>
+        </label>
+        ${(() => {
+          const addrs = (typeof DATA !== 'undefined' && DATA.getShipAddresses) ? DATA.getShipAddresses() : [];
+          const def = (typeof DATA !== 'undefined' && DATA.getDefaultShipAddress) ? DATA.getDefaultShipAddress() : '';
+          const cur = PO_FORM_STATE.shipTo || def;
+          return `<select id="poFormShipTo" class="form-control" onchange="PO_FORM_STATE.shipTo = this.value">
+            ${addrs.map(a => `<option value="${escapeHtml(a.address)}" ${cur === a.address ? 'selected' : ''}>${escapeHtml(a.label)} — ${escapeHtml(a.address)}</option>`).join('')}
+          </select>
+          <div id="poFormShipHint" style="margin-top:5px; font-size:11.5px;"></div>`;
+        })()}
+      </div>
+      <div style="grid-column: 1/-1;">
         <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">
           下单标准 ⚡ <span style="color:var(--text-tertiary); font-weight:normal;">(默认按客户国家自动选 · 可手动改 · 比如美客户在欧洲用→选欧规)</span>
         </label>
@@ -1339,6 +1372,19 @@ function renderPoForm() {
       </div>`;
     })()}
   `;
+  // V20260608:收货地址超阈值提醒(总件数 > 阈值 → 建议送江门工厂)· 只提醒不强制
+  try {
+    const _totalQty = selected.reduce((sum, [_, sel]) => sum + (Number(sel.qty) || 0), 0);
+    const _th = (typeof DATA !== 'undefined' && DATA.getFactoryThreshold) ? DATA.getFactoryThreshold() : 20;
+    const _factory = (typeof DATA !== 'undefined' && DATA.getFactoryShipAddress) ? DATA.getFactoryShipAddress() : '';
+    const hintEl = document.getElementById('poFormShipHint');
+    if (hintEl) {
+      if (_totalQty > _th && _factory) {
+        hintEl.innerHTML = `💡 本单共 ${_totalQty} 件(>${_th}),建议送<b>江门工厂</b>:${escapeHtml(_factory)} · <a href="javascript:void(0)" onclick="(function(){var s=document.getElementById('poFormShipTo'); if(s){s.value='${escapeHtml(_factory)}'; PO_FORM_STATE.shipTo='${escapeHtml(_factory)}';}})()" style="color:var(--accent);font-weight:600;">一键切到工厂</a>`;
+        hintEl.style.color = 'var(--warning)';
+      } else { hintEl.innerHTML = ''; }
+    }
+  } catch (e) {}
 }
 
 function poFormToggleItem(liid, checked) {
@@ -1720,6 +1766,7 @@ async function _poFormSaveInner() {
   const boxNote = document.getElementById('poFormBoxNote').value.trim();
   const promisedDate = document.getElementById('poFormPromisedDate').value;
   const note = document.getElementById('poFormNote').value.trim();
+  const shipTo = (document.getElementById('poFormShipTo') && document.getElementById('poFormShipTo').value) || PO_FORM_STATE.shipTo || (DATA.getDefaultShipAddress ? DATA.getDefaultShipAddress() : '');
 
   for (const [liid, sel] of selected) {
     if (!sel.price || Number(sel.price) <= 0) { toast('请填所有勾选产品的单价', 'warn'); return; }
@@ -1757,12 +1804,12 @@ async function _poFormSaveInner() {
     `;
     document.getElementById('multiSupplierConfirm').style.display = 'flex';
     PO_FORM_STATE._pendingGroups = groups;
-    PO_FORM_STATE._formData = { boxNote, promisedDate, note, supplierIdFallback: supplierId, supplierNameFallback: supplierName };
+    PO_FORM_STATE._formData = { boxNote, promisedDate, note, shipTo, supplierIdFallback: supplierId, supplierNameFallback: supplierName };
     return;
   }
 
   // 单供应商，直接保存（customLines 都跟在这个供应商下）
-  await poFormDoSave([{ supplierId, supplierName, liids: selected.map(([liid]) => liid), customLines }], { boxNote, promisedDate, note });
+  await poFormDoSave([{ supplierId, supplierName, liids: selected.map(([liid]) => liid), customLines }], { boxNote, promisedDate, note, shipTo });
 }
 
 function closeMultiSupplierConfirm() {
@@ -1884,6 +1931,7 @@ async function poFormDoSave(groups, common) {
         product: liData.map(x => x.title_cn || x.title_en).join(' / '),
         status: initialStatus,
         promised_date: common.promisedDate || null,
+        ship_to: common.shipTo || null,
         line_items: liData,
         box_note: common.boxNote,
         total_amount: totalAmount,
@@ -4211,6 +4259,7 @@ function poExportSupplier() {
         promised: p.promised_date || '',
         status: poStatusInfo(p.status).label,
         box_note: p.box_note || '',
+        ship_to: p.ship_to || '',
         sku: li.sku || '',
         title: li.title_cn || li.title_en || '',
         variant: li.variant || '',
@@ -4260,6 +4309,11 @@ function poExportSupplier() {
   <div>产品行数：<b>${allRows.length}</b></div>
   <div>总件数：<b>${totalQty}</b></div>
 </div>
+${(() => {
+  const addrs = [...new Set(list.map(p => (p.ship_to || '').trim()).filter(Boolean))];
+  if (addrs.length === 0) return '';
+  return `<div style="background:#eff6ff; border-left:3px solid #2563eb; padding:8px 14px; border-radius:6px; margin-bottom:14px; font-size:13px;">🚚 <b>收货地址：</b>${addrs.map(a => a.replace(/</g,'&lt;')).join(' ／ ')}</div>`;
+})()}
 <div class="actions">
   <button onclick="window.print()">🖨 打印 / 保存为 PDF</button>
   <button onclick="navigator.clipboard.writeText(document.querySelector('table').outerHTML).then(() => alert('已复制 HTML，可粘贴到 Excel/Word'))">📋 复制表格</button>
@@ -6292,3 +6346,90 @@ function poClearShopFilter() {
 }
 window.poClearShopFilter = poClearShopFilter;
 window.poRenderShops = poRenderShops;
+
+// ============ V20260608:PO 收货地址管理(任何人可维护地址;阈值仅主管)============
+let _SHIP_ADDR_DRAFT = null;
+function openShipAddrManager() {
+  _SHIP_ADDR_DRAFT = JSON.parse(JSON.stringify((typeof DATA !== 'undefined' && DATA.getShipAddresses) ? DATA.getShipAddresses() : []));
+  let modal = document.getElementById('shipAddrModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'shipAddrModal';
+    modal.className = 'modal-bg';
+    modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; display:flex; align-items:center; justify-content:center;';
+    modal.onclick = (e) => { if (e.target === modal) closeShipAddrManager(); };
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  _renderShipAddrManager();
+}
+function closeShipAddrManager() {
+  const m = document.getElementById('shipAddrModal');
+  if (m) m.style.display = 'none';
+  _SHIP_ADDR_DRAFT = null;
+}
+function _renderShipAddrManager() {
+  const modal = document.getElementById('shipAddrModal');
+  if (!modal) return;
+  const list = _SHIP_ADDR_DRAFT || [];
+  const isAdmin = (typeof IS_ADMIN !== 'undefined') && IS_ADMIN;
+  const th = (typeof DATA !== 'undefined' && DATA.getFactoryThreshold) ? DATA.getFactoryThreshold() : 20;
+  const rows = list.map((a, i) => `
+    <div style="display:flex; gap:8px; align-items:center; padding:8px; border:1px solid var(--border); border-radius:8px; margin-bottom:8px; background:var(--bg-card);">
+      <input type="radio" name="shipDefault" ${a.is_default ? 'checked' : ''} onclick="_shipAddrSetDefault(${i})" title="设为默认" style="flex-shrink:0;">
+      <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+        <input type="text" value="${escapeHtml(a.label || '')}" placeholder="名称(如 江门工厂)" oninput="_SHIP_ADDR_DRAFT[${i}].label=this.value"
+          style="padding:6px 8px; border:1px solid var(--border); border-radius:5px; font-size:12px; font-weight:600;">
+        <input type="text" value="${escapeHtml(a.address || '')}" placeholder="详细地址" oninput="_SHIP_ADDR_DRAFT[${i}].address=this.value"
+          style="padding:6px 8px; border:1px solid var(--border); border-radius:5px; font-size:12px;">
+      </div>
+      <button onclick="_shipAddrDelete(${i})" title="删除" style="flex-shrink:0; background:none; border:none; color:var(--danger); cursor:pointer; font-size:16px;">🗑</button>
+    </div>`).join('');
+  modal.innerHTML = `
+    <div style="background:var(--bg-elevated); border-radius:12px; padding:20px; width:min(520px,92vw); max-height:88vh; overflow-y:auto; box-shadow:var(--shadow-lg);" onclick="event.stopPropagation()">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h3 style="margin:0; font-size:16px;">🚚 收货地址管理</h3>
+        <button onclick="closeShipAddrManager()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-tertiary);">×</button>
+      </div>
+      <div style="font-size:11.5px; color:var(--text-tertiary); margin-bottom:10px;">选一个为默认(开 PO 时自动填)。任何人都能维护地址。</div>
+      ${rows || '<div style="color:var(--text-tertiary); font-size:12px; padding:8px;">还没有地址,点下面新增</div>'}
+      <button class="btn small" onclick="_shipAddrAdd()" style="margin-bottom:14px;">+ 新增地址</button>
+      <div style="border-top:1px solid var(--border); padding-top:12px; margin-bottom:14px;">
+        <label style="font-size:12px; font-weight:600; color:var(--text-secondary);">📦 送江门工厂的件数阈值</label>
+        <div style="font-size:11px; color:var(--text-tertiary); margin:3px 0 6px;">PO 总件数超过此值时,开 PO 会提醒改送江门工厂(只提醒)。</div>
+        ${isAdmin
+          ? `<div style="display:flex; gap:8px; align-items:center;"><input type="number" id="shipThresholdInput" value="${th}" min="1" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:5px;"><span style="font-size:12px; color:var(--text-tertiary);">件</span></div>`
+          : `<div style="font-size:13px; font-weight:600;">${th} 件 <span style="font-size:11px; color:var(--text-tertiary); font-weight:400;">(仅主管可改)</span></div>`}
+      </div>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button class="btn" onclick="closeShipAddrManager()">取消</button>
+        <button class="btn primary" onclick="_shipAddrSave()">保存</button>
+      </div>
+    </div>`;
+}
+function _shipAddrAdd() { _SHIP_ADDR_DRAFT.push({ id: 'a' + Math.random().toString(36).slice(2, 8), label: '', address: '', is_default: _SHIP_ADDR_DRAFT.length === 0 }); _renderShipAddrManager(); }
+function _shipAddrDelete(i) { _SHIP_ADDR_DRAFT.splice(i, 1); if (_SHIP_ADDR_DRAFT.length && !_SHIP_ADDR_DRAFT.some(a => a.is_default)) _SHIP_ADDR_DRAFT[0].is_default = true; _renderShipAddrManager(); }
+function _shipAddrSetDefault(i) { _SHIP_ADDR_DRAFT.forEach((a, idx) => a.is_default = (idx === i)); }
+async function _shipAddrSave() {
+  const clean = (_SHIP_ADDR_DRAFT || []).filter(a => (a.address || '').trim());
+  if (clean.length === 0) { toast('至少保留一个地址', 'warn'); return; }
+  try {
+    await DATA.saveShipAddresses(clean);
+    // 阈值(主管)
+    const thEl = document.getElementById('shipThresholdInput');
+    if (thEl && (typeof IS_ADMIN !== 'undefined') && IS_ADMIN) {
+      const n = parseInt(thEl.value);
+      if (n > 0) await DATA.saveFactoryThreshold(n);
+    }
+    toast('✓ 收货地址已保存', 'success');
+    closeShipAddrManager();
+    // 刷新 PO 表单的地址下拉(若开着)
+    if (typeof PO_FORM_STATE !== 'undefined' && PO_FORM_STATE && typeof renderPoForm === 'function' && document.getElementById('poFormShipTo')) renderPoForm();
+  } catch (e) { toast('保存失败:' + (e.message || e), 'err', 5000); }
+}
+window.openShipAddrManager = openShipAddrManager;
+window.closeShipAddrManager = closeShipAddrManager;
+window._shipAddrAdd = _shipAddrAdd;
+window._shipAddrDelete = _shipAddrDelete;
+window._shipAddrSetDefault = _shipAddrSetDefault;
+window._shipAddrSave = _shipAddrSave;

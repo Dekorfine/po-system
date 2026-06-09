@@ -9,6 +9,68 @@
 // ============================================================
 
 // ============================================================
+// V20260608:IndexedDB 订单秒开缓存
+//   localStorage 只有 5MB,装不下 8MB 订单 → 缓存一直写失败 → 每次冷加载 4.7s
+//   改用 IndexedDB(几百MB),完整 5040 单也能秒开 · 异步 API
+// ============================================================
+const _ORDERS_IDB = { name: 'po_orders_cache', store: 'orders', _db: null, KEEP: 4 };
+function _ordersIdbOpen() {
+  if (_ORDERS_IDB._db) return Promise.resolve(_ORDERS_IDB._db);
+  return new Promise((resolve, reject) => {
+    let req;
+    try { req = indexedDB.open(_ORDERS_IDB.name, 1); }
+    catch (e) { return reject(e); }
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(_ORDERS_IDB.store)) db.createObjectStore(_ORDERS_IDB.store);
+    };
+    req.onsuccess = () => { _ORDERS_IDB._db = req.result; resolve(req.result); };
+    req.onerror = () => reject(req.error);
+  });
+}
+async function _ordersIdbGet(key) {
+  const db = await _ordersIdbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(_ORDERS_IDB.store, 'readonly');
+    const r = tx.objectStore(_ORDERS_IDB.store).get(key);
+    r.onsuccess = () => resolve(r.result || null);
+    r.onerror = () => reject(r.error);
+  });
+}
+async function _ordersIdbSet(key, val) {
+  const db = await _ordersIdbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(_ORDERS_IDB.store, 'readwrite');
+    const store = tx.objectStore(_ORDERS_IDB.store);
+    store.put(val, key);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+// 只保留最近 KEEP 个 key(防历史 key 累积)
+async function _ordersIdbPrune() {
+  try {
+    const db = await _ordersIdbOpen();
+    const all = await new Promise((res, rej) => {
+      const tx = db.transaction(_ORDERS_IDB.store, 'readonly');
+      const store = tx.objectStore(_ORDERS_IDB.store);
+      const keysReq = store.getAllKeys(); const valsReq = store.getAll();
+      let keys, vals;
+      keysReq.onsuccess = () => { keys = keysReq.result; if (vals) res({keys, vals}); };
+      valsReq.onsuccess = () => { vals = valsReq.result; if (keys) res({keys, vals}); };
+      tx.onerror = () => rej(tx.error);
+    });
+    const pairs = all.keys.map((k, i) => ({ k, ts: (all.vals[i] && all.vals[i].ts) || 0 }));
+    if (pairs.length <= _ORDERS_IDB.KEEP) return;
+    pairs.sort((a, b) => b.ts - a.ts);
+    const toDel = pairs.slice(_ORDERS_IDB.KEEP).map(p => p.k);
+    const db2 = await _ordersIdbOpen();
+    const tx = db2.transaction(_ORDERS_IDB.store, 'readwrite');
+    toDel.forEach(k => tx.objectStore(_ORDERS_IDB.store).delete(k));
+  } catch (_) {}
+}
+
+// ============================================================
 // Shopify 销售单模块（批次 3：状态机 + DB 持久化 + sub-tabs）
 // ============================================================
 const SHOPIFY = {
@@ -249,27 +311,21 @@ const SHOPIFY = {
     if (!force && this._ordersCacheKey === cacheKey && this._ordersLoadedAt && (Date.now() - this._ordersLoadedAt < CACHE_MS) && this._orders.length > 0) {
       return this._orders;
     }
-    // ② V28x:localStorage 缓存(跨 session 秒开)· 立即返回 + 后台异步刷新
+    // ② V20260608:IndexedDB 缓存(跨 session 秒开 · 几百MB容量,装得下完整订单)· 立即返回 + 后台异步刷新
     if (!force) {
       try {
-        const cacheRaw = localStorage.getItem('shopify_orders_cache_v3');
-        if (cacheRaw) {
-          const cache = JSON.parse(cacheRaw);
-          if (cache && cache.byKey && cache.byKey[cacheKey] && Array.isArray(cache.byKey[cacheKey].data) && cache.byKey[cacheKey].data.length > 0) {  // V20260601-loadfix3:空缓存不返回 · 防止挡住新查询
-            this._orders = cache.byKey[cacheKey].data;
-            this._ordersLoadedAt = cache.byKey[cacheKey].ts || Date.now();
-            this._ordersCacheKey = cacheKey;
-            this._ordersCursor = cache.byKey[cacheKey].cursor || this._computeOrdersCursor(this._orders);  // V20260605-incr
-            // V20260601-perf:缓存够新(<5min)就不再后台全表刷新 · 大幅减少 raw_payload egress
-            const cacheAge = Date.now() - (cache.byKey[cacheKey].ts || 0);
-            if (cacheAge > CACHE_MS) {
-              this._bgRefreshFromSupabase(opts, cacheKey);
-            }
-            console.log(`[订单 ⚡秒开] localStorage 缓存命中 · ${this._orders.length} 单${cacheAge > CACHE_MS ? ' · 后台刷新中…' : ' · 缓存够新跳过刷新'}`);
-            return this._orders;
-          }
+        const entry = await _ordersIdbGet(cacheKey);
+        if (entry && Array.isArray(entry.data) && entry.data.length > 0) {
+          this._orders = entry.data;
+          this._ordersLoadedAt = entry.ts || Date.now();
+          this._ordersCacheKey = cacheKey;
+          this._ordersCursor = entry.cursor || this._computeOrdersCursor(this._orders);
+          const cacheAge = Date.now() - (entry.ts || 0);
+          if (cacheAge > CACHE_MS) this._bgRefreshFromSupabase(opts, cacheKey);
+          console.log(`[订单 ⚡秒开] IndexedDB 缓存命中 · ${this._orders.length} 单${cacheAge > CACHE_MS ? ' · 后台刷新中…' : ' · 缓存够新跳过刷新'}`);
+          return this._orders;
         }
-      } catch (e) { console.warn('[订单缓存] 读取失败:', e); }
+      } catch (e) { console.warn('[订单缓存] IndexedDB 读取失败:', e); }
     }
     // ③ 无缓存 / force / 缓存失效 → 同步从 supabase 拉
     // V20260601-loadfix2:按 shops + 日期下推 + 分页拉全(选店只查该店 · 不被大店挤出 limit 500)
@@ -333,36 +389,23 @@ const SHOPIFY = {
     }
     return lite;
   },
-  _persistOrdersCache(cacheKey) {
-    // 瘦身副本 + 只缓存最近 5000 单(按创建时间已倒序)· 双保险防超限
-    const trimmed = (this._orders || []).slice(0, 5000).map(o => this._trimOrderForCache(o));
-    const entry = { data: trimmed, ts: Date.now(), cursor: this._ordersCursor || this._computeOrdersCursor(this._orders) };
+  async _persistOrdersCache(cacheKey) {
+    // V20260608:写 IndexedDB · 几百MB容量,存完整订单(含 line_items),不再瘦身/不再超限
+    const entry = { data: this._orders || [], ts: Date.now(), cursor: this._ordersCursor || this._computeOrdersCursor(this._orders) };
     try {
-      let cacheRaw = localStorage.getItem('shopify_orders_cache_v3');
-      let cache = cacheRaw ? JSON.parse(cacheRaw) : { byKey: {} };
-      if (!cache.byKey) cache.byKey = {};
-      const keys = Object.keys(cache.byKey);
-      if (keys.length > 3) {
-        const oldest = keys.sort((a, b) => (cache.byKey[a].ts || 0) - (cache.byKey[b].ts || 0))[0];
-        delete cache.byKey[oldest];
-      }
-      cache.byKey[cacheKey] = entry;
-      localStorage.setItem('shopify_orders_cache_v3', JSON.stringify(cache));
-    } catch (e) {
-      // 满了 · 只留当前这一个 key 重写
-      if (e.name === 'QuotaExceededError' || /quota|storage/i.test(e.message || '')) {
-        try {
-          localStorage.removeItem('shopify_orders_cache_v3');
-          localStorage.setItem('shopify_orders_cache_v3', JSON.stringify({ byKey: { [cacheKey]: entry } }));
-        } catch (_) { /* 还写不进 → 放弃缓存(不影响功能,只是不秒开) */ }
-      }
-    }
+      await _ordersIdbSet(cacheKey, entry);
+      _ordersIdbPrune();   // 异步清理旧 key(不 await)
+      // 顺手清掉旧的 localStorage 缓存(已弃用,腾空间)
+      try { localStorage.removeItem('shopify_orders_cache_v3'); } catch (_) {}
+    } catch (e) { console.warn('[订单缓存] IndexedDB 写入失败(不影响功能):', e); }
   },
 
   invalidateOrders() {
     this._ordersLoadedAt = 0;
     this._ordersCacheKey = null;
     try { localStorage.removeItem('shopify_orders_cache_v3'); } catch (_) {}
+    // V20260608:同时清 IndexedDB 订单缓存(整库删,下次重新全量拉)
+    try { if (typeof indexedDB !== 'undefined') { _ORDERS_IDB._db = null; indexedDB.deleteDatabase(_ORDERS_IDB.name); } } catch (_) {}
   },
 
   // V20260605:深度回扫单店(调 Edge Function backfill_orders · since_id 分页拉全近 N 天)
