@@ -1082,21 +1082,50 @@ function toast(msg, type, duration) {
 
 
 // ============ 图片上传到 Supabase Storage ============
+// V20260608:上传前压缩(大图缩到 1600px · JPEG)→ 上传更快更稳;失败自动重试一次
+async function _compressImageFile(file, maxDim = 1600, quality = 0.82) {
+  // 小于 300KB 或非常规图(gif/svg)不压缩,直接用原图
+  if (!file || file.size < 300 * 1024 || /gif|svg/i.test(file.type)) return file;
+  try {
+    const dataUrl = await new Promise((res, rej) => {
+      const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file);
+    });
+    const img = await new Promise((res, rej) => {
+      const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = dataUrl;
+    });
+    let { width: w, height: h } = img;
+    if (w <= maxDim && h <= maxDim) return file;  // 本来就不大,不压
+    if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; } else { w = Math.round(w * maxDim / h); h = maxDim; }
+    const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
+    if (!blob || blob.size >= file.size) return file;  // 压完没变小就用原图
+    return new File([blob], (file.name || 'img').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+  } catch (e) { console.warn('[压缩失败,用原图]', e); return file; }
+}
+
 async function uploadImageToStorage(file) {
   if (!file) throw new Error('未选择文件');
   if (!file.type?.startsWith('image/')) throw new Error('请选择图片文件');
   if (file.size > 10 * 1024 * 1024) throw new Error('图片不能大于 10MB');
-  const ext = (file.name?.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-  const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
-  const { data, error } = await sb.storage.from('product-images').upload(safeName, file, { upsert: false });
-  if (error) {
+  const compressed = await _compressImageFile(file);   // V20260608:先压缩
+  const ext = (compressed.name?.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  // V20260608:失败自动重试一次(网络抖动 → 不用反复手动粘贴)
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+    const { error } = await sb.storage.from('product-images').upload(safeName, compressed, { upsert: false });
+    if (!error) {
+      const { data: { publicUrl } } = sb.storage.from('product-images').getPublicUrl(safeName);
+      return publicUrl;
+    }
+    lastErr = error;
     if (error.message?.includes('Bucket not found') || error.message?.includes('not found')) {
       throw new Error('图片存储未配置，请先在 Supabase 跑 create-storage-bucket.sql');
     }
-    throw error;
+    if (attempt === 0) await new Promise(r => setTimeout(r, 800));  // 退避后重试一次
   }
-  const { data: { publicUrl } } = sb.storage.from('product-images').getPublicUrl(safeName);
-  return publicUrl;
+  throw lastErr;
 }
 
 // 图片上传相关交互（在 showPrompt 内部使用）

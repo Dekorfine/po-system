@@ -385,25 +385,25 @@ function _renderAftersaleCard(a, i) {
     coverHTML = '<div class="no-image">🔧</div><div class="no-image-hint">无截图</div>';
   } else if (n === 1) {
     coverCls = 'cnt-1';
-    coverHTML = `<img src="${allImages[0]}" alt="售后图">`;
+    coverHTML = `<img src="${allImages[0]}" alt="售后图" loading="lazy">`;
   } else if (n === 2) {
     coverCls = 'cnt-2 multi';
-    coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+    coverHTML = allImages.map(s => `<img src="${s}" loading="lazy">`).join('');
   } else if (n === 3) {
     coverCls = 'cnt-3 multi';
-    coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+    coverHTML = allImages.map(s => `<img src="${s}" loading="lazy">`).join('');
   } else if (n === 4) {
     coverCls = 'cnt-4 multi';
-    coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+    coverHTML = allImages.map(s => `<img src="${s}" loading="lazy">`).join('');
   } else {
     coverCls = 'cnt-many multi';
     const max = 9;
     if (n <= max) {
-      coverHTML = allImages.map(s => `<img src="${s}">`).join('');
+      coverHTML = allImages.map(s => `<img src="${s}" loading="lazy">`).join('');
     } else {
-      coverHTML = allImages.slice(0, max - 1).map(s => `<img src="${s}">`).join('');
+      coverHTML = allImages.slice(0, max - 1).map(s => `<img src="${s}" loading="lazy">`).join('');
       const remaining = n - (max - 1);
-      coverHTML += `<div class="more-overlay"><img src="${allImages[max - 1]}"><span>+${remaining}</span></div>`;
+      coverHTML += `<div class="more-overlay"><img src="${allImages[max - 1]}" loading="lazy"><span>+${remaining}</span></div>`;
     }
   }
   
