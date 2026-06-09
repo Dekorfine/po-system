@@ -907,7 +907,9 @@ function afAutoFetchProducts() {
     if (sig(a.products) !== sig(fetchedSel)) afCommitProducts();
   }
   afRenderFetchPanel();
-  afTranslateRemaining();
+  // V20260608:不再自动调 AI 翻译 — 浏览器直连 api.anthropic.com 在 GitHub Pages 必被 CORS 拦死(从未成功),
+  //   每次打开售后都白发一个注定失败的请求 + 满屏报错。需要翻译时由人工点按钮(若要真正可用须走服务端代理)。
+  // afTranslateRemaining();
 }
 
 async function afManualFetch() {
