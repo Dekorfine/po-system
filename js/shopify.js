@@ -76,20 +76,21 @@ async function _ordersIdbPrune() {
 const SHOPIFY = {
   STORES_META: [
     // V20260601:加 public_domain · 用于前端直拉公开 /products.json API(Edge Function 不支持产品查询)
-    { domain: 'vakkerlighting.myshopify.com', site_code: 'VK', public_domain: 'vakkerlighting.com' },
-    { domain: 'dekorfine.myshopify.com',      site_code: 'DF', app: 'df', public_domain: 'dekorfine.com' },
-    { domain: 'docolight.myshopify.com',      site_code: 'DC', public_domain: 'docolight.com' },
-    { domain: 'vkfrench.myshopify.com',       site_code: 'PL', public_domain: 'pinlighting.com' },
-    { domain: 'vakkerge.myshopify.com',       site_code: 'RD', public_domain: 'radilum.com' },
-    { domain: 'vkwholesale.myshopify.com',    site_code: 'MH', public_domain: 'mhdecorlife.com' },
-    { domain: 'docolamp.myshopify.com',       site_code: 'LS', public_domain: 'lumioshine.com' },
+    // V20260611:全部加 display_name 兜底(品牌名 · 和销售单 chip 同一套)· 库存绑定下拉等处不再显示 myshopify 子域名
+    { domain: 'vakkerlighting.myshopify.com', site_code: 'VK', public_domain: 'vakkerlighting.com', display_name: 'Vakkerlight' },
+    { domain: 'dekorfine.myshopify.com',      site_code: 'DF', app: 'df', public_domain: 'dekorfine.com', display_name: 'Dekorfine' },
+    { domain: 'docolight.myshopify.com',      site_code: 'DC', public_domain: 'docolight.com', display_name: 'Docos' },
+    { domain: 'vkfrench.myshopify.com',       site_code: 'PL', public_domain: 'pinlighting.com', display_name: 'Pinlighting' },
+    { domain: 'vakkerge.myshopify.com',       site_code: 'RD', public_domain: 'radilum.com', display_name: 'Radilum' },
+    { domain: 'vkwholesale.myshopify.com',    site_code: 'MH', public_domain: 'mhdecorlife.com', display_name: 'Mooiehome' },
+    { domain: 'docolamp.myshopify.com',       site_code: 'LS', public_domain: 'lumioshine.com', display_name: 'Lumioshine' },
     // V20260527e: mooijane.myshopify.com 已被 janedecor.myshopify.com (JD app) 接管
     // 保留 site_code='MJ' 用于历史订单解析,但不在 chip 条显示 "+ 安装" 入口
     { domain: 'mooijane.myshopify.com',       site_code: 'MJ', legacyOnly: true },
-    { domain: 'decormote.myshopify.com',      site_code: 'RS', app: 'dm', public_domain: 'rayonshine.com' },
-    { domain: 'janedecor.myshopify.com',      site_code: 'JD', app: 'jd', public_domain: 'janedecor.com' },
+    { domain: 'decormote.myshopify.com',      site_code: 'RS', app: 'dm', public_domain: 'rayonshine.com', display_name: 'Rayonshine' },
+    { domain: 'janedecor.myshopify.com',      site_code: 'JD', app: 'jd', public_domain: 'janedecor.com', display_name: 'Mooijane' },
     // V20260606:第二个独立 Shopify Partner 账号 · vakkerlimited.com(app=vl · 独立 client id/secret)
-    { domain: 'k9fvat-ia.myshopify.com',       site_code: 'VL', app: 'vl', public_domain: 'vakkerlimited.com' },
+    { domain: 'k9fvat-ia.myshopify.com',       site_code: 'VL', app: 'vl', public_domain: 'vakkerlimited.com', display_name: 'Vakkerlimited批发网站' },
     // V20260528b: WooCommerce 接入 · mooielight 是 WordPress + WooCommerce(不是 Shopify)
     // platform='woo' 走 woo-api Edge Function · 不走 shopify-api
     { domain: 'mooielight.com', site_code: 'ML', platform: 'woo', woo_store_id: 'mooielight', display_name: 'Mooielight', public_domain: 'mooielight.com' },
@@ -191,7 +192,7 @@ const SHOPIFY = {
         ...meta,
         connected: !!row && row.is_active,
         id: row?.id || null,
-        display_name: row?.display_name || meta.domain.replace('.myshopify.com', ''),
+        display_name: row?.display_name || meta.display_name || meta.domain.replace('.myshopify.com', ''),
         last_sync_at: row?.last_sync_at || null,
         auto_sync_enabled: row?.auto_sync_enabled !== false,
         auto_sync_minutes: row?.auto_sync_minutes || 5,

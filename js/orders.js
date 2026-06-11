@@ -580,10 +580,11 @@ function renderOrders() {
       const db = b.nextFollow || b.promisedDate || '9999';
       return da.localeCompare(db);
     });
-  } else if (sortBy === 'promised_asc') {
-    list.sort((a, b) => (a.promisedDate || '9999').localeCompare(b.promisedDate || '9999'));
-  } else if (sortBy === 'promised_desc') {
-    list.sort((a, b) => (b.promisedDate || '0000').localeCompare(a.promisedDate || '0000'));
+  } else if (sortBy === 'order_no_asc') {
+    // V20260611:按订单号排(自然数字 · DF17621 < DF17624)· 替代"按承诺日"(下单已不填承诺日)
+    list.sort((a, b) => String(a.orderNo || '').localeCompare(String(b.orderNo || ''), undefined, { numeric: true }));
+  } else if (sortBy === 'order_no_desc') {
+    list.sort((a, b) => String(b.orderNo || '').localeCompare(String(a.orderNo || ''), undefined, { numeric: true }));
   } else if (sortBy === 'order_date_desc') {
     list.sort((a, b) => (b.orderDate || '0000').localeCompare(a.orderDate || '0000'));
   }
@@ -1216,6 +1217,7 @@ function openOrderModal(id, agent) {
   document.getElementById('omSupplier').value = o.supplier || '';
   document.getElementById('omNotes').value = o.notes || '';
   document.getElementById('omOrderDate').value = o.orderDate || '';
+  if (typeof _omUpdateOrderDateHint === 'function') _omUpdateOrderDateHint();
   document.getElementById('omPromisedDate').value = o.promisedDate || '';
   document.getElementById('omNextFollow').value = o.nextFollow || '';
   document.getElementById('omNewDate').value = new Date().toISOString().slice(0, 10);
@@ -1468,6 +1470,7 @@ function omAutoFetchProducts() {
 
   let lineItems = [];
   const srcSet = new Set();
+  let salesCreated = '';   // V20260611:销售单的客户下单日期(手动催单默认用它 · 不用手动改)
   nos.forEach(n => {
     let got = [];
     if (typeof PO_LIST !== 'undefined' && PO_LIST.length) {
@@ -1478,6 +1481,14 @@ function omAutoFetchProducts() {
     if (got.length === 0 && typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
       const so = SHOPIFY._orders.find(s => String(s.shopify_order_number||'').replace('#','')===n || String(s.name||'').replace('#','')===n);
       if (so && so.line_items && so.line_items.length) { got = so.line_items; srcSet.add('销售单'); }
+    }
+    // V20260611:不管产品从 PO 还是销售单抓 · 都尝试反查销售单拿客户下单日期(取最早)
+    if (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) {
+      const so2 = SHOPIFY._orders.find(s => String(s.shopify_order_number||'').replace('#','')===n || String(s.name||'').replace('#','')===n);
+      if (so2 && so2.shopify_created_at) {
+        const d2 = String(so2.shopify_created_at).slice(0, 10);
+        if (!salesCreated || d2 < salesCreated) salesCreated = d2;
+      }
     }
     got.forEach(li => { try { li._fromOrder = n; } catch(e){} });
     lineItems = lineItems.concat(got);
@@ -1528,10 +1539,34 @@ function omAutoFetchProducts() {
     }
   }
   _omSyncQtyField();
+  // V20260611:手动催单 → 下单日期默认用销售单的客户下单日期(只在还是"录入当天的自动默认"或空时替换 · 用户手动改过的不动)
+  if (salesCreated && !o._isPO) {
+    const recDay = (o.createdAt || '').slice(0, 10);   // 催单记录创建那天(= addOrder 时的自动默认)
+    if ((!o.orderDate || o.orderDate === recDay) && o.orderDate !== salesCreated) {
+      persistCurrentOrder(oo => { oo.orderDate = salesCreated; });
+      const _odInp = document.getElementById('omOrderDate');
+      if (_odInp) _odInp.value = salesCreated;
+    }
+  }
+  if (typeof _omUpdateOrderDateHint === 'function') _omUpdateOrderDateHint();
   if (typeof omRenderProductLines === 'function') omRenderProductLines();
   omRenderFetchPanel();
   _omTranslateRemaining();  // 残留英文异步 AI 翻译
 }
+
+// V20260611:下单日期旁显示「已下单 N 天」(7天起转橙 · 15天起转红)
+function _omUpdateOrderDateHint() {
+  const el = document.getElementById('omOrderDateDays');
+  if (!el) return;
+  const v = document.getElementById('omOrderDate')?.value || '';
+  if (!v) { el.textContent = ''; return; }
+  const days = Math.floor((Date.now() - new Date(v + 'T00:00:00').getTime()) / 86400000);
+  if (days < 0) { el.textContent = ''; return; }
+  el.textContent = `· 已下单 ${days} 天`;
+  el.style.color = days >= 15 ? 'var(--danger)' : (days >= 7 ? '#b45309' : 'var(--text-tertiary)');
+  el.style.fontWeight = days >= 7 ? '700' : '400';
+}
+window._omUpdateOrderDateHint = _omUpdateOrderDateHint;
 
 // V20260602:手动从 Shopify 后台拉取单个订单(本地没同步到的旧单 · 兜底)
 async function omManualFetch() {
@@ -1775,6 +1810,7 @@ function onOrderField(field, value) {
     if (field === 'promisedDate' && value && o.status === 'pending') o.status = 'producing';
   });
   if (field === 'site') updateOrderNoHint('omSite', 'omOrderNo', 'omOrderNoHint');
+  if (field === 'orderDate' && typeof _omUpdateOrderDateHint === 'function') _omUpdateOrderDateHint();
   renderOrderModalContent();
   renderOrders();
   updateOrderStats();

@@ -61,13 +61,15 @@ async function invSetStaleThreshold() {
 window.invSetStaleThreshold = invSetStaleThreshold;
 
 // 店铺列表(用于绑定 UI · 从 SHOPIFY.STORES_META 取)
+// V20260611:显示名和销售单 chip 同一套(优先 shopify_stores.display_name · 兜底 STORES_META.display_name)· 不再显示 myshopify 子域名
 function _invShopOptions() {
-  const stores = (typeof SHOPIFY !== 'undefined' && SHOPIFY.STORES_META) ? SHOPIFY.STORES_META : [];
+  const live = (typeof SHOPIFY !== 'undefined' && Array.isArray(SHOPIFY._stores) && SHOPIFY._stores.length) ? SHOPIFY._stores : null;
+  const stores = live || ((typeof SHOPIFY !== 'undefined' && SHOPIFY.STORES_META) ? SHOPIFY.STORES_META : []);
   return stores
     .filter(s => !s.legacyOnly)
     .map(s => ({
       domain: s.domain,
-      label: s.display_name || s.domain.replace(/\.myshopify\.com$/, '').replace(/\..*$/, ''),
+      label: `${s.site_code ? s.site_code + ' · ' : ''}${s.display_name || s.domain.replace(/\.myshopify\.com$/, '').replace(/\..*$/, '')}`,
     }));
 }
 
@@ -308,7 +310,7 @@ function _invCardHtml(p) {
           ${_invIsStale(p) ? `<span style="background:#dc2626; color:#fff; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700;" title="库龄超过压货阈值">🐢 压货 ${_invAgeDays(p)}天</span>` : (_invAgeDays(p) != null ? `<span style="color:var(--text-tertiary); font-size:10.5px;">库龄 ${_invAgeDays(p)}天</span>` : '')}
           <span style="font-size:14px; font-weight:600; color:var(--text-primary);">${escapeHtml(p.name_cn || '(无名)')}</span>
         </div>
-        <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:6px;"><span style="font-family:monospace;">内部 SKU: ${escapeHtml(p.sku || '')}</span>${p.default_supplier ? ` · <span style="color:var(--text-secondary);">🏭 ${escapeHtml(p.default_supplier)}</span>` : ''}</div>
+        <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:6px;"><span style="font-family:monospace;">内部 SKU: ${escapeHtml(p.sku || '')}</span>${p.spec ? ` · <span style="color:var(--text-secondary);">📐 ${escapeHtml(p.spec)}</span>` : ''}${p.default_supplier ? ` · <span style="color:var(--text-secondary);">🏭 ${escapeHtml(p.default_supplier)}</span>` : ''}</div>
         
         <!-- 库存条 -->
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
@@ -391,6 +393,7 @@ function _invGridCardHtml(p) {
       </div>
       <div style="font-size:13px; font-weight:600; color:var(--text-primary); line-height:1.3; min-height:34px; overflow:hidden;">${escapeHtml(p.name_cn || '(无名)')}</div>
       <div style="font-size:10.5px; color:var(--text-tertiary); font-family:monospace;">${escapeHtml(p.sku || '')}</div>
+      ${p.spec ? `<div style="font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(p.spec)}">📐 ${escapeHtml(p.spec)}</div>` : ''}
       ${_invIsStale(p) ? `<div style="font-size:10.5px; color:#dc2626; font-weight:700;">🐢 压货 ${_invAgeDays(p)}天</div>` : (_invAgeDays(p) != null ? `<div style="font-size:10.5px; color:var(--text-tertiary);">库龄 ${_invAgeDays(p)}天</div>` : '')}
       <div style="height:6px; background:var(--bg-elevated); border-radius:3px; overflow:hidden;"><div style="width:${barPct}%; height:100%; background:${statusColor};"></div></div>
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:10.5px; color:var(--text-secondary);">
@@ -444,6 +447,7 @@ function invOpenEdit(productId = null) {
       id: p.id,
       sku: p.sku || '',
       title: p.name_cn || '',
+      spec: p.spec || '',
       image_url: p.image_url || '',
       stock_qty: Number(p.stock_qty || 0),
       stock_alert_threshold: Number(p.stock_alert_threshold || 5),
@@ -452,7 +456,7 @@ function invOpenEdit(productId = null) {
     };
   } else {
     INV_EDIT = {
-      id: null, sku: '', title: '', image_url: '',
+      id: null, sku: '', title: '', spec: '', image_url: '',
       stock_qty: 0, stock_alert_threshold: 5, platform_skus: [],
       isNew: true,
     };
@@ -530,6 +534,13 @@ function _invRenderEdit() {
       <input type="text" id="invEditTitleInput" value="${escapeHtml(s.title)}" oninput="INV_EDIT.title=this.value"
              placeholder="例:Pearl Pendant Lamp · 拉取 SKU 后自动填充"
              style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px;">
+    </div>
+    
+    <div style="margin-bottom:14px;">
+      <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">规格(尺寸 / 颜色)</label>
+      <input type="text" id="invEditSpecInput" value="${escapeHtml(s.spec || '')}" oninput="INV_EDIT.spec=this.value"
+             placeholder="例:Dia 40cm · 绿色 · 拉取 SKU / 订单号后自动填充"
+             style="width:100%; padding:8px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:6px;">
     </div>
     
     <!-- 产品图区域:URL 输入 + 缩略预览 + 粘贴上传 + 点击大图 -->
@@ -654,6 +665,7 @@ async function invSaveEdit() {
           stock_alert_threshold: s.stock_alert_threshold,
           platform_skus: cleanPlatSkus,
           image_url: s.image_url || null,
+          spec: (s.spec || '').trim() || null,   // V20260611:规格(尺寸/颜色)
           stock_in_at: new Date().toISOString(),   // V20260607二期:入库时间(库龄起算)
         }).eq('id', existing.id);
         if (error) throw error;
@@ -663,6 +675,7 @@ async function invSaveEdit() {
         const { error } = await sb.from('products').insert({
           sku: s.sku.trim(),
           name_cn: s.title.trim(),
+          spec: (s.spec || '').trim() || null,   // V20260611:规格(尺寸/颜色)
           image_url: s.image_url || null,
           is_inventory_item: true,
           stock_qty: s.stock_qty,
@@ -677,6 +690,7 @@ async function invSaveEdit() {
       // 编辑现有
       const { error } = await sb.from('products').update({
         name_cn: s.title.trim(),
+        spec: (s.spec || '').trim() || null,   // V20260611:规格(尺寸/颜色)
         image_url: s.image_url || null,
         stock_qty: s.stock_qty,
         stock_alert_threshold: s.stock_alert_threshold,
@@ -779,6 +793,7 @@ function invPickOrderLine(i) {
   if (!p || !INV_EDIT) return;
   INV_EDIT.sku = p.sku;
   INV_EDIT.title = p.name || p.sku;
+  if (p.variant) INV_EDIT.spec = p.variant;   // V20260611:规格(尺寸/颜色)一起带入
   if (p.image_url) INV_EDIT.image_url = p.image_url;
   // 重渲染弹窗,字段自动带入
   if (typeof _invRenderEdit === 'function') _invRenderEdit();
@@ -1082,10 +1097,15 @@ async function _invApplyProductData(p, v, storeName, productUrl) {
   if (v?.title && typeof extractVariantInfo === 'function') {
     variantInfoCn = extractVariantInfo(v.title);
   }
+  // V20260611:规格(尺寸/颜色)自动填到表单 · 保存进 products.spec · 卡片上显示
+  const _specVal = variantInfoCn || ((v?.title && v.title !== 'Default Title') ? v.title : '');
+  if (_specVal) INV_EDIT.spec = _specVal;
   
   // 4. UI 同步
   const titleInput = document.getElementById('invEditTitleInput');
   if (titleInput) titleInput.value = INV_EDIT.title;
+  const specInput = document.getElementById('invEditSpecInput');
+  if (specInput && _specVal) specInput.value = _specVal;
   const urlInput = document.getElementById('invEditImgUrl');
   if (urlInput) urlInput.value = INV_EDIT.image_url;
   invRefreshImgPreview();
@@ -1102,6 +1122,32 @@ async function _invApplyProductData(p, v, storeName, productUrl) {
 }
 
 // 1. 从 Shopify 拉 SKU 对应的产品(用公开 /products.json API · 不走后端 Edge Function)
+// V20260611:本地秒查 — 从已同步订单的 line_items / 产品缓存找 SKU(订单号拉取快就是因为查本地 · SKU 拉取也走同一条路)
+function _invLocalSkuLookup(sku) {
+  const k = sku.toLowerCase();
+  let li = null;
+  try {
+    if (typeof SHOPIFY !== 'undefined' && Array.isArray(SHOPIFY._orders)) {
+      for (const so of SHOPIFY._orders) {
+        const hit = (so.line_items || []).find(x => (x.sku || '').toLowerCase() === k);
+        if (hit) { li = hit; break; }
+      }
+    }
+  } catch (e) { /* 静默 */ }
+  let eff = null;
+  try {
+    if (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) eff = PRODUCTS_CACHE.effectiveBySku(sku) || null;
+  } catch (e) { /* 静默 */ }
+  if (!li && !eff) return null;
+  const pm = (typeof SHOPIFY !== 'undefined' && SHOPIFY._productMap) ? SHOPIFY._productMap : {};
+  const name = (eff && eff.name_cn) || (li && (li.title_cn || li.title || li.title_en)) || '';
+  const img = (li && (li.image_url || li.image)) || (eff && eff.image_url) || (pm[sku] && pm[sku].image_url) || '';
+  const variant = li
+    ? ((typeof _cleanFetchedSpec === 'function') ? _cleanFetchedSpec(li, li.variant || li.variant_title || '') : (li.variant || li.variant_title || ''))
+    : '';
+  return { name, image_url: img, variant };
+}
+
 window.invFetchFromShopify = async function() {
   const sku = (INV_EDIT?.sku || '').trim();
   const status = document.getElementById('invFetchStatus');
@@ -1109,7 +1155,20 @@ window.invFetchFromShopify = async function() {
     if (status) { status.style.color = 'var(--danger)'; status.textContent = '请先填 SKU'; }
     return;
   }
-  if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ 分析 SKU 前缀...'; }
+  // V20260611:① 先查本地(已同步订单 line_items / 产品缓存)· 命中直接秒出 · 不用爬店
+  const local = _invLocalSkuLookup(sku);
+  if (local && (local.name || local.image_url)) {
+    if (local.name) INV_EDIT.title = local.name;
+    if (local.variant) INV_EDIT.spec = local.variant;
+    if (local.image_url && !INV_EDIT.image_url) INV_EDIT.image_url = local.image_url;
+    const t = document.getElementById('invEditTitleInput'); if (t) t.value = INV_EDIT.title;
+    const sp = document.getElementById('invEditSpecInput'); if (sp && local.variant) sp.value = local.variant;
+    const u = document.getElementById('invEditImgUrl'); if (u) u.value = INV_EDIT.image_url || '';
+    if (typeof invRefreshImgPreview === 'function') invRefreshImgPreview();
+    if (status) { status.style.color = 'var(--ok)'; status.textContent = '✓ 本地秒出(来自已同步订单/产品)· 名称/规格/图已带入 · 可继续填库存保存'; }
+    return;
+  }
+  if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ 本地没有 · 分析 SKU 前缀去店里找...'; }
   
   try {
     // SKU 前缀路由
@@ -1137,28 +1196,28 @@ window.invFetchFromShopify = async function() {
       if (status) status.textContent = `⏳ 查 ${storeName}${isPrimary ? ' [主店]' : ''}...`;
       
       try {
-        const maxPages = isPrimary ? 5 : 2;
-        let allProducts = [];
-        for (let page = 1; page <= maxPages; page++) {
+        // V20260611:主店翻页 5→20(大店产品超1250个 · 之前"未找到"的根因)· 找到即停不会都拉满
+        const maxPages = isPrimary ? 20 : 2;
+        // V20260611:逐页边拉边找 · 找到即停(不会真拉满20页 · 通常前几页就命中)
+        for (let page = 1; page <= maxPages && !found; page++) {
+          if (status && page > 1) status.textContent = `⏳ 查 ${storeName}${isPrimary ? ' [主店]' : ''} · 第 ${page} 页...`;
           const url = `https://${m.public_domain}/products.json?limit=250&page=${page}`;
           const res = await fetch(url, { method: 'GET', mode: 'cors', credentials: 'omit' });
           if (!res.ok) break;
           const json = await res.json();
           const products = json.products || [];
-          allProducts.push(...products);
-          if (products.length < 250) break;
-        }
-        
-        for (const p of allProducts) {
-          const variants = p.variants || [];
-          const matchedVariant = variants.find(v => 
-            (v.sku || '').toLowerCase() === sku.toLowerCase()
-          );
-          if (matchedVariant) {
-            const productUrl = `https://${m.public_domain}/products/${p.handle}${matchedVariant.id ? '?variant=' + matchedVariant.id : ''}`;
-            found = { product: p, variant: matchedVariant, store: storeName, productUrl };
-            break;
+          for (const p of products) {
+            const variants = p.variants || [];
+            const matchedVariant = variants.find(v => 
+              (v.sku || '').toLowerCase() === sku.toLowerCase()
+            );
+            if (matchedVariant) {
+              const productUrl = `https://${m.public_domain}/products/${p.handle}${matchedVariant.id ? '?variant=' + matchedVariant.id : ''}`;
+              found = { product: p, variant: matchedVariant, store: storeName, productUrl };
+              break;
+            }
           }
+          if (products.length < 250) break;
         }
         if (found) break;
         

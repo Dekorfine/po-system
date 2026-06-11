@@ -14,6 +14,48 @@
 const PHOTOREQ_DEFAULT_URL = 'https://xyhbwqugbnowfjuhqhsj.supabase.co';
 const PHOTOREQ_DEFAULT_KEY = 'sb_publishable_Z0dXXZivG5QI-FCbwELxEA_JZBNx2Hn';
 
+// V20260611:产品图加载失败兜底 → 不再留空白块 · 显示"图片失效"占位(根因排查用 _photoReqDiagImages 诊断脚本)
+window._prImgFail = function(img, small) {
+  try {
+    const d = document.createElement('div');
+    d.style.cssText = small
+      ? 'width:64px;height:64px;background:var(--bg-elevated);border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:20px;'
+      : 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-tertiary);gap:4px;';
+    d.innerHTML = small ? '🖼️' : '<span style="font-size:34px;">🖼️</span><span style="font-size:11px;">图片失效 · 点编辑换图</span>';
+    d.title = '图片地址加载失败:' + (img.src || '').slice(0, 120);
+    img.replaceWith(d);
+  } catch (e) { img.style.display = 'none'; }
+};
+
+// V20260611:图片根因诊断 · Console 跑 _photoReqDiagImages() · 按域名分组统计 + 实测前12个能否加载
+window._photoReqDiagImages = async function() {
+  const logs = (window.PHOTOREQ && PHOTOREQ._allLogs) || [];
+  const withImg = logs.filter(l => l.product_image);
+  console.log(`📊 拍摄需求 ${logs.length} 条 · 有图 ${withImg.length} 条 · 无图 ${logs.length - withImg.length} 条`);
+  const byHost = {};
+  withImg.forEach(l => {
+    let h;
+    const u = String(l.product_image);
+    try { h = u.startsWith('data:') ? '(base64内嵌)' : new URL(u).host; } catch (e) { h = '⚠ 非法URL'; }
+    (byHost[h] = byHost[h] || []).push(l);
+  });
+  Object.entries(byHost).sort((a, b) => b[1].length - a[1].length).forEach(([h, arr]) => {
+    console.log(`  ${h} × ${arr.length} · 例: ${String(arr[0].product_image).slice(0, 110)}`);
+  });
+  console.log('⏳ 实测前 12 个 URL 能否加载...');
+  for (const l of withImg.slice(0, 12)) {
+    const ok = await new Promise(r => {
+      const im = new Image();
+      const t = setTimeout(() => r('⏱超时'), 8000);
+      im.onload = () => { clearTimeout(t); r('✓'); };
+      im.onerror = () => { clearTimeout(t); r('✗失败'); };
+      im.src = l.product_image;
+    });
+    console.log(`  ${ok} ${(l.product_name || '').slice(0, 24)} · ${String(l.product_image).slice(0, 100)}`);
+  }
+  console.log('💡 把上面输出截图发我 → 对症修(失效域名批量换图 / 或换存储)');
+};
+
 function _photoReqGetConfig() {
   const url = localStorage.getItem('worktrack_supabase_url') || PHOTOREQ_DEFAULT_URL;
   const key = localStorage.getItem('worktrack_supabase_anon_key') || PHOTOREQ_DEFAULT_KEY;
@@ -495,7 +537,7 @@ function _photoReqCardHtmlList(log) {
       <!-- 图 -->
       <div>
         ${log.product_image 
-          ? `<img src="${escapeHtml(log.product_image)}" style="width:64px; height:64px; object-fit:cover; border-radius:5px; cursor:zoom-in; ${inWarehouse ? 'opacity:0.7;' : ''}" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
+          ? `<img src="${escapeHtml(log.product_image)}" loading="lazy" onerror="_prImgFail(this, true)" style="width:64px; height:64px; object-fit:cover; border-radius:5px; cursor:zoom-in; ${inWarehouse ? 'opacity:0.7;' : ''}" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
           : `<div style="width:64px; height:64px; background:var(--bg-elevated); border-radius:5px; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:22px;">📷</div>`}
       </div>
       <!-- 主信息 · 3 行 -->
@@ -571,7 +613,7 @@ function _photoReqCardHtmlGrid(log) {
       <!-- V28aa: 大图区 · aspect-ratio + contain 保留完整图 -->
       <div style="position:relative; background:var(--bg-elevated); aspect-ratio: 4/3; overflow:hidden;">
         ${log.product_image 
-          ? `<img src="${escapeHtml(log.product_image)}" style="width:100%; height:100%; object-fit:contain; cursor:zoom-in; ${inWarehouse ? 'opacity:0.6;' : ''}" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
+          ? `<img src="${escapeHtml(log.product_image)}" loading="lazy" onerror="_prImgFail(this)" style="width:100%; height:100%; object-fit:contain; cursor:zoom-in; ${inWarehouse ? 'opacity:0.6;' : ''}" onclick="openImgLightbox && openImgLightbox('${escapeHtml(log.product_image)}')">` 
           : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:48px;">📷</div>`}
         ${urgent && !inWarehouse ? `<span style="position:absolute; top:8px; left:8px; background:var(--danger); color:white; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; box-shadow:0 2px 6px rgba(0,0,0,0.15);">🚨 加急</span>` : ''}
         ${inWarehouse ? `<span style="position:absolute; top:8px; left:8px;">${_photoReqWarehouseBadge(log)}</span>` : ''}
@@ -1248,7 +1290,7 @@ function _photoReqRenderEdit() {
             <input type="file" accept="image/*" style="display:none;" onchange="photoReqEditPickImage(this)">
           </label>
         </div>
-        ${s.product_image ? `<img src="${escapeHtml(s.product_image)}" style="margin-top:6px; width:64px; height:64px; object-fit:cover; border-radius:6px; border:1px solid var(--border);">` : ''}
+        ${s.product_image ? `<img src="${escapeHtml(s.product_image)}" loading="lazy" onerror="_prImgFail(this, true)" style="margin-top:6px; width:64px; height:64px; object-fit:cover; border-radius:6px; border:1px solid var(--border);">` : ''}
       </div>
     </div>
     
@@ -1617,7 +1659,7 @@ function _photoReqBatchRowHtml(r, idx) {
     ? `<div style="width:48px; height:48px; border-radius:5px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--text-tertiary);">⏳</div>`
     : r.product_image
       ? `<div style="position:relative; width:48px; height:48px;">
-           <img src="${escapeHtml(r.product_image)}" style="width:48px; height:48px; object-fit:cover; border-radius:5px; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(r.product_image)}')">
+           <img src="${escapeHtml(r.product_image)}" loading="lazy" onerror="_prImgFail(this, true)" style="width:48px; height:48px; object-fit:cover; border-radius:5px; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(r.product_image)}')">
            <button onclick="_photoReqBatchClearImage('${r._id}')" style="position:absolute; top:-6px; right:-6px; width:16px; height:16px; border-radius:50%; background:var(--danger); color:white; border:0; font-size:10px; cursor:pointer; line-height:1; padding:0;" title="移除">✕</button>
          </div>`
       : `<label tabindex="0" onpaste="_photoReqBatchPasteImage('${r._id}', event)" title="点击上传 · 或选中后 Ctrl+V 粘贴"
