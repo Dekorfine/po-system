@@ -24,7 +24,7 @@
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
 <link rel="preload" href="js/core.js?v=20260608addr" as="script">
 <link rel="preload" href="js/utils.js?v=20260608perf" as="script">
-<link rel="preload" href="js/shopify.js?v=20260608idb" as="script">
+<link rel="preload" href="js/shopify.js?v=20260611names" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -33,7 +33,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260608addr2"></script>
+<script defer src="js/help.js?v=20260611batch"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -44,11 +44,11 @@
 <script defer src="js/aftersales-shared.js?v=20260531ase2"></script>
 <script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260605cmtfix"></script>
-<script defer src="js/orders.js?v=20260607chase"></script>
-<script defer src="js/shopify.js?v=20260608idb"></script>
+<script defer src="js/orders.js?v=20260611chase2"></script>
+<script defer src="js/shopify.js?v=20260611names"></script>
 <script defer src="js/po.js?v=20260608addr2"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
-<script defer src="js/inventory.js?v=20260608imgfix"></script>
+<script defer src="js/inventory.js?v=20260611spec"></script>
 <script defer src="js/inspection.js?v=20260528kappa"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script defer src="js/cross-dept.js?v=20260601fix2"></script>
@@ -58,7 +58,7 @@
 <script defer src="js/meetings.js?v=20260525z"></script>
 <script defer src="js/greeting.js?v=20260525z"></script>
 <script defer src="js/search.js?v=20260525z"></script>
-<script defer src="js/photoreq.js?v=20260606fix3"></script>
+<script defer src="js/photoreq.js?v=20260611imgerr"></script>
 <script defer src="js/init.js"></script>
 
 <style>
@@ -5721,8 +5721,8 @@ if ('serviceWorker' in navigator) {
       <select class="filter-select" id="oSortBy" onchange="_ordersQuickMode='';renderOrders()">
         <option value="urgency">智能排序(催单优先)</option>
         <option value="supplier_grouped">🏭 按供应商分组(可批量催)</option>
-        <option value="promised_asc">按承诺日 ↑</option>
-        <option value="promised_desc">按承诺日 ↓</option>
+        <option value="order_no_asc">按订单号 ↑</option>
+        <option value="order_no_desc">按订单号 ↓</option>
         <option value="order_date_desc">最新下单 ↓</option>
       </select>
       <!-- V20260526e: 日期筛选 + 今日要催快捷 -->
@@ -7697,7 +7697,7 @@ if ('serviceWorker' in navigator) {
       <div style="padding:10px 12px; background:var(--bg-elevated); border-radius:8px;">
         <div style="font-size:11px; color:var(--text-secondary); font-weight:600; margin-bottom:6px;">关键日期</div>
         <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
-          <div class="date-field"><label style="font-size:10.5px;">下单日期</label><input type="date" id="omOrderDate" onchange="onOrderField('orderDate', this.value)" style="padding:5px 6px; font-size:12px;"></div>
+          <div class="date-field"><label style="font-size:10.5px;">下单日期 <span id="omOrderDateDays" style="font-size:10px;"></span></label><input type="date" id="omOrderDate" onchange="onOrderField('orderDate', this.value)" style="padding:5px 6px; font-size:12px;"></div>
           <div class="date-field"><label style="font-size:10.5px;">📅 承诺发货 *</label><input type="date" id="omPromisedDate" onchange="onOrderField('promisedDate', this.value)" style="padding:5px 6px; font-size:12px;"></div>
           <div class="date-field"><label style="font-size:10.5px;">🔔 下次跟进</label><input type="date" id="omNextFollow" class="next-follow" onchange="onOrderField('nextFollow', this.value)" style="padding:5px 6px; font-size:12px;"></div>
         </div>
