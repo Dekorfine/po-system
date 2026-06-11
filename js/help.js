@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260611-imgfix2',
+    date: '2026-06-11',
+    type: 'fix',
+    title: '🖼️ 拍摄需求图片修复:兼容美工端 JSON 格式的图片地址',
+    notes: [
+      '根因:美工端把 product_image 存成 {"url":"...","type":"image"} JSON 字符串,浏览器把整段 JSON 当相对路径请求 → 404 空白',
+      '修复:渲染层加 _prImgUrl() 归一化(纯URL / JSON对象 / JSON数组三种格式都认),列表/卡片/编辑/批量/灯箱 6 处全部走归一化,存量数据立即恢复显示',
+      '自愈:打开编辑弹窗即拆壳,保存后该条永久变回纯 URL',
+    ],
+    files: ['photoreq.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260611-batch',
     date: '2026-06-11',
     type: 'feature',
