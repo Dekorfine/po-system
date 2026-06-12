@@ -99,6 +99,34 @@ const DATA = {
     this._cache.issuesByAgent = this._groupByAgent(issuesR.data || [], 'issue');
     this._cache.missingLights = (missingR.data || []).map(m => this._fromDbMissing(m));
     this._cache.purchasesByAgent = this._groupByAgent(purchasesR.data || [], 'purchase');
+    // V20260612-diffsync:加载完建一份"云端基线"(行签名)· 同步只上传和基线不一致的行
+    this._rebuildBaselines();
+  },
+
+  // V20260612-diffsync:基线 = 每行的 toDb 序列化签名 · 用于差异同步和轮询合并的脏行判断
+  _rebuildBaselines() {
+    if (typeof SYNC2 === 'undefined') return;
+    SYNC2.base = { order: {}, after: {}, issue: {}, missing: {}, purchase: {} };
+    const uidOf = (name) => { const a = this._cache.agents.find(x => x.name === name); return a ? a._userId : null; };
+    Object.entries(this._cache.ordersByAgent).forEach(([name, arr]) => {
+      const uid = uidOf(name);
+      arr.forEach(o => { if (o._id && !o._id.startsWith('O')) SYNC2.setBase('order', o._id, SYNC2.sig(this._toDbOrder(o, o._agent_id || uid))); });
+    });
+    Object.entries(this._cache.aftersalesByAgent).forEach(([name, arr]) => {
+      const uid = uidOf(name);
+      arr.forEach(o => { if (o._id && !o._id.startsWith('A')) SYNC2.setBase('after', o._id, SYNC2.sig(this._toDbAfter(o, o._agent_id || uid))); });
+    });
+    Object.entries(this._cache.issuesByAgent).forEach(([name, arr]) => {
+      const uid = uidOf(name);
+      arr.forEach(o => { if (o._id && !o._id.startsWith('I')) SYNC2.setBase('issue', o._id, SYNC2.sig(this._toDbIssue(o, o._agent_id || uid))); });
+    });
+    (this._cache.missingLights || []).forEach(m => {
+      if (m._id && !m._id.startsWith('M')) SYNC2.setBase('missing', m._id, SYNC2.sig(this._toDbMissing(m, m._creator_id, m.creator)));
+    });
+    Object.entries(this._cache.purchasesByAgent).forEach(([name, arr]) => {
+      const uid = uidOf(name);
+      arr.forEach(p => { if (p._id && !p._id.startsWith('P')) SYNC2.setBase('purchase', p._id, SYNC2.sig(this._toDbPurchase(p, p._agent_id || uid))); });
+    });
   },
 
   _groupByAgent(rows, type) {
@@ -664,50 +692,86 @@ const DATA = {
 };
 
 // ============================================================
-// 全量同步函数（防抖触发）
+// V20260612-diffsync:差异同步(替代全量覆盖)
+//   旧版三宗罪(503行被重写91万次 + 旧快照回写覆盖别人改动 + 对账式误删):
+//   ① 每次编辑把整组全部行 upsert(没改的也写)
+//   ② 本地内存当真相 · 旧快照能把别人已解决的单改回返修中
+//   ③ "云端有本地没有"直接 DELETE · 旧快照会删掉别人新建的行
+//   新版:只上传"和加载基线不一致"的行 · 删除只走显式登记 · 配 60 秒增量轮询
 // ============================================================
+const SYNC2 = {
+  base: { order: {}, after: {}, issue: {}, missing: {}, purchase: {} },   // id → 行签名
+  pendingDel: { order: [], after: [], issue: [], missing: [], purchase: [] },  // 显式登记的真删 id
+  pushing: 0,            // 推送进行中计数(轮询避让)
+  sig(row) { try { return JSON.stringify(row); } catch (e) { return String(Date.now()); } },
+  setBase(kind, id, s) { this.base[kind][id] = s; },
+  isDirty(kind, id, s) { return this.base[kind][id] !== s; },
+  // 未来如需"真删"(非软删):先调 SYNC2.markDeleted(kind, id) 再从数组移除并 save
+  markDeleted(kind, id) {
+    if (!id) return;
+    if (/^[OAIMP]/.test(String(id))) return;   // 临时 id 还没上云 · 不用删
+    if (!this.pendingDel[kind].includes(id)) this.pendingDel[kind].push(id);
+  },
+  async flushDeletes(kind, table) {
+    const dels = this.pendingDel[kind].slice();
+    if (dels.length === 0) return;
+    const { error } = await sb.from(table).delete().in('id', dels);
+    if (!error) this.pendingDel[kind] = this.pendingDel[kind].filter(id => !dels.includes(id));
+  },
+};
+window.SYNC2 = SYNC2;
+
+// 通用差异同步:只 upsert 签名和基线不一致的行 · 插入新行后回填 UUID + 建基线
+async function _diffSync(kind, table, tmpPrefix, arr, toDb, afterInsert) {
+  SYNC2.pushing++;
+  try {
+    await SYNC2.flushDeletes(kind, table);
+
+    const updates = [];
+    for (const o of arr) {
+      if (!o._id || o._id.startsWith(tmpPrefix)) continue;
+      const row = toDb(o);
+      const s = SYNC2.sig(row);
+      if (SYNC2.isDirty(kind, row.id, s)) updates.push({ row, s });
+    }
+    if (updates.length > 0) {
+      const { error } = await sb.from(table).upsert(updates.map(u => u.row));
+      if (error) throw error;
+      updates.forEach(u => SYNC2.setBase(kind, u.row.id, u.s));
+    }
+
+    const newcomers = arr.filter(o => !o._id || o._id.startsWith(tmpPrefix));
+    if (newcomers.length > 0) {
+      const inserts = newcomers.map(o => toDb(o));
+      const { data, error } = await sb.from(table).insert(inserts).select();
+      if (error) throw error;
+      let i = 0;
+      for (const o of arr) {
+        if (!o._id || o._id.startsWith(tmpPrefix)) {
+          if (data[i]) {
+            const oldId = o._id;
+            o._id = data[i].id;
+            if (afterInsert) afterInsert(o, data[i]);
+            if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
+              _currentItemId = o._id;
+            }
+            SYNC2.setBase(kind, o._id, SYNC2.sig(toDb(o)));
+            i++;
+          }
+        }
+      }
+    }
+  } finally {
+    SYNC2.pushing--;
+  }
+}
+
 async function fullSyncOrders(agentName) {
   const a = CONFIG.agents.find(x => x.name === agentName);
   if (!a || !a._userId) return;
   const userId = a._userId;
   const arr = DATA._cache.ordersByAgent[agentName] || [];
-
-  const { data: existing } = await sb.from('orders').select('id').eq('agent_id', userId);
-  const existingIds = new Set((existing || []).map(o => o.id));
-  const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('O')));
-
-  const toDelete = [...existingIds].filter(id => !localIds.has(id));
-  if (toDelete.length > 0) {
-    await sb.from('orders').delete().in('id', toDelete);
-  }
-
-  const inserts = arr.filter(o => !o._id || o._id.startsWith('O')).map(o => DATA._toDbOrder(o, userId));
-  const updates = arr.filter(o => o._id && !o._id.startsWith('O')).map(o => DATA._toDbOrder(o, userId));
-
-  if (updates.length > 0) {
-    const { error } = await sb.from('orders').upsert(updates);
-    if (error) throw error;
-  }
-  if (inserts.length > 0) {
-    const { data, error } = await sb.from('orders').insert(inserts).select();
-    if (error) throw error;
-    // 回填真实 UUID
-    let i = 0;
-    for (const o of arr) {
-      if (!o._id || o._id.startsWith('O')) {
-        if (data[i]) {
-          const oldId = o._id;
-          o._id = data[i].id;
-          o._agent_id = userId;
-          // 如果当前 modal 打开的就是这个订单，同步更新 _currentItemId
-          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
-            _currentItemId = o._id;
-          }
-          i++;
-        }
-      }
-    }
-  }
+  await _diffSync('order', 'orders', 'O', arr, o => DATA._toDbOrder(o, userId), (o) => { o._agent_id = userId; });
 }
 
 async function fullSyncAftersales(agentName) {
@@ -715,41 +779,7 @@ async function fullSyncAftersales(agentName) {
   if (!a || !a._userId) return;
   const userId = a._userId;
   const arr = DATA._cache.aftersalesByAgent[agentName] || [];
-
-  const { data: existing } = await sb.from('aftersales').select('id').eq('agent_id', userId);
-  const existingIds = new Set((existing || []).map(o => o.id));
-  const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('A')));
-
-  const toDelete = [...existingIds].filter(id => !localIds.has(id));
-  if (toDelete.length > 0) {
-    await sb.from('aftersales').delete().in('id', toDelete);
-  }
-
-  const inserts = arr.filter(o => !o._id || o._id.startsWith('A')).map(o => DATA._toDbAfter(o, userId));
-  const updates = arr.filter(o => o._id && !o._id.startsWith('A')).map(o => DATA._toDbAfter(o, userId));
-
-  if (updates.length > 0) {
-    const { error } = await sb.from('aftersales').upsert(updates);
-    if (error) throw error;
-  }
-  if (inserts.length > 0) {
-    const { data, error } = await sb.from('aftersales').insert(inserts).select();
-    if (error) throw error;
-    let i = 0;
-    for (const o of arr) {
-      if (!o._id || o._id.startsWith('A')) {
-        if (data[i]) {
-          const oldId = o._id;
-          o._id = data[i].id;
-          o._agent_id = userId;
-          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
-            _currentItemId = o._id;
-          }
-          i++;
-        }
-      }
-    }
-  }
+  await _diffSync('after', 'aftersales', 'A', arr, o => DATA._toDbAfter(o, userId), (o) => { o._agent_id = userId; });
 }
 
 async function fullSyncIssues(agentName) {
@@ -757,82 +787,14 @@ async function fullSyncIssues(agentName) {
   if (!a || !a._userId) return;
   const userId = a._userId;
   const arr = DATA._cache.issuesByAgent[agentName] || [];
-
-  const { data: existing } = await sb.from('issues').select('id').eq('agent_id', userId);
-  const existingIds = new Set((existing || []).map(o => o.id));
-  const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('I')));
-
-  const toDelete = [...existingIds].filter(id => !localIds.has(id));
-  if (toDelete.length > 0) {
-    await sb.from('issues').delete().in('id', toDelete);
-  }
-
-  const inserts = arr.filter(o => !o._id || o._id.startsWith('I')).map(o => DATA._toDbIssue(o, userId));
-  const updates = arr.filter(o => o._id && !o._id.startsWith('I')).map(o => DATA._toDbIssue(o, userId));
-
-  if (updates.length > 0) {
-    const { error } = await sb.from('issues').upsert(updates);
-    if (error) throw error;
-  }
-  if (inserts.length > 0) {
-    const { data, error } = await sb.from('issues').insert(inserts).select();
-    if (error) throw error;
-    let i = 0;
-    for (const o of arr) {
-      if (!o._id || o._id.startsWith('I')) {
-        if (data[i]) {
-          const oldId = o._id;
-          o._id = data[i].id;
-          o._agent_id = userId;
-          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
-            _currentItemId = o._id;
-          }
-          i++;
-        }
-      }
-    }
-  }
+  await _diffSync('issue', 'issues', 'I', arr, o => DATA._toDbIssue(o, userId), (o) => { o._agent_id = userId; });
 }
 
 async function fullSyncMissing() {
   const arr = DATA._cache.missingLights;
-
-  // 找灯：所有人共享，按 id 同步
-  const { data: existing } = await sb.from('missing_lights').select('id');
-  const existingIds = new Set((existing || []).map(o => o.id));
-  const localIds = new Set(arr.map(o => o._id).filter(id => id && !id.startsWith('M')));
-
-  // 只删除自己创建的（RLS 控制）
-  const toDelete = [...existingIds].filter(id => !localIds.has(id));
-  if (toDelete.length > 0) {
-    await sb.from('missing_lights').delete().in('id', toDelete);
-  }
-
-  const inserts = arr.filter(o => !o._id || o._id.startsWith('M')).map(o => DATA._toDbMissing(o, CURRENT_USER_ID, CURRENT_AGENT));
-  const updates = arr.filter(o => o._id && !o._id.startsWith('M')).map(o => DATA._toDbMissing(o, CURRENT_USER_ID, CURRENT_AGENT));
-
-  if (updates.length > 0) {
-    const { error } = await sb.from('missing_lights').upsert(updates);
-    if (error) throw error;
-  }
-  if (inserts.length > 0) {
-    const { data, error } = await sb.from('missing_lights').insert(inserts).select();
-    if (error) throw error;
-    let i = 0;
-    for (const o of arr) {
-      if (!o._id || o._id.startsWith('M')) {
-        if (data[i]) {
-          const oldId = o._id;
-          o._id = data[i].id;
-          o._creator_id = data[i].creator_id;
-          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
-            _currentItemId = o._id;
-          }
-          i++;
-        }
-      }
-    }
-  }
+  await _diffSync('missing', 'missing_lights', 'M', arr,
+    m => DATA._toDbMissing(m, m._creator_id || CURRENT_USER_ID, m.creator || CURRENT_AGENT),
+    (m, dbRow) => { m._creator_id = dbRow.creator_id; });
 }
 
 async function fullSyncPurchases(agentName) {
@@ -840,41 +802,128 @@ async function fullSyncPurchases(agentName) {
   if (!me) return;
   const userId = me._userId;
   const arr = DATA._cache.purchasesByAgent[agentName] || [];
+  await _diffSync('purchase', 'online_purchases', 'P', arr, p => DATA._toDbPurchase(p, userId), (p) => { p._agent_id = userId; });
+}
 
-  const { data: existing } = await sb.from('online_purchases').select('id').eq('agent_id', userId);
-  const existingIds = new Set((existing || []).map(x => x.id));
-  const localIds = new Set(arr.map(p => p._id).filter(id => id && !id.startsWith('P')));
+// ============================================================
+// V20260612-diffsync:60 秒增量轮询 — 别人工位的改动自动合并(不再要求 F5)
+//   依赖五张表的 updated_at 列 + 触发器(SQL:共享表updated_at触发器.sql)
+//   SQL 没跑时查询报错 → 静默跳过 · 功能退化为旧行为(F5 拉新)· 不影响其它
+// ============================================================
+let _pollTimer = null;
+let _pollSince = null;
+let _pollToastAt = 0;
 
-  const toDelete = [...existingIds].filter(id => !localIds.has(id));
-  if (toDelete.length > 0) {
-    await sb.from('online_purchases').delete().in('id', toDelete);
-  }
+function startSharedPolling() {
+  if (_pollTimer) return;
+  _pollSince = new Date(Date.now() - 5000).toISOString();
+  _pollTimer = setInterval(pollSharedChanges, 60000);
+}
 
-  const inserts = arr.filter(p => !p._id || p._id.startsWith('P')).map(p => DATA._toDbPurchase(p, userId));
-  const updates = arr.filter(p => p._id && !p._id.startsWith('P')).map(p => DATA._toDbPurchase(p, userId));
-
-  if (updates.length > 0) {
-    const { error } = await sb.from('online_purchases').upsert(updates);
-    if (error) throw error;
-  }
-  if (inserts.length > 0) {
-    const { data, error } = await sb.from('online_purchases').insert(inserts).select();
-    if (error) throw error;
-    let i = 0;
-    for (const p of arr) {
-      if (!p._id || p._id.startsWith('P')) {
-        if (data[i]) {
-          const oldId = p._id;
-          p._id = data[i].id;
-          p._agent_id = userId;
-          if (typeof _currentItemId !== 'undefined' && _currentItemId === oldId) {
-            _currentItemId = p._id;
-          }
-          i++;
-        }
+async function pollSharedChanges() {
+  if (document.visibilityState !== 'visible') return;   // 页面切走不跑
+  if (SYNC2.pushing > 0) return;                         // 正在推送 · 本轮避让
+  const since = _pollSince;
+  const newSince = new Date(Date.now() - 5000).toISOString();   // 5 秒重叠窗口防漏
+  try {
+    const [oR, aR, iR, mR, pR] = await Promise.all([
+      sb.from('orders').select('*').gt('updated_at', since),
+      sb.from('aftersales').select('*').gt('updated_at', since),
+      sb.from('issues').select('*').gt('updated_at', since),
+      sb.from('missing_lights').select('*').gt('updated_at', since),
+      sb.from('online_purchases').select('*').gt('updated_at', since),
+    ]);
+    if (oR.error || aR.error || iR.error || mR.error || pR.error) return;   // updated_at 列还没建 · 静默
+    let changed = 0;
+    changed += _mergeRemoteRows('order', oR.data || []);
+    changed += _mergeRemoteRows('after', aR.data || []);
+    changed += _mergeRemoteRows('issue', iR.data || []);
+    changed += _mergeRemoteRows('missing', mR.data || []);
+    changed += _mergeRemoteRows('purchase', pR.data || []);
+    _pollSince = newSince;
+    if (changed > 0) {
+      _applyPolledData();
+      const now = Date.now();
+      if (typeof toast === 'function' && now - _pollToastAt > 120000) {   // 提示限流 2 分钟一次
+        _pollToastAt = now;
+        toast(`🔄 已同步其他工位的 ${changed} 处更新`, 'ok', 2500);
       }
     }
+  } catch (e) { /* 静默 · 下轮再试 */ }
+}
+
+// 把云端变化合并进内存缓存:本地有未推送改动的行不动(本地优先)· 正在 modal 编辑的行不动
+function _mergeRemoteRows(kind, rows) {
+  if (!rows || rows.length === 0) return 0;
+  const idToName = {};
+  DATA._cache.agents.forEach(a => { idToName[a._userId] = a.name; });
+  let changed = 0;
+  for (const r of rows) {
+    try {
+      if (typeof _currentItemId !== 'undefined' && _currentItemId === r.id) continue;   // 正在编辑 · 跳过
+      let item, sigRemote, arr;
+      if (kind === 'missing') {
+        item = DATA._fromDbMissing(r);
+        sigRemote = SYNC2.sig(DATA._toDbMissing(item, r.creator_id, r.creator_name));
+        arr = DATA._cache.missingLights;
+      } else {
+        const conv = {
+          order:    { to: (x) => DATA._toDbOrder(x, r.agent_id),    groups: DATA._cache.ordersByAgent },
+          after:    { to: (x) => DATA._toDbAfter(x, r.agent_id),    groups: DATA._cache.aftersalesByAgent },
+          issue:    { to: (x) => DATA._toDbIssue(x, r.agent_id),    groups: DATA._cache.issuesByAgent },
+          purchase: { to: (x) => DATA._toDbPurchase(x, r.agent_id), groups: DATA._cache.purchasesByAgent },
+        }[kind];
+        item = (kind === 'order') ? DATA._fromDbOrder(r)
+             : (kind === 'after') ? DATA._fromDbAfter(r)
+             : (kind === 'issue') ? DATA._fromDbIssue(r)
+             : DATA._fromDbPurchase(r);
+        sigRemote = SYNC2.sig(conv.to(item));
+        const agentName = idToName[r.agent_id] || '未知';
+        if (!conv.groups[agentName]) conv.groups[agentName] = [];
+        arr = conv.groups[agentName];
+      }
+      const idx = arr.findIndex(x => x._id === r.id);
+      if (idx >= 0) {
+        // 本地这行当前的签名 vs 基线:不一致 = 本会话有未推送的改动 → 本地优先,跳过
+        const curSig = SYNC2.sig(
+          kind === 'missing' ? DATA._toDbMissing(arr[idx], arr[idx]._creator_id, arr[idx].creator)
+          : kind === 'order' ? DATA._toDbOrder(arr[idx], r.agent_id)
+          : kind === 'after' ? DATA._toDbAfter(arr[idx], r.agent_id)
+          : kind === 'issue' ? DATA._toDbIssue(arr[idx], r.agent_id)
+          : DATA._toDbPurchase(arr[idx], r.agent_id)
+        );
+        if (SYNC2.isDirty(kind, r.id, curSig)) continue;
+        if (curSig === sigRemote) { SYNC2.setBase(kind, r.id, sigRemote); continue; }   // 自己刚推上去的回声
+        arr[idx] = item;
+        changed++;
+      } else {
+        arr.unshift(item);   // 别人新建的行
+        changed++;
+      }
+      SYNC2.setBase(kind, r.id, sigRemote);
+    } catch (e) { /* 单行失败不影响其它 */ }
   }
+  return changed;
+}
+
+// 合并后:重建顶层数组 + 角标 + 重渲当前 tab(轻量 · 不触发会议/PO/Shopify 预加载)
+function _applyPolledData() {
+  try {
+    if (IS_ADMIN) {
+      ORDERS = DATA.getAllOrders().filter(o => !o.deletedAt);
+      AFTERSALES = DATA.getAllAftersales().filter(a => !a.deletedAt);
+      ISSUES = DATA.getAllIssues().filter(i => !i.deletedAt);
+      PURCHASES = DATA.getAllPurchases().filter(p => !p.deletedAt);
+    } else {
+      ORDERS = DATA.getOrders(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
+      AFTERSALES = DATA.getAftersales(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
+      ISSUES = DATA.getIssues(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
+      PURCHASES = DATA.getPurchases(CURRENT_AGENT).filter(p => !p.deletedAt).map(p => ({ ...p, _agent: CURRENT_AGENT }));
+    }
+    MISSING_LIGHTS = DATA.getMissingLights().filter(m => !m.deletedAt);
+    if (typeof updateBadges === 'function') updateBadges();
+    if (typeof renderActiveTab === 'function') renderActiveTab();
+  } catch (e) { console.warn('[poll] 应用合并数据失败', e.message); }
 }
 
 // ============ 全局状态 ============
@@ -1757,6 +1806,9 @@ async function onAuthSuccess(session) {
   // 更新 CONFIG
   CONFIG = DATA.getConfig();
   SCORE_RULES = DATA.getScoreRules();
+
+  // V20260612-diffsync:启动 60 秒增量轮询(其他工位的改动自动可见 · 不再要求 F5)
+  if (typeof startSharedPolling === 'function') startSharedPolling();
 
   // 找到当前用户对应的 agent
   const agent = CONFIG.agents.find(a => a._userId === CURRENT_USER_ID);
