@@ -105,7 +105,7 @@ const PHOTOREQ = {
   _client: null,
   _list: [],
   _allLogs: [],          // V27y: 全量缓存(订阅会更新)
-  _filter: 'all-activities',  // V27y: 默认看全部动态
+  _filter: 'unfinished',  // V20260612:默认只看未完成(跟单首要关注没做完的)· 全部动态移到🌐全部
   _viewMode: (typeof localStorage !== 'undefined' && localStorage.getItem('photoreq_view_mode')) || 'list',  // V28a: 'list' | 'grid'
   _loadedAt: 0,
   _channel: null,        // V27y: realtime subscription handle
@@ -218,6 +218,62 @@ const PHOTOREQ_REVIEW_LABEL = {
 };
 
 // ─────────────── 渲染主 tab ───────────────
+// V20260612:存档/取消存档 — 完成的需求收进🗃️ · 跟单列表保持干净
+async function photoReqArchive(id, archived) {
+  try {
+    const client = _photoReqClient();
+    if (!client) { toast('跨部门库未连接', 'err'); return; }
+    const { error } = await client.from('photo_logs')
+      .update({ archived: !!archived, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) {
+      if (/archived/.test(error.message || '')) { toast('请先在跨部门库跑 拍摄需求存档列.sql', 'err', 5000); return; }
+      throw error;
+    }
+    const l = (PHOTOREQ._allLogs || []).find(x => x.id === id);
+    if (l) l.archived = !!archived;
+    if (typeof toast === 'function') toast(archived ? '🗃️ 已存档' : '↩️ 已取消存档', 'ok', 2000);
+    renderPhotoReq();
+  } catch (e) {
+    if (typeof toast === 'function') toast('操作失败:' + (e.message || e), 'err', 4000);
+  }
+}
+window.photoReqArchive = photoReqArchive;
+
+// V20260612:状态分组(跟单视角)· 准备中=等拍摄部接手 · 待拍=已接未拍 · 剪辑中=拍完后的整条流水线
+function _prGroupOf(l) {
+  if (l.archived) return 'archived';
+  if (_photoReqIsWarehoused(l)) return 'warehouse';
+  if (l.status === 'done') return 'done';
+  if (l.status === 'cancelled') return 'cancelled';
+  if (l.status === 'draft') return 'prep';
+  if (l.status === 'shooting') return 'await-shoot';
+  if (['shot', 'editing', 'edited', 'uploading'].includes(l.status)) return 'editing';
+  return 'prep';
+}
+
+function _photoReqChips() {
+  const all = PHOTOREQ._allLogs || [];
+  const c = { unfinished: 0, prep: 0, 'await-shoot': 0, editing: 0, done: 0, archived: 0, warehouse: 0 };
+  all.forEach(l => {
+    const g = _prGroupOf(l);
+    if (c[g] !== undefined) c[g]++;
+    if (['prep', 'await-shoot', 'editing'].includes(g)) c.unfinished++;
+  });
+  return [
+    { k: 'unfinished', label: '⏳ 未完成', count: c.unfinished },
+    { k: 'prep',        label: '📦 准备中', count: c.prep },
+    { k: 'await-shoot', label: '📷 待拍',   count: c['await-shoot'] },
+    { k: 'editing',     label: '🎬 剪辑中', count: c.editing },
+    { k: 'done',        label: '✅ 已完成', count: c.done },
+    { k: 'archived',    label: '🗃️ 已存档', count: c.archived },
+    { k: 'mine',        label: '👤 我提的' },
+    { k: 'urgent',      label: '🚨 加急' },
+    { k: 'warehouse',   label: '📦 仓库', count: c.warehouse },
+    { k: 'all-activities', label: '🌐 全部' },
+  ];
+}
+
 async function renderPhotoReq() {
   const body = document.getElementById('photoReqBody');
   if (!body) return;
@@ -251,17 +307,10 @@ async function renderPhotoReq() {
 
     <!-- V27y: 筛选 sub-tab(v3) + V28a: 视图切换 -->
     <div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; align-items:center;">
-      ${[
-        { k: 'all-activities', label: '🌐 全部工作动态' },
-        { k: 'mine',           label: '👤 我提的' },
-        { k: 'urgent',         label: '🚨 加急' },
-        { k: 'in-progress',    label: '⏳ 进行中' },
-        { k: 'done',           label: '✅ 已完成' },
-        { k: 'warehouse',      label: '📦 仓库' },
-      ].map(f => `
+      ${_photoReqChips().map(f => `
         <button onclick="photoReqSetFilter('${f.k}')" class="photoreq-filter-chip ${PHOTOREQ._filter === f.k ? 'active' : ''}" 
                 style="padding:6px 12px; font-size:12px; border:1px solid ${PHOTOREQ._filter === f.k ? 'var(--accent)' : 'var(--border)'}; border-radius:18px; background:${PHOTOREQ._filter === f.k ? 'var(--accent)' : 'var(--bg-card)'}; color:${PHOTOREQ._filter === f.k ? 'white' : 'var(--text-secondary)'}; cursor:pointer; font-weight:${PHOTOREQ._filter === f.k ? '600' : '400'};">
-          ${f.label}
+          ${f.label}${typeof f.count === 'number' ? ` <span style="opacity:0.75; font-size:10.5px;">${f.count}</span>` : ''}
         </button>
       `).join('')}
       
@@ -406,6 +455,22 @@ function _photoReqApplyFilterAndRender() {
   
   let list = all;
   switch (tab) {
+    case 'unfinished':
+      // V20260612:默认视图 — 只看没做完的(完成/取消/已存档/仓库中的全部隐藏)
+      list = all.filter(l => ['prep', 'await-shoot', 'editing'].includes(_prGroupOf(l)));
+      break;
+    case 'prep':
+      list = all.filter(l => _prGroupOf(l) === 'prep');
+      break;
+    case 'await-shoot':
+      list = all.filter(l => _prGroupOf(l) === 'await-shoot');
+      break;
+    case 'editing':
+      list = all.filter(l => _prGroupOf(l) === 'editing');
+      break;
+    case 'archived':
+      list = all.filter(l => _prGroupOf(l) === 'archived');
+      break;
     case 'all-activities':
       // V28c (v4 #2.1): 默认隐藏仓库中的(它们暂停了 · 不影响活跃判断)
       list = all.filter(l => !_photoReqIsWarehoused(l));
@@ -427,7 +492,7 @@ function _photoReqApplyFilterAndRender() {
       );
       break;
     case 'done':
-      list = all.filter(l => l.status === 'done' && !_photoReqIsWarehoused(l));
+      list = all.filter(l => l.status === 'done' && !l.archived && !_photoReqIsWarehoused(l));   // V20260612:已存档的不在这里
       break;
     case 'warehouse':
       // V28c (v4 #2.2): 只看仓库中的
@@ -592,6 +657,8 @@ function _photoReqCardHtmlList(log) {
         ${inWarehouse 
           ? `<button class="btn small" disabled style="font-size:10.5px; padding:2px 8px; opacity:0.4; cursor:not-allowed;" title="在仓库 · 暂停编辑 · 等拍摄部唤醒后才能改">✏ 编辑</button>`
           : `<button onclick="photoReqOpenEdit('${escapeHtml(log.id)}')" class="btn small" style="font-size:10.5px; padding:2px 8px;" title="编辑">✏ 编辑</button>`}
+        ${log.status === 'done' && !log.archived ? `<button onclick="photoReqArchive('${escapeHtml(log.id)}', true)" class="btn small" style="font-size:10.5px; padding:2px 8px; color:var(--text-secondary);" title="存档:从已完成列表收起 · 可在🗃️已存档找回">🗃️ 存档</button>` : ''}
+        ${log.archived ? `<button onclick="photoReqArchive('${escapeHtml(log.id)}', false)" class="btn small" style="font-size:10.5px; padding:2px 8px;" title="取消存档 · 回到已完成">↩️ 取消存档</button>` : ''}
       </div>
     </div>
   `;
@@ -676,6 +743,8 @@ function _photoReqCardHtmlGrid(log) {
           ${inWarehouse 
             ? `<button class="btn small" disabled style="font-size:10.5px; padding:2px 8px; opacity:0.4; cursor:not-allowed;" title="在仓库 · 暂停编辑">✏ 编辑</button>`
             : `<button onclick="photoReqOpenEdit('${escapeHtml(log.id)}')" class="btn small" style="font-size:10.5px; padding:2px 8px;" title="编辑">✏ 编辑</button>`}
+        ${log.status === 'done' && !log.archived ? `<button onclick="photoReqArchive('${escapeHtml(log.id)}', true)" class="btn small" style="font-size:10.5px; padding:2px 8px; color:var(--text-secondary);" title="存档:从已完成列表收起 · 可在🗃️已存档找回">🗃️ 存档</button>` : ''}
+        ${log.archived ? `<button onclick="photoReqArchive('${escapeHtml(log.id)}', false)" class="btn small" style="font-size:10.5px; padding:2px 8px;" title="取消存档 · 回到已完成">↩️ 取消存档</button>` : ''}
         </div>
       </div>
     </div>
