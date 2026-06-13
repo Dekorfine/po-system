@@ -511,6 +511,15 @@ function cdmHandleRealtimeChange(payload) {
   const me = _cdmGetCurrentUser();
   const row = payload.new || payload.old;
   if (!row) return;
+
+  // V20260613:线下单工单(related_type='offline_transfer')变化 → 刷新线下单 tab + 角标(复用本订阅 · 不新增频道)
+  if (row.to_system === 'po' && row.related_type === 'offline_transfer' && typeof loadOfflineOrders === 'function') {
+    loadOfflineOrders().then(() => {
+      if (typeof OFFLINE !== 'undefined' && typeof CURRENT_TAB !== 'undefined' && CURRENT_TAB === 'offline' && typeof renderOfflineOrders === 'function') renderOfflineOrders();
+      if (typeof updateBadges === 'function') updateBadges();
+      if (payload.eventType === 'INSERT' && row.from_user_id !== me.id && typeof toast === 'function') toast('🧾 收到一条新的线下转单', 'ok', 3000);
+    }).catch(() => {});
+  }
   const isRelevant = (row.to_system === 'po')
                   || (row.from_system === 'po' && row.from_user_id === me.id)
                   || (Array.isArray(row.watchers) && row.watchers.includes(me.id));

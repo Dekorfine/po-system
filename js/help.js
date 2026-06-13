@@ -10,6 +10,21 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260613-offline',
+    date: '2026-06-13',
+    type: 'feature',
+    title: '🧾 线下单对接:接收客服转单 + 发货自动回写客服(用于提成统计)',
+    notes: [
+      '新增「🧾 线下单」tab(催单后):接收客服 cs 转来的已付款订单,只读 xyhbw 的 cross_dept_messages(to_system=po AND related_type=offline_transfer),不直连 CLOUD',
+      '展示:订单号/网站/指派人/付款凭证缩略图/格式化下单详情;待处理/已出货/指派给我/全部 四个筛选 + 角标',
+      '出货回执(关键):点「📦 标记发货」自动往 cross_dept_messages 写 po_shipped 回执(related_ref=订单号),客服系统订阅后自动把 offline_orders 置 dispatched——跟单不用碰 CLOUD、不用去客服系统操作',
+      '实时到达:复用跨部门已有的 realtime 订阅(零新增频道/零 Realtime 成本),新转单秒到 + 桌面提示',
+      'org_directory 自检:启动时在 Console 列出 system=po 的跟单同事名单,缺谁会告警(补人在跟单工作台触发人员发布)',
+      '附件铁律:付款凭证全走 Storage URL,渲染层拦截 base64(标红拒渲)防撑爆行',
+    ],
+    files: ['offline-orders.js(新)', 'cross-dept.js', 'core.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260612-pr-archive',
     date: '2026-06-12',
     type: 'feature',

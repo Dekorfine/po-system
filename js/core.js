@@ -1062,6 +1062,7 @@ const ALL_MODULES = [
   { key: 'sales', label: '📥 销售单' },
   { key: 'po', label: '📦 采购单' },
   { key: 'orders', label: '📋 催单' },
+  { key: 'offline', label: '🧾 线下单' },
   { key: 'missing', label: '🔍 找灯' },
   { key: 'purchases', label: '🛒 线上采购' },
   { key: 'aftersales', label: '🔧 售后' },
@@ -2381,6 +2382,13 @@ function loadAllData() {
   if (typeof loadChaseOrders === 'function') {
     loadChaseOrders().catch(e => console.warn('PO 派生催单加载失败:', e));
   }
+  // V20260613:启动预加载线下单(角标)+ org_directory 跟单名单自检
+  if (typeof loadOfflineOrders === 'function') {
+    loadOfflineOrders().then(() => { if (typeof updateBadges === 'function') updateBadges(); }).catch(() => {});
+  }
+  if (typeof offlineCheckOrgDirectory === 'function') {
+    offlineCheckOrgDirectory().catch(() => {});
+  }
   // V4 修复：登录后立即预加载销售单数据（默认 sales tab 进首屏直接看到订单，不用点同步）
   // 同时预加载 PRODUCTS_CACHE + SHOPIFY._productMap，让催单/售后能通过 SKU 反查产品图
   if (typeof SHOPIFY !== 'undefined' && SHOPIFY.loadStores && SHOPIFY.loadOrdersFromDB) {
@@ -2474,6 +2482,14 @@ function renderActiveTab() {
     }
   }
   else if (CURRENT_TAB === 'missing') { renderMissing(); updateMissingStats(); }
+  else if (CURRENT_TAB === 'offline') {
+    // V20260613:线下单(客服转单)· 进 tab 拉一次 · 先用缓存渲染再刷新
+    if (typeof renderOfflineOrders === 'function') renderOfflineOrders();
+    if (typeof loadOfflineOrders === 'function') loadOfflineOrders().then(() => {
+      if (typeof renderOfflineOrders === 'function') renderOfflineOrders();
+      if (typeof updateBadges === 'function') updateBadges();
+    });
+  }
   else if (CURRENT_TAB === 'purchases') { 
     if (typeof renderPurchases === 'function') renderPurchases(); 
     if (typeof updatePurchaseStats === 'function') updatePurchaseStats();
@@ -2565,6 +2581,7 @@ function updateBadges() {
   setBadge('badgeAftersales', asUnresolved);
   setBadge('badgeIssues', isUnresolved);
   setBadge('badgeMissing', mActive);
+  if (typeof offlineTodoCount === 'function') setBadge('badgeOffline', offlineTodoCount());   // V20260613:线下单待处理
   setBadge('badgeFinance', financeWaiting);
 }
 
