@@ -17,7 +17,7 @@ const OFF_STAGES = [
 const OFF_STAGE_MAP = Object.fromEntries(OFF_STAGES.map(s => [s.k, s]));
 const OFF_NEXT = { pending: 'claimed', claimed: 'ordered', ordered: 'producing', producing: 'shipped', shipped: 'received' };
 
-const OFFLINE = { _msgs: [], _followups: {}, _view: 'board', _loadedAt: 0 };
+const OFFLINE = { _msgs: [], _followups: {}, _view: (typeof localStorage !== 'undefined' && localStorage.getItem('offline_view')) || 'board', _loadedAt: 0 };
 window.OFFLINE = OFFLINE;
 
 function _offIsBase64(v) {
@@ -64,15 +64,15 @@ function renderOfflineOrders() {
   const body = document.getElementById('offlineBody');
   if (!body) return;
   const msgs = OFFLINE._msgs || [];
+  const vbtn = (k, label) => `<button onclick="offlineSetView('${k}')" style="padding:5px 11px; font-size:11.5px; border:0; ${k !== 'board' ? 'border-left:1px solid var(--border);' : ''} cursor:pointer; background:${OFFLINE._view === k ? 'var(--accent)' : 'var(--bg-card)'}; color:${OFFLINE._view === k ? 'white' : 'var(--text-secondary)'}; font-weight:${OFFLINE._view === k ? '600' : '400'};">${label}</button>`;
   const header = `
     <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
-      <h2 style="margin:0; font-size:17px; display:flex; align-items:center; gap:8px;">
+      <h2 style="margin:0; font-size:17px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         🧾 线下单
         <span style="font-size:11px; font-weight:400; color:var(--text-tertiary);">客服转来的已付款订单 · 全员协作推进 · 发货后自动回写客服(提成统计)</span>
       </h2>
       <div style="margin-left:auto; display:inline-flex; gap:0; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
-        <button onclick="offlineSetView('board')" style="padding:5px 12px; font-size:11.5px; border:0; cursor:pointer; background:${OFFLINE._view === 'board' ? 'var(--accent)' : 'var(--bg-card)'}; color:${OFFLINE._view === 'board' ? 'white' : 'var(--text-secondary)'}; font-weight:${OFFLINE._view === 'board' ? '600' : '400'};">▦ 看板</button>
-        <button onclick="offlineSetView('list')" style="padding:5px 12px; font-size:11.5px; border:0; border-left:1px solid var(--border); cursor:pointer; background:${OFFLINE._view === 'list' ? 'var(--accent)' : 'var(--bg-card)'}; color:${OFFLINE._view === 'list' ? 'white' : 'var(--text-secondary)'}; font-weight:${OFFLINE._view === 'list' ? '600' : '400'};">☰ 列表</button>
+        ${vbtn('board', '▦ 看板')}${vbtn('grid', '⊞ 网格')}${vbtn('list', '☰ 列表')}
       </div>
       <button class="btn small" onclick="loadOfflineOrders().then(renderOfflineOrders)">🔄 刷新</button>
     </div>`;
@@ -80,7 +80,10 @@ function renderOfflineOrders() {
     body.innerHTML = header + `<div class="empty-state" style="padding:40px; text-align:center; color:var(--text-tertiary);"><div style="font-size:34px;">🧾</div><div>还没有线下单(客服转单后出现在这里)</div></div>`;
     return;
   }
-  body.innerHTML = header + (OFFLINE._view === 'board' ? _offRenderBoard(msgs) : _offRenderList(msgs));
+  const view = OFFLINE._view === 'grid' ? _offRenderGrid(msgs)
+             : OFFLINE._view === 'list' ? _offRenderList(msgs)
+             : _offRenderBoard(msgs);
+  body.innerHTML = header + view;
 }
 
 function _offRenderBoard(msgs) {
@@ -93,15 +96,15 @@ function _offRenderBoard(msgs) {
     else (byStage[st] = byStage[st] || []).push(m);
   });
   const cols = OFF_STAGES.map(s => `
-    <div style="flex:1; min-width:175px; background:${s.bg}; border-radius:10px; padding:8px;">
-      <div style="font-size:12px; font-weight:700; color:${s.color}; padding:4px 6px 8px; display:flex; justify-content:space-between; align-items:center;">
-        <span>${s.label}</span><span style="opacity:0.7;">${byStage[s.k].length}</span>
+    <div style="background:${s.bg}; border-radius:10px; padding:10px; display:flex; flex-direction:column;">
+      <div style="font-size:12.5px; font-weight:700; color:${s.color}; padding:2px 4px 10px; display:flex; justify-content:space-between; align-items:center;">
+        <span>${s.label}</span><span style="background:var(--bg-card); padding:0 8px; border-radius:10px; opacity:0.9;">${byStage[s.k].length}</span>
       </div>
       <div style="display:flex; flex-direction:column; gap:8px; min-height:40px;">
-        ${byStage[s.k].map(m => _offBoardCard(m, s.k)).join('') || `<div style="font-size:11px; color:var(--text-tertiary); text-align:center; padding:8px;">—</div>`}
+        ${byStage[s.k].map(m => _offBoardCard(m, s.k)).join('') || `<div style="font-size:11px; color:var(--text-tertiary); text-align:center; padding:14px 8px;">空</div>`}
       </div>
     </div>`).join('');
-  let html = `<div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; align-items:flex-start;">${cols}</div>`;
+  let html = `<div class="offline-board">${cols}</div>`;
   if (cancelled.length) {
     html += `<details style="margin-top:12px;"><summary style="cursor:pointer; font-size:12px; color:var(--text-secondary);">🗑️ 已取消 (${cancelled.length})</summary><div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">${cancelled.map(m => _offBoardCard(m, 'cancelled')).join('')}</div></details>`;
   }
@@ -116,8 +119,8 @@ function _offBoardCard(m, stage) {
     const u = _offAttUrl(a);
     if (u === '__BASE64__') return `<span style="font-size:9px; color:var(--danger);" title="附件是 base64 · 应改 Storage URL">⚠</span>`;
     if (!u) return '';
-    return `<img src="${escapeHtml(u)}" loading="lazy" onerror="this.style.display='none'" onclick="event.stopPropagation(); openImgLightbox && openImgLightbox('${escapeHtml(u)}')" style="width:28px; height:28px; object-fit:cover; border-radius:4px; cursor:zoom-in;">`;
-  }).slice(0, 3).join('');
+    return `<img src="${escapeHtml(u)}" loading="lazy" onerror="this.style.display='none'" onclick="event.stopPropagation(); openImgLightbox && openImgLightbox('${escapeHtml(u)}')" style="width:40px; height:40px; object-fit:cover; border-radius:5px; cursor:zoom-in;">`;
+  }).slice(0, 4).join('');
   const next = (stage !== 'cancelled') ? OFF_NEXT[stage] : null;
   const nextLabel = next ? OFF_STAGE_MAP[next].label : null;
   const claimer = fu.claimed_by_name ? `👤 ${escapeHtml(fu.claimed_by_name)}` : '';
@@ -130,15 +133,50 @@ function _offBoardCard(m, stage) {
     actions = `<span style="font-size:10.5px; color:var(--ok);">✅ 已完成</span>`;
   }
   return `
-  <div onclick="offlineOpenDetail('${m.id}')" style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:8px; cursor:pointer; ${stage === 'cancelled' ? 'opacity:0.55; min-width:160px;' : ''}">
-    <div style="display:flex; align-items:center; gap:5px; margin-bottom:4px;">
-      <span style="font-weight:700; font-size:12.5px;">${escapeHtml(orderNo)}</span>${pri}
-      ${m.related_shop ? `<span style="font-size:9.5px; color:var(--text-tertiary); margin-left:auto;">${escapeHtml(m.related_shop)}</span>` : ''}
+  <div onclick="offlineOpenDetail('${m.id}')" style="background:var(--bg-card); border:1px solid var(--border); border-radius:9px; padding:10px; cursor:pointer; ${stage === 'cancelled' ? 'opacity:0.55; min-width:170px;' : ''}">
+    <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+      <span style="font-weight:700; font-size:13.5px;">${escapeHtml(orderNo)}</span>${pri}
+      ${m.related_shop ? `<span style="font-size:10px; color:var(--text-tertiary); margin-left:auto; white-space:nowrap;">${escapeHtml(m.related_shop)}</span>` : ''}
     </div>
-    ${claimer ? `<div style="font-size:10px; color:var(--text-secondary); margin-bottom:4px;">${claimer}</div>` : ''}
-    ${thumb ? `<div style="display:flex; gap:3px; margin-bottom:6px;">${thumb}</div>` : ''}
+    ${claimer ? `<div style="font-size:10.5px; color:var(--text-secondary); margin-bottom:6px;">${claimer}</div>` : ''}
+    ${thumb ? `<div style="display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap;">${thumb}</div>` : ''}
     ${stage !== 'cancelled' ? `<div onclick="event.stopPropagation();">${actions}</div>` : ''}
   </div>`;
+}
+
+// ── 网格视图(大图卡片 · 自适应列 · 看大图为主)──
+function _offRenderGrid(msgs) {
+  const cards = msgs.map(m => {
+    const st = _offStageOf(m);
+    const meta = (st === 'cancelled') ? { label: '已取消', color: 'var(--danger)', bg: 'rgba(220,38,38,0.1)' } : OFF_STAGE_MAP[st];
+    const fu = _offGetFu(m.related_ref);
+    const orderNo = m.related_ref || '(无单号)';
+    const next = (st !== 'cancelled' && st !== 'received') ? OFF_NEXT[st] : null;
+    const atts = (Array.isArray(m.attachments) ? m.attachments : []);
+    const firstUrl = (() => { for (const a of atts) { const u = _offAttUrl(a); if (u && u !== '__BASE64__') return u; } return ''; })();
+    const hasB64 = atts.some(a => _offAttUrl(a) === '__BASE64__');
+    const cover = firstUrl
+      ? `<div style="height:150px; background:var(--bg-elevated); border-radius:8px 8px 0 0; overflow:hidden; display:flex; align-items:center; justify-content:center;"><img src="${escapeHtml(firstUrl)}" loading="lazy" onerror="this.parentElement.innerHTML='<span style=&quot;color:var(--text-tertiary);font-size:28px;&quot;>🧾</span>'" onclick="event.stopPropagation(); openImgLightbox && openImgLightbox('${escapeHtml(firstUrl)}')" style="width:100%; height:100%; object-fit:cover; cursor:zoom-in;"></div>`
+      : `<div style="height:150px; background:var(--bg-elevated); border-radius:8px 8px 0 0; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:30px;">${hasB64 ? '<span style=\"font-size:12px; color:var(--danger);\">⚠ 凭证为base64</span>' : '🧾'}</div>`;
+    return `
+    <div class="as-card" onclick="offlineOpenDetail('${m.id}')" style="cursor:pointer; ${st === 'cancelled' ? 'opacity:0.55;' : ''} padding:0; overflow:hidden;">
+      ${cover}
+      <div style="padding:10px 12px;">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
+          <span style="background:${meta.bg || 'var(--bg-elevated)'}; color:${meta.color}; padding:1px 8px; border-radius:8px; font-size:10.5px; font-weight:600;">${meta.label}</span>
+          ${m.priority === 'urgent' ? '<span style="background:var(--danger); color:white; padding:0 6px; border-radius:6px; font-size:10px;">急</span>' : ''}
+        </div>
+        <div style="font-weight:700; font-size:14px; margin-bottom:3px;">${escapeHtml(orderNo)}</div>
+        <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:8px;">${m.related_shop ? escapeHtml(m.related_shop) : ''}${fu.claimed_by_name ? ` · 👤 ${escapeHtml(fu.claimed_by_name)}` : ''}</div>
+        ${st === 'cancelled' ? '' : (st === 'pending'
+          ? `<button class="btn primary small" style="width:100%; font-size:11px;" onclick="event.stopPropagation(); offlineClaim('${m.id}','${escapeHtml(orderNo)}')">✋ 接单</button>`
+          : next
+            ? `<button class="btn small" style="width:100%; font-size:11px;" onclick="event.stopPropagation(); offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ 推进到「${OFF_STAGE_MAP[next].label}」</button>`
+            : `<div style="text-align:center; font-size:11px; color:var(--ok);">✅ 已完成</div>`)}
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="as-grid">${cards}</div>`;
 }
 
 function _offRenderList(msgs) {
@@ -189,7 +227,11 @@ function offlineOpenDetail(msgId) {
 }
 window.offlineOpenDetail = offlineOpenDetail;
 
-function offlineSetView(v) { OFFLINE._view = v; renderOfflineOrders(); }
+function offlineSetView(v) {
+  OFFLINE._view = v;
+  try { localStorage.setItem('offline_view', v); } catch (e) {}
+  renderOfflineOrders();
+}
 window.offlineSetView = offlineSetView;
 
 async function _offWriteFu(orderNo, patch) {
