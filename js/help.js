@@ -10,6 +10,22 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260613-offline-board',
+    date: '2026-06-13',
+    type: 'feature',
+    title: '🧾 线下单升级为看板:六状态分列 + 全员接单/推进 + 发货自动回写客服',
+    notes: [
+      '看板视图(默认):按状态分六列 — 待接单/已接单/已下单/生产中/已发货/已签收,卡片上一键推进到下一阶段,已取消折叠在底部',
+      '协作优先:接单只标负责人,任何跟单同事都能推进状态(谁有空谁推);卡片显示当前负责人',
+      '每张卡有「✋接单」或「→推进到下一阶段」按钮,点详情看完整下单指令 + 付款凭证大图,详情里可取消此单',
+      '出货回执:推进到「已发货」自动往 cross_dept_messages 写 po_shipped(related_ref=订单号),客服系统订阅后自动把 offline_orders 置 dispatched(用于提成)— 跟单不碰 CLOUD',
+      '跟进状态存在跟单主库 offline_followups 表(订单号为 key)· 角标=待接单+处理中的活',
+      '附件铁律:付款凭证全走 Storage URL,渲染层拦截 base64(标⚠)防撑爆行',
+      '需在跟单主库跑 offline_followups.sql(没跑前点接单/推进会提示先跑 SQL)',
+    ],
+    files: ['offline-orders.js', 'index.html', 'help.js', 'offline_followups.sql'],
+  },
+  {
     v: '20260613-offline',
     date: '2026-06-13',
     type: 'feature',
