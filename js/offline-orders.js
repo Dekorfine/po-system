@@ -43,11 +43,11 @@ async function loadOfflineOrders() {
   try {
     const { data: msgs, error: e1 } = await cdmClient
       .from('cross_dept_messages')
-      .select('id,from_system,from_user_name,to_system,to_user_id,to_user_name,related_ref,related_shop,priority,title,body,attachments,related_type,status,created_at_ms,updated_at,deleted')
+      .select('id,from_system,from_user_name,to_system,to_user_id,to_user_name,related_ref,related_shop,priority,title,body,attachments,related_type,status,created_at_ms,updated_at')
       .eq('to_system', 'po').eq('related_type', 'offline_transfer')
       .order('created_at_ms', { ascending: false }).limit(300);
     if (e1) throw e1;
-    OFFLINE._msgs = (msgs || []).filter(m => !m.deleted);
+    OFFLINE._msgs = (msgs || []).filter(m => m.status !== 'deleted');
 
     const orderNos = OFFLINE._msgs.map(m => m.related_ref).filter(Boolean);
     OFFLINE._followups = {};
