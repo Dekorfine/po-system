@@ -893,31 +893,57 @@ function extractVariantInfo(variantTitle) {
   return result;
 }
 
-// ============ 国家 → 电气标准（含电压；用于订单备注） ============
+// ============ 国家 → 电气标准（含电压；用于"下单标准"列） ============
+// V20260614:全球覆盖重写 — 旧版只手列了 ~30 国,中东/东南亚/非洲大量国家漏掉 → 显示 "—"
+//   现按"电压制式"分组覆盖联合国全部国家(ISO2 码),并支持中英文国名 fallback。
+//   规则:全球只有两大电压制式 — 110V 系(北美/日本/部分南美) 和 220-240V 系(其余绝大多数)。
+const VOLT_GROUPS = {
+  // 110-127V 系
+  '美规110V电压': ['US','CA','MX','PR','GU','VI','BS','BB','BZ','BM','CR','CU','DO','EC','SV','GT','HT','HN','JM','NI','PA','PE','PH','TT','VE','CO','GP'],
+  '日规100V电压': ['JP'],
+  // 220-240V 系(按插座/地区习惯细分名称,便于供应商识别)
+  '英规220V电压': ['GB','UK','IE','AE','SA','QA','KW','BH','OM','YE','JO','IQ','MY','SG','HK','MO','LK','MT','CY','KE','TZ','UG','GH','NG','ZW','ZM','BW','MW','MU','QA'],
+  '欧规220V电压': ['DE','FR','ES','IT','NL','BE','PT','AT','SE','FI','DK','PL','CZ','GR','HU','RO','BG','HR','SK','SI','LT','LV','EE','LU','NO','CH','IS','LI','RU','UA','BY','RS','BA','MK','AL','MD','GE','AM','AZ','TR','EG','MA','DZ','TN','LY','LB','SY','IL','PS','IR','TH','VN','ID','KH','LA','MM','BD','NP','CL','AR','UY','PY','BO','BR'],
+  '澳规220V电压': ['AU','NZ','FJ','PG','WS','TO','VU','SB','CK','NC'],
+  '中规220V电压': ['CN','TW'],
+  '韩规220V电压': ['KR'],
+  '印规220V电压': ['IN','PK','ZA','NA'],   // Type D/M 区
+};
+const _VOLT_BY_CODE = (() => {
+  const m = {};
+  for (const [label, codes] of Object.entries(VOLT_GROUPS)) codes.forEach(c => { m[c] = label; });
+  return m;
+})();
+
 function getElectricalStandard(countryCode, fallbackCountry) {
   const code = (countryCode || '').toUpperCase().trim();
-  const NA   = ['US','CA','MX'];                                                  // 北美 110V
-  const UK   = ['GB','UK','IE'];                                                  // 英规 220V
-  const EU   = ['DE','FR','ES','IT','NL','BE','PT','AT','SE','FI','DK','PL','CZ','GR','HU','RO','BG','HR','SK','SI','LT','LV','EE','LU','MT','CY','NO','CH','IS','LI'];
-  const AUS  = ['AU','NZ','FJ'];
-  if (NA.includes(code))  return '美规110V电压';
-  if (UK.includes(code))  return '英规220V电压';
-  if (EU.includes(code))  return '欧规220V电压';
-  if (AUS.includes(code)) return '澳规220V电压';
-  if (code === 'CN') return '中规220V电压';
-  if (code === 'JP') return '日规100V电压';
-  if (code === 'KR') return '韩规220V电压';
-  if (code === 'IN' || code === 'PK' || code === 'ZA') return '英规220V电压';
-  if (code === 'IL') return '欧规220V电压';
-  if (code === 'BR') return '巴标220V电压';
-  if (code === 'AR' || code === 'CL') return '南美规220V电压';
-  if (fallbackCountry) {
-    const fc = fallbackCountry.toLowerCase();
-    if (/united states|usa|canada|mexico/.test(fc)) return '美规110V电压';
-    if (/united kingdom|britain|ireland/.test(fc)) return '英规220V电压';
-    if (/germany|france|spain|italy|netherlands|europe/.test(fc)) return '欧规220V电压';
-    if (/australia|new zealand/.test(fc)) return '澳规220V电压';
+  if (code && _VOLT_BY_CODE[code]) return _VOLT_BY_CODE[code];
+
+  // ISO3 → ISO2 常见几个(Shopify 偶发 3 位码)
+  const ISO3 = { USA:'US', CAN:'CA', MEX:'MX', GBR:'GB', ARE:'AE', SAU:'SA', AUS:'AU', NZL:'NZ', CHN:'CN', JPN:'JP', KOR:'KR', IND:'IN', DEU:'DE', FRA:'FR' };
+  if (code && ISO3[code] && _VOLT_BY_CODE[ISO3[code]]) return _VOLT_BY_CODE[ISO3[code]];
+
+  // fallback:用国名文本匹配(中英文都认 · 客户地址常是中文国名)
+  const fc = (fallbackCountry || '').toLowerCase().trim();
+  if (fc) {
+    // 110V 系
+    if (/united states|usa|u\.s\.|america|canada|mexico|美国|加拿大|墨西哥|日本|japan|菲律宾|philippines/.test(fc)) {
+      if (/japan|日本/.test(fc)) return '日规100V电压';
+      return '美规110V电压';
+    }
+    // 英式(英联邦/中东/东南亚英式区)
+    if (/united kingdom|britain|england|ireland|英国|爱尔兰|emirat|阿联酋|阿拉伯联合酋长国|saudi|沙特|qatar|卡塔尔|kuwait|科威特|bahrain|巴林|oman|阿曼|jordan|约旦|malaysia|马来|singapore|新加坡|hong ?kong|香港|kenya|nigeria|尼日利亚|ghana/.test(fc)) return '英规220V电压';
+    // 澳新
+    if (/australia|new zealand|澳大利亚|澳洲|新西兰|fiji/.test(fc)) return '澳规220V电压';
+    // 中国/台湾
+    if (/^china|中国|大陆|taiwan|台湾/.test(fc)) return '中规220V电压';
+    if (/korea|韩国|韩/.test(fc)) return '韩规220V电压';
+    if (/india|印度|pakistan|巴基斯坦|south africa|南非/.test(fc)) return '印规220V电压';
+    // 欧洲/其余 220V 大区(兜底)
+    if (/german|france|spain|italy|netherland|europe|德国|法国|西班牙|意大利|荷兰|欧洲|russia|俄罗斯|turkey|土耳其|egypt|埃及|thailand|泰国|vietnam|越南|indonesia|印尼|brazil|巴西|israel|以色列/.test(fc)) return '欧规220V电压';
   }
+  // 最终兜底:有国家信息但没匹配上 → 默认 220V(全球绝大多数是 220-240V · 比留空 "—" 安全)
+  if (code || fc) return '通用220V电压(请核对)';
   return '';
 }
 
