@@ -771,6 +771,7 @@ async function invFetchByOrderNo() {
     return { sku: li.sku || '', name, image_url: img, variant };
   }).filter(x => x.sku);
   if (_invOrderFetched.length === 0) { if (box) box.innerHTML = '<span style="font-size:11px;color:var(--warning);">⚠ 该订单产品没有 SKU,无法带入</span>'; return; }
+  if (typeof toast === 'function') toast(`✓ 已抓取订单 · ${_invOrderFetched.length} 个产品`, 'success', 2000);
   if (box) box.innerHTML = `
     <div style="font-size:10.5px;color:var(--text-tertiary);margin-bottom:4px;">点一个产品 → 自动填入 SKU / 名称 / 图:</div>
     <div style="display:flex;flex-direction:column;gap:5px;max-height:220px;overflow-y:auto;">
@@ -1166,6 +1167,7 @@ window.invFetchFromShopify = async function() {
     const u = document.getElementById('invEditImgUrl'); if (u) u.value = INV_EDIT.image_url || '';
     if (typeof invRefreshImgPreview === 'function') invRefreshImgPreview();
     if (status) { status.style.color = 'var(--ok)'; status.textContent = '✓ 本地秒出(来自已同步订单/产品)· 名称/规格/图已带入 · 可继续填库存保存'; }
+    if (typeof toast === 'function') toast('✓ 已拉取产品(本地秒出)', 'success', 2000);
     return;
   }
   if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ 本地没有 · 分析 SKU 前缀去店里找...'; }
@@ -1244,6 +1246,7 @@ window.invFetchFromShopify = async function() {
     if (status) { 
       status.style.color = 'var(--ok)'; 
       status.textContent = `✓ 在 ${found.store} 找到 · 已填充全部明细 + 翻译完成`; 
+      if (typeof toast === 'function') toast(`✓ 已在 ${found.store} 拉取到产品`, 'success', 2000);
     }
   } catch (e) {
     console.error('[invFetch]', e);
@@ -1294,6 +1297,7 @@ window.invFetchFromProductUrl = async function() {
     if (status) { 
       status.style.color = 'var(--ok)'; 
       status.textContent = `✓ 已从 ${host} 拉取 · 全部明细 + 翻译完成`; 
+      if (typeof toast === 'function') toast('✓ 已拉取产品', 'success', 2000);
     }
   } catch (e) {
     console.error('[invFetchUrl]', e);

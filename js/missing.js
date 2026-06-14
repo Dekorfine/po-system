@@ -845,6 +845,7 @@ async function mmFetchOrder() {
 
   _mmFetched = found;
   if (statusEl) { statusEl.style.color = 'var(--ok)'; statusEl.textContent = `✓ 找到 ${found.length} 个产品 · 勾选下架/找不到的灯`; }
+  if (typeof toast === 'function') toast(`✓ 已抓取订单 · ${found.length} 个产品`, 'success', 2000);
   if (panelEl) {
     panelEl.innerHTML = found.map((li, i) => `
       <label style="display:flex; align-items:center; gap:10px; padding:8px; border:1px solid var(--border); border-radius:8px; cursor:pointer; margin-bottom:6px;">
@@ -876,9 +877,13 @@ function mmApplyPicked() {
   m.description = m.description ? (m.description + '\n' + descLine) : descLine;
   document.getElementById('mmDescription').value = m.description;
 
-  // 规格:变体 + 数量(每盏一行)· 订单号不进规格(导出图不泄露)
+  // 规格:变体翻译成中文(复用 PO 的 extractVariantInfo · 英寸→cm/颜色材质英译中)+ 数量
+  //   V20260614b:不再写 SKU(找灯发给供应商,内部 SKU 无意义)
   const specLines = picked.map(p => {
-    const parts = [p.variant, p.sku ? `SKU ${p.sku}` : '', `数量 ${p.qty}`].filter(Boolean);
+    const variantCn = (p.variant && typeof extractVariantInfo === 'function')
+      ? (extractVariantInfo(p.variant) || p.variant)
+      : (p.variant || '');
+    const parts = [variantCn, `数量 ${p.qty}`].filter(Boolean);
     return parts.join(' · ');
   });
   const specText = specLines.join('\n');
