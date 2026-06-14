@@ -776,6 +776,129 @@ async function addMissing() {
   openMissingModal(newM._id);
 }
 
+// V20260614:找灯订单号抓取 — 输入订单号自动抓订单明细 · 勾选下架的灯 · 一键填充表单
+let _mmFetched = [];   // 当前抓到的 line_items
+
+async function mmFetchOrder() {
+  const raw = (document.getElementById('mmFetchOrderNo')?.value || '').trim();
+  const statusEl = document.getElementById('mmFetchStatus');
+  const panelEl = document.getElementById('mmFetchPanel');
+  if (!raw) { if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '请先填订单号'; } return; }
+  const nos = raw.split(/[\/,，、\s]+/).map(x => x.trim().replace(/^#/, '')).filter(Boolean);
+  if (statusEl) { statusEl.style.color = 'var(--text-secondary)'; statusEl.textContent = '⏳ 查找订单...'; }
+  _mmFetched = [];
+
+  // 优先查本地已同步销售单(秒出)· PO 派生单也认
+  const found = [];
+  nos.forEach(n => {
+    let li = [];
+    if (typeof SHOPIFY !== 'undefined' && Array.isArray(SHOPIFY._orders)) {
+      const so = SHOPIFY._orders.find(s =>
+        String(s.shopify_order_number || '').replace('#', '') === n ||
+        String(s.name || '').replace('#', '') === n);
+      if (so && Array.isArray(so.line_items)) {
+        li = so.line_items.map(x => ({
+          name: x.title_cn || x.title || x.title_en || x.name || '(未命名)',
+          variant: x.variant_title || x.variant || '',
+          image_url: x.image_url || x.image || '',
+          sku: x.sku || '',
+          qty: x.quantity || 1,
+          _order: n,
+        }));
+      }
+    }
+    found.push(...li);
+  });
+
+  // 本地没有 → 尝试从 Shopify 后台拉(复用催单的 omManualFetch 思路,若可用)
+  if (found.length === 0 && typeof SHOPIFY !== 'undefined' && typeof SHOPIFY.call === 'function') {
+    if (statusEl) statusEl.textContent = '⏳ 本地没有 · 从店铺后台拉取...';
+    try {
+      // 逐店尝试(订单号不带店铺信息时全店扫;命中即停)
+      const metas = (SHOPIFY.STORES_META || []).filter(m => !m.legacyOnly && m.public_domain);
+      for (const n of nos) {
+        for (const m of metas) {
+          const r = await SHOPIFY.call('list_orders', { query: n, limit: 5 }, m.domain, 20000).catch(() => null);
+          const arr = (r && r.orders) || [];
+          const hit = arr.find(o => String(o.order_number || o.name || '').replace('#', '') === n);
+          if (hit && Array.isArray(hit.line_items)) {
+            hit.line_items.forEach(x => found.push({
+              name: x.title || x.name || '(未命名)',
+              variant: x.variant_title || '',
+              image_url: x.image?.src || x.image_url || '',
+              sku: x.sku || '',
+              qty: x.quantity || 1,
+              _order: n,
+            }));
+            break;
+          }
+        }
+      }
+    } catch (e) { /* 静默 · 下面统一提示 */ }
+  }
+
+  if (found.length === 0) {
+    if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = '未找到该订单 · 可手动填写下方表单'; }
+    if (panelEl) panelEl.innerHTML = '';
+    return;
+  }
+
+  _mmFetched = found;
+  if (statusEl) { statusEl.style.color = 'var(--ok)'; statusEl.textContent = `✓ 找到 ${found.length} 个产品 · 勾选下架/找不到的灯`; }
+  if (panelEl) {
+    panelEl.innerHTML = found.map((li, i) => `
+      <label style="display:flex; align-items:center; gap:10px; padding:8px; border:1px solid var(--border); border-radius:8px; cursor:pointer; margin-bottom:6px;">
+        <input type="checkbox" data-mmidx="${i}" style="width:16px; height:16px;">
+        ${li.image_url ? `<img src="${escapeHtml(li.image_url)}" loading="lazy" onerror="this.style.visibility='hidden'" style="width:44px; height:44px; object-fit:cover; border-radius:6px;">` : '<div style="width:44px; height:44px; background:var(--bg-elevated); border-radius:6px; display:flex; align-items:center; justify-content:center;">💡</div>'}
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(li.name)}</div>
+          <div style="font-size:11px; color:var(--text-secondary);">${escapeHtml(li.variant || '')}${li.sku ? ` · ${escapeHtml(li.sku)}` : ''} · ×${li.qty}</div>
+        </div>
+      </label>`).join('') +
+      `<button class="btn primary small" style="margin-top:6px; width:100%;" onclick="mmApplyPicked()">↓ 填充勾选的灯到下方表单</button>`;
+  }
+}
+window.mmFetchOrder = mmFetchOrder;
+
+function mmApplyPicked() {
+  const m = MISSING_LIGHTS.find(x => x._id === _currentItemId);
+  if (!m) return;
+  const checks = document.querySelectorAll('#mmFetchPanel input[type=checkbox]:checked');
+  if (checks.length === 0) { toast('请先勾选下架/找不到的灯', 'err', 2500); return; }
+  const picked = Array.from(checks).map(c => _mmFetched[Number(c.dataset.mmidx)]).filter(Boolean);
+
+  // 订单号
+  const orderNo = (document.getElementById('mmFetchOrderNo')?.value || '').trim();
+  if (orderNo && !m.customerOrderNo) { m.customerOrderNo = orderNo; document.getElementById('mmOrderNo').value = orderNo; }
+
+  // 描述:产品名(多个用 + 连)
+  const descLine = picked.map(p => p.name).join(' + ');
+  m.description = m.description ? (m.description + '\n' + descLine) : descLine;
+  document.getElementById('mmDescription').value = m.description;
+
+  // 规格:变体 + 数量(每盏一行)· 订单号不进规格(导出图不泄露)
+  const specLines = picked.map(p => {
+    const parts = [p.variant, p.sku ? `SKU ${p.sku}` : '', `数量 ${p.qty}`].filter(Boolean);
+    return parts.join(' · ');
+  });
+  const specText = specLines.join('\n');
+  m.specs = m.specs ? (m.specs + '\n' + specText) : specText;
+  document.getElementById('mmSpecs').value = m.specs;
+
+  // 截图:产品图自动加入(去重 · 跳过 base64/空)
+  m.screenshots = Array.isArray(m.screenshots) ? m.screenshots : [];
+  picked.forEach(p => {
+    const u = p.image_url;
+    if (u && /^https?:\/\//.test(u) && !m.screenshots.includes(u)) m.screenshots.push(u);
+  });
+
+  DATA.saveMissingLights(MISSING_LIGHTS);
+  renderMissingModalContent();
+  DATA.saveAndSyncMissing().catch(() => {});
+  toast(`✓ 已填充 ${picked.length} 盏灯 · 产品图已加入截图`, 'ok', 2500);
+}
+window.mmApplyPicked = mmApplyPicked;
+
 function delMissingRow(id) {
   // 找到原始 missing（包括已删除的）
   const m = DATA.getMissingLights().find(x => x._id === id);
@@ -804,6 +927,11 @@ function openMissingModal(id) {
   document.getElementById('mmSpecs').value = m.specs || '';
   document.getElementById('mmNewComment').value = '';
   document.getElementById('mmCommentSupplier').value = '';
+  // V20260614:重置订单抓取面板
+  _mmFetched = [];
+  const _ffNo = document.getElementById('mmFetchOrderNo'); if (_ffNo) _ffNo.value = m.customerOrderNo || '';
+  const _ffSt = document.getElementById('mmFetchStatus'); if (_ffSt) _ffSt.textContent = '';
+  const _ffPa = document.getElementById('mmFetchPanel'); if (_ffPa) _ffPa.innerHTML = '';
   
   renderMissingModalContent();
   document.getElementById('missingModal').classList.add('show');
