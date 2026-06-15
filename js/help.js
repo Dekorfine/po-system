@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260615-mm-insurance',
+    date: '2026-06-15',
+    type: 'fix',
+    title: '🔍 找灯抓取:过滤保险/运费险(OrderArmor 等)· 与催单一致',
+    notes: [
+      '找灯按订单号抓取时,过滤掉 OrderArmor / Route / 运费险 / 小费 / 优先处理等非灯具行项目(复用催单同款 _isInsuranceLineItem)',
+      '本地销售单 + 后台拉取两条路径都过滤;库存订单号拉取本就有此过滤,现找灯补齐',
+      '识别规则:关键词(insurance/protection/保险...)+ 价格区间变体(如 400.01-500.00)+ 纯金额无尺寸标题',
+    ],
+    files: ['missing.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260614-mm-fetch2',
     date: '2026-06-14',
     type: 'fix',

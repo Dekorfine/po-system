@@ -797,7 +797,9 @@ async function mmFetchOrder() {
         String(s.shopify_order_number || '').replace('#', '') === n ||
         String(s.name || '').replace('#', '') === n);
       if (so && Array.isArray(so.line_items)) {
-        li = so.line_items.map(x => ({
+        li = so.line_items
+          .filter(x => typeof _isInsuranceLineItem !== 'function' || !_isInsuranceLineItem(x))   // V20260615:过滤保险/运费险/小费等(复用催单同款 · OrderArmor 等)
+          .map(x => ({
           name: x.title_cn || x.title || x.title_en || x.name || '(未命名)',
           variant: x.variant_title || x.variant || '',
           image_url: x.image_url || x.image || '',
@@ -822,14 +824,17 @@ async function mmFetchOrder() {
           const arr = (r && r.orders) || [];
           const hit = arr.find(o => String(o.order_number || o.name || '').replace('#', '') === n);
           if (hit && Array.isArray(hit.line_items)) {
-            hit.line_items.forEach(x => found.push({
+            hit.line_items.forEach(x => {
+              if (typeof _isInsuranceLineItem === 'function' && _isInsuranceLineItem(x)) return;   // V20260615:过滤保险/运费险等
+              found.push({
               name: x.title || x.name || '(未命名)',
               variant: x.variant_title || '',
               image_url: x.image?.src || x.image_url || '',
               sku: x.sku || '',
               qty: x.quantity || 1,
               _order: n,
-            }));
+              });
+            });
             break;
           }
         }
