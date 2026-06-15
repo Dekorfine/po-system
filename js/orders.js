@@ -504,7 +504,7 @@ function renderOrders() {
   const fStatus = document.getElementById('oFilterStatus')?.value || 'active';
   const fSupplier = document.getElementById('oFilterSupplier')?.value || '';
   const fSite = document.getElementById('oFilterSite')?.value || '';
-  const sortBy = document.getElementById('oSortBy')?.value || 'urgency';
+  const sortBy = document.getElementById('oSortBy')?.value || 'order_no_asc';
 
   let list = CHASE_ORDERS.filter(o => {
     if (_isOrderBlank(o)) return false;  // V20260602:默认隐藏空白草稿(没填任何东西的)
@@ -581,10 +581,22 @@ function renderOrders() {
       return da.localeCompare(db);
     });
   } else if (sortBy === 'order_no_asc') {
-    // V20260611:按订单号排(自然数字 · DF17621 < DF17624)· 替代"按承诺日"(下单已不填承诺日)
-    list.sort((a, b) => String(a.orderNo || '').localeCompare(String(b.orderNo || ''), undefined, { numeric: true }));
+    // V20260615:按订单号统一排(手动+PO 不分开 · 去 #/空格归一化 · 自然数字 PL3531<PL3812)· 加急仍置顶
+    list.sort((a, b) => {
+      const _ua = _chaseUrgentInfo(a).isUrgent, _ub = _chaseUrgentInfo(b).isUrgent;
+      if (_ua !== _ub) return _ua ? -1 : 1;
+      const ka = String(a.orderNo || '').replace(/[#\s]/g, '');
+      const kb = String(b.orderNo || '').replace(/[#\s]/g, '');
+      return ka.localeCompare(kb, undefined, { numeric: true });
+    });
   } else if (sortBy === 'order_no_desc') {
-    list.sort((a, b) => String(b.orderNo || '').localeCompare(String(a.orderNo || ''), undefined, { numeric: true }));
+    list.sort((a, b) => {
+      const _ua = _chaseUrgentInfo(a).isUrgent, _ub = _chaseUrgentInfo(b).isUrgent;
+      if (_ua !== _ub) return _ua ? -1 : 1;
+      const ka = String(a.orderNo || '').replace(/[#\s]/g, '');
+      const kb = String(b.orderNo || '').replace(/[#\s]/g, '');
+      return kb.localeCompare(ka, undefined, { numeric: true });
+    });
   } else if (sortBy === 'order_date_desc') {
     list.sort((a, b) => (b.orderDate || '0000').localeCompare(a.orderDate || '0000'));
   }

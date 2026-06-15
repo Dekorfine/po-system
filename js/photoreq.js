@@ -277,6 +277,8 @@ function _photoReqChips() {
 async function renderPhotoReq() {
   const body = document.getElementById('photoReqBody');
   if (!body) return;
+  PHOTOREQ._pendingUpdates = 0;   // V20260615:主动渲染=已看最新 · 清待刷新计数
+  const _pb = document.getElementById('prPendingBar'); if (_pb) _pb.remove();
   
   const isAdmin = (typeof IS_ADMIN !== 'undefined' && IS_ADMIN);
   const cfg = _photoReqGetConfig();
@@ -332,7 +334,16 @@ async function renderPhotoReq() {
     </div>
   `;
   
-  await _photoReqLoadAndRender();
+  // V20260615:有缓存先秒显示(stale-while-revalidate)· 5分钟内不重拉 · 超过则后台静默刷新不挡浏览
+  const cacheAge = Date.now() - (PHOTOREQ._loadedAt || 0);
+  if (PHOTOREQ._allLogs && PHOTOREQ._allLogs.length > 0) {
+    _photoReqApplyFilterAndRender();            // 立即用缓存渲染
+    if (cacheAge > 300000) {                     // 超 5 分钟才后台刷新
+      _photoReqLoadAndRender(true).catch(() => {});   // silent=true 不显示"加载中"
+    }
+  } else {
+    await _photoReqLoadAndRender();              // 首次无缓存才显示加载中
+  }
   // V20260527u: 进 tab 自动测一次连接 · 状态条变绿/红
   setTimeout(() => photoReqTestConnection(true), 50);
   // V20260527y: 进 tab 启动实时订阅(订阅全部 · 自动 throttle toast)
@@ -417,7 +428,7 @@ function photoReqSetViewMode(mode) {
 window.photoReqSetViewMode = photoReqSetViewMode;
 
 // ─────────────── 加载列表 · V27y 改:全量查 + 客户端筛选 ───────────────
-async function _photoReqLoadAndRender() {
+async function _photoReqLoadAndRender(silent) {
   const listEl = document.getElementById('photoReqList');
   if (!listEl) return;
   
@@ -1148,7 +1159,7 @@ function _photoReqSubscribeRealtime() {
   
   try {
     PHOTOREQ._channel = client
-      .channel(`photo-logs-watch-${myId}-${Date.now()}`)
+      .channel(`photo-logs-watch-${myId}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'photo_logs' },
         _photoReqOnRealtimeEvent
@@ -1228,9 +1239,37 @@ function _photoReqOnRealtimeEvent(payload) {
     }
   }
   
-  // 3. 静默刷新列表(应用当前 filter)
+  // 3. V20260615:不再自动重渲列表(拍摄部频繁改 photo_logs 会让正在浏览的人列表跳动)
+  //    改为:静默更新缓存 + 角标,顶部显示"有 N 条新动态,点击刷新",用户主动点才刷
+  PHOTOREQ._pendingUpdates = (PHOTOREQ._pendingUpdates || 0) + 1;
+  if (typeof updateBadges === 'function') updateBadges();
+  _photoReqShowPendingBar();
+}
+
+// 顶部待刷新提示条(realtime 攒了多少条变化 · 用户点才刷新)
+function _photoReqShowPendingBar() {
+  const n = PHOTOREQ._pendingUpdates || 0;
+  if (n <= 0) return;
+  let bar = document.getElementById('prPendingBar');
+  if (!bar) {
+    const host = document.getElementById('photoReqBody') || document.querySelector('[data-tab="photoreq"]');
+    if (!host) return;
+    bar = document.createElement('div');
+    bar.id = 'prPendingBar';
+    bar.style.cssText = 'position:sticky; top:0; z-index:20; margin:0 0 10px; padding:8px 14px; background:var(--accent); color:white; border-radius:8px; display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; box-shadow:0 2px 8px rgba(0,0,0,0.15);';
+    bar.onclick = _photoReqApplyPending;
+    host.insertBefore(bar, host.firstChild);
+  }
+  bar.innerHTML = `🔄 拍摄部有 ${n} 条新动态 · 点击刷新列表`;
+}
+
+function _photoReqApplyPending() {
+  PHOTOREQ._pendingUpdates = 0;
+  const bar = document.getElementById('prPendingBar');
+  if (bar) bar.remove();
   _photoReqApplyFilterAndRender();
 }
+window._photoReqApplyPending = _photoReqApplyPending;
 
 // 退出 tab / 切到别的 tab 时退订(释放资源)
 function _photoReqUnsubscribeRealtime() {
