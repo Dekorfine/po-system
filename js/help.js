@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260615-offline-perm',
+    date: '2026-06-15',
+    type: 'fix',
+    title: '🧾 线下单全员可见:修复其他员工看不到该 tab',
+    notes: [
+      '根因:老员工的 modules 权限数组是在新增 offline 模块之前保存的,里面没有 offline key → tab 被隐藏',
+      '修复:新增"始终可见模块"集合(ALWAYS_VISIBLE_MODULES),offline+cross_dept 放入,不受各员工 modules 白名单限制,无需逐人改权限',
+      '数据层本就全员可读(cross_dept_messages 按 to_system=po 过滤,非按个人),所以改 tab 可见性即全部生效',
+    ],
+    files: ['core.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260615-mm-insurance',
     date: '2026-06-15',
     type: 'fix',
