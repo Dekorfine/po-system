@@ -26,9 +26,38 @@ function _prImgUrl(raw) {
       else s = String(j.url || j.src || '').trim();
     } catch (e) { /* 不是合法 JSON 就原样用 */ }
   }
+  // V20260615:历史遗留 base64 不渲染(返回空 → 走占位)· 避免把几十KB-几MB 的 data: 塞进 DOM 拖慢列表
+  if (s.startsWith('data:')) return '';
   return s;
 }
 window._prImgUrl = _prImgUrl;
+
+// V20260615:写库前护栏 — 杜绝任何 base64/超大值进 photo_logs(image-in-DB 反模式根治)
+//   po-system 写入图片应全是 Storage URL;万一某路径漏传 base64 → 这里拦下并告警,不让它进库撑爆行
+function _prSanitizeImg(v, label) {
+  const s = String(v || '').trim();
+  if (!s) return null;
+  if (s.startsWith('data:') || (s.length > 2000 && !/^https?:\/\//.test(s))) {
+    console.warn(`[photoReq] ⚠ 拦截 base64/超大图片值(${label || 'image'}) · 已置空 · 请改用 Storage 上传`);
+    if (typeof toast === 'function') toast('⚠ 图片未上传到云存储(疑似粘贴的截图)· 请用"选图上传"按钮,不要直接粘贴 base64', 'warn', 5000);
+    return null;
+  }
+  return s;
+}
+window._prSanitizeImg = _prSanitizeImg;
+// 清洗附件数组里的 base64
+function _prSanitizeAtts(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.filter(a => {
+    const u = (a && (a.url || a.publicUrl)) || (typeof a === 'string' ? a : '');
+    if (String(u).startsWith('data:') || (String(u).length > 2000 && !/^https?:\/\//.test(String(u)))) {
+      console.warn('[photoReq] ⚠ 附件含 base64 · 已剔除');
+      return false;
+    }
+    return true;
+  });
+}
+window._prSanitizeAtts = _prSanitizeAtts;
 
 // V20260611:产品图加载失败兜底 → 不再留空白块 · 显示"图片失效"占位(根因排查用 _photoReqDiagImages 诊断脚本)
 window._prImgFail = function(img, small) {
@@ -1103,7 +1132,7 @@ async function photoReqSubmitNew() {
     id,
     product_name: s.product_name.trim(),
     sku: (s.sku || '').trim() || null,
-    product_image: (s.product_image || '').trim() || null,
+    product_image: _prSanitizeImg(s.product_image, 'product_image'),
     applicable_shops: s.applicable_shops || [],
     product_type: '跟单需求',
     
@@ -1117,7 +1146,7 @@ async function photoReqSubmitNew() {
       from_dept: '跟单部',
       reason: s.reason.trim(),
       urgency: s.urgency || 'normal',
-      attachments: s.attachments || [],
+      attachments: _prSanitizeAtts(s.attachments),
       created_at_ms: now,
       external_ref_id: (s.external_ref_id || '').trim() || null
     },
@@ -1913,7 +1942,7 @@ async function photoReqSubmitBatch() {
       id: crypto.randomUUID(),
       product_name: r.product_name.trim(),
       sku: (r.sku || '').trim() || null,
-      product_image: (r.product_image || '').trim() || null,
+      product_image: _prSanitizeImg(r.product_image, 'batch product_image'),
       applicable_shops: r.applicable_shops || [],
       product_type: '跟单需求',
       status: 'draft',

@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260615-no-base64',
+    date: '2026-06-15',
+    type: 'fix',
+    title: '🚫 拍摄需求根治 base64:写库护栏 + 历史数据不渲染 + 清理 SQL',
+    notes: [
+      '查证:新建/批量/附件上传路径已全走 Supabase Storage(存 URL),base64 是历史遗留 + 外部系统写入',
+      '写库护栏:新建/批量 insert 前 _prSanitizeImg/_prSanitizeAtts 拦截任何 data: 或超大值,粘贴截图会提示改用"选图上传"按钮,杜绝新增 base64',
+      '加载提速:_prImgUrl 对历史 base64 直接返回空走占位,不再把几十KB-几MB 的 data: 塞进 DOM 拖慢列表',
+      '历史清理:photo_logs清理base64.sql(先查后清 · 只置空 base64 的 product_image · 不删记录)',
+    ],
+    files: ['photoreq.js', 'index.html', 'help.js', 'photo_logs清理base64.sql'],
+  },
+  {
     v: '20260615-sort-perf',
     date: '2026-06-15',
     type: 'fix',
