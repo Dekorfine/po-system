@@ -44,7 +44,7 @@ const FV_PURPOSES = [
 const FV_PURPOSE_TEXT = {};
 FV_PURPOSES.forEach(g => g.items.forEach(i => { FV_PURPOSE_TEXT[i.k] = i.t; }));
 
-const FACTORY = { _list: [], _view: 'board', _loadedAt: 0, _editId: null, _editMedia: [], _editTags: [], _editPurposes: [] };
+const FACTORY = { _list: [], _view: 'board', _loadedAt: 0, _editId: null, _editMedia: [], _editTags: [], _editPurposes: [], _editStyle: [] };
 window.FACTORY = FACTORY;
 
 function _fvIsBoss() { return (typeof IS_ADMIN !== 'undefined' && IS_ADMIN); }
@@ -126,7 +126,8 @@ function _fvCard(v) {
       ${np ? `<span>🎯${np}项目的</span>` : ''}
     </div>
     ${concl ? `<div style="font-size:11px; margin-top:4px;">${concl}</div>` : ''}
-    ${Array.isArray(v.media_urls) && v.media_urls.length ? `<div style="font-size:10px; color:var(--text-tertiary); margin-top:4px;">📷 ${v.media_urls.length} 张影像</div>` : ''}
+    ${Array.isArray(v.style_images) && v.style_images.length ? `<div style="display:flex; gap:3px; margin-top:6px;">${v.style_images.slice(0,4).map(u=>`<img src="${escapeHtml(u)}" loading="lazy" onerror="this.style.display='none'" onclick="event.stopPropagation(); openImgLightbox&&openImgLightbox('${escapeHtml(u)}')" style="width:34px; height:34px; object-fit:cover; border-radius:4px; cursor:zoom-in;">`).join('')}${v.style_images.length>4?`<span style="font-size:10px; color:var(--text-tertiary); align-self:center;">+${v.style_images.length-4}</span>`:''}</div>` : ''}
+    ${Array.isArray(v.media_urls) && v.media_urls.length ? `<div style="font-size:10px; color:var(--text-tertiary); margin-top:4px;">📷 ${v.media_urls.length} 张现场影像</div>` : ''}
   </div>`;
 }
 
@@ -154,6 +155,7 @@ function factoryOpenNew() {
   FACTORY._editPurposes = [];
   FACTORY._editMedia = [];
   FACTORY._editTags = [];
+  FACTORY._editStyle = [];
   // V20260616:预加载供应商库(否则搜索下拉为空 · 验货单同款)
   if (typeof SUPPLIERS !== 'undefined' && SUPPLIERS.loadAll) SUPPLIERS.loadAll().catch(() => {});
   _fvShowModal({ stage: 'pending' }, 'new');
@@ -167,6 +169,7 @@ function factoryOpenDetail(id) {
   FACTORY._editPurposes = Array.isArray(v.purposes) ? [...v.purposes] : [];
   FACTORY._editMedia = Array.isArray(v.media_urls) ? [...v.media_urls] : [];
   FACTORY._editTags = Array.isArray(v.media_tags) ? [...v.media_tags] : [];
+  FACTORY._editStyle = Array.isArray(v.style_images) ? [...v.style_images] : [];
   _fvShowModal(v, 'detail');
 }
 window.factoryOpenDetail = factoryOpenDetail;
@@ -234,6 +237,12 @@ function _fvShowModal(v, mode) {
                <input id="fvPurposeOther" class="form-control" placeholder="其他目的(自填)" value="${escapeHtml(v.purpose_other||'')}" style="margin-top:6px;">`}
         </div>
         <div style="margin-bottom:12px;"><label style="font-size:11px; color:var(--text-secondary);">本次看厂补充说明</label><textarea id="fvNote" class="form-control" rows="2" ${ro?'readonly':''}>${escapeHtml(v.visit_note||'')}</textarea></div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:11px; color:var(--text-secondary);">供应商风格参考图 <span style="color:var(--text-tertiary);">(这供应商主要做什么风格 · 看厂前参考)</span></label>
+          <div id="fvStyleThumbs" style="display:flex; gap:6px; flex-wrap:wrap; margin:6px 0;">${(FACTORY._editStyle||[]).map((u,i)=>`<div style="position:relative; display:inline-block;"><img src="${escapeHtml(u)}" onclick="openImgLightbox&&openImgLightbox('${escapeHtml(u)}')" style="width:60px; height:60px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in;"><button onclick="_fvRemoveStyle(${i})" style="position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%; border:0; background:var(--danger); color:white; cursor:pointer; font-size:11px; line-height:1;">×</button></div>`).join('')}</div>
+          <input type="file" id="fvStyleInput" accept="image/*" multiple onchange="_fvUploadStyle(event)" style="font-size:12px;">
+          <span id="fvStyleStatus" style="font-size:11px; color:var(--text-tertiary); margin-left:8px;"></span>
+        </div>
 
         ${mode==='detail' ? `
         <!-- 派单(主管)-->
@@ -308,6 +317,7 @@ async function factoryCreate() {
       purposes: _fvCollectPurposes(),
       purpose_other: (document.getElementById('fvPurposeOther')?.value||'').trim(),
       visit_note: (document.getElementById('fvNote')?.value||'').trim(),
+      style_images: FACTORY._editStyle || [],
       creator_name: (typeof CURRENT_AGENT!=='undefined'?CURRENT_AGENT:''),
       creator_id: (typeof CURRENT_USER_ID!=='undefined'?CURRENT_USER_ID:null),
     };
@@ -357,6 +367,7 @@ async function factorySaveResult() {
       rectify_status: (document.getElementById('fvRectifyStatus')?.value||'').trim(),
       visitor_sign: (document.getElementById('fvVisitorSign')?.value||'').trim(),
       media_urls: FACTORY._editMedia || [],
+      style_images: FACTORY._editStyle || [],
       visited_at: new Date().toISOString().slice(0,10),
       updated_at: new Date().toISOString(),
     };
@@ -534,3 +545,26 @@ async function fvFetchOrder() {
   if (typeof toast === 'function') toast('✓ 已拉取订单信息', 'success', 2000);
 }
 window.fvFetchOrder = fvFetchOrder;
+
+// ─────────────── 供应商风格参考图上传(Storage · 禁 base64)───────────────
+function _fvRenderStyleThumbs() {
+  const box = document.getElementById('fvStyleThumbs');
+  if (box) box.innerHTML = (FACTORY._editStyle||[]).map((u,i)=>`<div style="position:relative; display:inline-block;"><img src="${escapeHtml(u)}" onclick="openImgLightbox&&openImgLightbox('${escapeHtml(u)}')" style="width:60px; height:60px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in;"><button onclick="_fvRemoveStyle(${i})" style="position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%; border:0; background:var(--danger); color:white; cursor:pointer; font-size:11px; line-height:1;">×</button></div>`).join('');
+}
+async function _fvUploadStyle(event) {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+  const status = document.getElementById('fvStyleStatus');
+  if (status) status.textContent = '⏳ 上传中...';
+  for (const f of files) {
+    try {
+      const r = (typeof _inspUploadImg === 'function') ? await _inspUploadImg(f) : null;
+      if (r && r.url) FACTORY._editStyle.push(r.url);
+    } catch (e) { console.warn('风格图上传失败:', e.message); }
+  }
+  if (status) status.textContent = `✓ 已上传 ${FACTORY._editStyle.length} 张`;
+  _fvRenderStyleThumbs();
+}
+window._fvUploadStyle = _fvUploadStyle;
+function _fvRemoveStyle(i) { FACTORY._editStyle.splice(i, 1); _fvRenderStyleThumbs(); }
+window._fvRemoveStyle = _fvRemoveStyle;

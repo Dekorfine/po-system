@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260616-factory-style',
+    date: '2026-06-16',
+    type: 'feature',
+    title: '🏭 验厂:加供应商风格参考图上传',
+    notes: [
+      '发起信息区新增「供应商风格参考图」:上传几张图说明这供应商主要做什么风格(看厂前参考)',
+      '与现场影像分开存(style_images vs media_urls);卡片显示风格图缩略,一眼看出供应商做什么风格',
+      '图片走 Storage 只存 URL(禁 base64);需在主库加列:ALTER TABLE factory_visits ADD COLUMN IF NOT EXISTS style_images jsonb DEFAULT \'[]\'::jsonb;',
+    ],
+    files: ['factory.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260616-factory2',
     date: '2026-06-16',
     type: 'fix',
