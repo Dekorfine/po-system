@@ -22,18 +22,18 @@
 <link rel="preconnect" href="https://xyhbwqugbnowfjuhqhsj.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
-<link rel="preload" href="js/core.js?v=20260615afterall" as="script">
+<link rel="preload" href="js/core.js?v=20260616factory" as="script">
 <link rel="preload" href="js/utils.js?v=20260608perf" as="script">
 <link rel="preload" href="js/shopify.js?v=20260611names" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="js/core.js?v=20260615afterall"></script>
+<script defer src="js/core.js?v=20260616factory"></script>
 <script defer src="js/utils.js?v=20260608perf"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260615finance"></script>
+<script defer src="js/help.js?v=20260616factory"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -50,6 +50,7 @@
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
 <script defer src="js/inventory.js?v=20260614toast"></script>
 <script defer src="js/inspection.js?v=20260528kappa"></script>
+<script defer src="js/factory.js?v=20260616factory"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script defer src="js/cross-dept.js?v=20260613offline"></script>
 <script defer src="js/offline-orders.js?v=20260613ui"></script>
@@ -5682,6 +5683,7 @@ if ('serviceWorker' in navigator) {
     <div class="tab-item" data-tab="performance" onclick="switchTab('performance')">📊 绩效 <span class="badge zero" id="badgePerformance">0</span><a href="?tab=performance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="photoreq" onclick="switchTab('photoreq')">📨 拍摄需求<a href="?tab=photoreq" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="inspection" onclick="switchTab('inspection')">🔍 验货单<a href="?tab=inspection" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="factory" onclick="switchTab('factory')">🏭 验厂 <span class="badge zero" id="badgeFactory">0</span><a href="?tab=factory" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="workflows" onclick="switchTab('workflows')">📘 工作流速查<a href="?tab=workflows" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="跟单 12 个核心工作流的步骤、易踩坑、提示(新人必看)">↗</a></div>
   </div>
 </div>
@@ -6746,6 +6748,14 @@ if ('serviceWorker' in navigator) {
 <div class="tab-content" data-tab="inspection">
   <div class="section-block">
     <div id="inspectionBody">
+      <div style="padding:32px; text-align:center; color:var(--text-tertiary);">加载中...</div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-content" data-tab="factory">
+  <div class="section-block">
+    <div id="factoryBody">
       <div style="padding:32px; text-align:center; color:var(--text-tertiary);">加载中...</div>
     </div>
   </div>
