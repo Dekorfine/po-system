@@ -553,7 +553,7 @@ function _renderAftersaleRow(a, i) {
         <div class="row-num row-num-with-thumb">
           <span class="row-num-idx">${i + 1}</span>
           ${productImageHtml}
-          ${IS_ADMIN && a._agent ? `<div style="font-size:9px;color:var(--text-tertiary);">${escapeHtml(a._agent.slice(0,2))}</div>` : ''}
+          ${a._agent ? `<div style="font-size:9px;color:var(--text-tertiary);">${escapeHtml(a._agent.slice(0,2))}</div>` : ''}
           ${daysHtml}
         </div>
         <div onclick="openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}')" style="cursor:pointer;"><span class="status-pill s-${a.status}">${AFTER_STATUS_LABELS[a.status]}</span></div>
@@ -651,7 +651,7 @@ async function quickCompleteAfter(id, agent) {
 
 function delAfterRow(id, agent) {
   if (!confirm('确定删除？\n\n（删除后会进回收站，30 天内可恢复）')) return;
-  const owner = (IS_ADMIN && agent) ? agent : CURRENT_AGENT;
+  const owner = agent || CURRENT_AGENT;   // V20260615:售后全员协作 · 用卡片真实归属(不再强制 CURRENT_AGENT · 否则普通跟单删别人售后会找不到)
   const arr = DATA.getAftersales(owner);
   const a = arr.find(x => x._id === id);
   if (!a) return;
@@ -1301,7 +1301,7 @@ function refreshAsFb() {
       <div class="fb-item" onclick="openAfterModal('${a._id}', '${escapeHtml(a._agent || '')}')">
         <div class="dot" style="background:var(--pink);"></div>
         <div class="order-no">${escapeHtml(a.orderNo || '—')}</div>
-        <div class="product">${escapeHtml(a.product || a.reason || '(无描述)')}${IS_ADMIN && a._agent ? ` · 👤${escapeHtml(a._agent)}` : ''}</div>
+        <div class="product">${escapeHtml(a.product || a.reason || '(无描述)')}${a._agent ? ` · 👤${escapeHtml(a._agent)}` : ''}</div>
         <div class="badge">${escapeHtml(a.reason || '')}</div>
         <div class="next ${cls}">${label}</div>
         <button class="action-btn">处理</button>

@@ -833,13 +833,14 @@ async function pollSharedChanges() {
       sb.from('missing_lights').select('*').gt('updated_at', since),
       sb.from('online_purchases').select('*').gt('updated_at', since),
     ]);
-    if (oR.error || aR.error || iR.error || mR.error || pR.error) return;   // updated_at 列还没建 · 静默
+    // V20260615:单表独立处理 · 某张表报错(如列缺失)不再连累其它表的同步(之前 aftersales 被 online_purchases 报错牵连过)
     let changed = 0;
-    changed += _mergeRemoteRows('order', oR.data || []);
-    changed += _mergeRemoteRows('after', aR.data || []);
-    changed += _mergeRemoteRows('issue', iR.data || []);
-    changed += _mergeRemoteRows('missing', mR.data || []);
-    changed += _mergeRemoteRows('purchase', pR.data || []);
+    if (!oR.error) changed += _mergeRemoteRows('order', oR.data || []);
+    if (!aR.error) changed += _mergeRemoteRows('after', aR.data || []);
+    if (!iR.error) changed += _mergeRemoteRows('issue', iR.data || []);
+    if (!mR.error) changed += _mergeRemoteRows('missing', mR.data || []);
+    if (!pR.error) changed += _mergeRemoteRows('purchase', pR.data || []);
+    if (aR.error) console.warn('[poll] 售后同步查询报错:', aR.error.message);
     _pollSince = newSince;
     if (changed > 0) {
       _applyPolledData();
@@ -916,7 +917,7 @@ function _applyPolledData() {
       PURCHASES = DATA.getAllPurchases().filter(p => !p.deletedAt);
     } else {
       ORDERS = DATA.getOrders(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
-      AFTERSALES = DATA.getAftersales(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
+      AFTERSALES = DATA.getAllAftersales().filter(o => !o.deletedAt);   // V20260615:售后全员可见
       ISSUES = DATA.getIssues(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
       PURCHASES = DATA.getPurchases(CURRENT_AGENT).filter(p => !p.deletedAt).map(p => ({ ...p, _agent: CURRENT_AGENT }));
     }
@@ -2374,7 +2375,7 @@ function loadAllData() {
     PURCHASES = DATA.getAllPurchases().filter(p => !p.deletedAt);
   } else {
     ORDERS = DATA.getOrders(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
-    AFTERSALES = DATA.getAftersales(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
+    AFTERSALES = DATA.getAllAftersales().filter(o => !o.deletedAt);   // V20260615:售后全员可见
     ISSUES = DATA.getIssues(CURRENT_AGENT).filter(o => !o.deletedAt).map(o => ({ ...o, _agent: CURRENT_AGENT }));
     PURCHASES = DATA.getPurchases(CURRENT_AGENT).filter(p => !p.deletedAt).map(p => ({ ...p, _agent: CURRENT_AGENT }));
   }
@@ -2821,7 +2822,7 @@ function refreshSiteDropdowns() {
 // 检查订单是否有关联的售后单（同 site + orderNo）
 function hasRelatedAftersales(order) {
   if (!order.orderNo) return null;
-  const allAfter = IS_ADMIN ? AFTERSALES : DATA.getAftersales(CURRENT_AGENT);
+  const allAfter = DATA.getAllAftersales();   // V20260615:售后全员可见 · 徽章统计全部
   return allAfter.filter(a => a.orderNo === order.orderNo && (a.site || '') === (order.site || '') && !['resolved','cancelled'].includes(a.status));
 }
 
