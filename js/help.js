@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260615-finance-phase1',
+    date: '2026-06-15',
+    type: 'feature',
+    title: '💰 财务对接二期(第一阶段):交财务标记 + 确认收货回写 + Shopify备注回写',
+    notes: [
+      '环节2:采购单卡片加「📑 交财务」按钮,跟单点后置 to_finance=true,财务据此拉待核对清单;已交/已确认显示状态徽标',
+      '环节4:财务核对一致后,通过 finance-write Edge Function 远程触发确认收货(orders→arrived + 记录确认人/时间),支持批量',
+      '环节6:财务可远程触发把回单信息追加到对应 Shopify 订单备注(复用现有 update_order_note 能力,自定义PO无客户单号则返回失败由人工处理)',
+      'finance-write Edge Function:x-finance-key 密钥鉴权(与前端key分开·可吊销)· 三动作 confirm_receipt/write_shopify_note/finance_remark · 每次写 finance_write_log 审计',
+      '需在主库跑 财务对接二期-字段与审计表.sql(orders加5字段+审计表+视图更新),并部署 finance-write Edge Function + 配 FINANCE_WRITE_KEY 环境变量',
+    ],
+    files: ['po.js', 'index.html', 'help.js', '财务对接二期-字段与审计表.sql', 'finance-write-index.ts'],
+  },
+  {
     v: '20260615-aftersales-all',
     date: '2026-06-15',
     type: 'feature',

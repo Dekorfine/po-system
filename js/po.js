@@ -4078,6 +4078,8 @@ function renderPoList() {
             ${next ? `<button class="so-action-btn primary" onclick="poAdvance('${p.id}', '${next.value}', '${next.label}')" title="推进到下一步">▶ ${next.label}</button>` : ''}
             ${prev ? `<button class="so-action-btn" onclick="poRevert('${p.id}', '${prev.value}', '${prev.label}')" title="退回上一步">↩ 退回</button>` : ''}
             ${!isCancelled && p.status !== 'received' ? `<button class="so-action-btn" onclick="poEditPrices('${p.id}')" title="修改采购单:数量/单价/描述(中文名·英文名·规格)/供应商">✏️ 改单</button>` : ''}
+            ${!isCancelled && !p.to_finance ? `<button class="so-action-btn" onclick="poHandToFinance('${p.id}')" title="标记此单已把单据交给财务核对 · 财务据此拉待核对清单">📑 交财务</button>` : ''}
+            ${p.to_finance ? `<span class="so-action-btn" style="background:rgba(99,153,34,0.12); color:#3b6d11; cursor:default;" title="已交财务核对${p.receipt_confirmed_at ? ' · 财务已确认收货' : ''}">${p.receipt_confirmed_at ? '✅ 财务已确认' : '📑 已交财务'}</span>` : ''}
             <!-- V20260601-desc:移除 [📝 改描述] 按钮 · 改描述已搬到创建 PO 弹窗内每行 · 创建时直接编辑 -->
             <button class="so-action-btn" onclick="poOpenPrint('${p.id}')" title="预览 + 打印 PO(纸质单据 / 也是预览效果最准的方式)">🖨 打印</button>
             ${!isCancelled ? `<button class="so-action-btn danger" onclick="poCancel('${p.id}')">⊘ 取消</button>` : ''}
@@ -4453,6 +4455,29 @@ async function poResubmit(poId) {
     toast('已重新提交，等主管审批');
     await renderPo();
   } catch (e) { toast('失败：' + (e.message || e), 'err'); }
+}
+
+// V20260615:环节2 — 跟单标记"已交财务核对"(财务据 to_finance=true 拉待核对清单)
+async function poHandToFinance(poId) {
+  const po = PO_LIST.find(x => x.id === poId);
+  if (!po) return;
+  if (!confirm(`确认把采购单 ${po.po_number} 的单据已交给财务核对?\n\n财务会据此拉到这单做对账核对。`)) return;
+  try {
+    const nowIso = new Date().toISOString();
+    const { error } = await sb.from('orders')
+      .update({ to_finance: true, handed_to_finance_at: nowIso, updated_at: nowIso })
+      .eq('po_number', po.po_number);
+    if (error) {
+      if (/to_finance/.test(error.message || '')) { toast('请先在主库跑 财务对接二期-字段与审计表.sql', 'err', 5000); return; }
+      throw error;
+    }
+    po.to_finance = true;
+    po.handed_to_finance_at = nowIso;
+    toast(`📑 ${po.po_number} 已标记交财务`, 'ok', 2500);
+    renderPoList();
+  } catch (e) {
+    toast('操作失败:' + (e.message || e), 'err', 4000);
+  }
 }
 
 async function poAdvance(poId, nextStatus, nextLabel) {
