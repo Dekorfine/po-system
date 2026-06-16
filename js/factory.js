@@ -126,6 +126,7 @@ function _fvCard(v) {
       ${np ? `<span>🎯${np}项目的</span>` : ''}
     </div>
     ${concl ? `<div style="font-size:11px; margin-top:4px;">${concl}</div>` : ''}
+    ${v.problems ? `<div style="font-size:10.5px; color:var(--text-secondary); margin-top:4px; padding:4px 6px; background:var(--bg-elevated); border-radius:5px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;" title="${escapeHtml(v.problems)}">⚠ ${escapeHtml(v.problems)}</div>` : ''}
     ${Array.isArray(v.style_images) && v.style_images.length ? `<div style="display:flex; gap:3px; margin-top:6px;">${v.style_images.slice(0,4).map(u=>`<img src="${escapeHtml(u)}" loading="lazy" onerror="this.style.display='none'" onclick="event.stopPropagation(); openImgLightbox&&openImgLightbox('${escapeHtml(u)}')" style="width:34px; height:34px; object-fit:cover; border-radius:4px; cursor:zoom-in;">`).join('')}${v.style_images.length>4?`<span style="font-size:10px; color:var(--text-tertiary); align-self:center;">+${v.style_images.length-4}</span>`:''}</div>` : ''}
     ${Array.isArray(v.media_urls) && v.media_urls.length ? `<div style="font-size:10px; color:var(--text-tertiary); margin-top:4px;">📷 ${v.media_urls.length} 张现场影像</div>` : ''}
   </div>`;
@@ -263,7 +264,7 @@ function _fvShowModal(v, mode) {
           <div><label style="font-size:11px; color:var(--text-secondary);">结论</label>
             <select id="fvConclusion" class="form-control"><option value="">—</option><option value="pass" ${v.conclusion==='pass'?'selected':''}>通过可合作</option><option value="rectify" ${v.conclusion==='rectify'?'selected':''}>限期整改后再定</option><option value="reject" ${v.conclusion==='reject'?'selected':''}>不合作/淘汰</option></select></div>
         </div>
-        <div style="margin-bottom:8px;"><label style="font-size:11px; color:var(--text-secondary);">问题清单</label><textarea id="fvProblems" class="form-control" rows="2">${escapeHtml(v.problems||'')}</textarea></div>
+        <div style="margin-bottom:8px;"><label style="font-size:11px; color:var(--text-secondary);">问题清单 / 本次总结</label><textarea id="fvProblems" class="form-control" rows="3" placeholder="本次看厂发现的问题总结:交期 / 包装 / 质量 / 沟通配合 / 合规认证 等">${escapeHtml(v.problems||'')}</textarea></div>
         <div style="display:grid; grid-template-columns:2fr 1fr 1fr; gap:8px; margin-bottom:8px;">
           <div><label style="font-size:11px; color:var(--text-secondary);">整改要求</label><input id="fvRectify" class="form-control" value="${escapeHtml(v.rectify_require||'')}"></div>
           <div><label style="font-size:11px; color:var(--text-secondary);">责任人</label><input id="fvRectifyOwner" class="form-control" value="${escapeHtml(v.rectify_owner||'')}"></div>
