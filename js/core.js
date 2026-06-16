@@ -1075,6 +1075,7 @@ const ALL_MODULES = [
   { key: 'performance', label: '📊 绩效' },
   { key: 'photoreq', label: '📨 拍摄需求' },
   { key: 'inspection', label: '🔍 验货单' },
+  { key: 'factory', label: '🏭 验厂' },
 ];
 const ALL_MODULE_KEYS = ALL_MODULES.map(m => m.key);
 
@@ -2341,7 +2342,7 @@ function dbWriteGuard(action) {
 // 始终对全员可见的模块(不受 agent.modules 白名单限制)
 // V20260615:新增模块时放这里 → 老员工的 modules 数组里没有该 key 也能看到(避免逐人改权限)
 // offline=线下单:全员协作,默认所有人可见
-const ALWAYS_VISIBLE_MODULES = ['offline', 'cross_dept'];
+const ALWAYS_VISIBLE_MODULES = ['offline', 'cross_dept', 'factory'];
 
 // 获取当前用户可见的模块
 function getVisibleModules(agent) {
@@ -2393,6 +2394,9 @@ function loadAllData() {
   // V20260613:启动预加载线下单(角标)+ org_directory 跟单名单自检
   if (typeof loadOfflineOrders === 'function') {
     loadOfflineOrders().then(() => { if (typeof updateBadges === 'function') updateBadges(); }).catch(() => {});
+  }
+  if (typeof loadFactoryVisits === 'function') {
+    loadFactoryVisits().then(() => { if (typeof updateBadges === 'function') updateBadges(); }).catch(() => {});
   }
   if (typeof offlineCheckOrgDirectory === 'function') {
     offlineCheckOrgDirectory().catch(() => {});
@@ -2498,6 +2502,14 @@ function renderActiveTab() {
       if (typeof updateBadges === 'function') updateBadges();
     });
   }
+  else if (CURRENT_TAB === 'factory') {
+    // V20260616:验厂 · 进 tab 拉一次
+    if (typeof renderFactory === 'function') renderFactory();
+    if (typeof loadFactoryVisits === 'function') loadFactoryVisits().then(() => {
+      if (typeof renderFactory === 'function') renderFactory();
+      if (typeof updateBadges === 'function') updateBadges();
+    });
+  }
   else if (CURRENT_TAB === 'purchases') { 
     if (typeof renderPurchases === 'function') renderPurchases(); 
     if (typeof updatePurchaseStats === 'function') updatePurchaseStats();
@@ -2590,6 +2602,7 @@ function updateBadges() {
   setBadge('badgeIssues', isUnresolved);
   setBadge('badgeMissing', mActive);
   if (typeof offlineTodoCount === 'function') setBadge('badgeOffline', offlineTodoCount());   // V20260613:线下单待处理
+  if (typeof factoryActiveCount === 'function') setBadge('badgeFactory', factoryActiveCount());   // V20260616:验厂未闭环
   setBadge('badgeFinance', financeWaiting);
 }
 
