@@ -51,6 +51,8 @@ function _fvIsBoss() { return (typeof IS_ADMIN !== 'undefined' && IS_ADMIN); }
 
 async function loadFactoryVisits() {
   if (typeof sb === 'undefined') return;
+  // V20260616:顺带预热供应商库(供发起时搜索下拉用)
+  if (typeof SUPPLIERS !== 'undefined' && SUPPLIERS.loadAll && SUPPLIERS._list.length === 0) SUPPLIERS.loadAll().catch(() => {});
   try {
     const { data, error } = await sb.from('factory_visits').select('*')
       .is('deleted_at', null).order('updated_at', { ascending: false }).limit(500);
@@ -150,6 +152,10 @@ window.renderFactory = renderFactory;
 function factoryOpenNew() {
   FACTORY._editId = null;
   FACTORY._editPurposes = [];
+  FACTORY._editMedia = [];
+  FACTORY._editTags = [];
+  // V20260616:预加载供应商库(否则搜索下拉为空 · 验货单同款)
+  if (typeof SUPPLIERS !== 'undefined' && SUPPLIERS.loadAll) SUPPLIERS.loadAll().catch(() => {});
   _fvShowModal({ stage: 'pending' }, 'new');
 }
 window.factoryOpenNew = factoryOpenNew;
@@ -444,6 +450,16 @@ function fvSupplierSearch(q) {
   const dd = document.getElementById('fvSupplierDropdown');
   if (!dd) return;
   if (!q || !q.trim()) { dd.style.display = 'none'; return; }
+  // V20260616:库还没加载好 → 先提示加载中,载完自动重搜
+  if (typeof SUPPLIERS !== 'undefined' && SUPPLIERS._list.length === 0 && SUPPLIERS.loadAll) {
+    dd.innerHTML = `<div style="padding:10px; font-size:12px; color:var(--text-tertiary);">⏳ 供应商库加载中...</div>`;
+    dd.style.display = '';
+    SUPPLIERS.loadAll().then(() => {
+      const cur = document.getElementById('fvSupplier');
+      if (cur && cur.value.trim()) fvSupplierSearch(cur.value);   // 载完用最新输入重搜
+    }).catch(() => { dd.style.display = 'none'; });
+    return;
+  }
   const matches = (typeof SUPPLIERS !== 'undefined' && SUPPLIERS.search) ? SUPPLIERS.search(q).slice(0, 8) : [];
   const sups = matches.map(m => m.s || m);
   if (sups.length === 0) {
