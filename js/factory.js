@@ -328,7 +328,13 @@ async function factoryCreate() {
       creator_id: (typeof CURRENT_USER_ID!=='undefined'?CURRENT_USER_ID:null),
     };
     const { error } = await sb.from('factory_visits').insert(row);
-    if (error) { if (/factory_visits/.test(error.message||'')) { toast('请先在主库跑 验厂模块.sql', 'err', 5000); return; } throw error; }
+    if (error) {
+      const m = error.message || '';
+      if (/relation .*factory_visits.* does not exist/i.test(m)) { toast('表未建 · 请在主库跑 验厂模块.sql', 'err', 5000); return; }
+      if (/column .* does not exist|style_images|could not find/i.test(m)) { toast('缺字段(可能是 style_images)· 请在主库跑:ALTER TABLE factory_visits ADD COLUMN IF NOT EXISTS style_images jsonb DEFAULT \'[]\'', 'err', 7000); return; }
+      toast('保存失败:' + m, 'err', 6000);
+      return;
+    }
     toast('🏭 已发起看厂任务', 'ok', 2500);
     document.getElementById('fvModal')?.remove();
     await loadFactoryVisits(); renderFactory();
