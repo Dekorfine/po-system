@@ -241,7 +241,12 @@ function _fvShowModal(v, mode) {
         <div style="margin-bottom:12px;">
           <label style="font-size:11px; color:var(--text-secondary);">供应商风格参考图 <span style="color:var(--text-tertiary);">(这供应商主要做什么风格 · 看厂前参考)</span></label>
           <div id="fvStyleThumbs" style="display:flex; gap:6px; flex-wrap:wrap; margin:6px 0;">${(FACTORY._editStyle||[]).map((u,i)=>`<div style="position:relative; display:inline-block;"><img src="${escapeHtml(u)}" onclick="openImgLightbox&&openImgLightbox('${escapeHtml(u)}')" style="width:60px; height:60px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in;"><button onclick="_fvRemoveStyle(${i})" style="position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%; border:0; background:var(--danger); color:white; cursor:pointer; font-size:11px; line-height:1;">×</button></div>`).join('')}</div>
-          <input type="file" id="fvStyleInput" accept="image/*" multiple onchange="_fvUploadStyle(event)" style="font-size:12px;">
+          <div id="fvStylePaste" tabindex="0" onpaste="_fvPasteStyle(event)" onclick="document.getElementById('fvStyleInput').click()" title="点这里选图 · 或选中后 Ctrl+V 粘贴截图"
+               style="margin-top:4px; border:1.5px dashed var(--border); border-radius:8px; padding:10px 12px; text-align:center; font-size:12px; color:var(--text-tertiary); cursor:pointer; outline:none;"
+               onfocus="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';" onblur="this.style.borderColor='var(--border)'; this.style.color='var(--text-tertiary)';">
+            📋 点此选图,或 <b>Ctrl+V 粘贴截图</b>
+          </div>
+          <input type="file" id="fvStyleInput" accept="image/*" multiple onchange="_fvUploadStyle(event)" style="display:none;">
           <span id="fvStyleStatus" style="font-size:11px; color:var(--text-tertiary); margin-left:8px;"></span>
         </div>
 
@@ -569,3 +574,29 @@ async function _fvUploadStyle(event) {
 window._fvUploadStyle = _fvUploadStyle;
 function _fvRemoveStyle(i) { FACTORY._editStyle.splice(i, 1); _fvRenderStyleThumbs(); }
 window._fvRemoveStyle = _fvRemoveStyle;
+
+// 粘贴截图上传(Ctrl+V · 复用 Storage 上传)
+async function _fvPasteStyle(e) {
+  const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+  if (!items) return;
+  const status = document.getElementById('fvStyleStatus');
+  let any = false;
+  for (const it of items) {
+    if (it.type && it.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = it.getAsFile();
+      if (!file) continue;
+      any = true;
+      if (status) status.textContent = '⏳ 上传粘贴的图...';
+      try {
+        const r = (typeof _inspUploadImg === 'function') ? await _inspUploadImg(file) : null;
+        if (r && r.url) { FACTORY._editStyle.push(r.url); _fvRenderStyleThumbs(); }
+        if (typeof toast === 'function') toast('✓ 粘贴图片已上传', 'success', 1500);
+      } catch (err) {
+        if (typeof toast === 'function') toast('上传失败:' + (err.message || err), 'err');
+      }
+    }
+  }
+  if (status) status.textContent = any ? `✓ 已上传 ${FACTORY._editStyle.length} 张` : '剪贴板里没有图片';
+}
+window._fvPasteStyle = _fvPasteStyle;

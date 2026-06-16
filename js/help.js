@@ -10,6 +10,17 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260616-factory-paste',
+    date: '2026-06-16',
+    type: 'feature',
+    title: '🏭 验厂:供应商风格参考图支持 Ctrl+V 粘贴截图',
+    notes: [
+      '风格参考图区加可粘贴框:点击聚焦后 Ctrl+V 直接粘贴截图上传(也可点击选图)',
+      '粘贴的图同样走 Storage 只存 URL(禁 base64),即时预览缩略图',
+    ],
+    files: ['factory.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260616-factory-prob',
     date: '2026-06-16',
     type: 'fix',
