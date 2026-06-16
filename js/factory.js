@@ -202,8 +202,22 @@ function _fvShowModal(v, mode) {
         <!-- 上半部分:发起信息 -->
         <div style="font-size:12.5px; font-weight:700; color:var(--accent); margin:6px 0 8px;">① 发起信息</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
-          <div><label style="font-size:11px; color:var(--text-secondary);">供应商名称 *</label><input id="fvSupplier" class="form-control" value="${escapeHtml(v.supplier||'')}" ${ro?'readonly':''}></div>
+          <div style="position:relative;"><label style="font-size:11px; color:var(--text-secondary);">供应商名称 *</label>
+            <input id="fvSupplier" class="form-control" value="${escapeHtml(v.supplier||'')}" ${ro?'readonly':''} autocomplete="off" ${ro?'':'oninput="fvSupplierSearch(this.value)" onfocus="fvSupplierSearch(this.value)"'} placeholder="输入供应商名(从供应商库搜索·也可自定义)">
+            <div id="fvSupplierDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:60; background:var(--bg-card); border:1px solid var(--border); border-radius:7px; max-height:200px; overflow-y:auto; box-shadow:0 4px 16px rgba(0,0,0,0.12); margin-top:2px;"></div>
+          </div>
           <div><label style="font-size:11px; color:var(--text-secondary);">对应产品/订单</label><input id="fvProduct" class="form-control" value="${escapeHtml(v.related_product||'')}" ${ro?'readonly':''}></div>
+        </div>
+        ${ro ? '' : `
+        <div style="background:rgba(37,99,235,0.04); border:1px solid rgba(37,99,235,0.15); border-radius:8px; padding:10px; margin-bottom:10px;">
+          <div style="font-size:11.5px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">🔎 按订单号拉取(自动填供应商+产品)</div>
+          <div style="display:flex; gap:8px;">
+            <input id="fvFetchInput" class="form-control mono" placeholder="如 PL3798 / DC34469" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();fvFetchOrder();}">
+            <button class="btn primary" onclick="fvFetchOrder()">🔍 拉取</button>
+          </div>
+          <div id="fvFetchStatus" style="font-size:11px; margin-top:6px; min-height:14px;"></div>
+        </div>`}
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
           <div><label style="font-size:11px; color:var(--text-secondary);">工厂地址</label><input id="fvAddress" class="form-control" value="${escapeHtml(v.factory_address||'')}" ${ro?'readonly':''}></div>
           <div><label style="font-size:11px; color:var(--text-secondary);">联系人/电话</label><input id="fvContact" class="form-control" value="${escapeHtml(v.contact||'')}" ${ro?'readonly':''}></div>
         </div>
@@ -424,3 +438,83 @@ function factoryActiveCount() {
   return (FACTORY._list||[]).filter(v => v.stage!=='closed' && v.stage!=='rejected').length;
 }
 window.factoryActiveCount = factoryActiveCount;
+
+// ─────────────── 供应商可筛选下拉(复用 SUPPLIERS 库)───────────────
+function fvSupplierSearch(q) {
+  const dd = document.getElementById('fvSupplierDropdown');
+  if (!dd) return;
+  if (!q || !q.trim()) { dd.style.display = 'none'; return; }
+  const matches = (typeof SUPPLIERS !== 'undefined' && SUPPLIERS.search) ? SUPPLIERS.search(q).slice(0, 8) : [];
+  const sups = matches.map(m => m.s || m);
+  if (sups.length === 0) {
+    dd.innerHTML = `<div style="padding:10px; font-size:12px; color:var(--text-tertiary);">无匹配 · 将作为自定义供应商「${escapeHtml(q)}」</div>`;
+    dd.style.display = '';
+    return;
+  }
+  dd.innerHTML = sups.map(s => `
+    <div onclick="fvPickSupplier('${escapeHtml(s.name).replace(/'/g, "\\'")}', ${s.address?`'${escapeHtml(s.address).replace(/'/g, "\\'")}'`:'null'}, ${s.contact_name||s.contact_phone?`'${escapeHtml([s.contact_name,s.contact_phone].filter(Boolean).join(' ')).replace(/'/g, "\\'")}'`:'null'})"
+         style="padding:9px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--border-subtle);"
+         onmouseover="this.style.background='var(--bg-elevated)'" onmouseout="this.style.background='transparent'">
+      🏭 ${escapeHtml(s.name)}${s.contact_name?` · ${escapeHtml(s.contact_name)}`:''}
+    </div>`).join('');
+  dd.style.display = '';
+}
+window.fvSupplierSearch = fvSupplierSearch;
+
+function fvPickSupplier(name, address, contact) {
+  const inp = document.getElementById('fvSupplier');
+  if (inp) inp.value = name;
+  // 供应商档案里有地址/联系人就自动带入(空的不覆盖已填)
+  const addrEl = document.getElementById('fvAddress');
+  const contEl = document.getElementById('fvContact');
+  if (addrEl && address && !addrEl.value) addrEl.value = address;
+  if (contEl && contact && !contEl.value) contEl.value = contact;
+  const dd = document.getElementById('fvSupplierDropdown');
+  if (dd) dd.style.display = 'none';
+}
+window.fvPickSupplier = fvPickSupplier;
+
+// ─────────────── 按订单号拉取(自动填供应商+产品)───────────────
+async function fvFetchOrder() {
+  const raw = (document.getElementById('fvFetchInput')?.value || '').trim();
+  const status = document.getElementById('fvFetchStatus');
+  if (!raw) { if (status) { status.style.color = 'var(--danger)'; status.textContent = '请先填订单号'; } return; }
+  const no = raw.replace(/^#/, '').trim();
+  if (status) { status.style.color = 'var(--text-secondary)'; status.textContent = '⏳ 查找订单...'; }
+
+  // 1) 先查采购单(orders 里 po_number/order_no 匹配 · 有供应商)
+  let supplier = '', product = '';
+  try {
+    if (typeof sb !== 'undefined') {
+      const { data: pos } = await sb.from('orders').select('supplier, product, order_no, po_number, line_items')
+        .or(`po_number.eq.${no},order_no.eq.${no}`).is('deleted_at', null).limit(5);
+      const hit = (pos || []).find(p => p.supplier) || (pos || [])[0];
+      if (hit) {
+        supplier = hit.supplier || '';
+        product = hit.product || (Array.isArray(hit.line_items) ? hit.line_items.map(x => x.title_cn || x.title || '').filter(Boolean).join(' / ') : '');
+      }
+    }
+  } catch (e) { /* 继续 */ }
+
+  // 2) 采购单没有 → 查销售单(SHOPIFY 缓存)拿产品(销售单无供应商)
+  if (!product && typeof SHOPIFY !== 'undefined' && Array.isArray(SHOPIFY._orders)) {
+    const so = SHOPIFY._orders.find(s => String(s.shopify_order_number||'').replace('#','')===no || String(s.name||'').replace('#','')===no);
+    if (so && Array.isArray(so.line_items)) {
+      product = so.line_items.map(x => x.title_cn || x.title || x.title_en || '').filter(Boolean).join(' / ');
+    }
+  }
+
+  if (!supplier && !product) {
+    if (status) { status.style.color = 'var(--danger)'; status.textContent = '未找到该订单 · 可手动填写'; }
+    return;
+  }
+
+  // 填充(供应商优先用采购单的 · 产品填到对应产品/订单)
+  const supEl = document.getElementById('fvSupplier');
+  const prodEl = document.getElementById('fvProduct');
+  if (supplier && supEl && !supEl.value) supEl.value = supplier;
+  if (prodEl) prodEl.value = (prodEl.value ? prodEl.value + ' / ' : '') + (product || ('订单 ' + no));
+  if (status) { status.style.color = 'var(--ok)'; status.textContent = `✓ 已拉取${supplier?' · 供应商「'+supplier+'」':''}${product?' · 产品已填':''}`; }
+  if (typeof toast === 'function') toast('✓ 已拉取订单信息', 'success', 2000);
+}
+window.fvFetchOrder = fvFetchOrder;
