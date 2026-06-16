@@ -10,6 +10,17 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260616-factory-ui',
+    date: '2026-06-16',
+    type: 'fix',
+    title: '🏭 验厂:UI 美化 + 禁止浏览器密码自动填充',
+    notes: [
+      '弹窗美化:粘性标题栏(滚动时常驻)、分区标题加底部蓝色分隔线、间距加大、圆角阴影优化',
+      '禁止浏览器/密码管理器误把供应商等输入框当登录框:所有输入加 autocomplete=off + data-1p-ignore + data-lpignore,不再弹"保存密码"',
+    ],
+    files: ['factory.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260616-factory-paste',
     date: '2026-06-16',
     type: 'feature',

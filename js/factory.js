@@ -201,22 +201,23 @@ function _fvShowModal(v, mode) {
     </div>`).join('');
 
   const html = `
-    <div id="fvModal" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px;" onclick="if(event.target===this) this.remove();">
-      <div style="background:var(--bg-card); border-radius:12px; max-width:680px; width:100%; max-height:88vh; overflow:auto; padding:22px;">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
+    <div id="fvModal" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(2px);" onclick="if(event.target===this) this.remove();">
+      <div style="background:var(--bg-card); border-radius:14px; max-width:700px; width:100%; max-height:90vh; overflow:auto; box-shadow:0 12px 48px rgba(0,0,0,0.25);">
+        <div style="position:sticky; top:0; z-index:5; background:var(--bg-card); display:flex; align-items:center; gap:10px; padding:18px 24px; border-bottom:1px solid var(--border); border-radius:14px 14px 0 0;">
           <span style="font-size:18px; font-weight:700;">🏭 看厂任务单</span>
-          ${mode==='detail'?`<span style="background:${stageMeta.bg||'var(--bg-elevated)'}; color:${stageMeta.color}; padding:2px 10px; border-radius:10px; font-size:11px; font-weight:600;">${stageMeta.label}</span>`:''}
+          ${mode==='detail'?`<span style="background:${stageMeta.bg||'var(--bg-elevated)'}; color:${stageMeta.color}; padding:3px 12px; border-radius:12px; font-size:11.5px; font-weight:600;">${stageMeta.label}</span>`:''}
           <button class="btn small" style="margin-left:auto;" onclick="this.closest('#fvModal').remove()">✕</button>
         </div>
+        <div style="padding:20px 24px 24px;">
 
         <!-- 上半部分:发起信息 -->
-        <div style="font-size:12.5px; font-weight:700; color:var(--accent); margin:6px 0 8px;">① 发起信息</div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
-          <div style="position:relative;"><label style="font-size:11px; color:var(--text-secondary);">供应商名称 *</label>
-            <input id="fvSupplier" class="form-control" value="${escapeHtml(v.supplier||'')}" ${ro?'readonly':''} autocomplete="off" ${ro?'':'oninput="fvSupplierSearch(this.value)" onfocus="fvSupplierSearch(this.value)"'} placeholder="输入供应商名(从供应商库搜索·也可自定义)">
+        <div style="font-size:13px; font-weight:700; color:var(--accent); margin:2px 0 12px; padding-bottom:6px; border-bottom:2px solid rgba(37,99,235,0.12);">① 发起信息</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div style="position:relative;"><label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">供应商名称 *</label>
+            <input id="fvSupplier" name="fv_sup_noac" class="form-control" value="${escapeHtml(v.supplier||'')}" ${ro?'readonly':''} autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" ${ro?'':'oninput="fvSupplierSearch(this.value)" onfocus="fvSupplierSearch(this.value)"'} placeholder="输入供应商名(从供应商库搜索·也可自定义)">
             <div id="fvSupplierDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:60; background:var(--bg-card); border:1px solid var(--border); border-radius:7px; max-height:200px; overflow-y:auto; box-shadow:0 4px 16px rgba(0,0,0,0.12); margin-top:2px;"></div>
           </div>
-          <div><label style="font-size:11px; color:var(--text-secondary);">对应产品/订单</label><input id="fvProduct" class="form-control" value="${escapeHtml(v.related_product||'')}" ${ro?'readonly':''}></div>
+          <div><label style="font-size:11px; color:var(--text-secondary);">对应产品/订单</label><input id="fvProduct" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" value="${escapeHtml(v.related_product||'')}" ${ro?'readonly':''}></div>
         </div>
         ${ro ? '' : `
         <div style="background:rgba(37,99,235,0.04); border:1px solid rgba(37,99,235,0.15); border-radius:8px; padding:10px; margin-bottom:10px;">
@@ -228,16 +229,16 @@ function _fvShowModal(v, mode) {
           <div id="fvFetchStatus" style="font-size:11px; margin-top:6px; min-height:14px;"></div>
         </div>`}
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
-          <div><label style="font-size:11px; color:var(--text-secondary);">工厂地址</label><input id="fvAddress" class="form-control" value="${escapeHtml(v.factory_address||'')}" ${ro?'readonly':''}></div>
-          <div><label style="font-size:11px; color:var(--text-secondary);">联系人/电话</label><input id="fvContact" class="form-control" value="${escapeHtml(v.contact||'')}" ${ro?'readonly':''}></div>
+          <div><label style="font-size:11px; color:var(--text-secondary);">工厂地址</label><input id="fvAddress" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" value="${escapeHtml(v.factory_address||'')}" ${ro?'readonly':''}></div>
+          <div><label style="font-size:11px; color:var(--text-secondary);">联系人/电话</label><input id="fvContact" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" value="${escapeHtml(v.contact||'')}" ${ro?'readonly':''}></div>
         </div>
         <div style="margin-bottom:10px;">
           <label style="font-size:11px; color:var(--text-secondary);">看厂目的(可多选)</label>
           ${ro ? `<div style="font-size:12px; padding:6px; background:var(--bg-elevated); border-radius:6px;">${(FACTORY._editPurposes||[]).map(k=>FV_PURPOSE_TEXT[k]).filter(Boolean).map(t=>'• '+escapeHtml(t)).join('<br>')||'(未选)'}${v.purpose_other?'<br>• 其他:'+escapeHtml(v.purpose_other):''}</div>`
             : `<div style="max-height:200px; overflow:auto; border:1px solid var(--border); border-radius:6px; padding:8px;">${_fvPurposeChecks()}</div>
-               <input id="fvPurposeOther" class="form-control" placeholder="其他目的(自填)" value="${escapeHtml(v.purpose_other||'')}" style="margin-top:6px;">`}
+               <input id="fvPurposeOther" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" placeholder="其他目的(自填)" value="${escapeHtml(v.purpose_other||'')}" style="margin-top:6px;">`}
         </div>
-        <div style="margin-bottom:12px;"><label style="font-size:11px; color:var(--text-secondary);">本次看厂补充说明</label><textarea id="fvNote" class="form-control" rows="2" ${ro?'readonly':''}>${escapeHtml(v.visit_note||'')}</textarea></div>
+        <div style="margin-bottom:12px;"><label style="font-size:11px; color:var(--text-secondary);">本次看厂补充说明</label><textarea id="fvNote" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" rows="2" ${ro?'readonly':''}>${escapeHtml(v.visit_note||'')}</textarea></div>
         <div style="margin-bottom:12px;">
           <label style="font-size:11px; color:var(--text-secondary);">供应商风格参考图 <span style="color:var(--text-tertiary);">(这供应商主要做什么风格 · 看厂前参考)</span></label>
           <div id="fvStyleThumbs" style="display:flex; gap:6px; flex-wrap:wrap; margin:6px 0;">${(FACTORY._editStyle||[]).map((u,i)=>`<div style="position:relative; display:inline-block;"><img src="${escapeHtml(u)}" onclick="openImgLightbox&&openImgLightbox('${escapeHtml(u)}')" style="width:60px; height:60px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in;"><button onclick="_fvRemoveStyle(${i})" style="position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%; border:0; background:var(--danger); color:white; cursor:pointer; font-size:11px; line-height:1;">×</button></div>`).join('')}</div>
@@ -252,30 +253,30 @@ function _fvShowModal(v, mode) {
 
         ${mode==='detail' ? `
         <!-- 派单(主管)-->
-        <div style="font-size:12.5px; font-weight:700; color:var(--accent); margin:14px 0 8px;">② 派单 ${!isBoss?'<span style="font-size:10px; font-weight:400; color:var(--text-tertiary);">(仅主管可派单)</span>':''}</div>
+        <div style="font-size:13px; font-weight:700; color:var(--accent); margin:18px 0 12px; padding-bottom:6px; border-bottom:2px solid rgba(37,99,235,0.12);">② 派单 ${!isBoss?'<span style="font-size:10px; font-weight:400; color:var(--text-tertiary);">(仅主管可派单)</span>':''}</div>
         <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:6px;">
-          <div><label style="font-size:11px; color:var(--text-secondary);">去看厂同事</label><input id="fvAssignee" class="form-control" value="${escapeHtml(v.assignee_name||'')}" ${!isBoss?'readonly':''}></div>
-          <div><label style="font-size:11px; color:var(--text-secondary);">计划日期</label><input id="fvPlanDate" type="date" class="form-control" value="${v.plan_date||''}" ${!isBoss?'readonly':''}></div>
+          <div><label style="font-size:11px; color:var(--text-secondary);">去看厂同事</label><input id="fvAssignee" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" value="${escapeHtml(v.assignee_name||'')}" ${!isBoss?'readonly':''}></div>
+          <div><label style="font-size:11px; color:var(--text-secondary);">计划日期</label><input id="fvPlanDate" type="date" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" value="${v.plan_date||''}" ${!isBoss?'readonly':''}></div>
           <div style="display:flex; align-items:flex-end;">${isBoss && (stage==='pending'||stage==='dispatched') ? `<button class="btn primary" style="width:100%;" onclick="factoryDispatch()">${stage==='pending'?'✓ 审核派单':'更新派单'}</button>`:''}</div>
         </div>
         ${v.dispatched_by ? `<div style="font-size:10.5px; color:var(--text-tertiary); margin-bottom:10px;">派单:${escapeHtml(v.dispatched_by)} · ${v.dispatched_at?new Date(v.dispatched_at).toLocaleDateString('zh-CN'):''}</div>`:''}
 
         <!-- 现场结果(看厂专员 · 全员可填)-->
-        <div style="font-size:12.5px; font-weight:700; color:var(--accent); margin:14px 0 8px;">③ 现场结果</div>
-        <div style="margin-bottom:8px;"><label style="font-size:11px; color:var(--text-secondary);">现场核对结果(按目的逐项)</label><textarea id="fvSiteResult" class="form-control" rows="3">${escapeHtml(v.site_result||'')}</textarea></div>
+        <div style="font-size:13px; font-weight:700; color:var(--accent); margin:18px 0 12px; padding-bottom:6px; border-bottom:2px solid rgba(37,99,235,0.12);">③ 现场结果</div>
+        <div style="margin-bottom:8px;"><label style="font-size:11px; color:var(--text-secondary);">现场核对结果(按目的逐项)</label><textarea id="fvSiteResult" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" rows="3">${escapeHtml(v.site_result||'')}</textarea></div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
           <div><label style="font-size:11px; color:var(--text-secondary);">是否真实工厂/同源</label>
             <select id="fvIsReal" class="form-control"><option value="">—</option><option value="yes" ${v.is_real_factory==='yes'?'selected':''}>是</option><option value="no" ${v.is_real_factory==='no'?'selected':''}>否</option><option value="doubt" ${v.is_real_factory==='doubt'?'selected':''}>存疑</option></select></div>
           <div><label style="font-size:11px; color:var(--text-secondary);">结论</label>
             <select id="fvConclusion" class="form-control"><option value="">—</option><option value="pass" ${v.conclusion==='pass'?'selected':''}>通过可合作</option><option value="rectify" ${v.conclusion==='rectify'?'selected':''}>限期整改后再定</option><option value="reject" ${v.conclusion==='reject'?'selected':''}>不合作/淘汰</option></select></div>
         </div>
-        <div style="margin-bottom:8px;"><label style="font-size:11px; color:var(--text-secondary);">问题清单 / 本次总结</label><textarea id="fvProblems" class="form-control" rows="3" placeholder="本次看厂发现的问题总结:交期 / 包装 / 质量 / 沟通配合 / 合规认证 等">${escapeHtml(v.problems||'')}</textarea></div>
+        <div style="margin-bottom:8px;"><label style="font-size:11px; color:var(--text-secondary);">问题清单 / 本次总结</label><textarea id="fvProblems" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" rows="3" placeholder="本次看厂发现的问题总结:交期 / 包装 / 质量 / 沟通配合 / 合规认证 等">${escapeHtml(v.problems||'')}</textarea></div>
         <div style="display:grid; grid-template-columns:2fr 1fr 1fr; gap:8px; margin-bottom:8px;">
-          <div><label style="font-size:11px; color:var(--text-secondary);">整改要求</label><input id="fvRectify" class="form-control" value="${escapeHtml(v.rectify_require||'')}"></div>
-          <div><label style="font-size:11px; color:var(--text-secondary);">责任人</label><input id="fvRectifyOwner" class="form-control" value="${escapeHtml(v.rectify_owner||'')}"></div>
-          <div><label style="font-size:11px; color:var(--text-secondary);">期限</label><input id="fvRectifyDeadline" type="date" class="form-control" value="${v.rectify_deadline||''}"></div>
+          <div><label style="font-size:11px; color:var(--text-secondary);">整改要求</label><input id="fvRectify" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" value="${escapeHtml(v.rectify_require||'')}"></div>
+          <div><label style="font-size:11px; color:var(--text-secondary);">责任人</label><input id="fvRectifyOwner" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" value="${escapeHtml(v.rectify_owner||'')}"></div>
+          <div><label style="font-size:11px; color:var(--text-secondary);">期限</label><input id="fvRectifyDeadline" type="date" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" value="${v.rectify_deadline||''}"></div>
         </div>
-        <div style="margin-bottom:8px;"><label style="font-size:11px; color:var(--text-secondary);">整改关闭情况</label><input id="fvRectifyStatus" class="form-control" value="${escapeHtml(v.rectify_status||'')}"></div>
+        <div style="margin-bottom:8px;"><label style="font-size:11px; color:var(--text-secondary);">整改关闭情况</label><input id="fvRectifyStatus" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" value="${escapeHtml(v.rectify_status||'')}"></div>
 
         <!-- 影像留痕 -->
         <div style="margin-bottom:8px;">
@@ -284,7 +285,7 @@ function _fvShowModal(v, mode) {
           <input type="file" id="fvMediaInput" accept="image/*" multiple onchange="_fvUploadMedia(event)" style="font-size:12px;">
           <span id="fvMediaStatus" style="font-size:11px; color:var(--text-tertiary); margin-left:8px;"></span>
         </div>
-        <div style="margin-bottom:10px;"><label style="font-size:11px; color:var(--text-secondary);">看厂人签字</label><input id="fvVisitorSign" class="form-control" value="${escapeHtml(v.visitor_sign||'')}" style="max-width:200px;"></div>
+        <div style="margin-bottom:10px;"><label style="font-size:11px; color:var(--text-secondary);">看厂人签字</label><input id="fvVisitorSign" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" class="form-control" value="${escapeHtml(v.visitor_sign||'')}" style="max-width:200px;"></div>
 
         <div style="display:flex; gap:8px; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--border);">
           <button class="btn primary" onclick="factorySaveResult()">💾 保存现场结果</button>
@@ -300,6 +301,7 @@ function _fvShowModal(v, mode) {
           <button class="btn" onclick="this.closest('#fvModal').remove()">取消</button>
           <button class="btn primary" onclick="factoryCreate()">发起看厂任务</button>
         </div>`}
+        </div>
       </div>
     </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
