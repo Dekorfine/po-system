@@ -22,31 +22,31 @@
 <link rel="preconnect" href="https://xyhbwqugbnowfjuhqhsj.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
-<link rel="preload" href="js/core.js?v=20260616factory" as="script">
-<link rel="preload" href="js/utils.js?v=20260608perf" as="script">
-<link rel="preload" href="js/shopify.js?v=20260611names" as="script">
+<link rel="preload" href="js/core.js?v=20260617fix3" as="script">
+<link rel="preload" href="js/utils.js?v=20260617fix3" as="script">
+<link rel="preload" href="js/shopify.js?v=20260617fix3" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="js/core.js?v=20260616factory"></script>
-<script defer src="js/utils.js?v=20260608perf"></script>
+<script defer src="js/core.js?v=20260617fix3"></script>
+<script defer src="js/utils.js?v=20260617fix3"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260616ui"></script>
+<script defer src="js/help.js?v=20260617fix3"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
 <script defer src="js/purchases.js"></script>
 <script defer src="js/analytics.js"></script>
 <script defer src="js/trash.js"></script>
-<script defer src="js/aftersales.js?v=20260615afterall"></script>
+<script defer src="js/aftersales.js?v=20260617fix3"></script>
 <script defer src="js/aftersales-shared.js?v=20260531ase2"></script>
 <script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260615ins"></script>
 <script defer src="js/orders.js?v=20260615sort"></script>
-<script defer src="js/shopify.js?v=20260611names"></script>
-<script defer src="js/po.js?v=20260615finance"></script>
+<script defer src="js/shopify.js?v=20260617fix3"></script>
+<script defer src="js/po.js?v=20260617fix3"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
 <script defer src="js/inventory.js?v=20260614toast"></script>
 <script defer src="js/inspection.js?v=20260528kappa"></script>
@@ -5809,6 +5809,7 @@ if ('serviceWorker' in navigator) {
       <select class="filter-select" id="asFilterSite" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">📍 全部网站</option></select>
       <select class="filter-select" id="asFilterSupplier" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">全部供应商</option></select>
       <select class="filter-select" id="asFilterReason" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">全部原因</option></select>
+      <select class="filter-select" id="asFilterCreator" onchange="_aftersalesQuickMode='';renderAftersales()"><option value="">👤 全部录入人</option></select>
       <!-- V20260526e: 日期筛选 -->
       <select class="filter-select" id="asDateFilter" onchange="aftersalesOnDateChange(this.value)" style="min-width:160px;">
       </select>
