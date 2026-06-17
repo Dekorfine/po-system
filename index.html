@@ -36,7 +36,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260617ver"></script>
+<script defer src="js/help.js?v=20260617flow"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -56,7 +56,7 @@
 <script defer src="js/factory.js?v=20260616ui"></script>
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script defer src="js/cross-dept.js?v=20260613offline"></script>
-<script defer src="js/offline-orders.js?v=20260613ui"></script>
+<script defer src="js/offline-orders.js?v=20260617flow"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
 <script defer src="js/translator.js?v=20260525z"></script>
@@ -1666,7 +1666,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 /* V20260613:线下单看板 · 六列均分填满宽屏 · 窄屏横向滚动(列不挤压) */
 .offline-board {
   display: grid;
-  grid-template-columns: repeat(6, minmax(200px, 1fr));
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
   gap: 10px;
   align-items: start;
 }
