@@ -1045,13 +1045,16 @@ async function openPoForm(salesOrderId, selectedLineItemIds = null) {
     const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
     // V4：拆单模式下，仅勾选指定的 line items
     const isInSelection = selectedSet ? selectedSet.has(li.shopify_line_item_id) : true;
+    // V20260617:保险/运费险行默认不勾选(采购不需要采保险 · 仍可见可手动勾)
+    const isInsurance = (typeof _isInsuranceLineItem === 'function') && _isInsuranceLineItem(li);
     PO_FORM_STATE.lineItemSelections[li.shopify_line_item_id] = {
-      checked: remaining > 0 && isInSelection,
+      checked: remaining > 0 && isInSelection && !isInsurance,
       qty: remaining,
       price: eff.last_purchase_price || '',
       supplierName: eff.default_supplier || '',
       remaining,
       assignedQty: (li.quantity || 0) - remaining,
+      isInsurance,   // 标记 · 渲染时可加提示
     };
   });
 
@@ -1103,7 +1106,7 @@ function renderPoForm() {
         ${imgUrl ? `<img loading="lazy" class="li-img" src="${escapeHtml(imgUrl)}" onclick="openImgLightbox('${escapeHtml(imgUrl)}')">` : `<div class="li-noimg">📷</div>`}
         <div class="li-info">
           <div class="sku">${escapeHtml(displaySku)}${wasEdited ? '<span style="margin-left:6px; font-size:10px; padding:1px 6px; background:rgba(124,58,237,0.12); color:#7c3aed; border-radius:3px;">已修改</span>' : ''}</div>
-          <div class="name">${escapeHtml(displayTitle)}${displayEn ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(displayEn)}</span>` : ''}</div>
+          <div class="name">${escapeHtml(displayTitle)}${displayEn ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(displayEn)}</span>` : ''}${sel.isInsurance ? ' <span style="font-size:10px; padding:1px 7px; background:rgba(220,38,38,0.1); color:#dc2626; border-radius:3px; font-weight:600;">🛡 保险/费用项 · 默认不采购</span>' : ''}</div>
           <div class="variant">${escapeHtml(li.variant_title || '')}${fullyAssigned ? ' · <span style="color:var(--success)">✓ 已全部开 PO</span>' : sel.assignedQty > 0 ? ` · 剩 ${sel.remaining}/${li.quantity}` : ''}</div>
           ${fullyAssigned && validAssignments.length > 0 ? `
             <div style="margin-top:4px; padding:6px 8px; background:rgba(234,179,8,0.08); border-left:3px solid var(--warning); border-radius:4px; font-size:11px;">
@@ -1136,31 +1139,23 @@ function renderPoForm() {
               style="flex-shrink:0; padding:4px 9px; font-size:11px; border:1px solid #7c3aed; background:#7c3aed10; color:#7c3aed; border-radius:4px; cursor:pointer; white-space:nowrap;">🌐 翻译</button>`}
           </div>
           
-          <!-- V20260601-desc:per-line 描述字段(中文名/英文名/规格)· 创建 PO 时直接改 -->
+          <!-- V20260617:去掉中文名/英文名 UI(底层数据仍保留)· 只留"产品颜色/规格"· 尺寸英寸自动转cm -->
           ${fullyAssigned ? '' : (() => {
             const liid = li.shopify_line_item_id;
             const d = PO_FORM_STATE.lineDescriptions[liid] || {};
-            const defaultTitleCn = d.title_cn !== undefined ? d.title_cn : ((PO_FORM_STATE.lineItemSelections[liid]?.customTitleCn) || eff.name_cn || '');
-            const defaultTitleEn = d.title_en !== undefined ? d.title_en : (eff.name_en || li.title || '');               // V20260603:优先该 SKU 已存英文名
-            const defaultVariant = d.variant !== undefined ? d.variant : (eff.spec_default || li.variant_title || '');    // V20260603:优先该 SKU 已存规格(改单时记住的)
+            // 规格默认值:优先已存,否则用 extractVariantInfo 把英寸尺寸转 cm + 颜色英译中
+            let defaultVariant = d.variant;
+            if (defaultVariant === undefined) {
+              const rawSpec = eff.spec_default || li.variant_title || '';
+              defaultVariant = (typeof extractVariantInfo === 'function') ? (extractVariantInfo(rawSpec) || rawSpec) : rawSpec;
+            }
             return `
             <div style="margin-top:6px; padding:6px 8px; background:rgba(124,58,237,0.04); border:1px dashed rgba(124,58,237,0.3); border-radius:5px;">
-              <div style="font-size:10.5px; color:#7c3aed; font-weight:600; margin-bottom:4px;">✏️ 改描述(打印件 / 订单图用):</div>
-              <div style="display:grid; grid-template-columns:60px 1fr; gap:4px 6px; align-items:center;">
-                <span style="font-size:11px; color:var(--text-secondary);">中文名:</span>
-                <input type="text" value="${escapeHtml(defaultTitleCn)}"
-                  oninput="poFormSetLineDesc('${liid}','title_cn',this.value)"
-                  placeholder="例:玻璃花朵铜质壁灯"
-                  style="padding:4px 7px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card);">
-                <span style="font-size:11px; color:var(--text-secondary);">英文名:</span>
-                <input type="text" value="${escapeHtml(defaultTitleEn)}"
-                  oninput="poFormSetLineDesc('${liid}','title_en',this.value)"
-                  placeholder="例:Brass Floral Glass Sconce"
-                  style="padding:4px 7px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card);">
-                <span style="font-size:11px; color:var(--text-secondary);">规格:</span>
+              <div style="display:grid; grid-template-columns:72px 1fr; gap:4px 6px; align-items:center;">
+                <span style="font-size:11px; color:var(--text-secondary);">产品颜色:</span>
                 <input type="text" value="${escapeHtml(defaultVariant)}"
                   oninput="poFormSetLineDesc('${liid}','variant',this.value)"
-                  placeholder="例:220V / 黑色 / E27"
+                  placeholder="例:D85cm x H40cm / 黑色 / 暖光"
                   style="padding:4px 7px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card);">
               </div>
             </div>`;
