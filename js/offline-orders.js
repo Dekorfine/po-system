@@ -235,13 +235,27 @@ window.offlineSetView = offlineSetView;
 async function _offWriteFu(orderNo, patch) {
   if (typeof sb === 'undefined') throw new Error('数据库未连接');
   const cur = OFFLINE._followups[orderNo] || { order_no: orderNo };
-  const row = { ...cur, ...patch, order_no: orderNo, updated_at: new Date().toISOString() };
+  const merged = { ...cur, ...patch, order_no: orderNo, updated_at: new Date().toISOString() };
+  // V20260617:只 upsert 表里确实存在的列(防 cur 里残留旧字段导致 column does not exist)
+  const ALLOWED = ['order_no', 'stage', 'claimed_by_id', 'claimed_by_name', 'stage_at', 'claimed_at', 'cancelled', 'remark', 'updated_at'];
+  const row = {};
+  ALLOWED.forEach(k => { if (merged[k] !== undefined) row[k] = merged[k]; });
   const { error } = await sb.from('offline_followups').upsert(row, { onConflict: 'order_no' });
   if (error) {
-    if (/offline_followups/.test(error.message || '')) throw new Error('请先在跟单主库跑 offline_followups.sql');
-    throw error;
+    const m = error.message || '';
+    // 表不存在才提示跑 SQL;其它错误(列缺失/权限)显示真实原因,不再笼统误导
+    if (/relation .*offline_followups.* does not exist/i.test(m)) {
+      throw new Error('表未建 · 请在跟单主库(pyfmu)跑 offline_followups.sql');
+    }
+    if (/column .* does not exist/i.test(m)) {
+      throw new Error('表缺字段 · 请重跑 offline_followups.sql 全文(' + m + ')');
+    }
+    if (/permission denied|row-level security|403/i.test(m)) {
+      throw new Error('权限被拒 · 请在 pyfmu 跑:ALTER TABLE offline_followups DISABLE ROW LEVEL SECURITY; GRANT ALL ON offline_followups TO anon;');
+    }
+    throw new Error('保存失败:' + m);
   }
-  OFFLINE._followups[orderNo] = row;
+  OFFLINE._followups[orderNo] = merged;
 }
 
 async function offlineClaim(msgId, orderNo) {
