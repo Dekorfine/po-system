@@ -14,6 +14,7 @@ const OFF_STAGES = [
 ];
 const OFF_STAGE_MAP = Object.fromEntries(OFF_STAGES.map(s => [s.k, s]));
 const OFF_NEXT = { ordered: 'producing', producing: 'shipped', shipped: 'received' };
+const OFF_PREV = { producing: 'ordered', shipped: 'producing', received: 'shipped' };   // V20260617:返回上一步
 // V20260617:旧数据兼容 — pending/claimed 一律视为 ordered(待下单)· 接单环节归客服,跟单拿到直接下单
 const OFF_STAGE_NORMALIZE = { pending: 'ordered', claimed: 'ordered' };
 
@@ -139,6 +140,7 @@ function _offBoardCard(m, stage) {
       ${m.related_shop ? `<span style="font-size:10px; color:var(--text-tertiary); margin-left:auto; white-space:nowrap;">${escapeHtml(m.related_shop)}</span>` : ''}
     </div>
     ${claimer ? `<div style="font-size:10.5px; color:var(--text-secondary); margin-bottom:6px;">${claimer}</div>` : ''}
+    ${fu.remark ? `<div style="font-size:10px; color:var(--text-secondary); margin-bottom:6px; padding:4px 6px; background:var(--bg-elevated); border-radius:5px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;" title="${escapeHtml(fu.remark)}">📝 ${escapeHtml(fu.remark)}</div>` : ''}
     ${thumb ? `<div style="display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap;">${thumb}</div>` : ''}
     ${stage !== 'cancelled' ? `<div onclick="event.stopPropagation();">${actions}</div>` : ''}
   </div>`;
@@ -199,25 +201,58 @@ function _offRenderList(msgs) {
 function offlineOpenDetail(msgId) {
   const m = OFFLINE._msgs.find(x => x.id === msgId);
   if (!m) return;
+  const orderNo = m.related_ref || '';
+  const fu = _offGetFu(orderNo);
+  const stage = _offStageOf(m);
+  const stageMeta = stage === 'cancelled' ? { label:'已取消', color:'var(--danger)', bg:'rgba(220,38,38,0.1)' } : OFF_STAGE_MAP[stage];
+  const next = OFF_NEXT[stage];
+  const prev = OFF_PREV[stage];
   const vouchers = (Array.isArray(m.attachments) ? m.attachments : []).map(a => {
     const u = _offAttUrl(a);
     if (u === '__BASE64__') return `<div style="padding:8px; color:var(--danger); font-size:12px;">⚠ 附件是 base64 内嵌 · 应改存 Storage URL</div>`;
     if (!u) return '';
     return `<img src="${escapeHtml(u)}" loading="lazy" onclick="openImgLightbox && openImgLightbox('${escapeHtml(u)}')" style="max-width:120px; max-height:120px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in;">`;
   }).join('');
+
+  // 跟单操作区:当前阶段 + 推进/返回 + 备注
+  const opsArea = stage === 'cancelled' ? `
+    <div style="padding:12px; background:rgba(220,38,38,0.06); border-radius:8px; text-align:center; color:var(--danger); font-size:13px;">此单已取消</div>
+  ` : `
+    <div style="background:var(--bg-elevated); border-radius:10px; padding:14px; margin-bottom:12px;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+        <span style="font-size:12px; color:var(--text-secondary);">当前阶段:</span>
+        <span style="background:${stageMeta.bg}; color:${stageMeta.color}; padding:3px 12px; border-radius:10px; font-size:12.5px; font-weight:700;">${stageMeta.label}</span>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+        ${prev ? `<button class="btn small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${prev}'); offlineOpenDetail('${m.id}'); this.closest('[style*=fixed]').remove();" title="退回到上一步">← 返回「${OFF_STAGE_MAP[prev].label}」</button>` : ''}
+        ${next ? `<button class="btn primary small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}'); offlineOpenDetail('${m.id}'); this.closest('[style*=fixed]').remove();" title="推进到下一步">推进到「${OFF_STAGE_MAP[next].label}」→</button>` : (stage==='received' ? '<span style="font-size:12px; color:var(--ok); align-self:center;">✅ 已完成全流程</span>' : '')}
+      </div>
+      <div>
+        <label style="font-size:11.5px; color:var(--text-secondary); display:block; margin-bottom:5px;">📝 跟单备注(什么时候下单、当前情况、跟厂进度等)</label>
+        <textarea id="offRemarkInput" rows="3" autocomplete="off" data-1p-ignore data-lpignore="true"
+          style="width:100%; padding:8px; font-size:12.5px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); resize:vertical; box-sizing:border-box;"
+          placeholder="例:6/13 已下单给三洪,约 15 天交期 / 6/20 催了进度,说本周出货">${escapeHtml(fu.remark || '')}</textarea>
+        <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+          <button class="btn primary small" onclick="offlineSaveRemark('${escapeHtml(orderNo)}')">💾 保存备注</button>
+          <span id="offRemarkStatus" style="font-size:11px; color:var(--text-tertiary);"></span>
+        </div>
+      </div>
+    </div>`;
+
   const html = `
     <div style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px;" onclick="if(event.target===this) this.remove();">
-      <div style="background:var(--bg-card); border-radius:12px; max-width:640px; width:100%; max-height:85vh; overflow:auto; padding:20px;">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-          <span style="font-size:17px; font-weight:700;">🧾 ${escapeHtml(m.related_ref || '(无单号)')}</span>
+      <div style="background:var(--bg-card); border-radius:12px; max-width:640px; width:100%; max-height:88vh; overflow:auto; padding:20px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; position:sticky; top:-20px; background:var(--bg-card); padding-top:4px; z-index:3;">
+          <span style="font-size:17px; font-weight:700;">🧾 ${escapeHtml(orderNo || '(无单号)')}</span>
           ${m.related_shop ? `<span style="font-size:12px; color:var(--text-secondary); background:var(--bg-elevated); padding:1px 8px; border-radius:8px;">${escapeHtml(m.related_shop)}</span>` : ''}
           <button class="btn small" style="margin-left:auto;" onclick="this.closest('[style*=fixed]').remove()">✕</button>
         </div>
         <div style="font-size:11.5px; color:var(--text-tertiary); margin-bottom:10px;">来自客服 ${escapeHtml(m.from_user_name || '')} · ${m.created_at_ms ? new Date(m.created_at_ms).toLocaleString('zh-CN') : ''}</div>
+        ${opsArea}
         ${vouchers ? `<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">${vouchers}</div>` : ''}
         <pre style="white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:13px; line-height:1.7; background:var(--bg-elevated); padding:12px; border-radius:8px; margin:0 0 12px;">${escapeHtml(m.body || '(无内容)')}</pre>
         <div style="display:flex; gap:8px; justify-content:flex-end;">
-          <button class="btn small" style="color:var(--danger);" onclick="offlineCancel('${m.id}','${escapeHtml(m.related_ref || '')}'); this.closest('[style*=fixed]').remove();">🗑️ 取消此单</button>
+          <button class="btn small" style="color:var(--danger);" onclick="offlineCancel('${m.id}','${escapeHtml(orderNo)}'); this.closest('[style*=fixed]').remove();">🗑️ 取消此单</button>
         </div>
       </div>
     </div>`;
@@ -281,7 +316,6 @@ async function offlineAdvance(msgId, orderNo, toStage) {
   try {
     const nowIso = new Date().toISOString();
     const patch = { stage: toStage, stage_at: nowIso };
-    patch[toStage + '_at'] = nowIso;
     await _offWriteFu(orderNo, patch);
     if (toStage === 'shipped' && typeof cdmClient !== 'undefined') {
       const me = (typeof CURRENT_AGENT !== 'undefined' ? CURRENT_AGENT : '') || '跟单';
@@ -301,6 +335,23 @@ async function offlineAdvance(msgId, orderNo, toStage) {
   } catch (e) { _offErr(e); }
 }
 window.offlineAdvance = offlineAdvance;
+
+// V20260617:保存跟单备注(记录下单时间、当前情况、跟厂进度)
+async function offlineSaveRemark(orderNo) {
+  if (!orderNo) return;
+  const ta = document.getElementById('offRemarkInput');
+  const status = document.getElementById('offRemarkStatus');
+  if (!ta) return;
+  if (status) status.textContent = '⏳ 保存中...';
+  try {
+    await _offWriteFu(orderNo, { remark: ta.value });
+    if (status) { status.style.color = 'var(--ok)'; status.textContent = '✓ 已保存'; }
+    if (typeof toast === 'function') toast('💾 跟单备注已保存', 'success', 1800);
+  } catch (e) {
+    if (status) { status.style.color = 'var(--danger)'; status.textContent = '保存失败:' + (e.message || e); }
+  }
+}
+window.offlineSaveRemark = offlineSaveRemark;
 
 async function offlineCancel(msgId, orderNo) {
   if (!orderNo) return;
