@@ -1367,15 +1367,60 @@ async function shopifyStartProcessing(orderId) {
   try {
     await SHOPIFY.setOrderStatus(orderId, 'processing');
     toast('已进入"待处理"');
-    // V20260617:先把当前 filter 切到 processing(设状态),再 reload — 这样 reload 内部的渲染直接就在待处理视图
+    // V20260617:先把 filter 切到 processing,再 reload — reload 内部渲染直接在待处理视图
     SHOPIFY._currentFilter = 'processing';
     SHOPIFY_PAGE = 1;
     await shopifyReloadOrdersAndRender();
-    shopifyShowFilter('processing');   // 双保险:reload 后再切一次,刷新 sub-tab 高亮和计数
+    shopifyShowFilter('processing');
+    // V20260617:一步到位 — 跳转后直接弹出这单的"开采购单"表单
+    //   先定位到该订单(翻到它所在页+滚动高亮),再打开表单 → 关表单后正好停在这单位置
+    _shopifyScrollToOrder(orderId);
+    setTimeout(() => {
+      if (typeof openPoForm === 'function') openPoForm(orderId);
+      else if (typeof shopifyOpenPoForm === 'function') shopifyOpenPoForm(orderId);
+    }, 200);
   } catch (e) {
     toast('操作失败：' + (e.message || e), 'err');
   }
 }
+
+// 滚动定位到指定订单卡片并高亮(跳到待处理后用)· 自动翻到它所在的分页
+function _shopifyScrollToOrder(orderId, _tries) {
+  _tries = _tries || 0;
+  // 1) 先确认在不在当前过滤列表;算它在第几页,不在当前页就翻过去
+  const ids = SHOPIFY._lastFilteredIds || [];
+  const idx = ids.indexOf(orderId);
+  if (idx >= 0) {
+    const targetPage = Math.floor(idx / SHOPIFY_PAGE_SIZE) + 1;
+    if (SHOPIFY_PAGE !== targetPage) {
+      SHOPIFY_PAGE = targetPage;
+      if (typeof renderShopifyOrders === 'function') renderShopifyOrders();
+    }
+  }
+  // 2) 滚动到卡片 + 高亮
+  const doScroll = () => {
+    const card = document.querySelector(`.so-card[data-id="${orderId}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.style.transition = 'box-shadow 0.3s';
+      const orig = card.style.boxShadow;
+      let on = false, n = 0;
+      const blink = setInterval(() => {
+        on = !on;
+        card.style.boxShadow = on ? '0 0 0 3px #2563eb, 0 6px 20px rgba(37,99,235,0.3)' : orig;
+        if (++n >= 6) { clearInterval(blink); card.style.boxShadow = orig; }
+      }, 350);
+      return true;
+    }
+    return false;
+  };
+  if (doScroll()) return;
+  // 卡片还没渲染出来 → 重试几次
+  if (_tries < 4) { setTimeout(() => _shopifyScrollToOrder(orderId, _tries + 1), 200); return; }
+  const o = (SHOPIFY._orders || []).find(x => x.id === orderId);
+  if (o) toast(`订单 ${o.shopify_order_number || ''} 已在待处理 · 如未看到请搜索单号`, 'info', 3500);
+}
+window._shopifyScrollToOrder = _shopifyScrollToOrder;
 
 async function shopifyCancelOrder(orderId) {
   if (!confirm('确认取消这个销售订单？（可后续恢复）')) return;

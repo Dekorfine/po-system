@@ -2603,6 +2603,7 @@ function renderShopifyOrders() {
   }
 
   // 分页
+  SHOPIFY._lastFilteredIds = orders.map(o => o.id);   // V20260617:存当前过滤后顺序 · 供"定位到订单"算页码
   const totalPages = Math.max(1, Math.ceil(orders.length / SHOPIFY_PAGE_SIZE));
   if (SHOPIFY_PAGE > totalPages) SHOPIFY_PAGE = totalPages;
   const start = (SHOPIFY_PAGE - 1) * SHOPIFY_PAGE_SIZE;
