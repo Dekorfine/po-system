@@ -1367,18 +1367,15 @@ async function shopifyStartProcessing(orderId) {
   try {
     await SHOPIFY.setOrderStatus(orderId, 'processing');
     toast('已进入"待处理"');
-    // V20260617:先把 filter 切到 processing,再 reload — reload 内部渲染直接在待处理视图
+    // V20260617:把 filter 切到待处理(刷新 sub-tab 高亮和计数 · 关表单后停在待处理视图)
     SHOPIFY._currentFilter = 'processing';
     SHOPIFY_PAGE = 1;
     await shopifyReloadOrdersAndRender();
     shopifyShowFilter('processing');
-    // V20260617:一步到位 — 跳转后直接弹出这单的"开采购单"表单
-    //   先定位到该订单(翻到它所在页+滚动高亮),再打开表单 → 关表单后正好停在这单位置
-    _shopifyScrollToOrder(orderId);
-    setTimeout(() => {
-      if (typeof openPoForm === 'function') openPoForm(orderId);
-      else if (typeof shopifyOpenPoForm === 'function') shopifyOpenPoForm(orderId);
-    }, 200);
+    // 一步到位:直接弹这单的"开采购单"表单(填完提交后,现有逻辑会自动跳采购单 tab)
+    //   不做滚动高亮 — 表单是全屏遮罩会盖住,做了也看不见;关表单后正好在待处理列表
+    if (typeof openPoForm === 'function') openPoForm(orderId);
+    else if (typeof shopifyOpenPoForm === 'function') shopifyOpenPoForm(orderId);
   } catch (e) {
     toast('操作失败：' + (e.message || e), 'err');
   }
