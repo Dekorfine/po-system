@@ -696,8 +696,8 @@ const PRODUCTS_CACHE = {
 };
 
 // ============ 从 variant_title 自动提取 尺寸（英寸→cm 取整）+ 色温 + 材质 + N-Lights 灯头 ============
-function extractVariantInfo(variantTitle) {
-  if (!variantTitle) return '';
+function extractVariantInfo(variantTitle, returnParts) {
+  if (!variantTitle) return returnParts ? { size:'', color:'', full:'' } : '';
   const out = [];
   const seenDimensions = new Set();  // 去重：网站同时给英寸和 cm 时只保留一个
   const parts = variantTitle.split(/[/|]/).map(s => s.trim()).filter(Boolean);
@@ -736,6 +736,11 @@ function extractVariantInfo(variantTitle) {
     brass: '黄铜', copper: '铜', bronze: '青铜',
     iron: '铁', steel: '钢',
     aluminum: '铝', aluminium: '铝',
+    'calacatta marble': '卡拉卡塔大理石', calacatta: '卡拉卡塔大理石',
+    'carrara marble': '卡拉拉大理石', carrara: '卡拉拉大理石',
+    'nero marquina': '黑金花大理石', marquina: '黑金花大理石',
+    'emperador marble': '深啡网大理石', emperador: '深啡网大理石',
+    'panda marble': '熊猫白大理石',
     marble: '大理石', travertine: '洞石', stone: '石材',
     oak: '橡木', walnut: '胡桃木', ash: '白蜡木',
     cherry: '樱桃木', teak: '柚木', pine: '松木',
@@ -889,6 +894,17 @@ function extractVariantInfo(variantTitle) {
     // 其他不输出（款式、插头标准等不需要）
   }
   const result = out.join('\n');
+  // V20260617:可选分离返回 {size, color} — 供开采购单"产品尺寸/产品颜色"两排用
+  if (returnParts) {
+    const sizeLines = out.filter(l => l.startsWith('尺寸：')).map(l => l.replace(/^尺寸：/, ''));
+    const colorLines = out.filter(l => l.startsWith('颜色：') || l.startsWith('材质：') || l.startsWith('配色/材质：'))
+                          .map(l => l.replace(/^(颜色：|材质：|配色\/材质：)/, ''));
+    return {
+      size: sizeLines.join(' · '),
+      color: colorLines.join(' · '),
+      full: result,
+    };
+  }
   console.log('[extractVariantInfo]', JSON.stringify(variantTitle), '→', JSON.stringify(result));
   return result;
 }
@@ -1139,24 +1155,35 @@ function renderPoForm() {
               style="flex-shrink:0; padding:4px 9px; font-size:11px; border:1px solid #7c3aed; background:#7c3aed10; color:#7c3aed; border-radius:4px; cursor:pointer; white-space:nowrap;">🌐 翻译</button>`}
           </div>
           
-          <!-- V20260617:去掉中文名/英文名 UI(底层数据仍保留)· 只留"产品颜色/规格"· 尺寸英寸自动转cm -->
+          <!-- V20260617:去掉中文名/英文名 UI(底层数据仍保留)· 拆"产品尺寸 / 产品颜色"两排 · 尺寸英寸自动转cm · 颜色词典+AI翻译 -->
           ${fullyAssigned ? '' : (() => {
             const liid = li.shopify_line_item_id;
             const d = PO_FORM_STATE.lineDescriptions[liid] || {};
-            // 规格默认值:优先已存,否则用 extractVariantInfo 把英寸尺寸转 cm + 颜色英译中
-            let defaultVariant = d.variant;
-            if (defaultVariant === undefined) {
+            // 拆分默认值:用 extractVariantInfo 分离返回尺寸 + 颜色/材质
+            let sizeVal = d.size, colorVal = d.color;
+            if (sizeVal === undefined || colorVal === undefined) {
               const rawSpec = eff.spec_default || li.variant_title || '';
-              defaultVariant = (typeof extractVariantInfo === 'function') ? (extractVariantInfo(rawSpec) || rawSpec) : rawSpec;
+              const parts = (typeof extractVariantInfo === 'function') ? extractVariantInfo(rawSpec, true) : { size: rawSpec, color: '' };
+              if (sizeVal === undefined) sizeVal = parts.size || '';
+              if (colorVal === undefined) colorVal = parts.color || '';
             }
             return `
-            <div style="margin-top:6px; padding:6px 8px; background:rgba(124,58,237,0.04); border:1px dashed rgba(124,58,237,0.3); border-radius:5px;">
-              <div style="display:grid; grid-template-columns:72px 1fr; gap:4px 6px; align-items:center;">
+            <div style="margin-top:6px; padding:8px 10px; background:rgba(124,58,237,0.04); border:1px dashed rgba(124,58,237,0.3); border-radius:6px;">
+              <div style="display:grid; grid-template-columns:64px 1fr; gap:6px 8px; align-items:center;">
+                <span style="font-size:11px; color:var(--text-secondary);">产品尺寸:</span>
+                <input type="text" value="${escapeHtml(sizeVal)}" id="poSize_${liid}"
+                  oninput="poFormSetLineDesc('${liid}','size',this.value); _poSyncVariant('${liid}')"
+                  placeholder="例:D 28cm x W 12cm x H 32cm"
+                  style="padding:5px 8px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card);">
                 <span style="font-size:11px; color:var(--text-secondary);">产品颜色:</span>
-                <input type="text" value="${escapeHtml(defaultVariant)}"
-                  oninput="poFormSetLineDesc('${liid}','variant',this.value)"
-                  placeholder="例:D85cm x H40cm / 黑色 / 暖光"
-                  style="padding:4px 7px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card);">
+                <div style="display:flex; gap:6px;">
+                  <input type="text" value="${escapeHtml(colorVal)}" id="poColor_${liid}"
+                    oninput="poFormSetLineDesc('${liid}','color',this.value); _poSyncVariant('${liid}')"
+                    placeholder="例:卡拉卡塔紫色大理石"
+                    style="flex:1; padding:5px 8px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card);">
+                  <button onclick="poTranslateColor('${liid}')" title="翻译:词典优先翻材质/颜色,残留英文走 AI"
+                    style="flex-shrink:0; padding:4px 9px; font-size:11px; border:1px solid #7c3aed; background:#7c3aed10; color:#7c3aed; border-radius:4px; cursor:pointer; white-space:nowrap;">🌐 翻译</button>
+                </div>
               </div>
             </div>`;
           })()}
@@ -1428,6 +1455,48 @@ window.poFormSetLineDesc = function(liid, field, val) {
   PO_FORM_STATE.lineDescriptions[liid] = PO_FORM_STATE.lineDescriptions[liid] || {};
   PO_FORM_STATE.lineDescriptions[liid][field] = val;
 };
+
+// V20260617:把"产品尺寸"+"产品颜色"两排合成存进 variant(保存/打印用的字段)
+function _poSyncVariant(liid) {
+  const d = (PO_FORM_STATE.lineDescriptions && PO_FORM_STATE.lineDescriptions[liid]) || {};
+  const size = (d.size || '').trim();
+  const color = (d.color || '').trim();
+  const combined = [size ? '尺寸：' + size : '', color ? '颜色：' + color : ''].filter(Boolean).join(' / ');
+  poFormSetLineDesc(liid, 'variant', combined);
+}
+window._poSyncVariant = _poSyncVariant;
+
+// V20260617:翻译"产品颜色"字段 — 词典先翻材质/颜色常用词,残留英文再走 AI 补全
+async function poTranslateColor(liid) {
+  const input = document.getElementById('poColor_' + liid);
+  if (!input) return;
+  let val = input.value || '';
+  if (!/[a-zA-Z]{2,}/.test(val)) { toast('颜色栏没有需要翻译的英文', 'info', 1500); return; }
+  // 1) 词典先翻(复用 extractVariantInfo 的材质/颜色词典 · 把整串当颜色/材质处理)
+  if (typeof extractVariantInfo === 'function') {
+    const parts = extractVariantInfo(val, true);
+    if (parts.color) val = parts.color;   // 词典命中部分已翻成中文
+  }
+  // 2) 还有残留英文 → 走 AI 补
+  if (/[a-zA-Z]{2,}/.test(val)) {
+    const btn = input.parentElement.querySelector('button');
+    const old = btn ? btn.textContent : '';
+    if (btn) { btn.textContent = '翻译中…'; btn.disabled = true; }
+    try {
+      const ai = await _aiTranslateSpec(val);
+      if (ai) val = ai;
+    } catch (e) {
+      toast('AI 翻译失败,已用词典结果:' + (e.message || e), 'warn', 3000);
+    } finally {
+      if (btn) { btn.textContent = old; btn.disabled = false; }
+    }
+  }
+  input.value = val;
+  poFormSetLineDesc(liid, 'color', val);
+  _poSyncVariant(liid);
+  toast('✓ 已翻译', 'success', 1500);
+}
+window.poTranslateColor = poTranslateColor;
 
 // V28t:手动选/输入下单标准(美客户在欧洲用→可改欧规)
 function poFormSetStd(v) {
@@ -1908,7 +1977,14 @@ async function poFormDoSave(groups, common) {
           sku: sel.customSku || eff.sku || li.sku,
           title_cn: (desc.title_cn !== undefined ? desc.title_cn : (sel.customTitleCn || eff.name_cn || '')),
           title_en: (desc.title_en !== undefined ? desc.title_en : (li.title || '')),
-          variant:  (desc.variant !== undefined ? desc.variant : (li.variant_title || '')),
+          variant:  (() => {
+            // V20260617:优先用户编辑的 variant;否则合成 size/color;再否则用 extractVariantInfo 转换(不退回原始英文)
+            if (desc.variant !== undefined) return desc.variant;
+            const sz = (desc.size || '').trim(), cl = (desc.color || '').trim();
+            if (sz || cl) return [sz ? '尺寸：'+sz : '', cl ? '颜色：'+cl : ''].filter(Boolean).join(' / ');
+            const raw = eff.spec_default || li.variant_title || '';
+            return (typeof extractVariantInfo === 'function') ? (extractVariantInfo(raw) || raw) : raw;
+          })(),
           image_url: sel.customImageUrl || eff.image_url || li.image_url || '',
           qty: Number(sel.qty),
           price: Number(sel.price),
