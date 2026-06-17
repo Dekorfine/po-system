@@ -7,15 +7,15 @@
 // ============================================================================
 
 const OFF_STAGES = [
-  { k: 'pending',   label: '待接单', color: 'var(--text-secondary)', bg: 'rgba(136,135,128,0.08)' },
-  { k: 'claimed',   label: '已接单', color: '#185fa5',               bg: 'rgba(37,99,235,0.08)' },
-  { k: 'ordered',   label: '已下单', color: '#185fa5',               bg: 'rgba(37,99,235,0.08)' },
+  { k: 'ordered',   label: '待下单', color: 'var(--text-secondary)', bg: 'rgba(136,135,128,0.08)' },
   { k: 'producing', label: '生产中', color: '#854f0b',               bg: 'rgba(239,159,39,0.1)' },
   { k: 'shipped',   label: '已发货', color: '#0f6e56',               bg: 'rgba(29,158,117,0.1)' },
   { k: 'received',  label: '已签收', color: '#3b6d11',               bg: 'rgba(99,153,34,0.1)' },
 ];
 const OFF_STAGE_MAP = Object.fromEntries(OFF_STAGES.map(s => [s.k, s]));
-const OFF_NEXT = { pending: 'claimed', claimed: 'ordered', ordered: 'producing', producing: 'shipped', shipped: 'received' };
+const OFF_NEXT = { ordered: 'producing', producing: 'shipped', shipped: 'received' };
+// V20260617:旧数据兼容 — pending/claimed 一律视为 ordered(待下单)· 接单环节归客服,跟单拿到直接下单
+const OFF_STAGE_NORMALIZE = { pending: 'ordered', claimed: 'ordered' };
 
 const OFFLINE = { _msgs: [], _followups: {}, _view: (typeof localStorage !== 'undefined' && localStorage.getItem('offline_view')) || 'board', _loadedAt: 0 };
 window.OFFLINE = OFFLINE;
@@ -31,11 +31,13 @@ function _offAttUrl(a) {
   if (_offIsBase64(u) || _offIsBase64(a && a.dataUrl)) return '__BASE64__';
   return u;
 }
-function _offGetFu(orderNo) { return OFFLINE._followups[orderNo] || { stage: 'pending' }; }
+function _offGetFu(orderNo) { return OFFLINE._followups[orderNo] || { stage: 'ordered' }; }
 function _offStageOf(m) {
   const fu = _offGetFu(m.related_ref);
   if (fu.cancelled) return 'cancelled';
-  return fu.stage || 'pending';
+  let st = fu.stage || 'ordered';
+  if (OFF_STAGE_NORMALIZE[st]) st = OFF_STAGE_NORMALIZE[st];   // V20260617:旧 pending/claimed → ordered
+  return st;
 }
 
 async function loadOfflineOrders() {
@@ -125,9 +127,7 @@ function _offBoardCard(m, stage) {
   const nextLabel = next ? OFF_STAGE_MAP[next].label : null;
   const claimer = fu.claimed_by_name ? `👤 ${escapeHtml(fu.claimed_by_name)}` : '';
   let actions = '';
-  if (stage === 'pending') {
-    actions = `<button class="btn primary small" style="font-size:10.5px; padding:2px 8px; width:100%;" onclick="offlineClaim('${m.id}','${escapeHtml(orderNo)}')">✋ 接单</button>`;
-  } else if (next) {
+  if (next) {
     actions = `<button class="btn small" style="font-size:10.5px; padding:2px 8px; width:100%;" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ 推进到「${nextLabel}」</button>`;
   } else if (stage === 'received') {
     actions = `<span style="font-size:10.5px; color:var(--ok);">✅ 已完成</span>`;
@@ -168,11 +168,9 @@ function _offRenderGrid(msgs) {
         </div>
         <div style="font-weight:700; font-size:14px; margin-bottom:3px;">${escapeHtml(orderNo)}</div>
         <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:8px;">${m.related_shop ? escapeHtml(m.related_shop) : ''}${fu.claimed_by_name ? ` · 👤 ${escapeHtml(fu.claimed_by_name)}` : ''}</div>
-        ${st === 'cancelled' ? '' : (st === 'pending'
-          ? `<button class="btn primary small" style="width:100%; font-size:11px;" onclick="event.stopPropagation(); offlineClaim('${m.id}','${escapeHtml(orderNo)}')">✋ 接单</button>`
-          : next
-            ? `<button class="btn small" style="width:100%; font-size:11px;" onclick="event.stopPropagation(); offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ 推进到「${OFF_STAGE_MAP[next].label}」</button>`
-            : `<div style="text-align:center; font-size:11px; color:var(--ok);">✅ 已完成</div>`)}
+        ${st === 'cancelled' ? '' : (next
+          ? `<button class="btn small" style="width:100%; font-size:11px;" onclick="event.stopPropagation(); offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ 推进到「${OFF_STAGE_MAP[next].label}」</button>`
+          : `<div style="text-align:center; font-size:11px; color:var(--ok);">✅ 已完成</div>`)}
       </div>
     </div>`;
   }).join('');

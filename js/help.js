@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260617-offline-flow',
+    date: '2026-06-17',
+    type: 'fix',
+    title: '🧾 线下单流程重设:去掉接单环节(归客服),跟单直接从"待下单"开始 + 修403',
+    notes: [
+      '六阶段→四阶段:待下单 → 生产中 → 已发货 → 已签收(去掉"待接单/已接单",接单是客服的事)',
+      '跟单拿到线下单直接从"待下单"开始,不用先点接单;旧数据 pending/claimed 自动归一化为待下单',
+      '看板从6列改4列(更宽松不横滚);修 offline_followups 403(关RLS+GRANT)',
+      '需在跟单主库跑 offline_followups.sql(建表+权限+旧数据迁移,一步到位)',
+    ],
+    files: ['offline-orders.js', 'index.html', 'help.js', 'offline_followups.sql'],
+  },
+  {
     v: '20260617-autover',
     date: '2026-06-17',
     type: 'feature',
