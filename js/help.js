@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260617-spec3',
+    date: '2026-06-17',
+    type: 'fix',
+    title: '📦 修PO采购单不显示颜色 + 尺寸前缀重复',
+    notes: [
+      '根因1:保存时只读 desc.size/color,但未编辑的默认值只在DOM输入框里没写进desc → 颜色没存进variant。改为保存时直接读 poSize_/poColor_ 输入框当前值(含默认值)',
+      '根因2:预览/打印时对已处理的中文variant(尺寸：x/颜色：x)又跑一次extractVariantInfo → 重复加"尺寸："前缀且丢颜色。改为检测已处理则直接用',
+      '注:已开的旧单数据若没存颜色,需改单补;新开的单尺寸+颜色都正确进PO',
+    ],
+    files: ['po.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260617-lightbox-fix',
     date: '2026-06-17',
     type: 'fix',

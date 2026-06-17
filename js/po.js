@@ -1978,10 +1978,18 @@ async function poFormDoSave(groups, common) {
           title_cn: (desc.title_cn !== undefined ? desc.title_cn : (sel.customTitleCn || eff.name_cn || '')),
           title_en: (desc.title_en !== undefined ? desc.title_en : (li.title || '')),
           variant:  (() => {
-            // V20260617:优先用户编辑的 variant;否则合成 size/color;再否则用 extractVariantInfo 转换(不退回原始英文)
+            // V20260617b:优先读 DOM 里"产品尺寸/产品颜色"两个输入框的当前值(含未编辑的默认值)
+            const sizeEl = document.getElementById('poSize_' + liid);
+            const colorEl = document.getElementById('poColor_' + liid);
+            if (sizeEl || colorEl) {
+              const sz = (sizeEl ? sizeEl.value : '').trim();
+              const cl = (colorEl ? colorEl.value : '').trim();
+              if (sz || cl) return [sz ? '尺寸：'+sz : '', cl ? '颜色：'+cl : ''].filter(Boolean).join(' / ');
+            }
+            // 兜底:desc 已存 / size+color / extractVariantInfo 转换
             if (desc.variant !== undefined) return desc.variant;
-            const sz = (desc.size || '').trim(), cl = (desc.color || '').trim();
-            if (sz || cl) return [sz ? '尺寸：'+sz : '', cl ? '颜色：'+cl : ''].filter(Boolean).join(' / ');
+            const sz2 = (desc.size || '').trim(), cl2 = (desc.color || '').trim();
+            if (sz2 || cl2) return [sz2 ? '尺寸：'+sz2 : '', cl2 ? '颜色：'+cl2 : ''].filter(Boolean).join(' / ');
             const raw = eff.spec_default || li.variant_title || '';
             return (typeof extractVariantInfo === 'function') ? (extractVariantInfo(raw) || raw) : raw;
           })(),
@@ -5257,7 +5265,10 @@ function poOpenPrint(poId) {
             const cleanTitle = _stripSkus(li.title_cn || '');
             const eff = (typeof PRODUCTS_CACHE !== 'undefined' && li.sku) ? (PRODUCTS_CACHE.effectiveBySku(li.sku) || {}) : {};
             const skuNotes = (eff.notes || '').trim();
-            const rawSpecs = skuNotes || extractVariantInfo(li.variant || '');
+            // V20260617:li.variant 若已是处理过的中文(含 尺寸：/颜色： 前缀)→ 直接用,不再过 extractVariantInfo(否则重复加前缀且丢颜色)
+            const _v = li.variant || '';
+            const _alreadyProcessed = /尺寸：|颜色：|材质：/.test(_v);
+            const rawSpecs = skuNotes || (_alreadyProcessed ? _v.replace(/\s*\/\s*/g, '  ') : extractVariantInfo(_v));
             const cleanSpecs = _stripSkus(rawSpecs);
             // V5-W3-2026-05-26: per-line 电气标准 + 备注(优先用 line_item 自己的字段,fallback 到 PO-level)
             const lineStd = li.electrical_standard || _lookupStd || '';
@@ -5798,7 +5809,10 @@ function _buildSinglePoExportNode(po, includeImages) {
             const cleanTitle = _stripSkus(li.title_cn || '');
             const eff = (typeof PRODUCTS_CACHE !== 'undefined' && li.sku) ? (PRODUCTS_CACHE.effectiveBySku(li.sku) || {}) : {};
             const skuNotes = (eff.notes || '').trim();
-            const rawSpecs = skuNotes || extractVariantInfo(li.variant || '');
+            // V20260617:li.variant 若已是处理过的中文(含 尺寸：/颜色： 前缀)→ 直接用,不再过 extractVariantInfo(否则重复加前缀且丢颜色)
+            const _v = li.variant || '';
+            const _alreadyProcessed = /尺寸：|颜色：|材质：/.test(_v);
+            const rawSpecs = skuNotes || (_alreadyProcessed ? _v.replace(/\s*\/\s*/g, '  ') : extractVariantInfo(_v));
             const cleanSpecs = _stripSkus(rawSpecs);
             const lineStd = li.electrical_standard || _lookupStd || '';
             const lineNote = li.line_note || '';
