@@ -2149,7 +2149,7 @@ async function shopifyBatchApprove() {
     SHOPIFY_SELECTED.clear();
     shopifyRefreshCounts();
     shopifyRefreshRuleCounts();
-    renderShopifyOrders();
+    shopifyShowFilter('processing');   // V20260617:批量审核后跳到待处理(与单个统一)
   } catch (e) { toast('批量审核失败：' + (e.message || e), 'err'); }
 }
 

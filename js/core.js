@@ -2794,6 +2794,16 @@ function refreshAllSupplierDropdowns() {
     const cur = reasonEl.value;
     reasonEl.innerHTML = '<option value="">全部原因</option>' + REASON_LIST.map(r => `<option value="${r}" ${cur===r?'selected':''}>${r}</option>`).join('');
   }
+
+  // V20260617:填充售后录入人下拉(从所有售后的录入人去重 · 带数量后缀)
+  const creatorEl = document.getElementById('asFilterCreator');
+  if (creatorEl && typeof AFTERSALES !== 'undefined') {
+    const cur = creatorEl.value;
+    const creatorCount = {};
+    AFTERSALES.forEach(a => { const c = a._agent || ''; if (c) creatorCount[c] = (creatorCount[c]||0) + 1; });
+    const creators = Object.keys(creatorCount).sort((x,y) => creatorCount[y]-creatorCount[x] || x.localeCompare(y,'zh-CN'));
+    creatorEl.innerHTML = '<option value="">👤 全部录入人</option>' + creators.map(c => `<option value="${escapeHtml(c)}" ${cur===c?'selected':''}>${escapeHtml(c)} · ${creatorCount[c]}单</option>`).join('');
+  }
   
   // 4. datalist 联想：按热度排序（value 干净没后缀，不影响匹配）
   ['oSuppliersList','asSuppliersList','isSuppliersList'].forEach(id => {

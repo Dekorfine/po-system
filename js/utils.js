@@ -1367,8 +1367,11 @@ async function shopifyStartProcessing(orderId) {
   try {
     await SHOPIFY.setOrderStatus(orderId, 'processing');
     toast('已进入"待处理"');
+    // V20260617:先把当前 filter 切到 processing(设状态),再 reload — 这样 reload 内部的渲染直接就在待处理视图
+    SHOPIFY._currentFilter = 'processing';
+    SHOPIFY_PAGE = 1;
     await shopifyReloadOrdersAndRender();
-    shopifyShowFilter('processing');
+    shopifyShowFilter('processing');   // 双保险:reload 后再切一次,刷新 sub-tab 高亮和计数
   } catch (e) {
     toast('操作失败：' + (e.message || e), 'err');
   }

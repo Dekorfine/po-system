@@ -6167,6 +6167,17 @@ function _showPoPreviewModal(po, canvas, dataUrl) {
   `;
   document.body.appendChild(modal);
 
+  // V20260617:预览打开后强制内容区滚到顶部 — 修"采购单图打开时不在最上面、要手动上滑才能看到表头/打印"
+  requestAnimationFrame(() => {
+    const body = modal.querySelector('.po-preview-body');
+    if (body) body.scrollTop = 0;
+    const img = modal.querySelector('.po-preview-body img');
+    if (img) {
+      if (img.complete) { if (body) body.scrollTop = 0; }
+      else img.addEventListener('load', () => { if (body) body.scrollTop = 0; }, { once: true });
+    }
+  });
+
   // 缓存当前 canvas（让复制/下载按钮能用）
   window._poPreviewCache = { po, canvas, dataUrl };
 

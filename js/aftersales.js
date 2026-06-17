@@ -208,6 +208,7 @@ function renderAftersales() {
   const fSupp = document.getElementById('asFilterSupplier').value;
   const fSite = document.getElementById('asFilterSite').value;
   const fReason = document.getElementById('asFilterReason').value;
+  const fCreator = (document.getElementById('asFilterCreator')||{}).value || '';   // V20260617:录入人筛选
   
   let list = AFTERSALES.filter(a => {
     // V5-2026-05-24: 阈值过滤(发起 ≥ N 天)
@@ -224,6 +225,7 @@ function renderAftersales() {
       if (!t.includes(q)) return false;
     }
     if (fSupp && a.supplier !== fSupp) return false;
+    if (fCreator && (a._agent || '') !== fCreator) return false;   // V20260617:按录入人筛
     if (fSite && a.site !== fSite) return false;
     // V20260527d: 多原因匹配 — 任一已选主类等于 fReason 就保留(兼容老 reason 字符串)
     if (fReason) {
