@@ -1460,6 +1460,11 @@ function openImgLightbox(url) {
   const box = document.getElementById('imgLightbox');
   const img = document.getElementById('imgLightboxImg');
   if (!box || !img) return;
+  // V20260617:把灯箱移到 body 直接子级 — 否则它被困在某容器的 stacking context 里,
+  //   z-index:100000 也盖不住后插入到 body 的弹窗(如线下单/验厂详情弹窗),图片会显示在弹窗后面
+  if (box.parentElement !== document.body) {
+    document.body.appendChild(box);
+  }
   // 先显示加载占位（避免大图加载时卡顿感）
   img.removeAttribute('src');
   img.style.opacity = '0.3';

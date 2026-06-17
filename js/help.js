@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260617-lightbox-fix',
+    date: '2026-06-17',
+    type: 'fix',
+    title: '🖼️ 修图片预览显示在弹窗后面(根因:灯箱被困在容器stacking context)',
+    notes: [
+      '根因:imgLightbox 元素被嵌在某容器内,虽 z-index:100000 但被该容器的层叠上下文困住,盖不住后插入body的详情弹窗(线下单/验厂等)→ 图片预览显示在表单后面',
+      '修复:打开灯箱前把它移到 document.body 直接子级,z-index 真正生效盖住一切弹窗',
+      '这是全局修复:所有从弹窗内打开的图片预览都受益(线下单凭证/验厂影像等)',
+      '注:之前那个"PDF"实为png图片,真问题是层级;PDF/图片区分逻辑保留(处理真PDF)',
+    ],
+    files: ['utils.js', 'offline-orders.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260617-offline-pdf',
     date: '2026-06-17',
     type: 'fix',
