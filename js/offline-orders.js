@@ -156,9 +156,12 @@ function _offRenderGrid(msgs) {
     const next = (st !== 'cancelled' && st !== 'received') ? OFF_NEXT[st] : null;
     const atts = (Array.isArray(m.attachments) ? m.attachments : []);
     const firstUrl = (() => { for (const a of atts) { const u = _offAttUrl(a); if (u && u !== '__BASE64__') return u; } return ''; })();
+    const firstIsPdf = firstUrl && /\.pdf(\?|$)/i.test(firstUrl);
     const hasB64 = atts.some(a => _offAttUrl(a) === '__BASE64__');
-    const cover = firstUrl
+    const cover = (firstUrl && !firstIsPdf)
       ? `<div style="height:150px; background:var(--bg-elevated); border-radius:8px 8px 0 0; overflow:hidden; display:flex; align-items:center; justify-content:center;"><img src="${escapeHtml(firstUrl)}" loading="lazy" onerror="this.parentElement.innerHTML='<span style=&quot;color:var(--text-tertiary);font-size:28px;&quot;>🧾</span>'" onclick="event.stopPropagation(); openImgLightbox && openImgLightbox('${escapeHtml(firstUrl)}')" style="width:100%; height:100%; object-fit:cover; cursor:zoom-in;"></div>`
+      : firstIsPdf
+        ? `<div style="height:150px; background:var(--bg-elevated); border-radius:8px 8px 0 0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-tertiary); gap:4px;"><span style="font-size:34px;">📄</span><span style="font-size:11px;">PDF 凭证 · 点卡片查看</span></div>`
       : `<div style="height:150px; background:var(--bg-elevated); border-radius:8px 8px 0 0; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:30px;">${hasB64 ? '<span style=\"font-size:12px; color:var(--danger);\">⚠ 凭证为base64</span>' : '🧾'}</div>`;
     return `
     <div class="as-card" onclick="offlineOpenDetail('${m.id}')" style="cursor:pointer; ${st === 'cancelled' ? 'opacity:0.55;' : ''} padding:0; overflow:hidden;">
@@ -211,6 +214,16 @@ function offlineOpenDetail(msgId) {
     const u = _offAttUrl(a);
     if (u === '__BASE64__') return `<div style="padding:8px; color:var(--danger); font-size:12px;">⚠ 附件是 base64 内嵌 · 应改存 Storage URL</div>`;
     if (!u) return '';
+    // V20260617:区分 PDF/图片 — PDF 用文件卡片+新标签打开(浏览器原生预览),不塞进图片灯箱(否则显示异常/被弹窗盖住)
+    const isPdf = /\.pdf(\?|$)/i.test(u) || /pdf/i.test((a && a.type) || '') || /pdf/i.test((a && a.name) || '');
+    if (isPdf) {
+      const fname = (a && a.name) || 'PDF 文档';
+      return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:8px; padding:10px 14px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:8px; text-decoration:none; color:var(--text-primary); font-size:12.5px;" title="点击在新标签页打开 PDF">
+        <span style="font-size:22px;">📄</span>
+        <span style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(fname)}</span>
+        <span style="color:var(--accent); font-size:11px; margin-left:4px;">↗ 打开</span>
+      </a>`;
+    }
     return `<img src="${escapeHtml(u)}" loading="lazy" onclick="openImgLightbox && openImgLightbox('${escapeHtml(u)}')" style="max-width:120px; max-height:120px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in;">`;
   }).join('');
 
