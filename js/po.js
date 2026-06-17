@@ -5079,14 +5079,13 @@ async function poEditPrices(poId) {
     const nm = li.title_cn || li.title_en || li.sku || `产品${idx+1}`;
     fields.push({ key: `qty_${idx}`,   label: `${idx + 1}. 「${nm}」数量`, value: li.qty,   type: 'number', min: 1, required: true });
     fields.push({ key: `price_${idx}`, label: `${idx + 1}. 「${nm}」单价 ¥`, value: li.price, type: 'number', min: 0, required: true });
-    fields.push({ key: `tcn_${idx}`,   label: `${idx + 1}. 中文名`, value: li.title_cn || '', type: 'text' });
-    fields.push({ key: `ten_${idx}`,   label: `${idx + 1}. 英文名`, value: li.title_en || '', type: 'text' });
-    fields.push({ key: `var_${idx}`,   label: `${idx + 1}. 规格`,   value: li.variant  || '', type: 'text' });
+    fields.push({ key: `var_${idx}`,   label: `${idx + 1}. 规格(尺寸/颜色)`, value: li.variant  || '', type: 'text' });
+    fields.push({ key: `note_${idx}`,  label: `${idx + 1}. 本行备注`, value: li.line_note || '', type: 'text' });
   });
 
   const result = await showPrompt({
     title: `✏️ 修改采购单 ${po.po_number}`,
-    message: `当前状态：${poStatusInfo(po.status).label}\n改数量/单价会重算总金额(超 ¥5000 或单品数量超 20 → 待审批)。\n改中文名/英文名会同步更新该 SKU 的标准名(全系统通用),规格记到该 SKU,下次开单自动带出。`,
+    message: `当前状态：${poStatusInfo(po.status).label}\n改数量/单价会重算总金额(超 ¥5000 或单品数量超 20 → 待审批)。\n规格记到该 SKU 下次开单自动带出;本行备注只改本单。`,
     fields,
   });
   if (!result) return;
@@ -5095,10 +5094,11 @@ async function poEditPrices(poId) {
   const newLineItems = items.map((li, idx) => {
     const qty = Number(result[`qty_${idx}`]) || li.qty;
     const price = Number(result[`price_${idx}`]) || li.price;
-    const title_cn = (result[`tcn_${idx}`] ?? li.title_cn ?? '').trim();
-    const title_en = (result[`ten_${idx}`] ?? li.title_en ?? '').trim();
+    const title_cn = li.title_cn || '';   // V20260617:不再从改单弹窗改,保持原值
+    const title_en = li.title_en || '';
     const variant  = (result[`var_${idx}`] ?? li.variant  ?? '').trim();
-    return { ...li, qty, price, subtotal: qty * price, title_cn, title_en, variant };
+    const line_note = (result[`note_${idx}`] ?? li.line_note ?? '').trim();   // V20260617:本行备注可改
+    return { ...li, qty, price, subtotal: qty * price, title_cn, title_en, variant, line_note };
   });
   const newSupplier = (result.supplier ?? po.supplier ?? '').trim();
   const newTotal = newLineItems.reduce((s, x) => s + x.subtotal, 0);
