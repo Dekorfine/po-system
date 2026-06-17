@@ -3451,6 +3451,30 @@ function _disableAutofillOnFields(root) {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  // V20260617:版本检测 — 拉 version.json(带时间戳防缓存),和本地构建版本比对,有新版自动强制刷新
+  //   解决"改了代码但用户浏览器还是旧版"的问题,不用手动硬刷新
+  (function _checkAppVersion() {
+    try {
+      const baked = (typeof VERSION_LOG !== 'undefined' && VERSION_LOG[0]) ? VERSION_LOG[0].v : '';
+      if (!baked) return;
+      fetch('version.json?_=' + Date.now(), { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : null)
+        .then(j => {
+          if (!j || !j.version) return;
+          if (j.version !== baked) {
+            console.log('[版本] 检测到新版', j.version, '· 当前', baked, '· 强制刷新');
+            const seen = sessionStorage.getItem('_fv_reloaded_to');
+            if (seen === j.version) return;   // 同一新版只自动刷一次,防死循环
+            try { sessionStorage.setItem('_fv_reloaded_to', j.version); } catch (_) {}
+            // 提示 + 强制刷新(绕过缓存)
+            if (typeof toast === 'function') toast('🔄 检测到新版本,正在更新...', 'info', 2000);
+            setTimeout(() => { location.reload(true); }, 600);
+          }
+        })
+        .catch(() => {});
+    } catch (e) { /* 静默 */ }
+  })();
+
   // 初次跑一次(覆盖所有静态 HTML 中的 input)
   _disableAutofillOnFields(document);
   

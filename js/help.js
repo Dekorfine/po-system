@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260617-autover',
+    date: '2026-06-17',
+    type: 'feature',
+    title: '🔄 自动版本更新:改代码后用户自动加载新版,不用手动硬刷新',
+    notes: [
+      'index.html 加 no-cache meta(防 GitHub Pages/浏览器缓存旧版页面)',
+      '加版本检测:每次打开拉 version.json(带时间戳防缓存)和本地构建版本比对,有新版自动强制刷新(同一版只刷一次防死循环)',
+      '以后部署只需:改完代码 → 把 version.json 的 version 改成最新版本号 → push,用户打开即自动更新',
+    ],
+    files: ['core.js', 'index.html', 'help.js', 'version.json(新)'],
+  },
+  {
     v: '20260617-poform',
     date: '2026-06-17',
     type: 'fix',
