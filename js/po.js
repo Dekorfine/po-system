@@ -5268,7 +5268,15 @@ function poOpenPrint(poId) {
             // V20260617:li.variant 若已是处理过的中文(含 尺寸：/颜色： 前缀)→ 直接用,不再过 extractVariantInfo(否则重复加前缀且丢颜色)
             const _v = li.variant || '';
             const _alreadyProcessed = /尺寸：|颜色：|材质：/.test(_v);
-            const rawSpecs = skuNotes || (_alreadyProcessed ? _v.replace(/\s*\/\s*/g, '  ') : extractVariantInfo(_v));
+            // V20260618:已处理的中文 variant 拆成两行显示(颜色在前·尺寸在后,与旧版一致)
+            const _twoLines = (s) => {
+              const segs = s.split(/\s*\/\s*/).map(x => x.trim()).filter(Boolean);
+              const colorSeg = segs.filter(x => /颜色：|材质：|配色/.test(x)).map(x => x.replace(/^(颜色：|材质：|配色\/材质：)/, ''));  // 去前缀,跟旧版纯"绿色"一致
+              const sizeSeg  = segs.filter(x => /尺寸：/.test(x));  // 尺寸保留"尺寸："前缀
+              const other    = segs.filter(x => !/颜色：|材质：|配色|尺寸：/.test(x));
+              return [...colorSeg, ...sizeSeg, ...other].join('\n');   // 颜色行在前,尺寸行在后
+            };
+            const rawSpecs = skuNotes || (_alreadyProcessed ? _twoLines(_v) : extractVariantInfo(_v));
             const cleanSpecs = _stripSkus(rawSpecs);
             // V5-W3-2026-05-26: per-line 电气标准 + 备注(优先用 line_item 自己的字段,fallback 到 PO-level)
             const lineStd = li.electrical_standard || _lookupStd || '';
@@ -5812,7 +5820,15 @@ function _buildSinglePoExportNode(po, includeImages) {
             // V20260617:li.variant 若已是处理过的中文(含 尺寸：/颜色： 前缀)→ 直接用,不再过 extractVariantInfo(否则重复加前缀且丢颜色)
             const _v = li.variant || '';
             const _alreadyProcessed = /尺寸：|颜色：|材质：/.test(_v);
-            const rawSpecs = skuNotes || (_alreadyProcessed ? _v.replace(/\s*\/\s*/g, '  ') : extractVariantInfo(_v));
+            // V20260618:已处理的中文 variant 拆成两行显示(颜色在前·尺寸在后,与旧版一致)
+            const _twoLines = (s) => {
+              const segs = s.split(/\s*\/\s*/).map(x => x.trim()).filter(Boolean);
+              const colorSeg = segs.filter(x => /颜色：|材质：|配色/.test(x)).map(x => x.replace(/^(颜色：|材质：|配色\/材质：)/, ''));  // 去前缀,跟旧版纯"绿色"一致
+              const sizeSeg  = segs.filter(x => /尺寸：/.test(x));  // 尺寸保留"尺寸："前缀
+              const other    = segs.filter(x => !/颜色：|材质：|配色|尺寸：/.test(x));
+              return [...colorSeg, ...sizeSeg, ...other].join('\n');   // 颜色行在前,尺寸行在后
+            };
+            const rawSpecs = skuNotes || (_alreadyProcessed ? _twoLines(_v) : extractVariantInfo(_v));
             const cleanSpecs = _stripSkus(rawSpecs);
             const lineStd = li.electrical_standard || _lookupStd || '';
             const lineNote = li.line_note || '';
