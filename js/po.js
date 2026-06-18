@@ -994,6 +994,15 @@ async function openPoForm(salesOrderId, selectedLineItemIds = null) {
         .select('*')
         .in('sku', skusInThisOrder);
       if (hist && hist.length > 0) {
+        // V20260618:存 SKU+供应商 级历史价映射(选供应商时按行SKU查价自动填单价)
+        window._PO_SKU_SUP_PRICE = window._PO_SKU_SUP_PRICE || {};
+        hist.forEach(h => {
+          if (h.sku && h.supplier && h.avg_price) {
+            window._PO_SKU_SUP_PRICE[h.sku + '|||' + h.supplier] = {
+              avg: h.avg_price, last: h.last_price || h.avg_price,
+            };
+          }
+        });
         hist.forEach(h => {
           const key = h.supplier;
           if (!supplierHistoryMap[key]) {
@@ -1195,7 +1204,7 @@ function renderPoForm() {
           ${Number(sel.qty) >= 2 ? `<div style="font-size:9px; color:#dc2626; font-weight:600; text-align:center; margin-top:2px;">⚠ 多件 注意</div>` : ''}
         </div>
         <div>
-          <input type="number" min="0" step="0.01" value="${sel.price}" placeholder="单价 ¥"
+          <input type="number" min="0" step="0.01" value="${sel.price}" placeholder="单价 ¥" id="poPrice_${li.shopify_line_item_id}"
             onchange="poFormSetPrice('${li.shopify_line_item_id}', this.value)" ${fullyAssigned ? 'disabled' : ''} style="width:100%;">
           ${eff.last_purchase_price ? `<div style="font-size:10px; color:var(--text-tertiary); margin-top:3px; line-height:1.3;">上次：¥${Number(eff.last_purchase_price).toFixed(2)}${eff.default_supplier ? ` · ${escapeHtml(eff.default_supplier)}` : ''}</div>` : '<div style="font-size:10px; color:var(--text-tertiary); margin-top:3px;">无历史价</div>'}
         </div>
@@ -1782,7 +1791,36 @@ function poFormPickSupplier(id, name) {
   PO_FORM_STATE.selectedSupplierName = name;
   document.getElementById('poFormSupplierInput').value = name;
   document.getElementById('poFormSupplierResults').classList.remove('show');
+  // V20260618:选供应商后,自动把该供应商对该SKU的历史价填进单价框(仅填空着的,不覆盖已填)
+  _poFillHistPrices(name);
 }
+
+// 按"行SKU + 选中供应商"查历史价,填进空着的单价框
+function _poFillHistPrices(supplierName) {
+  const map = window._PO_SKU_SUP_PRICE || {};
+  const so = PO_FORM_STATE && PO_FORM_STATE.salesOrder;
+  if (!so || !Array.isArray(so.line_items)) return;
+  let filled = 0;
+  so.line_items.forEach(li => {
+    const liid = li.shopify_line_item_id;
+    const sel = PO_FORM_STATE.lineItemSelections[liid];
+    if (!sel || !sel.checked) return;          // 只填勾选的行
+    if (sel.price !== '' && sel.price != null) return;  // 已有价不覆盖
+    const hist = map[(li.sku || '') + '|||' + supplierName];
+    if (hist && hist.last) {
+      const p = Math.round(hist.last * 100) / 100;
+      const inp = document.getElementById('poPrice_' + liid);
+      if (inp) inp.value = p;
+      if (typeof poFormSetPrice === 'function') poFormSetPrice(liid, p);  // 走正规更新(同步状态+重算)
+      else sel.price = p;
+      filled++;
+    }
+  });
+  if (filled > 0) {
+    toast(`✓ 已按「${supplierName}」历史价自动填 ${filled} 行单价`, 'success', 2000);
+  }
+}
+window._poFillHistPrices = _poFillHistPrices;
 
 async function poFormQuickAddSupplier(name) {
   try {
