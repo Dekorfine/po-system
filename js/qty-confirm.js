@@ -13,7 +13,7 @@ const QC_STATUS = {
   closed:    { label: '✓ 已完成', color: '#3b6d11', bg: 'rgba(99,153,34,0.08)' },
 };
 
-const QC = { _list: [], _filter: 'todo', _loadedAt: 0 };
+const QC = { _list: [], _filter: 'todo', _loadedAt: 0, _shop: '', _search: '', _page: 1, _pageSize: 20 };
 window.QC = QC;
 
 async function loadQtyConfirm() {
@@ -29,15 +29,38 @@ async function loadQtyConfirm() {
 window.loadQtyConfirm = loadQtyConfirm;
 
 function _qcFilteredList() {
-  const all = QC._list || [];
+  let all = QC._list || [];
+  // 状态筛选
   switch (QC._filter) {
-    case 'todo':      return all.filter(r => r.status === 'revise' || r.status === 'confirmed');
-    case 'revise':    return all.filter(r => r.status === 'revise');
-    case 'confirmed': return all.filter(r => r.status === 'confirmed');
-    case 'pending':   return all.filter(r => r.status === 'pending');
-    case 'closed':    return all.filter(r => r.status === 'closed');
-    default:          return all;
+    case 'todo':      all = all.filter(r => r.status === 'revise' || r.status === 'confirmed'); break;
+    case 'revise':    all = all.filter(r => r.status === 'revise'); break;
+    case 'confirmed': all = all.filter(r => r.status === 'confirmed'); break;
+    case 'pending':   all = all.filter(r => r.status === 'pending'); break;
+    case 'closed':    all = all.filter(r => r.status === 'closed'); break;
   }
+  // 店铺筛选
+  if (QC._shop) all = all.filter(r => (r.shop || '') === QC._shop);
+  // 智能搜索:单号/客户名/邮箱/SKU/商品名/备注
+  const q = (QC._search || '').trim().toLowerCase();
+  if (q) {
+    all = all.filter(r => {
+      const items = Array.isArray(r.items) ? r.items : [];
+      const hay = [
+        r.order_name, r.customer_name, r.customer_email, r.shop, r.handler, r.note,
+        ...items.map(it => (it.sku || '') + ' ' + (it.title || '')),
+      ].filter(Boolean).join(' ').toLowerCase();
+      // 支持多关键词(空格/逗号分隔,全部命中)
+      return q.split(/[\s,，]+/).filter(Boolean).every(kw => hay.includes(kw));
+    });
+  }
+  return all;
+}
+
+// 全部店铺(去重,做筛选下拉)
+function _qcShops() {
+  const m = {};
+  (QC._list || []).forEach(r => { if (r.shop) m[r.shop] = (m[r.shop] || 0) + 1; });
+  return Object.keys(m).sort().map(s => ({ shop: s, count: m[s] }));
 }
 
 function _qcCounts() {
@@ -73,19 +96,44 @@ function renderQtyConfirm() {
       <button class="btn small" style="margin-left:auto;" onclick="loadQtyConfirm().then(renderQtyConfirm)">🔄 刷新</button>
     </div>
     ${c.backlog ? `<div style="background:rgba(220,38,38,0.08); border:1px solid rgba(220,38,38,0.2); border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:12.5px; color:#b91c1c;">⚠ 有 ${c.backlog} 单客户要改数量已积压超3天没处理</div>` : ''}
-    <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
+    <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
       ${tab('todo', '🔥 需处理', c.revise + c.confirmed, true)}
       ${tab('revise', '⚠ 客户要改', c.revise, true)}
       ${tab('confirmed', '按原单发', c.confirmed)}
       ${tab('pending', '客服处理中', c.pending)}
       ${tab('closed', '已完成', c.closed)}
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; align-items:center;">
+      <input type="text" id="qcSearchInput" value="${escapeHtml(QC._search)}" oninput="qcOnSearch(this.value)" autocomplete="off" data-1p-ignore data-lpignore="true"
+        placeholder="🔍 搜单号 / 客户 / 邮箱 / SKU / 商品名(多词空格分隔)"
+        style="flex:1; min-width:240px; padding:7px 12px; font-size:12.5px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card);">
+      <select id="qcShopFilter" onchange="qcOnShop(this.value)" style="padding:7px 12px; font-size:12.5px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card); cursor:pointer;">
+        <option value="">🏪 全部网站</option>
+        ${_qcShops().map(s => `<option value="${escapeHtml(s.shop)}" ${QC._shop===s.shop?'selected':''}>${escapeHtml(s.shop)} · ${s.count}</option>`).join('')}
+      </select>
+      ${(QC._search || QC._shop) ? `<button class="btn small" onclick="qcClearFilters()">✕ 清除筛选</button>` : ''}
     </div>`;
 
   if (list.length === 0) {
-    body.innerHTML = header + `<div style="padding:40px; text-align:center; color:var(--text-tertiary);"><div style="font-size:34px;">${QC._filter==='todo'?'🎉':'📭'}</div><div>${QC._filter==='todo'?'没有待处理的数量核实单':'此分类暂无记录'}</div></div>`;
+    body.innerHTML = header + `<div style="padding:40px; text-align:center; color:var(--text-tertiary);"><div style="font-size:34px;">${(QC._search||QC._shop)?'🔍':(QC._filter==='todo'?'🎉':'📭')}</div><div>${(QC._search||QC._shop)?'没有匹配的记录':(QC._filter==='todo'?'没有待处理的数量核实单':'此分类暂无记录')}</div></div>`;
     return;
   }
-  body.innerHTML = header + `<div style="display:flex; flex-direction:column; gap:10px;">${list.map(_qcCard).join('')}</div>`;
+
+  // 分页
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total / QC._pageSize));
+  if (QC._page > totalPages) QC._page = totalPages;
+  const start = (QC._page - 1) * QC._pageSize;
+  const paged = list.slice(start, start + QC._pageSize);
+
+  const pager = totalPages > 1 ? `
+    <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top:16px; flex-wrap:wrap;">
+      <button class="btn small" ${QC._page<=1?'disabled style="opacity:0.4;"':''} onclick="qcGoPage(${QC._page-1})">← 上一页</button>
+      <span style="font-size:12px; color:var(--text-secondary); padding:0 8px;">第 ${QC._page} / ${totalPages} 页 · 共 ${total} 条</span>
+      <button class="btn small" ${QC._page>=totalPages?'disabled style="opacity:0.4;"':''} onclick="qcGoPage(${QC._page+1})">下一页 →</button>
+    </div>` : `<div style="text-align:center; font-size:11px; color:var(--text-tertiary); margin-top:12px;">共 ${total} 条</div>`;
+
+  body.innerHTML = header + `<div style="display:flex; flex-direction:column; gap:10px;">${paged.map(_qcCard).join('')}</div>` + pager;
 }
 window.renderQtyConfirm = renderQtyConfirm;
 
@@ -137,8 +185,37 @@ function _qcDate(s) {
   try { return new Date(s).toLocaleDateString('zh-CN', { month:'2-digit', day:'2-digit' }); } catch (e) { return String(s).slice(5,10); }
 }
 
-function qcSetFilter(f) { QC._filter = f; renderQtyConfirm(); }
+function qcSetFilter(f) { QC._filter = f; QC._page = 1; renderQtyConfirm(); }
 window.qcSetFilter = qcSetFilter;
+
+// 搜索(防抖 · 不重渲整页只更新列表,保持输入焦点)
+let _qcSearchTimer = null;
+function qcOnSearch(v) {
+  QC._search = v;
+  QC._page = 1;
+  clearTimeout(_qcSearchTimer);
+  _qcSearchTimer = setTimeout(() => {
+    renderQtyConfirm();
+    // 重渲后恢复焦点到搜索框末尾
+    const el = document.getElementById('qcSearchInput');
+    if (el) { el.focus(); const n = el.value.length; el.setSelectionRange(n, n); }
+  }, 250);
+}
+window.qcOnSearch = qcOnSearch;
+
+function qcOnShop(v) { QC._shop = v; QC._page = 1; renderQtyConfirm(); }
+window.qcOnShop = qcOnShop;
+
+function qcClearFilters() { QC._search = ''; QC._shop = ''; QC._page = 1; renderQtyConfirm(); }
+window.qcClearFilters = qcClearFilters;
+
+function qcGoPage(p) {
+  QC._page = Math.max(1, p);
+  renderQtyConfirm();
+  const body = document.getElementById('qtyConfirmBody');
+  if (body) body.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+window.qcGoPage = qcGoPage;
 
 // 标记已完成 → status=closed + 打 Shopify「已处理」标签
 async function qcMarkClosed(shopifyOrderId, shop, fromStatus) {
