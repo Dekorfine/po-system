@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260618-qtyconfirm',
+    date: '2026-06-18',
+    type: 'feature',
+    title: '🔢 新增数量核实·跟单处理模块(共用客服侧 qty_confirmations 表)',
+    notes: [
+      '新「🔢 数量核实」tab(验厂后),全员可见。共用客服同一张表 qty_confirmations(本项目pyfmu),双向实时同步无需中间表',
+      '默认聚焦需处理(revise客户要改+confirmed按原单发);可切 pending(客服处理中)/closed(已完成)看全流程',
+      'revise记录醒目标红,并排展示触发商品(SKU×下单数量)+ 客户诉求note,一眼看清哪个SKU原本几件要改成几件',
+      '标记已完成→status=closed+追加[跟单]已处理note+写resolved_at,并调shopify-api给订单打「已处理」标签(Woo mooielight跳过)',
+      '顶部计数:待跟单/按原单发/客服处理中/已完成 + 积压(revise超3天没动)提醒',
+    ],
+    files: ['qty-confirm.js(新)', 'core.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260618-price',
     date: '2026-06-18',
     type: 'fix',
