@@ -216,12 +216,30 @@ function renderQtyConfirm() {
 }
 window.renderQtyConfirm = renderQtyConfirm;
 
+// Shopify CDN 图片压缩:在文件名后插 _WxH(只对 shopify cdn 生效,其它原样)
+//   原图 Nando_Lamp.jpg?v=1 → Nando_Lamp_120x120.jpg?v=1(几KB,不下载原图)
+function _qcResizeImg(url, size) {
+  if (!url || typeof url !== 'string') return url;
+  if (!/cdn\.shopify\.com|\/cdn\/shop\//i.test(url)) return url;  // 非shopify cdn不动
+  try {
+    // 拆 query
+    const [base, query] = url.split('?');
+    // 已有 _数字x数字 后缀的先去掉再加(避免叠加)
+    const cleaned = base.replace(/_(\d+x\d+|\d+x|x\d+)(?=\.\w+$)/i, '');
+    const resized = cleaned.replace(/(\.\w+)$/i, `_${size}$1`);
+    return query ? `${resized}?${query}` : resized;
+  } catch (e) { return url; }
+}
+window._qcResizeImg = _qcResizeImg;
+
 // 单个商品行(图 + SKU × 数量)· 供卡片渲染 + 图加载后原地更新复用
 function _qcItemRow(it, imgMap) {
-  const img = imgMap && imgMap[it.sku];
+  const imgRaw = imgMap && imgMap[it.sku];
+  const imgThumb = imgRaw ? _qcResizeImg(imgRaw, '120x120') : '';   // 列表小缩略图(压缩·快)
+  const imgBig = imgRaw ? _qcResizeImg(imgRaw, '800x800') : '';     // 灯箱中等图(压缩·不下原图)
   return `
     <div style="display:flex; align-items:center; gap:8px; font-size:12px; padding:4px 0;">
-      ${img ? `<img src="${escapeHtml(img)}" loading="lazy" onclick="openImgLightbox && openImgLightbox('${escapeHtml(img)}')" style="width:36px; height:36px; object-fit:cover; border-radius:5px; border:1px solid var(--border); cursor:zoom-in; flex-shrink:0;">` : `<span style="width:36px; height:36px; border-radius:5px; background:var(--bg-elevated); display:inline-flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;">💡</span>`}
+      ${imgThumb ? `<img src="${escapeHtml(imgThumb)}" loading="lazy" onclick="openImgLightbox && openImgLightbox('${escapeHtml(imgBig)}')" style="width:52px; height:52px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in; flex-shrink:0;">` : `<span style="width:52px; height:52px; border-radius:6px; background:var(--bg-elevated); display:inline-flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">💡</span>`}
       <span style="font-family:monospace; color:var(--accent);">${escapeHtml(it.sku || '')}</span>
       <span style="color:var(--text-secondary); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(it.title || '')}</span>
       <span style="font-weight:700; background:rgba(220,38,38,0.1); color:#b91c1c; padding:1px 9px; border-radius:6px;">× ${it.quantity}</span>
