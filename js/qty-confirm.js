@@ -210,8 +210,23 @@ function renderQtyConfirm() {
     </div>` : '';
 
   body.innerHTML = header + batchBar + `<div style="display:flex; flex-direction:column; gap:10px;">${paged.map(_qcCard).join('')}</div>` + pager;
+
+  // V20260620:自动预加载当前页订单图(只加载本页未缓存的,节流避免一次请求过多)
+  _qcPreloadImages(paged);
 }
 window.renderQtyConfirm = renderQtyConfirm;
+
+// 单个商品行(图 + SKU × 数量)· 供卡片渲染 + 图加载后原地更新复用
+function _qcItemRow(it, imgMap) {
+  const img = imgMap && imgMap[it.sku];
+  return `
+    <div style="display:flex; align-items:center; gap:8px; font-size:12px; padding:4px 0;">
+      ${img ? `<img src="${escapeHtml(img)}" loading="lazy" onclick="openImgLightbox && openImgLightbox('${escapeHtml(img)}')" style="width:36px; height:36px; object-fit:cover; border-radius:5px; border:1px solid var(--border); cursor:zoom-in; flex-shrink:0;">` : `<span style="width:36px; height:36px; border-radius:5px; background:var(--bg-elevated); display:inline-flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;">💡</span>`}
+      <span style="font-family:monospace; color:var(--accent);">${escapeHtml(it.sku || '')}</span>
+      <span style="color:var(--text-secondary); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(it.title || '')}</span>
+      <span style="font-weight:700; background:rgba(220,38,38,0.1); color:#b91c1c; padding:1px 9px; border-radius:6px;">× ${it.quantity}</span>
+    </div>`;
+}
 
 function _qcCard(r) {
   const meta = QC_STATUS[r.status] || { label: r.status, color: 'var(--text-secondary)', bg: 'var(--bg-elevated)' };
@@ -222,16 +237,7 @@ function _qcCard(r) {
   const imgMap = QC._imgCache[oid] || null;   // { sku: imgUrl }
 
   // 超量商品(图 + SKU × 下单数量)
-  const itemsHtml = items.map(it => {
-    const img = imgMap && imgMap[it.sku];
-    return `
-    <div style="display:flex; align-items:center; gap:8px; font-size:12px; padding:4px 0;">
-      ${img ? `<img src="${escapeHtml(img)}" loading="lazy" onclick="openImgLightbox && openImgLightbox('${escapeHtml(img)}')" style="width:36px; height:36px; object-fit:cover; border-radius:5px; border:1px solid var(--border); cursor:zoom-in; flex-shrink:0;">` : `<span style="width:36px; height:36px; border-radius:5px; background:var(--bg-elevated); display:inline-flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;">💡</span>`}
-      <span style="font-family:monospace; color:var(--accent);">${escapeHtml(it.sku || '')}</span>
-      <span style="color:var(--text-secondary); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(it.title || '')}</span>
-      <span style="font-weight:700; background:rgba(220,38,38,0.1); color:#b91c1c; padding:1px 9px; border-radius:6px;">× ${it.quantity}</span>
-    </div>`;
-  }).join('');
+  const itemsHtml = items.map(it => _qcItemRow(it, imgMap)).join('');
 
   return `
   <div style="border:1px solid ${isRevise?'rgba(220,38,38,0.3)':'var(--border)'}; border-radius:10px; padding:14px; background:var(--bg-card); ${isRevise?'box-shadow:0 0 0 1px rgba(220,38,38,0.08);':''}">
@@ -240,13 +246,13 @@ function _qcCard(r) {
       <a href="${escapeHtml(r.admin_url || '#')}" target="_blank" rel="noopener" style="font-weight:700; font-size:14px; color:var(--accent); text-decoration:none;">${escapeHtml(r.order_name || '(无单号)')} ↗</a>
       <span style="font-size:11px; color:var(--text-secondary); background:var(--bg-elevated); padding:1px 8px; border-radius:8px;">${escapeHtml(_qcBrandName(r.shop))}</span>
       <span style="background:${meta.bg}; color:${meta.color}; padding:2px 10px; border-radius:10px; font-size:11.5px; font-weight:600;">${meta.label}</span>
-      ${!imgMap ? `<button class="btn small" style="font-size:10px; padding:1px 7px;" onclick="qcLoadImg('${oid}','${escapeHtml(r.shop||'')}','${escapeHtml(r.order_name||'')}')">🖼 看图</button>` : ''}
+      ${!imgMap ? `<button class="btn small" data-qc-imgbtn="${oid}" style="font-size:10px; padding:1px 7px;" onclick="qcLoadImg('${oid}','${escapeHtml(r.shop||'')}','${escapeHtml(r.order_name||'')}')">🖼 看图</button>` : ''}
       <span style="margin-left:auto; font-size:11px; color:var(--text-tertiary);">${escapeHtml(r.customer_name || '')}${r.customer_email?` · ${escapeHtml(r.customer_email)}`:''}</span>
     </div>
 
     <div style="background:var(--bg-elevated); border-radius:7px; padding:8px 10px; margin-bottom:8px;">
       <div style="font-size:10.5px; color:var(--text-tertiary); margin-bottom:4px;">触发核实的商品(下单数量):</div>
-      ${itemsHtml || '<span style="font-size:12px; color:var(--text-tertiary);">无明细</span>'}
+      <div data-qc-imgs="${oid}">${itemsHtml || '<span style="font-size:12px; color:var(--text-tertiary);">无明细</span>'}</div>
     </div>
 
     ${isRevise && r.note ? `
@@ -382,10 +388,12 @@ async function _qcCloseOne(rec) {
 }
 
 // ── 订单图 ──
-async function qcLoadImg(oid, shop, orderName) {
-  if (!shop || !orderName) { toast('缺店铺/单号', 'err'); return; }
-  if (QC._imgCache[oid]) { renderQtyConfirm(); return; }
-  toast('🖼 加载产品图...', 'info', 1500);
+// 核心:拉单张订单图(只写缓存,不toast不重渲)· 供手动/预加载复用
+async function _qcFetchImg(oid, shop, orderName) {
+  if (QC._imgCache[oid] !== undefined) return false;  // 已缓存(含空)跳过
+  if (!shop || !orderName) { QC._imgCache[oid] = {}; return false; }
+  // Woo mooielight 走不同 API,这里跳过自动取图
+  if (/mooielight/i.test(shop)) { QC._imgCache[oid] = {}; return false; }
   try {
     const shopDomain = shop.includes('.myshopify.com') ? shop : (shop + '.myshopify.com');
     const r = await SHOPIFY.call('list_orders', { name: orderName, status: 'any', limit: 5, auto_save: false }, shopDomain);
@@ -399,15 +407,59 @@ async function qcLoadImg(oid, shop, orderName) {
         if (sku && img) map[sku] = img;
       });
     }
-    QC._imgCache[oid] = map;   // 即使空也缓存,避免反复请求
-    renderQtyConfirm();
-    if (Object.keys(map).length === 0) toast('该单未取到产品图', 'info', 2000);
+    QC._imgCache[oid] = map;
+    return Object.keys(map).length > 0;
   } catch (e) {
     QC._imgCache[oid] = {};
-    toast('取图失败:' + (e.message || e), 'err', 3000);
+    console.warn('[qty-confirm] 取图失败:', oid, e.message);
+    return false;
   }
 }
+
+// 手动点「看图」(单张 · 带提示)
+async function qcLoadImg(oid, shop, orderName) {
+  if (QC._imgCache[oid] !== undefined) { renderQtyConfirm(); return; }
+  toast('🖼 加载产品图...', 'info', 1200);
+  const got = await _qcFetchImg(oid, shop, orderName);
+  renderQtyConfirm();
+  if (!got) toast('该单未取到产品图', 'info', 2000);
+}
 window.qcLoadImg = qcLoadImg;
+
+// 自动预加载当前页订单图(节流:每批3个并发,逐批跑,完成一批重渲一次)
+let _qcPreloading = false;
+async function _qcPreloadImages(paged) {
+  if (_qcPreloading) return;
+  const todo = (paged || []).filter(r => QC._imgCache[String(r.shopify_order_id)] === undefined && r.shop && r.order_name && !/mooielight/i.test(r.shop));
+  if (todo.length === 0) return;
+  _qcPreloading = true;
+  try {
+    const BATCH = 3;
+    for (let i = 0; i < todo.length; i += BATCH) {
+      const batch = todo.slice(i, i + BATCH);
+      await Promise.all(batch.map(r => _qcFetchImg(String(r.shopify_order_id), r.shop, r.order_name)));
+      if (CURRENT_TAB === 'qtyconfirm') _qcApplyImagesToDOM(batch);
+    }
+  } finally { _qcPreloading = false; }
+}
+
+// 把已缓存的图直接写进已渲染的卡片(原地更新 · 不整页重渲 · 不打断搜索/滚动)
+function _qcApplyImagesToDOM(records) {
+  (records || []).forEach(r => {
+    const oid = String(r.shopify_order_id);
+    const map = QC._imgCache[oid];
+    if (!map) return;
+    const holder = document.querySelector(`[data-qc-imgs="${oid}"]`);
+    if (!holder) return;
+    // 重渲该卡片的商品行(带图)
+    const items = Array.isArray(r.items) ? r.items : [];
+    holder.innerHTML = items.map(it => _qcItemRow(it, map)).join('') || '<span style="font-size:12px; color:var(--text-tertiary);">无明细</span>';
+    // 去掉「看图」按钮
+    const btn = document.querySelector(`[data-qc-imgbtn="${oid}"]`);
+    if (btn) btn.remove();
+  });
+}
+window._qcPreloadImages = _qcPreloadImages;
 
 // ── 导出当前筛选结果为 Excel ──
 function qcExport() {
