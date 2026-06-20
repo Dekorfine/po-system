@@ -1365,17 +1365,26 @@ async function saveInternalNote() {
 
 async function shopifyStartProcessing(orderId) {
   try {
+    // V20260620:优化加载速度 — 不再 reload 全部4900+单,只更新内存中这单的状态,直接开表单
     await SHOPIFY.setOrderStatus(orderId, 'processing');
-    toast('已进入"待处理"');
-    // V20260617:把 filter 切到待处理(刷新 sub-tab 高亮和计数 · 关表单后停在待处理视图)
+    // 手动同步内存(setOrderStatus 只写库),省去整列表重载
+    const o = (SHOPIFY._orders || []).find(x => x.id === orderId);
+    if (o) o.local_status = 'processing';
     SHOPIFY._currentFilter = 'processing';
     SHOPIFY_PAGE = 1;
-    await shopifyReloadOrdersAndRender();
-    shopifyShowFilter('processing');
-    // 一步到位:直接弹这单的"开采购单"表单(填完提交后,现有逻辑会自动跳采购单 tab)
-    //   不做滚动高亮 — 表单是全屏遮罩会盖住,做了也看不见;关表单后正好在待处理列表
-    if (typeof openPoForm === 'function') openPoForm(orderId);
-    else if (typeof shopifyOpenPoForm === 'function') shopifyOpenPoForm(orderId);
+    toast('已进入"待处理"');
+
+    // 直接弹这单的"开采购单"表单(数据已在内存,无需等列表)
+    if (typeof openPoForm === 'function') await openPoForm(orderId);
+    else if (typeof shopifyOpenPoForm === 'function') await shopifyOpenPoForm(orderId);
+
+    // 表单打开后,后台轻量重渲列表(不阻塞表单显示 · 关表单后正好在待处理视图)
+    setTimeout(() => {
+      try {
+        if (typeof renderShopifyOrders === 'function') renderShopifyOrders();
+        if (typeof shopifyShowFilter === 'function') shopifyShowFilter('processing');
+      } catch (e) {}
+    }, 0);
   } catch (e) {
     toast('操作失败：' + (e.message || e), 'err');
   }

@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260620-fast',
+    date: '2026-06-20',
+    type: 'fix',
+    title: '⚡ 优化"开始处理"跳转开采购单速度(去掉全量重载)',
+    notes: [
+      '根因:点开始处理为了开一个表单,把全部4900+单重新加载+重渲了一遍(shopifyReloadOrdersAndRender),纯浪费',
+      '修复:openPoForm本就从内存_orders取这单数据,无需reload。改为只更新内存中这单状态→直接弹表单→后台轻量重渲列表',
+      '启动预加载补上产品库PRODUCTS_CACHE+供应商SUPPLIERS(开PO表单要用),让首次点开始处理也秒弹(之前只预加载了产品图map)',
+    ],
+    files: ['utils.js', 'core.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260620-qc6',
     date: '2026-06-20',
     type: 'fix',

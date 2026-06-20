@@ -2430,6 +2430,11 @@ function loadAllData() {
             console.log(`[预加载] ${allSkus.size} 个 SKU 的产品图已就位`);
           } catch (e) { console.warn('产品图预加载失败:', e); }
         }
+        // V20260620:后台预加载产品库+供应商(开采购单表单要用)· 让"开始处理"点开秒弹表单
+        try {
+          if (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.loadAll) PRODUCTS_CACHE.loadAll().catch(() => {});
+          if (typeof SUPPLIERS !== 'undefined' && SUPPLIERS.loadAll) SUPPLIERS.loadAll().catch(() => {});
+        } catch (e) {}
         if (typeof renderShopifyOrders === 'function') renderShopifyOrders();
         if (typeof renderShopifyStores === 'function') renderShopifyStores();
         // 产品图加载完后，如果当前在催单/售后 tab，刷新一次让图显示出来
