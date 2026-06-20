@@ -10,6 +10,31 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260620-qc4',
+    date: '2026-06-20',
+    type: 'fix',
+    title: '🔢 数量核实:店铺显示正确品牌名 + 分页增强(首页/末页/页码/跳转)',
+    notes: [
+      '店铺名映射:vakkerlighting→Vakkerlight、docolight→Docos 等(复用SHOPIFY.STORES_META品牌名),卡片+下拉都显示品牌名(筛选value仍用handle)',
+      '搜索也匹配品牌名(搜vakkerlight能找到vakkerlighting店的单)',
+      '分页增强:首页/末页按钮 + 当前页附近页码按钮 + 自定义页码输入跳转(Enter或Go)+ 上一页/下一页',
+    ],
+    files: ['qty-confirm.js', 'index.html', 'help.js'],
+  },
+  {
+    v: '20260618-qc3',
+    date: '2026-06-18',
+    type: 'feature',
+    title: '🔢 数量核实:排序+导出Excel+订单图+批量标完成',
+    notes: [
+      '排序:最近/最早更新、最新/最早创建、回复截止最近 5种',
+      '导出:一键导出当前筛选结果为Excel(订单号/店铺/状态/客户/触发商品/诉求/时间等全字段),无XLSX时退回CSV',
+      '订单图:卡片点「🖼看图」按订单号调list_orders拉产品图,按SKU对应显示在商品行(点击放大),缓存避免重复请求',
+      '批量标完成:勾选多单→批量标记已完成(逐单更新+打Shopify已处理标签),全选本页可处理项',
+    ],
+    files: ['qty-confirm.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260618-qc2',
     date: '2026-06-18',
     type: 'feature',
