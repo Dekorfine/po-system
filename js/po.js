@@ -3685,6 +3685,7 @@ window.poQuickRangeClear = function() {
 // ============ 采购单 tab ============
 let PO_LIST = [];
 let PO_FILTER = 'producing';  // V20260608:删「待办」聚合(方案A·跟销售订单统一)· 默认落「待发供应商」(待审批常年0,避免开局空白)
+let PO_ALL_SCOPE = 'recent120';  // V20260620:全部订单范围 recent120/history
 // V20260526q: PO 店铺过滤(参考销售单)· 支持单店/多店 · manual PO(无 sales_order_id)不受影响
 let PO_SHOP_FILTER = new Set();
 let PO_SALES_ORDERS_MAP = {};
@@ -3864,7 +3865,7 @@ function poRefreshCounts() {
     }
   });
   const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  setText('poCntAll', counts.all);
+  setText('poCntAll', counts.all + counts.cancelled);  // V20260620:全部订单含已取消
   setText('poCntActive', counts.active);  // V20260526c 新加
   setText('poCntProducing', counts.producing);
   setText('poCntOrdered', counts.ordered);
@@ -3880,6 +3881,34 @@ function poShowFilter(f) {
   document.querySelectorAll('.sub-tab-btn[data-pofilter]').forEach(b => b.classList.toggle('active', b.dataset.pofilter === f));
   renderPoList();
 }
+
+// V20260620:全部订单 120天/历史 切换
+function poAllScope(scope) {
+  if (scope === 'history' && !confirm('历史全部采购单可能很多,渲染较慢。确定查看?')) return;
+  PO_ALL_SCOPE = scope;
+  PO_PAGE = 1;
+  renderPoList();
+}
+window.poAllScope = poAllScope;
+
+// V20260620:布局切换(横排↔侧边栏)· 个人偏好(与销售单同一套CSS)
+function poToggleLayout() {
+  const cur = localStorage.getItem('po_layout') || 'top';
+  const next = cur === 'top' ? 'sidebar' : 'top';
+  try { localStorage.setItem('po_layout', next); } catch (e) {}
+  _poApplyLayout(next);
+}
+window.poToggleLayout = poToggleLayout;
+
+function _poApplyLayout(mode) {
+  const wrap = document.getElementById('poLayoutWrap');
+  const toggle = document.getElementById('poLayoutToggle');
+  if (!wrap) return;
+  if (mode === 'sidebar') { wrap.classList.add('layout-sidebar'); if (toggle) toggle.textContent = '▭ 横排'; }
+  else { wrap.classList.remove('layout-sidebar'); if (toggle) toggle.textContent = '⊟ 侧边栏'; }
+}
+function poInitLayout() { _poApplyLayout(localStorage.getItem('po_layout') || 'top'); }
+window.poInitLayout = poInitLayout;
 
 function poChangeSupplierFilter(val) {
   PO_SUPPLIER_FILTER = val || '';
@@ -3988,7 +4017,16 @@ function renderPoList() {
   else if (PO_FILTER === 'ordered') list = list.filter(p => ['sent', 'confirmed', 'arrived'].includes(p.status));
   else if (PO_FILTER === 'cancelled') list = list.filter(p => p.status === 'cancelled');
   else if (PO_FILTER === 'done') list = list.filter(p => p.status === 'received');
-  else if (PO_FILTER === 'all') list = list.filter(p => p.status !== 'cancelled');
+  else if (PO_FILTER === 'all') {
+    // V20260620:全部订单 — 含已完成/已取消等所有状态,默认近120天,可切历史
+    if (PO_ALL_SCOPE !== 'history') {
+      list = list.filter(p => {
+        const d = p.created_at;
+        if (!d) return false;
+        return (Date.now() - new Date(d).getTime()) <= 120 * 86400000;
+      });
+    }
+  }
 
   // 供应商筛选
   if (PO_SUPPLIER_FILTER) list = list.filter(p => (p.supplier || '') === PO_SUPPLIER_FILTER);
@@ -4230,7 +4268,20 @@ function renderPoList() {
     pagerHtml = `<div style="text-align:center; padding:10px; font-size:11px; color:var(--text-tertiary);">共 ${list.length} 条</div>`;
   }
 
-  body.innerHTML = supplierFilterHtml + cardsHtml + pagerHtml;
+  // V20260620:全部订单视图加 120天内/历史 切换条
+  let allBanner = '';
+  if (PO_FILTER === 'all') {
+    const sc = PO_ALL_SCOPE || 'recent120';
+    allBanner = `
+      <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--bg-elevated); border-radius:8px; margin-bottom:10px; flex-wrap:wrap;">
+        <span style="font-size:12.5px; color:var(--text-secondary);">📂 全部采购单(含已完成/已取消):</span>
+        <button class="btn small ${sc!=='history'?'primary':''}" onclick="poAllScope('recent120')">📅 120天内</button>
+        <button class="btn small ${sc==='history'?'primary':''}" onclick="poAllScope('history')">🗄 历史全部</button>
+        <span style="font-size:11px; color:var(--text-tertiary);">${sc==='history'?'显示全部历史':'仅近120天'}</span>
+      </div>`;
+  }
+  body.innerHTML = allBanner + supplierFilterHtml + cardsHtml + pagerHtml;
+  if (typeof poInitLayout === 'function') poInitLayout();   // V20260620:应用记住的布局
   
   // V20260526a: 填充通用日期筛选下拉
   if (typeof populateDateFilterSelect === 'function') {
