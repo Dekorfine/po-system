@@ -24,9 +24,24 @@ function _invIsImageUrl(u) {
   if (/\/storage\/|\/cdn\/|\/files\/|shopify|supabase\.co\/storage/i.test(u)) return true;  // 已知图床/存储
   return false;  // 其它(如 https://docos.us/products/xxx 产品网页)→ 当作没有有效图
 }
+// V20260620:Shopify CDN 图片压缩(文件名后插 _WxH · 仅 shopify cdn 生效),避免列表加载原图(几MB)
+function _invResizeImg(url, size) {
+  if (!url || typeof url !== 'string') return url;
+  if (!/cdn\.shopify\.com|\/cdn\/shop\//i.test(url)) return url;
+  try {
+    const [base, query] = url.split('?');
+    const cleaned = base.replace(/_(\d+x\d+|\d+x|x\d+)(?=\.\w+$)/i, '');
+    const resized = cleaned.replace(/(\.\w+)$/i, `_${size}$1`);
+    return query ? `${resized}?${query}` : resized;
+  } catch (e) { return url; }
+}
+window._invResizeImg = _invResizeImg;
+
 function _invImgCell(u, size) {
   if (_invIsImageUrl(u)) {
-    return `<img src="${escapeHtml(u)}" style="width:${size}px; height:${size}px; object-fit:cover; border-radius:6px; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(u)}')" loading="lazy">`;
+    const thumb = _invResizeImg(u, (size <= 80 ? '120x120' : '240x240'));   // 列表缩略图压缩
+    const big = _invResizeImg(u, '800x800');   // 灯箱中等图(不下原图)
+    return `<img src="${escapeHtml(thumb)}" style="width:${size}px; height:${size}px; object-fit:cover; border-radius:6px; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(big)}')" loading="lazy">`;
   }
   return `<div style="width:${size}px;height:${size}px;background:var(--bg-elevated);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:${Math.round(size/3)}px;">📦</div>`;
 }
@@ -358,7 +373,7 @@ function _invRenderTrash() {
       const when = p.deleted_at ? new Date(p.deleted_at).toLocaleString() : '';
       return `
       <div style="display:grid; grid-template-columns:56px 1fr auto; gap:12px; padding:12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; margin-bottom:8px; opacity:.85;">
-        <div>${p.image_url ? `<img src="${escapeHtml(p.image_url)}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;">` : `<div style="width:56px;height:56px;background:var(--bg-elevated);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);">📦</div>`}</div>
+        <div>${p.image_url ? `<img src="${escapeHtml(_invResizeImg(p.image_url, '120x120'))}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;">` : `<div style="width:56px;height:56px;background:var(--bg-elevated);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);">📦</div>`}</div>
         <div style="min-width:0;">
           <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${escapeHtml(p.name_cn || '(无名)')}</div>
           <div style="font-size:11px;color:var(--text-tertiary);font-family:monospace;">${escapeHtml(p.sku || '')} · 库存 ${Number(p.stock_qty||0)}</div>
@@ -387,7 +402,7 @@ function _invGridCardHtml(p) {
     <div style="background:var(--bg-card); border:1px solid var(--border); border-top:3px solid ${statusColor}; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
       <div style="position:relative; width:100%; aspect-ratio:1/1; background:var(--bg-elevated); border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center;">
         ${_invIsImageUrl(p.image_url)
-          ? `<img src="${escapeHtml(p.image_url)}" style="width:100%; height:100%; object-fit:cover; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(p.image_url)}')" loading="lazy">`
+          ? `<img src="${escapeHtml(_invResizeImg(p.image_url, '400x400'))}" style="width:100%; height:100%; object-fit:cover; cursor:zoom-in;" onclick="openImgLightbox && openImgLightbox('${escapeHtml(_invResizeImg(p.image_url, '800x800'))}')" loading="lazy">`
           : `<span style="color:var(--text-tertiary); font-size:32px;">📦</span>`}
         <span style="position:absolute; top:6px; left:6px; background:${statusColor}; color:#fff; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700;">${statusText} ${stock}</span>
       </div>
