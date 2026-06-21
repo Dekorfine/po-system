@@ -612,10 +612,11 @@ function _inspBuildExportHtml(it, opts = {}) {
     </tr>`;
 
   // V28κ:WYSIWYG 图片区 · 编辑模式下每张图带 ✕ + 末尾追加 + 占位
+  // V20260620:放大显示 — 单张全宽大图;多张也加大且完整显示(contain不裁切),看清系列
   const renderImg = (im, i) => {
     const tile = imgs.length === 1
-      ? `<img src="${escapeHtml(im.url)}" crossorigin="anonymous" style="width:100%; border:1px solid #ccc; border-radius:6px; display:block;">`
-      : `<img src="${escapeHtml(im.url)}" crossorigin="anonymous" style="width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #ccc; border-radius:6px; display:block;">`;
+      ? `<img src="${escapeHtml(im.url)}" crossorigin="anonymous" style="width:100%; max-height:520px; object-fit:contain; background:#f8f8f8; border:1px solid #ccc; border-radius:6px; display:block;">`
+      : `<img src="${escapeHtml(im.url)}" crossorigin="anonymous" style="width:100%; height:230px; object-fit:contain; background:#f8f8f8; border:1px solid #ccc; border-radius:6px; display:block;">`;
     if (!editable) return tile;
     return `<div style="position:relative;">
       ${tile}
@@ -643,8 +644,17 @@ function _inspBuildExportHtml(it, opts = {}) {
         💡 Ctrl+V<br>粘贴截图直接进来
       </div>
     </div>`;
-  } else if (imgs.length === 1 && !editable) {
-    imgGrid = renderImg(imgs[0], 0);
+  } else if (imgs.length === 1) {
+    // V20260620:单张图始终大图显示(不论是否编辑模式)
+    imgGrid = editable
+      ? `<div style="display:flex; flex-direction:column; gap:10px;">${renderImg(imgs[0], 0)}${addTile}</div>`
+      : renderImg(imgs[0], 0);
+  } else if (imgs.length === 2) {
+    // V20260620:两张图单列堆叠(各自更大),不挤成两小列
+    imgGrid = `<div style="display:flex; flex-direction:column; gap:10px;">
+      ${imgs.map((im, i) => renderImg(im, i)).join('')}
+      ${addTile}
+    </div>`;
   } else {
     imgGrid = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
       ${imgs.map((im, i) => renderImg(im, i)).join('')}
@@ -653,7 +663,7 @@ function _inspBuildExportHtml(it, opts = {}) {
   }
 
   return `
-    <div style="font-family:'Microsoft YaHei',sans-serif; width:820px; padding:32px; background:#fff; color:#1a1a1a; box-sizing:border-box;">
+    <div style="font-family:'Microsoft YaHei',sans-serif; width:900px; padding:32px; background:#fff; color:#1a1a1a; box-sizing:border-box;">
       <!-- 标题 -->
       <div style="text-align:center; margin-bottom:20px; padding-bottom:16px; border-bottom:3px double #333;">
         <div style="font-size:24px; font-weight:800; letter-spacing:2px;">批量订单验货单</div>
@@ -662,7 +672,7 @@ function _inspBuildExportHtml(it, opts = {}) {
 
       <div style="display:flex; gap:24px; align-items:flex-start;">
         <!-- 左:信息表 -->
-        <div style="flex:1.15; min-width:0;">
+        <div style="flex:1; min-width:0;">
           <div style="font-size:16px; font-weight:700; margin-bottom:10px; padding:8px 0; border-bottom:2px solid #333;">📋 订单注意事项</div>
           <table style="width:100%; border-collapse:collapse;">
             ${row('订单号', escapeHtml(it.order_no || ''))}
@@ -685,7 +695,7 @@ function _inspBuildExportHtml(it, opts = {}) {
         </div>
 
         <!-- 右:灯具图片 -->
-        <div style="flex:1; min-width:0;">
+        <div style="flex:1.25; min-width:0;">
           <div style="font-size:16px; font-weight:700; margin-bottom:10px; padding:8px 0; border-bottom:2px solid #333;">💡 灯具图片${editable ? ' <span class="insp-edit-only" style="font-size:11px; color:#94a3b8; font-weight:normal;">(可粘贴/上传/拖入)</span>' : ''}</div>
           ${imgGrid}
         </div>
