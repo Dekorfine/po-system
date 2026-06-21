@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260620-insp-po',
+    date: '2026-06-20',
+    type: 'feature',
+    title: '🔍 验货单二期:自动抓取采购单(PO)产品图嵌入',
+    notes: [
+      '验货单没自己上传图时,按订单号去orders表找对应采购单(po_number not null·order_no匹配),取line_items的产品图自动嵌入',
+      '逻辑:有上传图就用上传的;没上传才抓PO图(标记"采购单图·CG单号"·不可删·只展示)',
+      'PO图也支持放大显示(单张大图);预览+导出PNG+导出PDF都带PO图',
+      '兼容切换系统期:旧系统下单的订单填了订单号即可自动关联到本系统已开的PO',
+      '缓存每张验货单的PO图(_poImgCache)避免重复请求',
+    ],
+    files: ['inspection.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260620-insp-img',
     date: '2026-06-20',
     type: 'fix',

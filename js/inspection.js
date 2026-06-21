@@ -13,6 +13,7 @@ const INSPECTION = {
   _dateTo: '',
   _editing: null,
   _loaded: false,
+  _poImgCache: {},   // V20260620:验货单id → 抓到的PO产品图(避免重复请求)
 };
 
 // 国家预设(美国最常用 · 排第一)+ 标准
@@ -603,7 +604,11 @@ window.inspCloseEdit = inspCloseEdit;
 // 生成验货单的标准 HTML(图片版和 PDF 共用)
 function _inspBuildExportHtml(it, opts = {}) {
   const editable = opts.editable;  // V28κ:预览模式下让图片区可编辑(粘贴/上传/删)
-  const imgs = Array.isArray(it.images) ? it.images : [];
+  const ownImgs = Array.isArray(it.images) ? it.images.filter(im => im && im.url) : [];
+  // V20260620 二期:没自己上传图时,用抓来的 PO 产品图(标记 _fromPo,不可删/不可编辑·只展示)
+  const poImgs = Array.isArray(opts.poImages) ? opts.poImages : [];
+  const usingPo = ownImgs.length === 0 && poImgs.length > 0;
+  const imgs = ownImgs.length > 0 ? ownImgs : poImgs;
   const st = INSP_STATUS[it.status] || INSP_STATUS.ordered;
   const row = (label, val, highlight) => `
     <tr>
@@ -617,6 +622,13 @@ function _inspBuildExportHtml(it, opts = {}) {
     const tile = imgs.length === 1
       ? `<img src="${escapeHtml(im.url)}" crossorigin="anonymous" style="width:100%; max-height:520px; object-fit:contain; background:#f8f8f8; border:1px solid #ccc; border-radius:6px; display:block;">`
       : `<img src="${escapeHtml(im.url)}" crossorigin="anonymous" style="width:100%; height:230px; object-fit:contain; background:#f8f8f8; border:1px solid #ccc; border-radius:6px; display:block;">`;
+    // PO 抓来的图:不可删(它不存在本验货单上),只加来源标记
+    if (im._fromPo) {
+      return `<div style="position:relative;">
+        ${tile}
+        <span style="position:absolute; top:6px; left:6px; background:rgba(37,99,235,0.9); color:#fff; font-size:10px; padding:2px 7px; border-radius:4px;">采购单图${im.po_number ? ' · ' + escapeHtml(im.po_number) : ''}</span>
+      </div>`;
+    }
     if (!editable) return tile;
     return `<div style="position:relative;">
       ${tile}
@@ -696,7 +708,7 @@ function _inspBuildExportHtml(it, opts = {}) {
 
         <!-- 右:灯具图片 -->
         <div style="flex:1.25; min-width:0;">
-          <div style="font-size:16px; font-weight:700; margin-bottom:10px; padding:8px 0; border-bottom:2px solid #333;">💡 灯具图片${editable ? ' <span class="insp-edit-only" style="font-size:11px; color:#94a3b8; font-weight:normal;">(可粘贴/上传/拖入)</span>' : ''}</div>
+          <div style="font-size:16px; font-weight:700; margin-bottom:10px; padding:8px 0; border-bottom:2px solid #333;">💡 灯具图片${usingPo ? ' <span style="font-size:11px; color:#2563eb; font-weight:normal;">(自动取自采购单 · 上传自己的图会替换)</span>' : (editable ? ' <span class="insp-edit-only" style="font-size:11px; color:#94a3b8; font-weight:normal;">(可粘贴/上传/拖入)</span>' : '')}</div>
           ${imgGrid}
         </div>
       </div>
@@ -733,6 +745,63 @@ function inspRenderPreview() {
   if (!it || !body) return;
   // V28κ:删掉顶部 thumb strip · 让验货单本身的图片区可编辑(WYSIWYG)
   body.innerHTML = _inspBuildExportHtml(it, { editable: true });
+
+  // V20260620 二期:验货单没自己上传图 → 自动抓对应采购单(PO)的产品图嵌入
+  const hasOwnImgs = Array.isArray(it.images) && it.images.some(im => im && im.url);
+  if (!hasOwnImgs && it.order_no && INSPECTION._poImgCache[it.id] === undefined) {
+    _inspFetchPoImages(it.order_no).then(poImgs => {
+      INSPECTION._poImgCache[it.id] = poImgs;
+      // 仍在预览这单 + 仍没上传图,才重渲带 PO 图
+      const cur = INSPECTION._list.find(x => x.id === _inspPreviewId);
+      const stillNoOwn = cur && !(Array.isArray(cur.images) && cur.images.some(im => im && im.url));
+      if (cur && cur.id === it.id && stillNoOwn && document.getElementById('inspPreviewBody')) {
+        document.getElementById('inspPreviewBody').innerHTML = _inspBuildExportHtml(cur, { editable: true, poImages: poImgs });
+      }
+    }).catch(() => { INSPECTION._poImgCache[it.id] = []; });
+  } else if (!hasOwnImgs && INSPECTION._poImgCache[it.id] && INSPECTION._poImgCache[it.id].length) {
+    // 已缓存 PO 图,直接带上重渲
+    body.innerHTML = _inspBuildExportHtml(it, { editable: true, poImages: INSPECTION._poImgCache[it.id] });
+  }
+}
+
+// 二期:按订单号去 orders 表找对应采购单(po_number not null),取 line_items 的产品图
+async function _inspFetchPoImages(orderNo) {
+  if (!orderNo || typeof sb === 'undefined') return [];
+  try {
+    // 订单号可能带/不带 # · 兼容匹配
+    const clean = String(orderNo).replace(/^#/, '').trim();
+    const { data, error } = await sb.from('orders')
+      .select('po_number, line_items, order_no')
+      .not('po_number', 'is', null)
+      .or(`order_no.eq.${clean},order_no.eq.#${clean}`)
+      .limit(20);
+    if (error) { console.warn('[验货单] 抓PO图失败:', error.message); return []; }
+    const imgs = [];
+    const seen = new Set();
+    (data || []).forEach(po => {
+      const lines = Array.isArray(po.line_items) ? po.line_items : [];
+      lines.forEach(li => {
+        const url = li.image_url;
+        if (url && !seen.has(url)) {
+          seen.add(url);
+          imgs.push({ url, name: (li.title_cn || li.sku || '采购单产品'), _fromPo: true, po_number: po.po_number });
+        }
+      });
+    });
+    return imgs;
+  } catch (e) { console.warn('[验货单] 抓PO图异常:', e); return []; }
+}
+window._inspFetchPoImages = _inspFetchPoImages;
+
+// 导出时取该验货单应展示的 PO 图(有自己上传的图则返回空 → 用上传的;否则缓存/现拉 PO 图)
+async function _inspGetPoImagesFor(it) {
+  const hasOwn = Array.isArray(it.images) && it.images.some(im => im && im.url);
+  if (hasOwn) return [];
+  if (INSPECTION._poImgCache[it.id] !== undefined) return INSPECTION._poImgCache[it.id];
+  if (!it.order_no) return [];
+  const imgs = await _inspFetchPoImages(it.order_no);
+  INSPECTION._poImgCache[it.id] = imgs;
+  return imgs;
 }
 
 // V28κ:拖拽文件直接进图片区
@@ -817,7 +886,7 @@ async function inspExportImage(id) {
   }
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed; left:-9999px; top:0;';
-  wrap.innerHTML = _inspBuildExportHtml(it);
+  wrap.innerHTML = _inspBuildExportHtml(it, { poImages: await _inspGetPoImagesFor(it) });
   document.body.appendChild(wrap);
   try {
     const canvas = await html2canvas(wrap.firstElementChild, { useCORS: true, scale: 2, backgroundColor: '#fff' });
@@ -838,7 +907,7 @@ async function inspExportPDF(id) {
   const it = INSPECTION._list.find(x => x.id === id);
   if (!it) return;
   // 用浏览器打印为 PDF(最稳 · 不依赖库)
-  const html = _inspBuildExportHtml(it);
+  const html = _inspBuildExportHtml(it, { poImages: await _inspGetPoImagesFor(it) });
   const w = window.open('', '_blank');
   if (!w) { toast('请允许弹窗', 'warn'); return; }
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>验货单_${escapeHtml(it.order_no || '')}</title></head>
