@@ -36,7 +36,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260620divfix"></script>
+<script defer src="js/help.js?v=20260620sidebar2"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -4141,11 +4141,19 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 .sales-layout-wrap.layout-sidebar .sales-subtabs {
   flex-direction: column;
   align-items: stretch;
-  position: sticky;
-  top: 8px;
-  width: 180px;
+  width: 172px;
+  margin: 0;
+}
+.sales-layout-wrap.layout-sidebar {
   float: left;
+  width: 172px;
   margin-right: 16px;
+  overflow: visible;
+}
+.sales-layout-wrap.layout-sidebar ~ #salesSearchBar,
+.sales-layout-wrap.layout-sidebar ~ #salesOrdersBody,
+.sales-layout-wrap.layout-sidebar ~ div {
+  margin-left: 188px;
 }
 .sales-layout-wrap.layout-sidebar .sub-tab-btn {
   justify-content: flex-start;
@@ -4154,7 +4162,6 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .sales-layout-wrap.layout-sidebar #shopifyDateFilter { margin-left: 0 !important; margin-top: 6px; width: 100%; }
 .sales-layout-wrap.layout-sidebar .sub-tab-layout-toggle { width: 100%; margin-top: 6px; }
-.sales-layout-wrap.layout-sidebar { overflow: visible; }
 
 /* 搜索类型 chip */
 .search-type-chip {
