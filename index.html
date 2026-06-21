@@ -36,7 +36,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260620layout"></script>
+<script defer src="js/help.js?v=20260620polayout"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -49,7 +49,7 @@
 <script defer src="js/missing.js?v=20260615ins"></script>
 <script defer src="js/orders.js?v=20260615sort"></script>
 <script defer src="js/shopify.js?v=20260620layout"></script>
-<script defer src="js/po.js?v=20260618price"></script>
+<script defer src="js/po.js?v=20260620polayout"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
 <script defer src="js/inventory.js?v=20260614toast"></script>
 <script defer src="js/inspection.js?v=20260620po"></script>
@@ -6721,13 +6721,16 @@ if ('serviceWorker' in navigator) {
         <span id="poQuickRangeHint" style="margin-left:8px; font-size:11.5px; color:var(--text-tertiary);"></span>
       </div>
       <span id="poCntActive" style="display:none;"></span>
-      <div class="po-subtabs" style="margin-top: 12px;">
+      <div class="sales-layout-wrap" id="poLayoutWrap">
+      <div class="po-subtabs sales-subtabs" style="margin-top: 12px;">
         <button class="sub-tab-btn active" data-pofilter="producing" onclick="poShowFilter('producing')" title="待发供应商:已建PO、等下给供应商的(采购主力队列)">📝 待发供应商 <span class="cnt" id="poCntProducing">0</span></button>
-        <button class="sub-tab-btn" data-pofilter="pending" onclick="poShowFilter('pending')" title="待审批:需主管审批的PO">⏳ 待审批 <span class="cnt" id="poCntPending">0</span></button>
+        <button class="sub-tab-btn" data-pofilter="pending" onclick="poShowFilter('pending')" title="待审批:需主管审批的PO(大额/大量自动进此)">⏳ 待审批 <span class="cnt" id="poCntPending">0</span></button>
         <button class="sub-tab-btn" data-pofilter="ordered" onclick="poShowFilter('ordered')">📤 已下单 <span class="cnt" id="poCntOrdered">0</span></button>
-        <button class="sub-tab-btn" data-pofilter="done" onclick="poShowFilter('done')">✅ 已完成 <span class="cnt" id="poCntDone">0</span></button>
         <button class="sub-tab-btn" data-pofilter="cancelled" onclick="poShowFilter('cancelled')">⊘ 已取消 <span class="cnt" id="poCntCancelled">0</span></button>
-        <button class="sub-tab-btn" data-pofilter="all" onclick="poShowFilter('all')" title="所有非取消单(含已完成)">📋 全部 <span class="cnt" id="poCntAll">0</span></button>
+        <button class="sub-tab-btn sub-tab-allorders" data-pofilter="all" onclick="poShowFilter('all')" title="全部采购单(含已完成/已取消)· 分120天内/历史">📂 全部订单 <span class="cnt" id="poCntAll">0</span></button>
+        <span id="poCntDone" style="display:none;"></span>
+        <button class="sub-tab-layout-toggle" id="poLayoutToggle" onclick="poToggleLayout()" title="切换布局:顶部横排 ↔ 侧边栏(记住你的偏好)">⊟ 侧边栏</button>
+      </div>
       </div>
       <div id="poListBody" style="margin-top: 12px;"></div>
     </div>
