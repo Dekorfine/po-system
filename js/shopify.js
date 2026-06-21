@@ -594,6 +594,7 @@ window.shopifyChipDrop = shopifyChipDrop;
 function renderShopifyStores() {
   const grid = document.getElementById('salesStoresGrid');
   if (!grid) return;
+  if (typeof shopifyInitLayout === 'function') shopifyInitLayout();   // V20260620:应用记住的布局(横排/侧边栏)
   const stores = SHOPIFY._stores;
   // V20260527e: chip 条只显示「非 legacyOnly」的店;但已连接的 legacyOnly 仍显示(防误删活的店)
   let visibleStores = stores.filter(s => !s.legacyOnly || s.connected);
@@ -1524,8 +1525,11 @@ function shopifyRefreshCounts() {
   });
   document.getElementById('cntAll').textContent = counts.all;
   document.getElementById('cntPending').textContent = counts.pending;
-  document.getElementById('cntProcessing').textContent = counts.processing;
+  const procEl = document.getElementById('cntProcessing');   // V20260620:待处理tab已移除·防错
+  if (procEl) procEl.textContent = counts.processing;
   document.getElementById('cntDone').textContent = counts.done;
+  const allOrdersEl = document.getElementById('cntAllOrders');   // V20260620:全部订单 = 所有订单总数
+  if (allOrdersEl) allOrdersEl.textContent = orders.length;
   const cancelledEl = document.getElementById('cntCancelled');
   if (cancelledEl) cancelledEl.textContent = counts.cancelled;
   const archivedEl = document.getElementById('cntArchived');
@@ -2149,7 +2153,7 @@ async function shopifyBatchApprove() {
     SHOPIFY_SELECTED.clear();
     shopifyRefreshCounts();
     shopifyRefreshRuleCounts();
-    shopifyShowFilter('processing');   // V20260617:批量审核后跳到待处理(与单个统一)
+    shopifyShowFilter('pending');   // V20260620:待处理tab已移除·批量审核后留待审核(订单变processing后自动从待审核消失,可在全部订单查)
   } catch (e) { toast('批量审核失败：' + (e.message || e), 'err'); }
 }
 
@@ -2486,6 +2490,48 @@ function shopifyShowFilter(f) {
   renderShopifyOrders();
 }
 
+// V20260620:布局切换(顶部横排 ↔ 侧边栏)· 个人偏好存 localStorage
+// V20260620:全部订单 — 120天内 / 历史 切换
+function shopifyAllOrdersScope(scope) {
+  SHOPIFY._allOrdersScope = scope;
+  SHOPIFY_PAGE = 1;
+  if (scope === 'history' && !confirm('历史订单含全部4万+单,渲染可能较慢。确定查看?')) {
+    SHOPIFY._allOrdersScope = 'recent120';
+    return;
+  }
+  renderShopifyOrders();
+}
+window.shopifyAllOrdersScope = shopifyAllOrdersScope;
+
+function shopifyToggleLayout() {
+  const cur = localStorage.getItem('sales_layout') || 'top';
+  const next = cur === 'top' ? 'sidebar' : 'top';
+  try { localStorage.setItem('sales_layout', next); } catch (e) {}
+  _shopifyApplyLayout(next);
+}
+window.shopifyToggleLayout = shopifyToggleLayout;
+
+function _shopifyApplyLayout(mode) {
+  const wrap = document.getElementById('salesLayoutWrap');
+  const toggle = document.getElementById('salesLayoutToggle');
+  if (!wrap) return;
+  if (mode === 'sidebar') {
+    wrap.classList.add('layout-sidebar');
+    if (toggle) toggle.textContent = '▭ 横排';
+  } else {
+    wrap.classList.remove('layout-sidebar');
+    if (toggle) toggle.textContent = '⊟ 侧边栏';
+  }
+}
+window._shopifyApplyLayout = _shopifyApplyLayout;
+
+// 启动时应用记住的布局
+function shopifyInitLayout() {
+  const saved = localStorage.getItem('sales_layout') || 'top';
+  _shopifyApplyLayout(saved);
+}
+window.shopifyInitLayout = shopifyInitLayout;
+
 // V20260526e: 销售单日期筛选
 let SHOPIFY_DATE_PRESET = 'all';
 function shopifyOnDateChange(preset) {
@@ -2521,7 +2567,17 @@ function renderShopifyOrders() {
   const all = SHOPIFY._orders;
   let orders = filter === 'all'
     ? all.filter(o => o.local_status !== 'cancelled' && o.local_status !== 'done')
-    : all.filter(o => o.local_status === filter);
+    : (filter === 'allorders'
+        ? (SHOPIFY._allOrdersScope === 'history'
+            ? all.slice()  // 历史:全部(可能很多·慎用)
+            : all.filter(o => {  // 默认:近120天(避免一次渲染4万+)
+                const d = o.shopify_created_at || o.created_at;
+                if (!d) return false;
+                return (Date.now() - new Date(d).getTime()) <= 120 * 86400000;
+              }))
+        : (filter === 'archived'
+            ? all.filter(o => o.archived === true)
+            : all.filter(o => !o.archived && o.local_status === filter)));
 
   // 应用规则筛选
   if (SHOPIFY_SEARCH.rule && SHOPIFY_SEARCH.rule !== 'all') {
@@ -2917,7 +2973,19 @@ function renderShopifyOrders() {
   } else {
     pagerHtml = `<div style="text-align:center; padding:10px; font-size:11px; color:var(--text-tertiary);">共 ${orders.length} 条</div>`;
   }
-  body.innerHTML = cardsHtml + pagerHtml;
+  // V20260620:全部订单视图 — 顶部加 120天内/历史 切换条
+  let allOrdersBanner = '';
+  if (filter === 'allorders') {
+    const scope = SHOPIFY._allOrdersScope || 'recent120';
+    allOrdersBanner = `
+      <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--bg-elevated); border-radius:8px; margin-bottom:10px; flex-wrap:wrap;">
+        <span style="font-size:12.5px; color:var(--text-secondary);">📂 全部订单(所有状态):</span>
+        <button class="btn small ${scope!=='history'?'primary':''}" onclick="shopifyAllOrdersScope('recent120')">📅 120天内</button>
+        <button class="btn small ${scope==='history'?'primary':''}" onclick="shopifyAllOrdersScope('history')">🗄 历史订单(全部)</button>
+        <span style="font-size:11px; color:var(--text-tertiary);">${scope==='history'?'显示全部历史':'仅显示近120天'} · 含已完成/已取消/已存档</span>
+      </div>`;
+  }
+  body.innerHTML = allOrdersBanner + cardsHtml + pagerHtml;
   // V20260526e: 填充日期筛选下拉
   if (typeof populateDateFilterSelect === 'function') {
     const dateEl = document.getElementById('shopifyDateFilter');

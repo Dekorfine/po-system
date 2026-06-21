@@ -1370,7 +1370,7 @@ async function shopifyStartProcessing(orderId) {
     // 手动同步内存(setOrderStatus 只写库),省去整列表重载
     const o = (SHOPIFY._orders || []).find(x => x.id === orderId);
     if (o) o.local_status = 'processing';
-    SHOPIFY._currentFilter = 'processing';
+    SHOPIFY._currentFilter = 'pending';   // V20260620:待处理tab移除·开始处理后留待审核
     SHOPIFY_PAGE = 1;
     toast('已进入"待处理"');
 
@@ -1382,7 +1382,7 @@ async function shopifyStartProcessing(orderId) {
     setTimeout(() => {
       try {
         if (typeof renderShopifyOrders === 'function') renderShopifyOrders();
-        if (typeof shopifyShowFilter === 'function') shopifyShowFilter('processing');
+        if (typeof shopifyShowFilter === 'function') shopifyShowFilter('pending');
       } catch (e) {}
     }, 0);
   } catch (e) {
@@ -1455,7 +1455,7 @@ async function shopifyReopenOrder(orderId) {
     await SHOPIFY.setOrderStatus(orderId, 'processing');
     toast('已重开');
     await shopifyReloadOrdersAndRender();
-    shopifyShowFilter('processing');
+    shopifyShowFilter('pending');   // V20260620:待处理tab移除
   } catch (e) {
     toast('操作失败：' + (e.message || e), 'err');
   }
