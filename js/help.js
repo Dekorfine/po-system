@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260620-transfix',
+    date: '2026-06-20',
+    type: 'fix',
+    title: '🌐 修复颜色翻译:Light Green等组合词译不准(Light没翻)',
+    notes: [
+      '问题:Light Green译成"Light 绿色"(Light修饰词没翻),因词典只有mint/dark green没有light green',
+      '修复1:词典补light/deep/dark系列组合词(light green=浅绿色/light blue=浅蓝色等·长词优先匹配)',
+      '修复2:词典翻译后加兜底正则(不依赖AI):残留"Light中文色"自动改"浅X",dark→深/deep→深/bright→亮/pale→淡',
+      '双保险:组合词命中直接对,漏了的也被兜底修正',
+    ],
+    files: ['po.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260620-inv-img',
     date: '2026-06-20',
     type: 'fix',

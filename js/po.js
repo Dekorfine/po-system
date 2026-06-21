@@ -773,6 +773,12 @@ function extractVariantInfo(variantTitle, returnParts) {
     'sky blue': '天蓝', 'navy blue': '海军蓝', 'royal blue': '宝蓝色',
     'forest green': '森林绿', 'mint green': '薄荷绿', 'sage green': '鼠尾草绿',
     'olive green': '橄榄绿', 'army green': '军绿', 'dark green': '深绿',
+    'light green': '浅绿色', 'deep green': '深绿色', 'emerald green': '翡翠绿',
+    'light blue': '浅蓝色', 'deep blue': '深蓝色', 'baby blue': '浅蓝色', 'ice blue': '冰蓝色',
+    'light gray': '浅灰色', 'light grey': '浅灰色', 'dark gray': '深灰色', 'dark grey': '深灰色',
+    'light pink': '浅粉色', 'deep pink': '深粉色', 'rose pink': '玫瑰粉',
+    'light brown': '浅棕色', 'dark brown': '深棕色', 'light yellow': '浅黄色',
+    'light purple': '浅紫色', 'deep purple': '深紫色', 'light beige': '浅米色',
     'wine red': '酒红', 'burgundy red': '勃艮第红', 'dark red': '深红',
     // 单词颜色
     black: '黑色', white: '白色', gray: '灰色', grey: '灰色',
@@ -1486,6 +1492,17 @@ async function poTranslateColor(liid) {
     const parts = extractVariantInfo(val, true);
     if (parts.color) val = parts.color;   // 词典命中部分已翻成中文
   }
+  // 1.5) 残留修饰词兜底(不依赖AI):Light/Dark/Deep + 已翻中文颜色 → 浅/深X
+  //   解决 "Light 绿色" → "浅绿色" 这类词典漏掉组合词的情况
+  val = val
+    .replace(/\blight\s+([\u4e00-\u9fa5]+色?)/gi, '浅$1')
+    .replace(/\bdark\s+([\u4e00-\u9fa5]+色?)/gi, '深$1')
+    .replace(/\bdeep\s+([\u4e00-\u9fa5]+色?)/gi, '深$1')
+    .replace(/\bbright\s+([\u4e00-\u9fa5]+色?)/gi, '亮$1')
+    .replace(/\bpale\s+([\u4e00-\u9fa5]+色?)/gi, '淡$1')
+    // 反向:中文颜色 + 残留 light/dark(如 "绿色 Light")
+    .replace(/([\u4e00-\u9fa5]+色?)\s+light\b/gi, '浅$1')
+    .replace(/([\u4e00-\u9fa5]+色?)\s+dark\b/gi, '深$1');
   // 2) 还有残留英文 → 走 AI 补
   if (/[a-zA-Z]{2,}/.test(val)) {
     const btn = input.parentElement.querySelector('button');
