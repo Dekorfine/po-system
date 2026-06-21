@@ -2919,7 +2919,10 @@ const TAB_LAYOUT_DEFAULT = {
   sales:         'top',
   po:            'top',
   orders:        'top',
+  offline:       'top',     // V20260620:线下单(补进布局自定义)
   aftersales:    'top',
+  factory:       'top',     // V20260620:验厂(补进布局自定义)
+  qtyconfirm:    'top',     // V20260620:数量核实(补进布局自定义)
   products:      'top',
   inventory:     'side',
   // 不常用 — 显示在左侧栏(图标 only)
@@ -2938,6 +2941,9 @@ const TAB_META = {
   sales:         { icon: '📥', label: '销售单',     badgeId: 'badgeSales' },
   po:            { icon: '📦', label: '采购单',     badgeId: 'badgePo' },
   orders:        { icon: '📋', label: '催单',       badgeId: 'badgeOrders' },
+  offline:       { icon: '🧾', label: '线下单',     badgeId: 'badgeOffline' },
+  factory:       { icon: '🏭', label: '验厂',       badgeId: 'badgeFactory' },
+  qtyconfirm:    { icon: '🔢', label: '数量核实',   badgeId: 'badgeQtyConfirm' },
   missing:       { icon: '🔍', label: '找灯',       badgeId: 'badgeMissing' },
   purchases:     { icon: '🛒', label: '线上采购',   badgeId: 'badgePurchases' },
   aftersales:    { icon: '🔧', label: '售后',       badgeId: 'badgeAftersales' },

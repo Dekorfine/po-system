@@ -10,6 +10,17 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260620-navlayout',
+    date: '2026-06-20',
+    type: 'fix',
+    title: '🎛 修复:验厂/数量核实/线下单可在「自定义工作台布局」选顶部/侧栏',
+    notes: [
+      '根因:验厂(factory)/数量核实(qtyconfirm)/线下单(offline)是后加的tab,没注册进TAB_META,所以「自定义工作台布局」弹窗里没有它们,选不了侧栏',
+      '修复:把这3个补进TAB_LAYOUT_DEFAULT+TAB_META(默认顶部),弹窗自动列出,可自由切顶部/侧栏',
+    ],
+    files: ['core.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260620-sidebar3',
     date: '2026-06-20',
     type: 'fix',
