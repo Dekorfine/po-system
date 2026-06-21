@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260620-sidebar3',
+    date: '2026-06-20',
+    type: 'fix',
+    title: '🎛 彻底修复侧边栏:把状态栏移到与列表同层,两栏生效',
+    notes: [
+      '真根因:布局wrap比搜索栏/列表深一层(嵌在快筛容器里),CSS兄弟选择器够不到→侧边栏一直不生效',
+      '修复:把布局wrap移出快筛容器,与salesSearchBar/salesOrdersBody同层(都是section-block直接子级)',
+      '现在float侧边栏+兄弟margin-left能正确推开列表,形成左侧栏+右列表两栏',
+      'div全局平衡·21个tab全对齐(无错位)',
+    ],
+    files: ['index.html', 'shopify.js', 'help.js'],
+  },
+  {
     v: '20260620-sidebar2',
     date: '2026-06-20',
     type: 'fix',
