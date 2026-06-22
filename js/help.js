@@ -10,6 +10,29 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260620-offline-arrived',
+    date: '2026-06-20',
+    type: 'feature',
+    title: '🧾 线下单:修复备注保存失败 + 新增「已到货」阶段',
+    notes: [
+      '修复备注保存报错(remark column not found):表是早期建的缺remark列→出SQL补列(offline_followups_add_remark.sql · 须跑)',
+      '新增「已到货」阶段:待下单→生产中→已到货→已发货→已签收(发货前先到货)',
+      '看板4列改5列;已到货是内部阶段不触发客服通知,推进到已发货时才通知客服(逻辑不变)',
+    ],
+    files: ['offline-orders.js', 'index.html', 'help.js', 'sql/offline_followups_add_remark.sql(须跑)'],
+  },
+  {
+    v: '20260620-po-img',
+    date: '2026-06-20',
+    type: 'fix',
+    title: '📦 采购单列表产品图放大(50→80px)+ 压缩加载',
+    notes: [
+      '采购单列表产品图太小:50px→80px(放大约1.6倍·更易看清)',
+      '顺手加Shopify CDN压缩:列表_160x160(快)、灯箱_800x800(点击放大),不下原图',
+    ],
+    files: ['po.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260620-transfix',
     date: '2026-06-20',
     type: 'fix',

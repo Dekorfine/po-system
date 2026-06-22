@@ -9,12 +9,13 @@
 const OFF_STAGES = [
   { k: 'ordered',   label: '待下单', color: 'var(--text-secondary)', bg: 'rgba(136,135,128,0.08)' },
   { k: 'producing', label: '生产中', color: '#854f0b',               bg: 'rgba(239,159,39,0.1)' },
+  { k: 'arrived',   label: '已到货', color: '#1d6fa5',               bg: 'rgba(37,99,235,0.1)' },
   { k: 'shipped',   label: '已发货', color: '#0f6e56',               bg: 'rgba(29,158,117,0.1)' },
   { k: 'received',  label: '已签收', color: '#3b6d11',               bg: 'rgba(99,153,34,0.1)' },
 ];
 const OFF_STAGE_MAP = Object.fromEntries(OFF_STAGES.map(s => [s.k, s]));
-const OFF_NEXT = { ordered: 'producing', producing: 'shipped', shipped: 'received' };
-const OFF_PREV = { producing: 'ordered', shipped: 'producing', received: 'shipped' };   // V20260617:返回上一步
+const OFF_NEXT = { ordered: 'producing', producing: 'arrived', arrived: 'shipped', shipped: 'received' };
+const OFF_PREV = { producing: 'ordered', arrived: 'producing', shipped: 'arrived', received: 'shipped' };   // V20260617:返回上一步
 // V20260617:旧数据兼容 — pending/claimed 一律视为 ordered(待下单)· 接单环节归客服,跟单拿到直接下单
 const OFF_STAGE_NORMALIZE = { pending: 'ordered', claimed: 'ordered' };
 
@@ -156,7 +157,10 @@ function _offRenderGrid(msgs) {
     const next = (st !== 'cancelled' && st !== 'received') ? OFF_NEXT[st] : null;
     const atts = (Array.isArray(m.attachments) ? m.attachments : []);
     const firstUrl = (() => { for (const a of atts) { const u = _offAttUrl(a); if (u && u !== '__BASE64__') return u; } return ''; })();
-    const firstIsPdf = firstUrl && /\.pdf(\?|$)/i.test(firstUrl);
+    const _firstAtt = atts.find(a => { const u = _offAttUrl(a); return u && u !== '__BASE64__'; });
+    const _fMeta = [firstUrl, _firstAtt && _firstAtt.type, _firstAtt && _firstAtt.content_type, _firstAtt && _firstAtt.mimetype, _firstAtt && _firstAtt.name, _firstAtt && _firstAtt.filename].filter(Boolean).join(' ').toLowerCase();
+    const firstIsImage = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic)(\?|$)/.test(_fMeta) || /image\//.test(_fMeta);
+    const firstIsPdf = firstUrl && !firstIsImage;   // 非图片当文件(PDF/未知)处理
     const hasB64 = atts.some(a => _offAttUrl(a) === '__BASE64__');
     const cover = (firstUrl && !firstIsPdf)
       ? `<div style="height:150px; background:var(--bg-elevated); border-radius:8px 8px 0 0; overflow:hidden; display:flex; align-items:center; justify-content:center;"><img src="${escapeHtml(firstUrl)}" loading="lazy" onerror="this.parentElement.innerHTML='<span style=&quot;color:var(--text-tertiary);font-size:28px;&quot;>🧾</span>'" onclick="event.stopPropagation(); openImgLightbox && openImgLightbox('${escapeHtml(firstUrl)}')" style="width:100%; height:100%; object-fit:cover; cursor:zoom-in;"></div>`
@@ -214,17 +218,22 @@ function offlineOpenDetail(msgId) {
     const u = _offAttUrl(a);
     if (u === '__BASE64__') return `<div style="padding:8px; color:var(--danger); font-size:12px;">⚠ 附件是 base64 内嵌 · 应改存 Storage URL</div>`;
     if (!u) return '';
-    // V20260617:区分 PDF/图片 — PDF 用文件卡片+新标签打开(浏览器原生预览),不塞进图片灯箱(否则显示异常/被弹窗盖住)
-    const isPdf = /\.pdf(\?|$)/i.test(u) || /pdf/i.test((a && a.type) || '') || /pdf/i.test((a && a.name) || '');
-    if (isPdf) {
-      const fname = (a && a.name) || 'PDF 文档';
-      return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:8px; padding:10px 14px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:8px; text-decoration:none; color:var(--text-primary); font-size:12.5px;" title="点击在新标签页打开 PDF">
-        <span style="font-size:22px;">📄</span>
-        <span style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(fname)}</span>
-        <span style="color:var(--accent); font-size:11px; margin-left:4px;">↗ 打开</span>
-      </a>`;
+    // V20260617b:正向判断"是否图片"——只有确认是图片才走灯箱,其余(PDF/未知)一律文件卡片+新标签打开
+    //   覆盖各种字段:url后缀 / type / content_type / mimetype / name / filename
+    const meta = [u, a && a.type, a && a.content_type, a && a.mimetype, a && a.mime, a && a.name, a && a.filename]
+      .filter(Boolean).join(' ').toLowerCase();
+    const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic)(\?|$)/.test(meta) || /image\//.test(meta);
+    if (isImage) {
+      return `<img src="${escapeHtml(u)}" loading="lazy" onclick="openImgLightbox && openImgLightbox('${escapeHtml(u)}')" style="max-width:120px; max-height:120px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in;">`;
     }
-    return `<img src="${escapeHtml(u)}" loading="lazy" onclick="openImgLightbox && openImgLightbox('${escapeHtml(u)}')" style="max-width:120px; max-height:120px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in;">`;
+    // 非图片(PDF 或未知格式)→ 文件卡片,新标签打开
+    const fname = (a && (a.name || a.filename)) || (/pdf/.test(meta) ? 'PDF 文档' : '附件文件');
+    const icon = /pdf/.test(meta) ? '📄' : '📎';
+    return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:8px; padding:10px 14px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:8px; text-decoration:none; color:var(--text-primary); font-size:12.5px;" title="点击在新标签页打开">
+      <span style="font-size:22px;">${icon}</span>
+      <span style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(fname)}</span>
+      <span style="color:var(--accent); font-size:11px; margin-left:4px;">↗ 打开</span>
+    </a>`;
   }).join('');
 
   // 跟单操作区:当前阶段 + 推进/返回 + 备注
