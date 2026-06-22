@@ -195,6 +195,8 @@ async function openCustomAfterThresholdInput() {
 function renderAftersales() {
   // V5: 渲染阈值 chip
   renderAfterThresholdChips();
+  // V20260622:状态筛选改变时同步刷新录入人下拉计数(否则切"已解决"后人员·N单口径还是旧的)
+  if (typeof refreshAllSupplierDropdowns === 'function') refreshAllSupplierDropdowns();
   
   // V20260526o: 关键修复 · 先填充日期 select(避免空列表时早 return 跳过)
   if (typeof populateDateFilterSelect === 'function') {

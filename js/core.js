@@ -2814,11 +2814,21 @@ function refreshAllSupplierDropdowns() {
   }
 
   // V20260617:填充售后录入人下拉(从所有售后的录入人去重 · 带数量后缀)
+  // V20260622:计数跟随当前「状态筛选」(未解决/已解决/全部)· 修复下拉显示5单但筛选后只2单的口径不一致
   const creatorEl = document.getElementById('asFilterCreator');
   if (creatorEl && typeof AFTERSALES !== 'undefined') {
     const cur = creatorEl.value;
+    // 取当前状态筛选,让计数与筛选后实际显示一致
+    const _stEl = document.getElementById('asFilterStatus');
+    const fs = _stEl ? _stEl.value : 'active';
+    const _inScope = (a) => {
+      if (fs === 'active' || !fs) return !['resolved','cancelled'].includes(a.status);
+      if (fs === 'completed') return ['resolved','cancelled'].includes(a.status);
+      if (fs === 'all') return true;
+      return a.status === fs;
+    };
     const creatorCount = {};
-    AFTERSALES.forEach(a => { const c = a._agent || ''; if (c) creatorCount[c] = (creatorCount[c]||0) + 1; });
+    AFTERSALES.forEach(a => { if (!_inScope(a)) return; const c = a._agent || ''; if (c) creatorCount[c] = (creatorCount[c]||0) + 1; });
     const creators = Object.keys(creatorCount).sort((x,y) => creatorCount[y]-creatorCount[x] || x.localeCompare(y,'zh-CN'));
     creatorEl.innerHTML = '<option value="">👤 全部录入人</option>' + creators.map(c => `<option value="${escapeHtml(c)}" ${cur===c?'selected':''}>${escapeHtml(c)} · ${creatorCount[c]}单</option>`).join('');
   }
