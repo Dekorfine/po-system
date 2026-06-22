@@ -13,7 +13,7 @@ const QC_STATUS = {
   closed:    { label: '✓ 已完成', color: '#3b6d11', bg: 'rgba(99,153,34,0.08)' },
 };
 
-const QC = { _list: [], _filter: 'todo', _loadedAt: 0, _shop: '', _search: '', _page: 1, _pageSize: 20, _sort: 'updated_desc', _selected: new Set(), _imgCache: {} };
+const QC = { _list: [], _filter: 'todo', _loadedAt: 0, _shop: '', _search: '', _page: 1, _pageSize: 50, _sort: 'updated_desc', _selected: new Set(), _imgCache: {} };
 window.QC = QC;
 
 // V20260620:店铺 handle → 品牌显示名(复用 SHOPIFY.STORES_META · 与销售单chip同一套)
@@ -193,7 +193,8 @@ function renderQtyConfirm() {
         <button class="btn small" onclick="qcJumpPage()">Go</button>
       </span>
       <span style="font-size:11px; color:var(--text-tertiary); margin-left:6px;">共 ${total} 条</span>
-    </div>` : `<div style="text-align:center; font-size:11px; color:var(--text-tertiary); margin-top:12px;">共 ${total} 条</div>`;
+      ${_qcPageSizeSel()}
+    </div>` : `<div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-top:12px;"><span style="font-size:11px; color:var(--text-tertiary);">共 ${total} 条</span>${_qcPageSizeSel()}</div>`;
 
   // 批量工具栏(当前页可标完成的项)
   const closeableOnPage = paged.filter(r => r.status === 'revise' || r.status === 'confirmed');
@@ -338,6 +339,26 @@ function qcJumpPage() {
 }
 window.qcJumpPage = qcJumpPage;
 
+// 每页条数下拉(店小秘式 · 20/50/100/200/500)
+function _qcPageSizeSel() {
+  const opts = [20, 50, 100, 200, 500];
+  return `<span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; color:var(--text-secondary); margin-left:10px;">
+    每页
+    <select onchange="qcSetPageSize(this.value)" style="padding:4px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card); cursor:pointer;">
+      ${opts.map(n => `<option value="${n}" ${QC._pageSize===n?'selected':''}>${n}</option>`).join('')}
+    </select>
+    条
+  </span>`;
+}
+
+function qcSetPageSize(n) {
+  n = parseInt(n, 10) || 50;
+  QC._pageSize = n;
+  QC._page = 1;   // 改每页条数回到第1页
+  renderQtyConfirm();
+}
+window.qcSetPageSize = qcSetPageSize;
+
 function qcOnSort(v) { QC._sort = v; QC._page = 1; renderQtyConfirm(); }
 window.qcOnSort = qcOnSort;
 
@@ -448,7 +469,9 @@ window.qcLoadImg = qcLoadImg;
 let _qcPreloading = false;
 async function _qcPreloadImages(paged) {
   if (_qcPreloading) return;
-  const todo = (paged || []).filter(r => QC._imgCache[String(r.shopify_order_id)] === undefined && r.shop && r.order_name && !/mooielight/i.test(r.shop));
+  // V20260622:每页可能很大(500),只自动预加载前60单图,避免一次几百次API请求超时(其余可点「看图」按需加载)
+  const _cap = (paged || []).slice(0, 60);
+  const todo = _cap.filter(r => QC._imgCache[String(r.shopify_order_id)] === undefined && r.shop && r.order_name && !/mooielight/i.test(r.shop));
   if (todo.length === 0) return;
   _qcPreloading = true;
   try {
