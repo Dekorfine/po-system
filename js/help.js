@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260622-inbox-open',
+    date: '2026-06-22',
+    type: 'feature',
+    title: '📥 收件箱默认只看未完成(已完成自动隐藏·只在全部工单查)',
+    notes: [
+      '收件箱列表过滤掉done/cancelled,只显示待处理/处理中',
+      '收件箱tab计数、统计卡片、头部角标 全部统一只算未完成(口径一致)',
+      '已完成/已取消的工单到「🔍 全部工单」tab里查',
+    ],
+    files: ['cross-dept.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260622-cdm-allquery',
     date: '2026-06-22',
     type: 'feature',

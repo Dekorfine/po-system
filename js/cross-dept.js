@@ -752,7 +752,7 @@ function _cdmCanSee(m) {
 function cdmGetFiltered() {
   const me = _cdmGetCurrentUser();
   let list = CDM_MESSAGES.filter(m => {
-    if (CDM_CURRENT_TAB === 'inbox') return _cdmCanSee(m);
+    if (CDM_CURRENT_TAB === 'inbox') return _cdmCanSee(m) && m.status !== 'done' && m.status !== 'cancelled';   // V20260622:收件箱只看未完成
     if (CDM_CURRENT_TAB === 'all') return _cdmCanSee(m) || (m.from_user_id === me.id && m.from_system === 'po');  // V20260622:全部工单(含已完成历史)
     if (CDM_CURRENT_TAB === 'assigned-to-me') return m.assigned_to_id === me.id;
     if (CDM_CURRENT_TAB === 'overdue') return _cdmCanSee(m) && isOverdue(m);
@@ -804,7 +804,7 @@ function cdmGetFiltered() {
 
 function _cdmComputeStats() {
   const me = _cdmGetCurrentUser();
-  const inbox = CDM_MESSAGES.filter(_cdmCanSee);
+  const inbox = CDM_MESSAGES.filter(m => _cdmCanSee(m) && m.status !== 'done' && m.status !== 'cancelled');   // V20260622:与收件箱一致·只算未完成
   const readBy = m => Array.isArray(m.read_by) ? m.read_by : [];
   const unread = inbox.filter(m => !readBy(m).includes(me.id));
   const urgent = inbox.filter(m => m.priority === 'urgent' && m.status !== 'done' && m.status !== 'cancelled');
@@ -855,7 +855,7 @@ function cdmRender() {
 
 function cdmRenderTabCounts() {
   const me = _cdmGetCurrentUser();
-  const inbox = CDM_MESSAGES.filter(_cdmCanSee);
+  const inbox = CDM_MESSAGES.filter(m => _cdmCanSee(m) && m.status !== 'done' && m.status !== 'cancelled');   // V20260622:收件箱只算未完成
   const assigned = CDM_MESSAGES.filter(m => m.assigned_to_id === me.id);
   const overdue = inbox.filter(m => isOverdue(m));
   const sent = CDM_MESSAGES.filter(m => m.from_user_id === me.id && m.from_system === 'po');
@@ -1951,7 +1951,7 @@ async function cdmChangeStatus(id, newStatus) {
 // ─────────────── Header 未读徽章 ───────────────
 function cdmUpdateHeaderBadge() {
   const me = _cdmGetCurrentUser();
-  const unread = CDM_MESSAGES.filter(m => m.to_system === 'po' && !(Array.isArray(m.read_by) ? m.read_by : []).includes(me.id)).length;
+  const unread = CDM_MESSAGES.filter(m => m.to_system === 'po' && m.status !== 'done' && m.status !== 'cancelled' && !(Array.isArray(m.read_by) ? m.read_by : []).includes(me.id)).length;
   const overdueCount = CDM_MESSAGES.filter(m => _cdmCanSee(m) && isOverdue(m)).length;
   const showCount = unread + overdueCount;
   const headerBadge = document.getElementById('cdmHeaderBadge');
