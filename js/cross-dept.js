@@ -475,6 +475,60 @@ async function cdmInit() {
 }
 function cdmOnTabActivate() { cdmInit(); }
 
+// V20260622:一键把「已付款转单」工单转入线下单模块(标记 related_type='offline_transfer')
+//   只转标题含「已付款转单」且当前不是 offline_transfer 的(精准·不误伤别的工单)· 带预览确认
+async function cdmMigrateOfflineOrders() {
+  if (typeof cdmClient === 'undefined') { toast('未连接跨部门库', 'err'); return; }
+  try {
+    // 扫描:to_system='po' · 标题含"已付款转单" · related_type 还不是 offline_transfer/offline_shipped · 未删除
+    const { data, error } = await cdmClient
+      .from('cross_dept_messages')
+      .select('id, title, related_ref, related_type, status')
+      .eq('to_system', 'po')
+      .ilike('title', '%已付款转单%')
+      .order('created_at_ms', { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+    const candidates = (data || []).filter(m =>
+      m.status !== 'deleted' &&
+      m.related_type !== 'offline_transfer' &&
+      m.related_type !== 'offline_shipped' &&
+      m.related_ref   // 必须有订单号(线下单靠它关联)
+    );
+    if (candidates.length === 0) {
+      toast('没有需要转入的「已付款转单」工单(可能都已转过)', 'info', 3000);
+      return;
+    }
+    // 预览确认(列前几个订单号)
+    const sample = candidates.slice(0, 8).map(m => m.related_ref).join('、');
+    const more = candidates.length > 8 ? ` 等共 ${candidates.length} 单` : '';
+    if (!confirm(`将把这些「已付款转单」工单转入线下单模块:\n\n${sample}${more}\n\n转入后它们会出现在「线下单」看板(待下单列),且会从跨部门收件箱的普通工单中按线下单处理。\n确认转入?`)) return;
+
+    // 批量更新 related_type(分批 · 每批 50 个 id)
+    const nowIso = new Date().toISOString();
+    let ok = 0, fail = 0;
+    for (let i = 0; i < candidates.length; i += 50) {
+      const batch = candidates.slice(i, i + 50).map(m => m.id);
+      const { error: ue } = await cdmClient
+        .from('cross_dept_messages')
+        .update({ related_type: 'offline_transfer', updated_at: nowIso })
+        .in('id', batch);
+      if (ue) { fail += batch.length; console.warn('[CDM] 转线下单批次失败:', ue.message); }
+      else ok += batch.length;
+    }
+    toast(`🧾 已转入线下单:${ok} 单${fail ? ` · 失败 ${fail}` : ''}`, fail ? 'warn' : 'success', 4000);
+    // 刷新线下单 + 跨部门列表
+    if (typeof loadOfflineOrders === 'function') loadOfflineOrders().then(() => {
+      if (typeof updateBadges === 'function') updateBadges();
+    }).catch(() => {});
+    if (typeof cdmLoadMessages === 'function') { cdmLoadMessages().then(() => { if (typeof cdmRender === 'function') cdmRender(); }).catch(() => {}); }
+    else if (typeof cdmInit === 'function') cdmInit();
+  } catch (e) {
+    toast('转入失败:' + (e.message || e), 'err', 4000);
+  }
+}
+window.cdmMigrateOfflineOrders = cdmMigrateOfflineOrders;
+
 // V28k2:手动同步人员到共享目录(给个明确按钮 · 带 toast 反馈)
 async function cdmManualPublishStaff() {
   const me = _cdmGetCurrentUser();
@@ -952,6 +1006,7 @@ function cdmRenderAdminButtons() {
   if (!isSup) { el.innerHTML = ''; return; }
   const mineCount = SHOP_OWNERS.filter(s => s.system === 'po').length;
   el.innerHTML = `
+    <button class="btn" onclick="cdmMigrateOfflineOrders()" title="把所有「已付款转单」工单转入线下单模块(标记为 offline_transfer)" style="background:#0f6e56; color:white; font-weight:600;">🧾 转入线下单</button>
     <button class="btn" onclick="cdmOpenTimeoutSettings()" title="设置每个分类+优先级的超时天数">⏰ 超时阈值</button>
     <button class="btn" onclick="cdmOpenShopOwnersManager()" title="维护本部门员工与网站的负责关系">🌐 店铺负责人 (${mineCount})</button>
     <button class="btn" onclick="cdmManualPublishStaff()" title="把跟单团队发布到共享人员目录 · 让美工/客服发工单时能选到你们">👥 同步人员到共享目录</button>
