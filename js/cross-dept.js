@@ -529,6 +529,27 @@ async function cdmMigrateOfflineOrders() {
 }
 window.cdmMigrateOfflineOrders = cdmMigrateOfflineOrders;
 
+// V20260622:单条快捷标记已处理(status=done · 从收件箱待处理移除)
+async function cdmQuickResolve(msgId) {
+  if (typeof cdmClient === 'undefined') { toast('未连接跨部门库', 'err'); return; }
+  if (!confirm('把这条工单标记为「已处理」?\n标记后从收件箱待处理移除(可在「所有状态→已完成」里找回)。')) return;
+  try {
+    const nowIso = new Date().toISOString();
+    const { error } = await cdmClient.from('cross_dept_messages')
+      .update({ status: 'done', updated_at: nowIso }).eq('id', msgId);
+    if (error) throw error;
+    toast('✅ 已标记已处理', 'success', 2000);
+    // 更新本地缓存 + 刷新
+    if (Array.isArray(CDM_MESSAGES)) {
+      const m = CDM_MESSAGES.find(x => x.id === msgId);
+      if (m) m.status = 'done';
+    }
+    if (typeof cdmRender === 'function') cdmRender();
+    if (typeof cdmUpdateHeaderBadge === 'function') cdmUpdateHeaderBadge();
+  } catch (e) { toast('操作失败:' + (e.message || e), 'err', 4000); }
+}
+window.cdmQuickResolve = cdmQuickResolve;
+
 // V28k2:手动同步人员到共享目录(给个明确按钮 · 带 toast 反馈)
 async function cdmManualPublishStaff() {
   const me = _cdmGetCurrentUser();
@@ -918,6 +939,7 @@ function cdmRenderCard(m) {
         <div style="text-align:right; flex-shrink:0; font-size:11px; color:var(--text-tertiary); min-width:90px;">
           <div style="font-weight:500; color:var(--text-secondary); margin-bottom:2px;">${escapeHtml(m.from_user_name || m.from_user_id || '')}</div>
           <div style="font-family:'JetBrains Mono',monospace;">${timeStr}</div>
+          ${(m.status !== 'done' && m.status !== 'cancelled') ? `<button class="btn small" style="margin-top:6px; font-size:10.5px; padding:2px 8px; background:#15803d; color:white;" onclick="event.stopPropagation(); cdmQuickResolve('${m.id}')" title="标记此工单已处理(从收件箱移除)">✅ 已处理</button>` : ''}
         </div>
       </div>
     </div>
