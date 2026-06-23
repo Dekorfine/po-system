@@ -11,15 +11,16 @@ const OFF_STAGES = [
   { k: 'producing', label: '生产中', color: '#854f0b',               bg: 'rgba(239,159,39,0.1)' },
   { k: 'arrived',   label: '已到货', color: '#1d6fa5',               bg: 'rgba(37,99,235,0.1)' },
   { k: 'shipped',   label: '已发货', color: '#0f6e56',               bg: 'rgba(29,158,117,0.1)' },
-  { k: 'received',  label: '已签收', color: '#3b6d11',               bg: 'rgba(99,153,34,0.1)' },
 ];
 const OFF_STAGE_MAP = Object.fromEntries(OFF_STAGES.map(s => [s.k, s]));
-const OFF_NEXT = { ordered: 'producing', producing: 'arrived', arrived: 'shipped', shipped: 'received' };
-const OFF_PREV = { producing: 'ordered', arrived: 'producing', shipped: 'arrived', received: 'shipped' };   // V20260617:返回上一步
+// V20260622:新流程 — 跟单只推进到「已到货 arrived」;发货由客服在 cs-system 做(填转单号),跟单只读显示
+const OFF_NEXT = { ordered: 'producing', producing: 'arrived' };
+const OFF_PREV = { producing: 'ordered', arrived: 'producing' };
 // V20260617:旧数据兼容 — pending/claimed 一律视为 ordered(待下单)· 接单环节归客服,跟单拿到直接下单
-const OFF_STAGE_NORMALIZE = { pending: 'ordered', claimed: 'ordered' };
+//   received(旧已签收)已取消 → 归并为 shipped(已发货终态)
+const OFF_STAGE_NORMALIZE = { pending: 'ordered', claimed: 'ordered', received: 'shipped' };
 
-const OFFLINE = { _msgs: [], _followups: {}, _view: (typeof localStorage !== 'undefined' && localStorage.getItem('offline_view')) || 'board', _loadedAt: 0 };
+const OFFLINE = { _msgs: [], _followups: {}, _shipped: {}, _view: (typeof localStorage !== 'undefined' && localStorage.getItem('offline_view')) || 'board', _loadedAt: 0 };
 window.OFFLINE = OFFLINE;
 
 function _offIsBase64(v) {
@@ -37,8 +38,10 @@ function _offGetFu(orderNo) { return OFFLINE._followups[orderNo] || { stage: 'or
 function _offStageOf(m) {
   const fu = _offGetFu(m.related_ref);
   if (fu.cancelled) return 'cancelled';
+  // V20260622:客服已发货(offline_shipped 消息) → 覆盖为 shipped 终态(不论 followup 是 arrived 还是别的)
+  if (OFFLINE._shipped && OFFLINE._shipped[m.related_ref]) return 'shipped';
   let st = fu.stage || 'ordered';
-  if (OFF_STAGE_NORMALIZE[st]) st = OFF_STAGE_NORMALIZE[st];   // V20260617:旧 pending/claimed → ordered
+  if (OFF_STAGE_NORMALIZE[st]) st = OFF_STAGE_NORMALIZE[st];   // V20260617:旧 pending/claimed → ordered · received → shipped
   return st;
 }
 
@@ -60,6 +63,22 @@ async function loadOfflineOrders() {
       if (e2) { if (!/offline_followups/.test(e2.message || '')) throw e2; }
       (fus || []).forEach(f => { OFFLINE._followups[f.order_no] = f; });
     }
+
+    // V20260622:读客服发货消息(offline_shipped)→ 反映「已发货」+ 转单号(发货由客服在 cs-system 做)
+    OFFLINE._shipped = {};
+    try {
+      const { data: shippedMsgs } = await cdmClient
+        .from('cross_dept_messages')
+        .select('related_ref, body, created_at_ms')
+        .eq('to_system', 'po').eq('related_type', 'offline_shipped')
+        .order('created_at_ms', { ascending: false }).limit(300);
+      (shippedMsgs || []).forEach(m => {
+        if (!m.related_ref || OFFLINE._shipped[m.related_ref]) return;   // 同一单只取最新一条(已排序 desc)
+        const mt = String(m.body || '').match(/转单号[:：]\s*([^\s·\n]+)/);
+        OFFLINE._shipped[m.related_ref] = { tracking: mt ? mt[1] : '', at: m.created_at_ms };
+      });
+    } catch (se) { console.warn('[offline] 读发货消息失败:', se.message); }
+
     OFFLINE._loadedAt = Date.now();
   } catch (e) { console.warn('[offline] 加载线下单失败:', e.message); }
 }
@@ -131,8 +150,13 @@ function _offBoardCard(m, stage) {
   let actions = '';
   if (next) {
     actions = `<button class="btn small" style="font-size:10.5px; padding:2px 8px; width:100%;" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ 推进到「${nextLabel}」</button>`;
-  } else if (stage === 'received') {
-    actions = `<span style="font-size:10.5px; color:var(--ok);">✅ 已完成</span>`;
+  } else if (stage === 'shipped') {
+    // V20260622:客服已发货 · 只读终态 + 转单号
+    const tk = (OFFLINE._shipped && OFFLINE._shipped[orderNo] && OFFLINE._shipped[orderNo].tracking) || '';
+    actions = `<span style="font-size:10.5px; color:var(--ok);">✅ 已发货${tk ? ` · 转单号 ${escapeHtml(tk)}` : ''}</span>`;
+  } else if (stage === 'arrived') {
+    // V20260622:跟单推进到头 · 等客服发货
+    actions = `<span style="font-size:10.5px; color:var(--text-tertiary);">✅ 已到货 · 等客服发货</span>`;
   }
   return `
   <div onclick="offlineOpenDetail('${m.id}')" style="background:var(--bg-card); border:1px solid var(--border); border-radius:9px; padding:10px; cursor:pointer; ${stage === 'cancelled' ? 'opacity:0.55; min-width:170px;' : ''}">
@@ -179,7 +203,11 @@ function _offRenderGrid(msgs) {
         <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:8px;">${m.related_shop ? escapeHtml(m.related_shop) : ''}${fu.claimed_by_name ? ` · 👤 ${escapeHtml(fu.claimed_by_name)}` : ''}</div>
         ${st === 'cancelled' ? '' : (next
           ? `<button class="btn small" style="width:100%; font-size:11px;" onclick="event.stopPropagation(); offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ 推进到「${OFF_STAGE_MAP[next].label}」</button>`
-          : `<div style="text-align:center; font-size:11px; color:var(--ok);">✅ 已完成</div>`)}
+          : (st === 'shipped'
+              ? `<div style="text-align:center; font-size:11px; color:var(--ok);">✅ 已发货${(OFFLINE._shipped && OFFLINE._shipped[orderNo] && OFFLINE._shipped[orderNo].tracking) ? ` · 转单号 ${escapeHtml(OFFLINE._shipped[orderNo].tracking)}` : ''}</div>`
+              : (st === 'arrived'
+                  ? `<div style="text-align:center; font-size:11px; color:var(--text-tertiary);">✅ 已到货 · 等客服发货</div>`
+                  : '')))}
       </div>
     </div>`;
   }).join('');
@@ -247,7 +275,12 @@ function offlineOpenDetail(msgId) {
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
         ${prev ? `<button class="btn small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${prev}'); offlineOpenDetail('${m.id}'); this.closest('[style*=fixed]').remove();" title="退回到上一步">← 返回「${OFF_STAGE_MAP[prev].label}」</button>` : ''}
-        ${next ? `<button class="btn primary small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}'); offlineOpenDetail('${m.id}'); this.closest('[style*=fixed]').remove();" title="推进到下一步">推进到「${OFF_STAGE_MAP[next].label}」→</button>` : (stage==='received' ? '<span style="font-size:12px; color:var(--ok); align-self:center;">✅ 已完成全流程</span>' : '')}
+        ${next ? `<button class="btn primary small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}'); offlineOpenDetail('${m.id}'); this.closest('[style*=fixed]').remove();" title="推进到下一步">推进到「${OFF_STAGE_MAP[next].label}」→</button>` : (
+          stage === 'shipped'
+            ? `<span style="font-size:12.5px; color:var(--ok); align-self:center;">✅ 客服已发货${(OFFLINE._shipped && OFFLINE._shipped[orderNo] && OFFLINE._shipped[orderNo].tracking) ? ` · 转单号 <b>${escapeHtml(OFFLINE._shipped[orderNo].tracking)}</b>` : ''}</span>`
+            : (stage === 'arrived'
+                ? '<span style="font-size:12px; color:var(--text-tertiary); align-self:center;">✅ 已到货 · 等客服发货(发货由客服操作)</span>'
+                : ''))}
       </div>
       <div>
         <label style="font-size:11.5px; color:var(--text-secondary); display:block; margin-bottom:5px;">📝 跟单备注(什么时候下单、当前情况、跟厂进度等)</label>
@@ -334,24 +367,15 @@ window.offlineClaim = offlineClaim;
 async function offlineAdvance(msgId, orderNo, toStage) {
   if (!orderNo) { alert('该单没有订单号 · 无法推进'); return; }
   const label = OFF_STAGE_MAP[toStage] ? OFF_STAGE_MAP[toStage].label : toStage;
-  if (toStage === 'shipped' && !confirm(`确认 ${orderNo} 已发货?\n会自动通知客服(用于提成统计)· 你不用再去客服系统操作。`)) return;
+  // V20260622:跟单只推进到「已到货 arrived」为止 · 发货由客服在 cs-system 做(填转单号),跟单不再写 po_shipped 回执
+  if (toStage !== 'ordered' && toStage !== 'producing' && toStage !== 'arrived') {
+    if (typeof toast === 'function') toast('发货由客服操作 · 跟单推进到「已到货」即可', 'info', 2500);
+    return;
+  }
   try {
     const nowIso = new Date().toISOString();
-    const patch = { stage: toStage, stage_at: nowIso };
-    await _offWriteFu(orderNo, patch);
-    if (toStage === 'shipped' && typeof cdmClient !== 'undefined') {
-      const me = (typeof CURRENT_AGENT !== 'undefined' ? CURRENT_AGENT : '') || '跟单';
-      const { error } = await cdmClient.from('cross_dept_messages').insert({
-        from_system: 'po',
-        from_user_id: (typeof CURRENT_USER_ID !== 'undefined') ? CURRENT_USER_ID : null,
-        from_user_name: me, to_system: 'cs', related_type: 'po_shipped', related_ref: orderNo,
-        title: `[出货回执] ${orderNo}`, body: `dispatched_at=${nowIso}`,
-        updated_at: nowIso, status: 'pending', created_at_ms: Date.now(),
-      });
-      if (error) console.warn('[offline] 出货回执写入失败(状态已更新 · 可重发):', error.message);
-      cdmClient.from('cross_dept_messages').update({ status: 'resolved', updated_at: nowIso }).eq('id', msgId).then(() => {});
-    }
-    if (typeof toast === 'function') toast(`→ ${orderNo} 已推进到「${label}」${toStage === 'shipped' ? ' · 已通知客服' : ''}`, 'ok', 2500);
+    await _offWriteFu(orderNo, { stage: toStage, stage_at: nowIso });
+    if (typeof toast === 'function') toast(`→ ${orderNo} 已推进到「${label}」`, 'ok', 2200);
     renderOfflineOrders();
     if (typeof updateBadges === 'function') updateBadges();
   } catch (e) { _offErr(e); }

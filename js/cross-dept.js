@@ -513,11 +513,14 @@ function cdmHandleRealtimeChange(payload) {
   if (!row) return;
 
   // V20260613:线下单工单(related_type='offline_transfer')变化 → 刷新线下单 tab + 角标(复用本订阅 · 不新增频道)
-  if (row.to_system === 'po' && row.related_type === 'offline_transfer' && typeof loadOfflineOrders === 'function') {
+  // V20260622:offline_shipped(客服发货)也触发刷新,让"已发货"列即时更新
+  if (row.to_system === 'po' && (row.related_type === 'offline_transfer' || row.related_type === 'offline_shipped') && typeof loadOfflineOrders === 'function') {
     loadOfflineOrders().then(() => {
       if (typeof OFFLINE !== 'undefined' && typeof CURRENT_TAB !== 'undefined' && CURRENT_TAB === 'offline' && typeof renderOfflineOrders === 'function') renderOfflineOrders();
       if (typeof updateBadges === 'function') updateBadges();
-      if (payload.eventType === 'INSERT' && row.from_user_id !== me.id && typeof toast === 'function') toast('🧾 收到一条新的线下转单', 'ok', 3000);
+      if (payload.eventType === 'INSERT' && row.from_user_id !== me.id && typeof toast === 'function') {
+        toast(row.related_type === 'offline_shipped' ? '📦 客服已发货一单' : '🧾 收到一条新的线下转单', 'ok', 3000);
+      }
     }).catch(() => {});
   }
   const isRelevant = (row.to_system === 'po')

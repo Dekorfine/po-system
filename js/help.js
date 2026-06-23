@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260622-offline-shipflow',
+    date: '2026-06-22',
+    type: 'feature',
+    title: '🧾 线下单统一发货流程:跟单推进到「已到货」,发货归客服',
+    notes: [
+      '新流程:客服接单→跟单下单→生产→到货→客服发货(填转单号)→完结',
+      '跟单只推进到「已到货 arrived」;发货改由客服在cs-system做,跟单不再点发货/不再写po_shipped回执',
+      '取消「已签收」(签收用快递单号外部核实);看板4列:待下单/生产中/已到货/已发货(只读)',
+      '读客服offline_shipped消息→自动显示「已发货」+转单号(从body解析「转单号: XXX」)',
+      'realtime也响应offline_shipped,客服一发货跟单"已发货"列即时更新',
+    ],
+    files: ['offline-orders.js', 'cross-dept.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260622-as-countfix',
     date: '2026-06-22',
     type: 'fix',
