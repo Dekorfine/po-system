@@ -502,21 +502,21 @@ async function cdmMigrateOfflineOrders() {
     // 预览确认(列前几个订单号)
     const sample = candidates.slice(0, 8).map(m => m.related_ref).join('、');
     const more = candidates.length > 8 ? ` 等共 ${candidates.length} 单` : '';
-    if (!confirm(`将把这些「已付款转单」工单转入线下单模块:\n\n${sample}${more}\n\n转入后它们会出现在「线下单」看板(待下单列),且会从跨部门收件箱的普通工单中按线下单处理。\n确认转入?`)) return;
+    if (!confirm(`将把这些「已付款转单」工单转入线下单模块:\n\n${sample}${more}\n\n转入后:\n· 出现在「线下单」看板(待下单列)按线下单流程跟进\n· 跨部门工单标记为「已完成」(从收件箱待处理移除)\n\n确认转入?`)) return;
 
-    // 批量更新 related_type(分批 · 每批 50 个 id)
+    // 批量更新(分批 · 每批 50 个 id):标记 offline_transfer + status=done(已移交线下单跟进,跨部门任务完成)
     const nowIso = new Date().toISOString();
     let ok = 0, fail = 0;
     for (let i = 0; i < candidates.length; i += 50) {
       const batch = candidates.slice(i, i + 50).map(m => m.id);
       const { error: ue } = await cdmClient
         .from('cross_dept_messages')
-        .update({ related_type: 'offline_transfer', updated_at: nowIso })
+        .update({ related_type: 'offline_transfer', status: 'done', updated_at: nowIso })
         .in('id', batch);
       if (ue) { fail += batch.length; console.warn('[CDM] 转线下单批次失败:', ue.message); }
       else ok += batch.length;
     }
-    toast(`🧾 已转入线下单:${ok} 单${fail ? ` · 失败 ${fail}` : ''}`, fail ? 'warn' : 'success', 4000);
+    toast(`🧾 已转入线下单并标记已处理:${ok} 单${fail ? ` · 失败 ${fail}` : ''}`, fail ? 'warn' : 'success', 4000);
     // 刷新线下单 + 跨部门列表
     if (typeof loadOfflineOrders === 'function') loadOfflineOrders().then(() => {
       if (typeof updateBadges === 'function') updateBadges();

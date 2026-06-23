@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260622-migrate-done',
+    date: '2026-06-22',
+    type: 'feature',
+    title: '🧾 转入线下单时同步标记跨部门工单「已完成」',
+    notes: [
+      '转入线下单的工单,同时把跨部门status设为done(已移交线下单跟进,跨部门任务完成)',
+      '从跨部门收件箱待处理移除,不再占位',
+      '已确认安全:线下单读取只过滤deleted不过滤done,所以标done后线下单照常显示',
+      '确认弹窗说明会标记已完成',
+    ],
+    files: ['cross-dept.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260622-cdm-migrate',
     date: '2026-06-22',
     type: 'feature',
