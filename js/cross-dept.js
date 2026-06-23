@@ -550,6 +550,50 @@ async function cdmQuickResolve(msgId) {
 }
 window.cdmQuickResolve = cdmQuickResolve;
 
+// V20260622:恢复为待处理(把已完成/已取消的工单退回 pending)
+async function cdmQuickReopen(msgId) {
+  if (typeof cdmClient === 'undefined') { toast('未连接跨部门库', 'err'); return; }
+  try {
+    const nowIso = new Date().toISOString();
+    const { error } = await cdmClient.from('cross_dept_messages')
+      .update({ status: 'pending', updated_at: nowIso }).eq('id', msgId);
+    if (error) throw error;
+    toast('↩ 已恢复为待处理', 'success', 1800);
+    if (Array.isArray(CDM_MESSAGES)) {
+      const m = CDM_MESSAGES.find(x => x.id === msgId);
+      if (m) m.status = 'pending';
+    }
+    if (typeof cdmRender === 'function') cdmRender();
+    if (typeof cdmUpdateHeaderBadge === 'function') cdmUpdateHeaderBadge();
+  } catch (e) { toast('操作失败:' + (e.message || e), 'err', 4000); }
+}
+window.cdmQuickReopen = cdmQuickReopen;
+
+// V20260622:加载全部历史工单(进"全部工单"tab时一次性多拉,供搜索旧工单)
+let CDM_ALL_LOADED = false;
+async function cdmLoadAllHistory() {
+  if (CDM_ALL_LOADED || typeof cdmClient === 'undefined') return;
+  try {
+    const me = _cdmGetCurrentUser();
+    if (typeof toast === 'function') toast('📚 加载全部历史工单...', 'info', 1500);
+    const { data, error } = await cdmClient
+      .from('cross_dept_messages').select(CDM_LIST_COLS)
+      .or(`to_system.eq.po,and(from_system.eq.po,from_user_id.eq.${me.id})`)
+      .order('created_at_ms', { ascending: false }).limit(3000);
+    if (error) throw error;
+    // 合并去重(已有的不覆盖最新内存态)
+    const existing = new Set((CDM_MESSAGES || []).map(m => m.id));
+    (data || []).forEach(m => { if (!existing.has(m.id)) CDM_MESSAGES.push(m); });
+    CDM_ALL_LOADED = true;
+    if (typeof cdmRender === 'function') cdmRender();
+    if (typeof toast === 'function') toast(`📚 已加载 ${(data || []).length} 条历史工单`, 'success', 2000);
+  } catch (e) {
+    console.warn('[CDM] 加载历史失败:', e.message);
+    if (typeof toast === 'function') toast('加载历史工单失败:' + (e.message || e), 'err', 3000);
+  }
+}
+window.cdmLoadAllHistory = cdmLoadAllHistory;
+
 // V28k2:手动同步人员到共享目录(给个明确按钮 · 带 toast 反馈)
 async function cdmManualPublishStaff() {
   const me = _cdmGetCurrentUser();
@@ -709,6 +753,7 @@ function cdmGetFiltered() {
   const me = _cdmGetCurrentUser();
   let list = CDM_MESSAGES.filter(m => {
     if (CDM_CURRENT_TAB === 'inbox') return _cdmCanSee(m);
+    if (CDM_CURRENT_TAB === 'all') return _cdmCanSee(m) || (m.from_user_id === me.id && m.from_system === 'po');  // V20260622:全部工单(含已完成历史)
     if (CDM_CURRENT_TAB === 'assigned-to-me') return m.assigned_to_id === me.id;
     if (CDM_CURRENT_TAB === 'overdue') return _cdmCanSee(m) && isOverdue(m);
     if (CDM_CURRENT_TAB === 'sent') return m.from_user_id === me.id && m.from_system === 'po';
@@ -821,6 +866,8 @@ function cdmRenderTabCounts() {
   set('cdmTabAssigned', `📌 分派给我 <span class="cdm-count">${assigned.length}</span>`);
   set('cdmTabOverdue', `⏰ 超时 ${overdue.length > 0 ? `<span class="cdm-overdue-dot">${overdue.length}</span>` : `<span class="cdm-count">${overdue.length}</span>`}`);
   set('cdmTabSent', `📤 发件箱 <span class="cdm-count">${sent.length}</span>`);
+  const allCount = CDM_MESSAGES.filter(m => _cdmCanSee(m) || (m.from_user_id === me.id && m.from_system === 'po')).length;
+  set('cdmTabAll', `🔍 全部工单 <span class="cdm-count">${allCount}</span>`);
 }
 
 function cdmRenderUrgentBanner() {
@@ -939,7 +986,9 @@ function cdmRenderCard(m) {
         <div style="text-align:right; flex-shrink:0; font-size:11px; color:var(--text-tertiary); min-width:90px;">
           <div style="font-weight:500; color:var(--text-secondary); margin-bottom:2px;">${escapeHtml(m.from_user_name || m.from_user_id || '')}</div>
           <div style="font-family:'JetBrains Mono',monospace;">${timeStr}</div>
-          ${(m.status !== 'done' && m.status !== 'cancelled') ? `<button class="btn small" style="margin-top:6px; font-size:10.5px; padding:2px 8px; background:#15803d; color:white;" onclick="event.stopPropagation(); cdmQuickResolve('${m.id}')" title="标记此工单已处理(从收件箱移除)">✅ 已处理</button>` : ''}
+          ${(m.status === 'done' || m.status === 'cancelled')
+            ? `<button class="btn small" style="margin-top:6px; font-size:10.5px; padding:2px 8px;" onclick="event.stopPropagation(); cdmQuickReopen('${m.id}')" title="恢复为待处理">↩ 恢复</button>`
+            : `<button class="btn small" style="margin-top:6px; font-size:10.5px; padding:2px 8px; background:#15803d; color:white;" onclick="event.stopPropagation(); cdmQuickResolve('${m.id}')" title="标记此工单已处理(从收件箱移除)">✅ 已处理</button>`}
         </div>
       </div>
     </div>
@@ -977,8 +1026,10 @@ function cdmSetPageSize(n) { CDM_PAGE_SIZE = n; CDM_PAGE = 1; cdmRender(); }
 function cdmSwitchTab(tab) {
   CDM_CURRENT_TAB = tab; CDM_PAGE = 1;
   document.querySelectorAll('.cdm-subtab').forEach(b => b.classList.remove('active'));
-  const idMap = { 'inbox': 'cdmTabInbox', 'assigned-to-me': 'cdmTabAssigned', 'overdue': 'cdmTabOverdue', 'sent': 'cdmTabSent' };
+  const idMap = { 'inbox': 'cdmTabInbox', 'assigned-to-me': 'cdmTabAssigned', 'overdue': 'cdmTabOverdue', 'sent': 'cdmTabSent', 'all': 'cdmTabAll' };
   document.getElementById(idMap[tab])?.classList.add('active');
+  // V20260622:进"全部工单"且已加载的不够全 → 后台拉更多历史(深度搜索旧工单)
+  if (tab === 'all' && !CDM_ALL_LOADED) { cdmLoadAllHistory(); }
   cdmRender();
 }
 function cdmSetFilter(key, val) { CDM_FILTERS[key] = val; CDM_PAGE = 1; cdmRender(); }
