@@ -50,18 +50,33 @@ function _offStageOf(m) {
 }
 
 async function loadOfflineOrders() {
-  // V20260623:线下单消息已迁到【跟单库 pyfmu = sb】(客服之前误写销售库 xyhbw,现已改正)
-  //   只有线下单(转单/发货)在 pyfmu;其他跨部门工单仍在 xyhbw(cdmClient),互不影响
-  const _msgClient = (typeof sb !== 'undefined') ? sb : cdmClient;
-  if (typeof _msgClient === 'undefined') return;
+  // V20260623b:双库兼容 — 线下单消息可能在 pyfmu(sb·新)或 xyhbw(cdmClient·旧),两边都查合并去重
+  //   避免迁库过渡期一边没数据就全空。其他跨部门工单仍各自在原库。
+  const clients = [];
+  if (typeof sb !== 'undefined') clients.push(sb);
+  if (typeof cdmClient !== 'undefined') clients.push(cdmClient);
+  if (clients.length === 0) return;
+  const _qOffline = async (relType, cols) => {
+    const results = [];
+    for (const cli of clients) {
+      try {
+        const { data } = await cli.from('cross_dept_messages').select(cols)
+          .eq('to_system', 'po').eq('related_type', relType)
+          .order('created_at_ms', { ascending: false }).limit(300);
+        if (data) results.push(...data);
+      } catch (e) { /* 某个库没这张表/无权限 → 跳过,用另一个库 */ }
+    }
+    return results;
+  };
   try {
-    const { data: msgs, error: e1 } = await _msgClient
-      .from('cross_dept_messages')
-      .select('id,from_system,from_user_name,to_system,to_user_id,to_user_name,related_ref,related_shop,priority,title,body,attachments,related_type,status,created_at_ms,updated_at')
-      .eq('to_system', 'po').eq('related_type', 'offline_transfer')
-      .order('created_at_ms', { ascending: false }).limit(300);
-    if (e1) throw e1;
-    OFFLINE._msgs = (msgs || []).filter(m => m.status !== 'deleted');
+    // 转单(两库合并 · 按 related_ref 去重,留最新)
+    const rawMsgs = await _qOffline('offline_transfer', 'id,from_system,from_user_name,to_system,to_user_id,to_user_name,related_ref,related_shop,priority,title,body,attachments,related_type,status,created_at_ms,updated_at');
+    const seen = {};
+    rawMsgs.filter(m => m.status !== 'deleted').forEach(m => {
+      const k = _offNormNo(m.related_ref) || m.id;
+      if (!seen[k] || (m.created_at_ms || 0) > (seen[k].created_at_ms || 0)) seen[k] = m;
+    });
+    OFFLINE._msgs = Object.values(seen).sort((a, b) => (b.created_at_ms || 0) - (a.created_at_ms || 0));
 
     const orderNos = OFFLINE._msgs.map(m => m.related_ref).filter(Boolean);
     OFFLINE._followups = {};
@@ -76,11 +91,7 @@ async function loadOfflineOrders() {
     OFFLINE._shippedUnmatched = [];
     try {
       const knownOrderNos = new Set(orderNos.map(_offNormNo));   // 规范化后匹配
-      const { data: shippedMsgs } = await _msgClient
-        .from('cross_dept_messages')
-        .select('related_ref, related_shop, body, created_at_ms')
-        .eq('to_system', 'po').eq('related_type', 'offline_shipped')
-        .order('created_at_ms', { ascending: false }).limit(300);
+      const shippedMsgs = await _qOffline('offline_shipped', 'related_ref, related_shop, body, created_at_ms');
       (shippedMsgs || []).forEach(m => {
         if (!m.related_ref) return;
         const key = _offNormNo(m.related_ref);   // 规范化订单号(剥#)做匹配key
@@ -344,24 +355,31 @@ window.offlineSetView = offlineSetView;
 
 // V20260623:发货同步诊断 — 查 MESSAGEBUS 库实际数据,排查客服已发货为何没同步到跟单
 async function offlineDiagShipped() {
-  const _msgClient = (typeof sb !== 'undefined') ? sb : cdmClient;
-  if (typeof _msgClient === 'undefined') { toast('未连接跟单库', 'err'); return; }
-  toast('🔍 正在查跟单库 cross_dept_messages...', 'info', 1500);
+  const clients = [];
+  if (typeof sb !== 'undefined') clients.push({ name: 'pyfmu(跟单库)', cli: sb });
+  if (typeof cdmClient !== 'undefined') clients.push({ name: 'xyhbw(销售库)', cli: cdmClient });
+  if (clients.length === 0) { toast('未连接任何库', 'err'); return; }
+  toast('🔍 正在查两个库的 cross_dept_messages...', 'info', 1500);
   try {
-    // 1) 查所有 offline_shipped(客服发货消息)
-    const { data: shipped, error: e1 } = await _msgClient
-      .from('cross_dept_messages')
-      .select('related_ref, related_shop, body, status, created_at_ms')
-      .eq('to_system', 'po').eq('related_type', 'offline_shipped')
-      .order('created_at_ms', { ascending: false }).limit(200);
-    if (e1) throw e1;
-    // 2) 查所有 offline_transfer(转单建单消息)的订单号
-    const { data: transfers, error: e2 } = await _msgClient
-      .from('cross_dept_messages')
-      .select('related_ref, status')
-      .eq('to_system', 'po').eq('related_type', 'offline_transfer')
-      .limit(500);
-    if (e2) throw e2;
+    // 双库查询,带库来源标注
+    const _q = async (relType, cols) => {
+      const out = [];
+      for (const { name, cli } of clients) {
+        try {
+          const { data } = await cli.from('cross_dept_messages').select(cols)
+            .eq('to_system', 'po').eq('related_type', relType)
+            .order('created_at_ms', { ascending: false }).limit(200);
+          (data || []).forEach(r => out.push({ ...r, _db: name }));
+        } catch (e) { /* 该库无表/无权限 */ }
+      }
+      return out;
+    };
+    const shipped = await _q('offline_shipped', 'related_ref, related_shop, body, status, created_at_ms');
+    const transfers = await _q('offline_transfer', 'related_ref, status');
+
+    // 统计各库分布
+    const dbStat = {};
+    [...shipped, ...transfers].forEach(r => { dbStat[r._db] = (dbStat[r._db] || 0) + 1; });
 
     const transferNos = new Set((transfers || []).map(t => _offNormNo(t.related_ref)).filter(Boolean));
     const shippedList = shipped || [];
@@ -383,7 +401,8 @@ async function offlineDiagShipped() {
 
     const html = `
       <div style="margin-bottom:14px; padding:10px 12px; background:var(--bg-elevated); border-radius:8px; font-size:13px; line-height:1.7;">
-        MESSAGEBUS 库实际数据:<br>
+        两库实际数据(pyfmu跟单库 + xyhbw销售库):<br>
+        · 数据分布:${Object.entries(dbStat).map(([k, v]) => `${k}=${v}`).join(' · ') || '两库都没数据 ⚠️'}<br>
         · 客服发货消息(offline_shipped):<b>${shippedList.length}</b> 条<br>
         · 转单建单消息(offline_transfer):<b>${transferNos.size}</b> 个订单号<br>
         · 发货消息能匹配到转单的:<b style="color:var(--ok);">${matched.length}</b> 条 ✅<br>

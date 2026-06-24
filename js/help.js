@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260623-offline-dual',
+    date: '2026-06-23',
+    type: 'fix',
+    title: '🔧 线下单双库兼容读取(pyfmu+xyhbw都查·避免迁库过渡期全空)',
+    notes: [
+      '问题:上一版直接切到pyfmu,但pyfmu还没数据→线下单全空了',
+      '修复:改双库合并读取 — pyfmu(新)和xyhbw(旧)都查offline_transfer/shipped,按订单号去重',
+      '哪个库有数据都能显示,迁库过渡期不会全空',
+      '发货诊断也改双库,并显示数据在哪个库(pyfmu=X · xyhbw=Y),方便确认迁移状态',
+    ],
+    files: ['offline-orders.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260623-offline-pyfmu',
     date: '2026-06-23',
     type: 'fix',
