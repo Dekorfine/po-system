@@ -508,6 +508,8 @@ function invOpenEdit(productId = null) {
       stock_qty: Number(p.stock_qty || 0),
       stock_qty_domestic: Number(p.stock_qty_domestic || 0),
       stock_qty_overseas: Number(p.stock_qty_overseas || 0),
+      stock_qty_in_transit: Number(p.stock_qty_in_transit || 0),
+      overseas_lead_days: (p.overseas_lead_days != null ? Number(p.overseas_lead_days) : null),
       product_url: p.product_url || '',
       stock_alert_threshold: Number(p.stock_alert_threshold || 5),
       platform_skus: Array.isArray(p.platform_skus) ? JSON.parse(JSON.stringify(p.platform_skus)) : [],
@@ -516,7 +518,7 @@ function invOpenEdit(productId = null) {
   } else {
     INV_EDIT = {
       id: null, sku: '', title: '', spec: '', image_url: '',
-      stock_qty: 0, stock_qty_domestic: 0, stock_qty_overseas: 0, product_url: '', stock_alert_threshold: 5, platform_skus: [],
+      stock_qty: 0, stock_qty_domestic: 0, stock_qty_overseas: 0, stock_qty_in_transit: 0, overseas_lead_days: null, product_url: '', stock_alert_threshold: 5, platform_skus: [],
       isNew: true,
     };
   }
@@ -660,11 +662,25 @@ function _invRenderEdit() {
     <!-- V20260601:SKU 全明细挂载点(拉 Shopify 后自动填充) -->
     <div id="invVariantDetailBox" style="display:none;"></div>
     
-    <div style="margin-bottom:14px;">
-      <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">低库存预警线</label>
-      <input type="number" min="0" value="${s.stock_alert_threshold}" oninput="INV_EDIT.stock_alert_threshold=parseInt(this.value)||0"
-             placeholder="低于此值告警"
-             style="width:120px; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center;">
+    <div style="margin-bottom:14px; display:flex; gap:14px; flex-wrap:wrap;">
+      <div>
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">低库存预警线</label>
+        <input type="number" min="0" value="${s.stock_alert_threshold}" oninput="INV_EDIT.stock_alert_threshold=parseInt(this.value)||0"
+               placeholder="低于此值告警"
+               style="width:120px; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center;">
+      </div>
+      <div>
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">🚚 在途数量</label>
+        <input type="number" min="0" value="${s.stock_qty_in_transit||0}" oninput="INV_EDIT.stock_qty_in_transit=parseInt(this.value)||0"
+               placeholder="已下单未到仓"
+               style="width:120px; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center;">
+      </div>
+      <div>
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">✈️ 海外仓前置期(天)</label>
+        <input type="number" min="0" value="${s.overseas_lead_days != null ? s.overseas_lead_days : ''}" oninput="INV_EDIT.overseas_lead_days=this.value===''?null:(parseInt(this.value)||0)"
+               placeholder="空=默认30天"
+               style="width:130px; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center;">
+      </div>
     </div>
     
     <!-- 绑定平台 SKU -->
@@ -742,6 +758,8 @@ async function invSaveEdit() {
           stock_qty: s.stock_qty,
           stock_qty_domestic: Number(s.stock_qty_domestic || 0),
           stock_qty_overseas: Number(s.stock_qty_overseas || 0),
+          stock_qty_in_transit: Number(s.stock_qty_in_transit || 0),
+          overseas_lead_days: s.overseas_lead_days,
           stock_alert_threshold: s.stock_alert_threshold,
           platform_skus: cleanPlatSkus,
           image_url: s.image_url || null,
@@ -761,6 +779,8 @@ async function invSaveEdit() {
           stock_qty: s.stock_qty,
           stock_qty_domestic: Number(s.stock_qty_domestic || 0),
           stock_qty_overseas: Number(s.stock_qty_overseas || 0),
+          stock_qty_in_transit: Number(s.stock_qty_in_transit || 0),
+          overseas_lead_days: s.overseas_lead_days,
           stock_alert_threshold: s.stock_alert_threshold,
           platform_skus: cleanPlatSkus,
           stock_in_at: new Date().toISOString(),   // V20260607二期:入库时间(库龄起算)
@@ -777,6 +797,8 @@ async function invSaveEdit() {
         stock_qty: s.stock_qty,
         stock_qty_domestic: Number(s.stock_qty_domestic || 0),
         stock_qty_overseas: Number(s.stock_qty_overseas || 0),
+        stock_qty_in_transit: Number(s.stock_qty_in_transit || 0),
+        overseas_lead_days: s.overseas_lead_days,
         stock_alert_threshold: s.stock_alert_threshold,
         platform_skus: cleanPlatSkus,
       }).eq('id', s.id);

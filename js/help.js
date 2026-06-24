@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260623-transit',
+    date: '2026-06-23',
+    type: 'feature',
+    title: '🚚 库存加在途数量 + 海外仓前置期(供运营备货分析二期)',
+    notes: [
+      'products加两列:stock_qty_in_transit(在途·算实际可用=现货+在途)·overseas_lead_days(海外仓补货前置期·算补货点)',
+      '库存编辑表单加两输入:🚚在途数量·✈️海外仓前置期(空=默认30天)',
+      '须在pyfmu库跑:products加在途和前置期字段.sql',
+    ],
+    files: ['inventory.js', 'index.html', 'help.js', 'sql/products加在途和前置期字段.sql(须跑)'],
+  },
+  {
     v: '20260623-detail',
     date: '2026-06-23',
     type: 'fix',
