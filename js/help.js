@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260623-warehouse',
+    date: '2026-06-23',
+    type: 'feature',
+    title: '🏠✈️ 库存加国内仓/海外仓双仓 + 海外仓数据导入 + 从链接抓图',
+    notes: [
+      '加两个库存字段:国内仓(stock_qty_domestic)+海外仓(stock_qty_overseas)·总库存=两者之和',
+      '卡片显示:🏠国内X · ✈️海外Y;编辑表单两个输入框,合计实时计算',
+      '导入10条海外仓数据(SQL·按SKU:已有更新海外仓数量·没有新建)',
+      '编辑表单加「🔗从链接抓图」按钮:从产品链接(Shopify页.json)抓主图',
+      '须在pyfmu库跑:海外仓库存导入.sql(加字段+导入数据)',
+    ],
+    files: ['inventory.js', 'index.html', 'help.js', 'sql/海外仓库存导入.sql(须跑)'],
+  },
+  {
     v: '20260623-offline-dual',
     date: '2026-06-23',
     type: 'fix',

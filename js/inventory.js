@@ -17,6 +17,45 @@ const INVENTORY = {
   _ageFilter: 0,      // V20260607二期:库龄筛 0=不限 / 30 / 60 / 90 / 180 / 365
 };
 
+// V20260623:库存编辑时实时更新「合计」= 国内仓 + 海外仓
+function _invSyncTotal() {
+  if (typeof INV_EDIT === 'undefined' || !INV_EDIT) return;
+  const total = Number(INV_EDIT.stock_qty_domestic || 0) + Number(INV_EDIT.stock_qty_overseas || 0);
+  INV_EDIT.stock_qty = total;
+  const el = document.getElementById('invTotalStock');
+  if (el) el.textContent = total;
+}
+window._invSyncTotal = _invSyncTotal;
+
+// V20260623:从产品链接(Shopify 页)抓主图 — 加 .json 后缀拿 product.images[0].src
+async function invFetchImgFromUrl(url) {
+  if (!url) { toast('没有产品链接', 'warn'); return; }
+  const statusEl = document.getElementById('invImgUploadStatus');
+  if (statusEl) statusEl.textContent = '🔗 正在从链接抓图...';
+  try {
+    const base = String(url).split('?')[0].replace(/\/$/, '');
+    const jsonUrl = base + '.json';
+    const resp = await fetch(jsonUrl);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    const imgs = data?.product?.images || [];
+    const src = (imgs[0] && imgs[0].src) || data?.product?.image?.src || '';
+    if (!src) throw new Error('页面没有找到产品图');
+    if (typeof INV_EDIT !== 'undefined' && INV_EDIT) {
+      INV_EDIT.image_url = src;
+      const inp = document.getElementById('invEditImgUrl');
+      if (inp) inp.value = src;
+      if (typeof invRefreshImgPreview === 'function') invRefreshImgPreview();
+    }
+    if (statusEl) statusEl.textContent = '✅ 抓图成功';
+    toast('✅ 已从链接抓到主图', 'success', 2000);
+  } catch (e) {
+    if (statusEl) statusEl.textContent = '⚠️ 抓图失败:' + (e.message || e) + '(可能跨域限制,手动粘贴图片URL)';
+    toast('抓图失败:' + (e.message || e), 'err', 4000);
+  }
+}
+window.invFetchImgFromUrl = invFetchImgFromUrl;
+
 // V20260608:判断 image_url 是不是真图片(防止"产品网页地址"被当图渲染成白块)
 function _invIsImageUrl(u) {
   if (!u || typeof u !== 'string') return false;
@@ -334,6 +373,7 @@ function _invCardHtml(p) {
           </div>
           <span style="font-size:13px; font-weight:700; color:${statusColor}; font-family:monospace;">${stock}</span>
           <span style="font-size:11px; color:var(--text-tertiary);">预警线 ${threshold}</span>
+          ${(Number(p.stock_qty_domestic||0) > 0 || Number(p.stock_qty_overseas||0) > 0) ? `<span style="font-size:10.5px; color:var(--text-secondary); margin-left:4px;">🏠 国内 ${Number(p.stock_qty_domestic||0)} · ✈️ 海外 ${Number(p.stock_qty_overseas||0)}</span>` : ''}
         </div>
         
         <!-- 绑定的平台 SKU -->
@@ -465,6 +505,9 @@ function invOpenEdit(productId = null) {
       spec: p.spec || '',
       image_url: p.image_url || '',
       stock_qty: Number(p.stock_qty || 0),
+      stock_qty_domestic: Number(p.stock_qty_domestic || 0),
+      stock_qty_overseas: Number(p.stock_qty_overseas || 0),
+      product_url: p.product_url || '',
       stock_alert_threshold: Number(p.stock_alert_threshold || 5),
       platform_skus: Array.isArray(p.platform_skus) ? JSON.parse(JSON.stringify(p.platform_skus)) : [],
       isNew: false,
@@ -472,7 +515,7 @@ function invOpenEdit(productId = null) {
   } else {
     INV_EDIT = {
       id: null, sku: '', title: '', spec: '', image_url: '',
-      stock_qty: 0, stock_alert_threshold: 5, platform_skus: [],
+      stock_qty: 0, stock_qty_domestic: 0, stock_qty_overseas: 0, product_url: '', stock_alert_threshold: 5, platform_skus: [],
       isNew: true,
     };
   }
@@ -538,9 +581,25 @@ function _invRenderEdit() {
         ` : ''}
       </div>
       <div>
-        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">当前库存 <span style="color:var(--danger);">*</span></label>
-        <input type="number" min="0" value="${s.stock_qty}" oninput="INV_EDIT.stock_qty=parseInt(this.value)||0"
-               style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center; font-weight:700;">
+        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">库存(国内仓 + 海外仓)<span style="color:var(--danger);">*</span></label>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <div style="flex:1;">
+            <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:2px;">🏠 国内仓</div>
+            <input type="number" min="0" value="${s.stock_qty_domestic||0}" oninput="INV_EDIT.stock_qty_domestic=parseInt(this.value)||0; _invSyncTotal(this);"
+                   style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center; font-weight:700;">
+          </div>
+          <span style="font-size:16px; color:var(--text-tertiary); margin-top:14px;">+</span>
+          <div style="flex:1;">
+            <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:2px;">✈️ 海外仓</div>
+            <input type="number" min="0" value="${s.stock_qty_overseas||0}" oninput="INV_EDIT.stock_qty_overseas=parseInt(this.value)||0; _invSyncTotal(this);"
+                   style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center; font-weight:700;">
+          </div>
+          <span style="font-size:16px; color:var(--text-tertiary); margin-top:14px;">=</span>
+          <div style="flex:0 0 70px;">
+            <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:2px;">合计</div>
+            <div id="invTotalStock" style="padding:8px 6px; font-size:14px; font-weight:700; text-align:center; color:var(--accent); background:var(--bg-elevated); border-radius:6px;">${(s.stock_qty_domestic||0)+(s.stock_qty_overseas||0)}</div>
+          </div>
+        </div>
       </div>
     </div>
     
@@ -590,6 +649,7 @@ function _invRenderEdit() {
               <input type="file" accept="image/*" style="display:none;" onchange="invUploadImgFile(this.files[0])">
             </label>
             ${s.image_url ? `<button onclick="INV_EDIT.image_url='';invRefreshImgPreview();document.getElementById('invEditImgUrl').value='';" style="padding:5px 10px; background:#fff; border:1px solid var(--border); color:var(--danger); border-radius:5px; cursor:pointer; font-size:11.5px;">✕ 清空</button>` : ''}
+            ${s.product_url ? `<button onclick="invFetchImgFromUrl('${escapeHtml(s.product_url)}')" style="padding:5px 10px; background:var(--accent-soft); border:1px solid var(--accent); color:var(--accent); border-radius:5px; cursor:pointer; font-size:11.5px;" title="从产品链接(Shopify页)抓主图">🔗 从链接抓图</button>` : ''}
           </div>
           <div id="invImgUploadStatus" style="font-size:10.5px; color:var(--text-tertiary); margin-top:4px;"></div>
         </div>
@@ -664,7 +724,9 @@ async function invSaveEdit() {
   if (!s) return;
   if (!(s.sku || '').trim()) { toast('内部 SKU 必填', 'warn'); return; }
   if (!(s.title || '').trim()) { toast('产品名称必填', 'warn'); return; }
-  
+  // V20260623:总库存 = 国内仓 + 海外仓
+  s.stock_qty = Number(s.stock_qty_domestic || 0) + Number(s.stock_qty_overseas || 0);
+
   // 清理空的平台 SKU 行
   const cleanPlatSkus = s.platform_skus.filter(ps => (ps.sku || '').trim());
   
@@ -677,6 +739,8 @@ async function invSaveEdit() {
         const { error } = await sb.from('products').update({
           is_inventory_item: true,
           stock_qty: s.stock_qty,
+          stock_qty_domestic: Number(s.stock_qty_domestic || 0),
+          stock_qty_overseas: Number(s.stock_qty_overseas || 0),
           stock_alert_threshold: s.stock_alert_threshold,
           platform_skus: cleanPlatSkus,
           image_url: s.image_url || null,
@@ -694,6 +758,8 @@ async function invSaveEdit() {
           image_url: s.image_url || null,
           is_inventory_item: true,
           stock_qty: s.stock_qty,
+          stock_qty_domestic: Number(s.stock_qty_domestic || 0),
+          stock_qty_overseas: Number(s.stock_qty_overseas || 0),
           stock_alert_threshold: s.stock_alert_threshold,
           platform_skus: cleanPlatSkus,
           stock_in_at: new Date().toISOString(),   // V20260607二期:入库时间(库龄起算)
@@ -708,6 +774,8 @@ async function invSaveEdit() {
         spec: (s.spec || '').trim() || null,   // V20260611:规格(尺寸/颜色)
         image_url: s.image_url || null,
         stock_qty: s.stock_qty,
+        stock_qty_domestic: Number(s.stock_qty_domestic || 0),
+        stock_qty_overseas: Number(s.stock_qty_overseas || 0),
         stock_alert_threshold: s.stock_alert_threshold,
         platform_skus: cleanPlatSkus,
       }).eq('id', s.id);
