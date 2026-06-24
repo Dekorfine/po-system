@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260623-full-info',
+    date: '2026-06-23',
+    type: 'feature',
+    title: '📋 库存接全部产品信息(价格/色温/包装/重量/标签+图片)+ AI建议真调API',
+    notes: [
+      'products加11个字段:price_usd/color_temp/variant_color/pkg_single/weight_single/pkg_carton/weight_carton/qty_per_carton/carton_count/label_large/label_small',
+      '库存编辑表单加「产品详细信息」折叠区(价格/色温/包装/重量/标签)·卡片显示价格',
+      'AI备货建议改真调api.anthropic.com(复用po.js模式·喂销量+库存+前置期让AI综合季节性判断)·失败退回规则分析',
+      '导入工具import-inventory.html:10条数据+10张图·浏览器打开传图到Storage+写全字段进products',
+    ],
+    files: ['inventory.js', 'index.html', 'help.js', 'sql/products加完整产品字段.sql(须跑)', 'import-inventory.html(浏览器打开导入)'],
+  },
+  {
     v: '20260623-inv-restock',
     date: '2026-06-23',
     type: 'feature',

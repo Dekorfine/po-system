@@ -394,7 +394,7 @@ function _invCardHtml(p) {
           ${_invIsStale(p) ? `<span style="background:#dc2626; color:#fff; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700;" title="库龄超过压货阈值">🐢 压货 ${_invAgeDays(p)}天</span>` : (_invAgeDays(p) != null ? `<span style="color:var(--text-tertiary); font-size:10.5px;">库龄 ${_invAgeDays(p)}天</span>` : '')}
           <span style="font-size:14px; font-weight:600; color:var(--text-primary);">${escapeHtml(p.name_cn || '(无名)')}</span>
         </div>
-        <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:6px;"><span style="font-family:monospace;">内部 SKU: ${escapeHtml(p.sku || '')}</span>${p.spec ? ` · <span style="color:var(--text-secondary);">📐 ${escapeHtml(p.spec)}</span>` : ''}${p.default_supplier ? ` · <span style="color:var(--text-secondary);">🏭 ${escapeHtml(p.default_supplier)}</span>` : ''}</div>
+        <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:6px;"><span style="font-family:monospace;">内部 SKU: ${escapeHtml(p.sku || '')}</span>${p.spec ? ` · <span style="color:var(--text-secondary);">📐 ${escapeHtml(p.spec)}</span>` : ''}${p.price_usd ? ` · <span style="color:#0f6e56; font-weight:600;">$${p.price_usd}</span>` : ''}${p.default_supplier ? ` · <span style="color:var(--text-secondary);">🏭 ${escapeHtml(p.default_supplier)}</span>` : ''}</div>
         
         <!-- 库存条 -->
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
@@ -521,46 +521,84 @@ function _invRenderRestock() {
 async function invAiRestockAdvice(sku) {
   const p = (INVENTORY._list || []).find(x => x.sku === sku);
   if (!p) return;
-  if (typeof toast === 'function') toast('🤖 正在生成备货建议...', 'info', 1500);
-  // 重新算该 SKU 的数据
+  // 算该 SKU 的销量/库存数据
   const now = new Date(); const start = new Date(now.getTime() - 30 * 86400000);
   const agg = (typeof _anAggBySku === 'function') ? _anAggBySku(start, now) : [];
   const a = agg.find(x => x.sku === sku) || { qty: 0 };
-  const monthly = (typeof _anMonthlyBySku === 'function') ? _anMonthlyBySku(6) : { list: [] };
+  const monthly = (typeof _anMonthlyBySku === 'function') ? _anMonthlyBySku(6) : { list: [], monthKeys: [] };
   const m = monthly.list.find(x => x.sku === sku) || { cv: 99, series: [], trendPct: 0 };
   const stockTotal = Number(p.stock_qty || 0), inTransit = Number(p.stock_qty_in_transit || 0);
+  const stockDom = Number(p.stock_qty_domestic || 0), stockOvs = Number(p.stock_qty_overseas || 0);
   const leadDays = (p.overseas_lead_days != null ? Number(p.overseas_lead_days) : 30);
   const dailySales = a.qty / 30;
   const available = stockTotal + inTransit;
   const daysOfStock = dailySales > 0 ? Math.round(available / dailySales) : 999;
   const reorderPoint = Math.ceil(dailySales * leadDays + dailySales * 7);
-  const suggestQty = dailySales > 0 ? Math.max(0, Math.ceil(dailySales * 45 - available)) : 0;
+  const seriesStr = (m.series || []).map((v, i) => `${monthly.monthKeys && monthly.monthKeys[i] ? monthly.monthKeys[i].slice(5) : i + 1}月:${v}`).join(' · ');
 
-  // 用规则生成结构化建议(CORS 限制下不依赖外部 AI)
-  let verdict, reason;
-  if (a.qty === 0) { verdict = '⏸ 暂不备货'; reason = '近30天没有销量,先观察,别压货。'; }
-  else if (m.cv > 0.7) { verdict = '⚠️ 暂不建议备货'; reason = `销量波动很大(变异系数 ${m.cv.toFixed(2)}),各月销量忽高忽低,备货风险高。建议先观察 1-2 个月趋势稳定再说。`; }
-  else if (m.trendPct < -40) { verdict = '🔻 谨慎备货'; reason = `销量明显下滑(近期比前期跌 ${Math.round(Math.abs(m.trendPct))}%),需求在减弱,即使现在缺货也建议少量补或不补。`; }
-  else if (available <= reorderPoint && m.cv <= 0.4) { verdict = `✅ 建议备货 ${suggestQty} 件`; reason = `销量稳定(变异系数 ${m.cv.toFixed(2)}),日均卖 ${dailySales.toFixed(1)} 件,当前可用 ${available} 件只够卖 ${daysOfStock} 天,已低于补货点 ${reorderPoint} 件(海外仓前置期 ${leadDays} 天)。建议备到 45 天量,即补 ${suggestQty} 件。`; }
-  else if (available <= reorderPoint) { verdict = `🔶 可适量备货`; reason = `日均 ${dailySales.toFixed(1)} 件,可用 ${available} 件够 ${daysOfStock} 天,接近补货点。销量还算平稳,可按 30 天量补货。`; }
-  else { verdict = '👍 暂时充足'; reason = `当前可用 ${available} 件够卖 ${daysOfStock} 天,高于补货点 ${reorderPoint} 件,暂不用补。`; }
-
-  const seriesStr = (m.series || []).map((v, i) => `${monthly.monthKeys ? monthly.monthKeys[i].slice(5) : i + 1}月:${v}`).join(' · ');
-  const html = `
+  // 先弹窗显示数据 + loading
+  const dataBlock = `
+    <div style="background:var(--bg-elevated); border-radius:8px; padding:12px; font-size:12px; line-height:1.9; margin-bottom:12px;">
+      <div>近30天销量:<b>${a.qty}</b> 件 · 日均 <b>${dailySales.toFixed(1)}</b> 件</div>
+      <div>近6月分布:${escapeHtml(seriesStr) || '—'}</div>
+      <div>稳定性(变异系数):<b>${m.cv >= 99 ? '—' : m.cv.toFixed(2)}</b>(≤0.4 稳定 · >0.7 波动大)· 趋势 ${m.trendPct > 10 ? '↗涨' : m.trendPct < -10 ? '↘跌' : '→平'}</div>
+      <div>当前可用:<b>${available}</b> 件(🏠国内${stockDom} ✈️海外${stockOvs}${inTransit ? ' 🚚在途' + inTransit : ''})· 够卖 <b>${daysOfStock === 999 ? '充足' : daysOfStock + '天'}</b></div>
+      <div>补货点:<b>${reorderPoint}</b> 件(海外仓前置期 ${leadDays} 天 × 日均 + 7天安全库存)</div>
+    </div>`;
+  const headBlock = `
     <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
       ${p.image_url ? `<img src="${escapeHtml(_invResizeImg(p.image_url, '160x160'))}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;">` : ''}
       <div><div style="font-weight:700;">${escapeHtml(p.name_cn || '(无名)')}</div><div style="font-family:monospace; font-size:11px; color:var(--text-tertiary);">${escapeHtml(sku)}</div></div>
-    </div>
-    <div style="font-size:20px; font-weight:700; margin-bottom:10px;">${verdict}</div>
-    <div style="font-size:13px; line-height:1.7; color:var(--text-secondary); margin-bottom:12px;">${reason}</div>
-    <div style="background:var(--bg-elevated); border-radius:8px; padding:12px; font-size:12px; line-height:1.9;">
-      <div>近30天销量:<b>${a.qty}</b> 件 · 日均 <b>${dailySales.toFixed(1)}</b> 件</div>
-      <div>近6月分布:${escapeHtml(seriesStr) || '—'}</div>
-      <div>稳定性(变异系数):<b>${m.cv >= 99 ? '—' : m.cv.toFixed(2)}</b>(≤0.4 稳定 · &gt;0.7 波动大)</div>
-      <div>当前可用:<b>${available}</b> 件(现货 ${stockTotal} + 在途 ${inTransit})· 够卖 <b>${daysOfStock === 999 ? '充足' : daysOfStock + '天'}</b></div>
-      <div>补货点:<b>${reorderPoint}</b> 件(海外仓前置期 ${leadDays} 天 × 日均 + 7天安全库存)</div>
     </div>`;
-  _invShowModal('🤖 备货建议 · ' + sku, html);
+  _invShowModal('🤖 AI 备货建议 · ' + sku, headBlock + dataBlock +
+    `<div id="invAiResult" style="font-size:13px; line-height:1.7; color:var(--text-secondary); padding:14px; text-align:center;">🤖 AI 正在分析(综合销量趋势、稳定性、季节性、补货周期)...</div>`);
+
+  // 调 AI(复用 api.anthropic.com · 跟单已在用)
+  try {
+    const prompt = `你是灯具外贸的备货决策顾问。根据下面某个产品的真实销售和库存数据,给出是否该备库存的专业建议。
+
+产品:${p.name_cn || sku}(SKU ${sku})${p.price_usd ? ' · 售价 $' + p.price_usd : ''}
+近30天销量:${a.qty} 件(日均 ${dailySales.toFixed(1)} 件)
+近6个月每月销量:${seriesStr || '无数据'}
+销量稳定性(变异系数CV):${m.cv >= 99 ? '无' : m.cv.toFixed(2)}(越小越稳定,>0.7波动大)
+销量趋势:${m.trendPct > 10 ? '上涨' + Math.round(m.trendPct) + '%' : m.trendPct < -10 ? '下滑' + Math.round(Math.abs(m.trendPct)) + '%' : '平稳'}
+当前库存:国内仓 ${stockDom} + 海外仓 ${stockOvs} + 在途 ${inTransit} = 可用 ${available} 件
+海外仓补货前置期:${leadDays} 天
+可卖天数:${daysOfStock === 999 ? '库存充足' : daysOfStock + ' 天'}
+补货点参考:${reorderPoint} 件
+
+请综合考虑销量趋势、稳定性、季节性(灯具有节日旺季如圣诞/黑五)、补货周期、压货风险,给出:
+1. 一句话结论(是否备货 + 建议数量)
+2. 3-4 句话的分析理由(为什么)
+3. 如有季节性提醒也说明
+要求:口语化、给中国跟单看的中文、直接说结论别绕弯。控制在 150 字内。`;
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!resp.ok) throw new Error('API ' + resp.status);
+    const data = await resp.json();
+    const out = (data.content || []).map(c => c.type === 'text' ? c.text : '').join('').trim();
+    const el = document.getElementById('invAiResult');
+    if (el) el.innerHTML = `<div style="text-align:left; background:rgba(37,99,235,0.05); border-left:3px solid var(--accent); padding:12px 14px; border-radius:0 8px 8px 0; white-space:pre-wrap;">${escapeHtml(out)}</div>`;
+  } catch (e) {
+    // CORS 或网络失败 → 退回规则建议
+    let verdict, reason;
+    if (a.qty === 0) { verdict = '⏸ 暂不备货'; reason = '近30天没有销量,先观察,别压货。'; }
+    else if (m.cv > 0.7) { verdict = '⚠️ 暂不建议备货'; reason = `销量波动很大(CV ${m.cv.toFixed(2)}),各月忽高忽低,备货风险高,先观察1-2月。`; }
+    else if (m.trendPct < -40) { verdict = '🔻 谨慎备货'; reason = `销量下滑 ${Math.round(Math.abs(m.trendPct))}%,需求减弱,少补或不补。`; }
+    else if (available <= reorderPoint && m.cv <= 0.4) { const q = Math.max(0, Math.ceil(dailySales * 45 - available)); verdict = `✅ 建议备货 ${q} 件`; reason = `销量稳定,日均 ${dailySales.toFixed(1)} 件,可用 ${available} 件只够 ${daysOfStock} 天,低于补货点。建议备到45天量。`; }
+    else if (available <= reorderPoint) { verdict = `🔶 可适量备货`; reason = `接近补货点,可按30天量补。`; }
+    else { verdict = '👍 暂时充足'; reason = `够卖 ${daysOfStock} 天,高于补货点,暂不用补。`; }
+    const el = document.getElementById('invAiResult');
+    if (el) el.innerHTML = `<div style="text-align:left;"><div style="font-size:16px; font-weight:700; margin-bottom:6px;">${verdict}</div><div style="color:var(--text-secondary);">${reason}</div><div style="font-size:11px; color:var(--text-tertiary); margin-top:10px;">(AI 接口未通,以上为规则分析 · ${escapeHtml(String(e.message || e))})</div></div>`;
+  }
 }
 window.invAiRestockAdvice = invAiRestockAdvice;
 window._invRenderRestock = _invRenderRestock;
@@ -701,13 +739,23 @@ function invOpenEdit(productId = null) {
       overseas_lead_days: (p.overseas_lead_days != null ? Number(p.overseas_lead_days) : null),
       product_url: p.product_url || '',
       stock_alert_threshold: Number(p.stock_alert_threshold || 5),
+      price_usd: (p.price_usd != null ? Number(p.price_usd) : null),
+      color_temp: p.color_temp || '',
+      variant_color: p.variant_color || '',
+      pkg_single: p.pkg_single || '', weight_single: p.weight_single || '',
+      pkg_carton: p.pkg_carton || '', weight_carton: p.weight_carton || '',
+      qty_per_carton: (p.qty_per_carton != null ? Number(p.qty_per_carton) : null),
+      carton_count: (p.carton_count != null ? Number(p.carton_count) : null),
+      label_large: p.label_large || '', label_small: p.label_small || '',
       platform_skus: Array.isArray(p.platform_skus) ? JSON.parse(JSON.stringify(p.platform_skus)) : [],
       isNew: false,
     };
   } else {
     INV_EDIT = {
       id: null, sku: '', title: '', spec: '', image_url: '',
-      stock_qty: 0, stock_qty_domestic: 0, stock_qty_overseas: 0, stock_qty_in_transit: 0, overseas_lead_days: null, product_url: '', stock_alert_threshold: 5, platform_skus: [],
+      stock_qty: 0, stock_qty_domestic: 0, stock_qty_overseas: 0, stock_qty_in_transit: 0, overseas_lead_days: null, product_url: '', stock_alert_threshold: 5,
+      price_usd: null, color_temp: '', variant_color: '', pkg_single: '', weight_single: '', pkg_carton: '', weight_carton: '', qty_per_carton: null, carton_count: null, label_large: '', label_small: '',
+      platform_skus: [],
       isNew: true,
     };
   }
@@ -808,6 +856,35 @@ function _invRenderEdit() {
              placeholder="例:Dia 40cm · 绿色 · 拉取 SKU / 订单号后自动填充"
              style="width:100%; padding:8px 10px; font-size:12.5px; border:1px solid var(--border); border-radius:6px;">
     </div>
+
+    <!-- V20260623:产品详细信息(价格/色温/包装/重量/标签)-->
+    <details style="margin-bottom:14px; border:1px solid var(--border-subtle); border-radius:8px; padding:0;" ${(s.price_usd || s.color_temp || s.pkg_single) ? 'open' : ''}>
+      <summary style="cursor:pointer; padding:10px 12px; font-size:12px; font-weight:600; color:var(--text-secondary);">📋 产品详细信息(价格 / 色温 / 包装 / 重量 / 标签)</summary>
+      <div style="padding:12px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div><label style="font-size:10.5px; color:var(--text-tertiary);">💵 价格(USD)</label>
+          <input type="number" step="0.01" value="${s.price_usd != null ? s.price_usd : ''}" oninput="INV_EDIT.price_usd=this.value===''?null:(parseFloat(this.value)||0)" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;"></div>
+        <div><label style="font-size:10.5px; color:var(--text-tertiary);">🌡️ 色温</label>
+          <input type="text" value="${escapeHtml(s.color_temp || '')}" oninput="INV_EDIT.color_temp=this.value" placeholder="如 TRIAC WARM DIMMING" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;"></div>
+        <div style="grid-column:1/3;"><label style="font-size:10.5px; color:var(--text-tertiary);">🎨 尺寸颜色(变体)</label>
+          <input type="text" value="${escapeHtml(s.variant_color || '')}" oninput="INV_EDIT.variant_color=this.value" placeholder="如 Brass & Blue" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;"></div>
+        <div><label style="font-size:10.5px; color:var(--text-tertiary);">📦 单个包装(cm)</label>
+          <input type="text" value="${escapeHtml(s.pkg_single || '')}" oninput="INV_EDIT.pkg_single=this.value" placeholder="如 47*34*18" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;"></div>
+        <div><label style="font-size:10.5px; color:var(--text-tertiary);">⚖️ 单个重量</label>
+          <input type="text" value="${escapeHtml(s.weight_single || '')}" oninput="INV_EDIT.weight_single=this.value" placeholder="如 1.8kg" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;"></div>
+        <div><label style="font-size:10.5px; color:var(--text-tertiary);">📦 整箱包装(cm)</label>
+          <input type="text" value="${escapeHtml(s.pkg_carton || '')}" oninput="INV_EDIT.pkg_carton=this.value" placeholder="如 70*49*38" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;"></div>
+        <div><label style="font-size:10.5px; color:var(--text-tertiary);">⚖️ 整箱重量(kg)</label>
+          <input type="text" value="${escapeHtml(s.weight_carton || '')}" oninput="INV_EDIT.weight_carton=this.value" placeholder="如 8.55kg" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;"></div>
+        <div><label style="font-size:10.5px; color:var(--text-tertiary);">🔢 每箱个数</label>
+          <input type="number" value="${s.qty_per_carton != null ? s.qty_per_carton : ''}" oninput="INV_EDIT.qty_per_carton=this.value===''?null:(parseInt(this.value)||0)" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;"></div>
+        <div><label style="font-size:10.5px; color:var(--text-tertiary);">📦 件数(箱数)</label>
+          <input type="number" value="${s.carton_count != null ? s.carton_count : ''}" oninput="INV_EDIT.carton_count=this.value===''?null:(parseInt(this.value)||0)" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;"></div>
+        <div><label style="font-size:10.5px; color:var(--text-tertiary);">🏷️ 大标签</label>
+          <input type="text" value="${escapeHtml(s.label_large || '')}" oninput="INV_EDIT.label_large=this.value" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;"></div>
+        <div><label style="font-size:10.5px; color:var(--text-tertiary);">🏷️ 小标签</label>
+          <input type="text" value="${escapeHtml(s.label_small || '')}" oninput="INV_EDIT.label_small=this.value" style="width:100%; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;"></div>
+      </div>
+    </details>
     
     <!-- 产品图区域:URL 输入 + 缩略预览 + 粘贴上传 + 点击大图 -->
     <div style="margin-bottom:14px;">
@@ -949,6 +1026,16 @@ async function invSaveEdit() {
           stock_qty_overseas: Number(s.stock_qty_overseas || 0),
           stock_qty_in_transit: Number(s.stock_qty_in_transit || 0),
           overseas_lead_days: s.overseas_lead_days,
+        price_usd: s.price_usd, color_temp: (s.color_temp||'').trim()||null, variant_color: (s.variant_color||'').trim()||null,
+        pkg_single: (s.pkg_single||'').trim()||null, weight_single: (s.weight_single||'').trim()||null,
+        pkg_carton: (s.pkg_carton||'').trim()||null, weight_carton: (s.weight_carton||'').trim()||null,
+        qty_per_carton: s.qty_per_carton, carton_count: s.carton_count,
+        label_large: (s.label_large||'').trim()||null, label_small: (s.label_small||'').trim()||null,
+          price_usd: s.price_usd, color_temp: (s.color_temp||'').trim()||null, variant_color: (s.variant_color||'').trim()||null,
+          pkg_single: (s.pkg_single||'').trim()||null, weight_single: (s.weight_single||'').trim()||null,
+          pkg_carton: (s.pkg_carton||'').trim()||null, weight_carton: (s.weight_carton||'').trim()||null,
+          qty_per_carton: s.qty_per_carton, carton_count: s.carton_count,
+          label_large: (s.label_large||'').trim()||null, label_small: (s.label_small||'').trim()||null,
           stock_alert_threshold: s.stock_alert_threshold,
           platform_skus: cleanPlatSkus,
           image_url: s.image_url || null,
@@ -970,6 +1057,16 @@ async function invSaveEdit() {
           stock_qty_overseas: Number(s.stock_qty_overseas || 0),
           stock_qty_in_transit: Number(s.stock_qty_in_transit || 0),
           overseas_lead_days: s.overseas_lead_days,
+        price_usd: s.price_usd, color_temp: (s.color_temp||'').trim()||null, variant_color: (s.variant_color||'').trim()||null,
+        pkg_single: (s.pkg_single||'').trim()||null, weight_single: (s.weight_single||'').trim()||null,
+        pkg_carton: (s.pkg_carton||'').trim()||null, weight_carton: (s.weight_carton||'').trim()||null,
+        qty_per_carton: s.qty_per_carton, carton_count: s.carton_count,
+        label_large: (s.label_large||'').trim()||null, label_small: (s.label_small||'').trim()||null,
+          price_usd: s.price_usd, color_temp: (s.color_temp||'').trim()||null, variant_color: (s.variant_color||'').trim()||null,
+          pkg_single: (s.pkg_single||'').trim()||null, weight_single: (s.weight_single||'').trim()||null,
+          pkg_carton: (s.pkg_carton||'').trim()||null, weight_carton: (s.weight_carton||'').trim()||null,
+          qty_per_carton: s.qty_per_carton, carton_count: s.carton_count,
+          label_large: (s.label_large||'').trim()||null, label_small: (s.label_small||'').trim()||null,
           stock_alert_threshold: s.stock_alert_threshold,
           platform_skus: cleanPlatSkus,
           stock_in_at: new Date().toISOString(),   // V20260607二期:入库时间(库龄起算)
@@ -988,6 +1085,11 @@ async function invSaveEdit() {
         stock_qty_overseas: Number(s.stock_qty_overseas || 0),
         stock_qty_in_transit: Number(s.stock_qty_in_transit || 0),
         overseas_lead_days: s.overseas_lead_days,
+        price_usd: s.price_usd, color_temp: (s.color_temp||'').trim()||null, variant_color: (s.variant_color||'').trim()||null,
+        pkg_single: (s.pkg_single||'').trim()||null, weight_single: (s.weight_single||'').trim()||null,
+        pkg_carton: (s.pkg_carton||'').trim()||null, weight_carton: (s.weight_carton||'').trim()||null,
+        qty_per_carton: s.qty_per_carton, carton_count: s.carton_count,
+        label_large: (s.label_large||'').trim()||null, label_small: (s.label_small||'').trim()||null,
         stock_alert_threshold: s.stock_alert_threshold,
         platform_skus: cleanPlatSkus,
       }).eq('id', s.id);
