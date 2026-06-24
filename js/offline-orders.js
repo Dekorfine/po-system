@@ -109,6 +109,7 @@ function renderOfflineOrders() {
         ${vbtn('board', '▦ 看板')}${vbtn('grid', '⊞ 网格')}${vbtn('list', '☰ 列表')}
       </div>
       <button class="btn small" onclick="loadOfflineOrders().then(renderOfflineOrders)">🔄 刷新</button>
+      <button class="btn small" onclick="offlineDiagShipped()" title="查 MESSAGEBUS 库的客服发货消息,排查为什么没同步">🔍 发货诊断</button>
     </div>`;
   if (msgs.length === 0) {
     body.innerHTML = header + `<div class="empty-state" style="padding:40px; text-align:center; color:var(--text-tertiary);"><div style="font-size:34px;">🧾</div><div>还没有线下单(客服转单后出现在这里)</div></div>`;
@@ -332,6 +333,126 @@ function offlineSetView(v) {
   renderOfflineOrders();
 }
 window.offlineSetView = offlineSetView;
+
+// V20260623:发货同步诊断 — 查 MESSAGEBUS 库实际数据,排查客服已发货为何没同步到跟单
+async function offlineDiagShipped() {
+  if (typeof cdmClient === 'undefined') { toast('未连接跨部门库', 'err'); return; }
+  toast('🔍 正在查 MESSAGEBUS 库...', 'info', 1500);
+  try {
+    // 1) 查所有 offline_shipped(客服发货消息)
+    const { data: shipped, error: e1 } = await cdmClient
+      .from('cross_dept_messages')
+      .select('related_ref, related_shop, body, status, created_at_ms')
+      .eq('to_system', 'po').eq('related_type', 'offline_shipped')
+      .order('created_at_ms', { ascending: false }).limit(200);
+    if (e1) throw e1;
+    // 2) 查所有 offline_transfer(转单建单消息)的订单号
+    const { data: transfers, error: e2 } = await cdmClient
+      .from('cross_dept_messages')
+      .select('related_ref, status')
+      .eq('to_system', 'po').eq('related_type', 'offline_transfer')
+      .limit(500);
+    if (e2) throw e2;
+
+    const transferNos = new Set((transfers || []).map(t => t.related_ref).filter(Boolean));
+    const shippedList = shipped || [];
+    // 分类:能匹配到转单 vs 匹配不到(孤儿发货消息)
+    const matched = [], orphan = [];
+    shippedList.forEach(m => {
+      if (!m.related_ref) return;
+      const mt = String(m.body || '').match(/转单号[:：]\s*([^\s·\n]+)/);
+      const row = { order_no: m.related_ref, shop: m.related_shop || '', tracking: mt ? mt[1] : '(未解析)', status: m.status, at: m.created_at_ms };
+      if (transferNos.has(m.related_ref)) matched.push(row); else orphan.push(row);
+    });
+
+    const fmtTime = ms => ms ? new Date(ms).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    const rowHtml = r => `<tr>
+      <td style="padding:5px 8px; font-family:monospace; font-weight:600;">${escapeHtml(r.order_no)}</td>
+      <td style="padding:5px 8px;">${escapeHtml(r.shop)}</td>
+      <td style="padding:5px 8px; font-family:monospace;">${escapeHtml(r.tracking)}</td>
+      <td style="padding:5px 8px; color:var(--text-tertiary);">${fmtTime(r.at)}</td></tr>`;
+
+    const html = `
+      <div style="margin-bottom:14px; padding:10px 12px; background:var(--bg-elevated); border-radius:8px; font-size:13px; line-height:1.7;">
+        MESSAGEBUS 库实际数据:<br>
+        · 客服发货消息(offline_shipped):<b>${shippedList.length}</b> 条<br>
+        · 转单建单消息(offline_transfer):<b>${transferNos.size}</b> 个订单号<br>
+        · 发货消息能匹配到转单的:<b style="color:var(--ok);">${matched.length}</b> 条 ✅<br>
+        · 发货消息<b style="color:var(--danger);">匹配不到</b>转单的(孤儿):<b style="color:var(--danger);">${orphan.length}</b> 条 ⚠️
+      </div>
+      ${orphan.length > 0 ? `
+      <div style="font-weight:600; color:var(--danger); margin:10px 0 6px;">⚠️ 这些发货消息在跟单找不到对应的转单(所以看不到):</div>
+      <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:14px;">
+        <thead><tr style="background:var(--bg-elevated); text-align:left;"><th style="padding:6px 8px;">订单号</th><th style="padding:6px 8px;">网站</th><th style="padding:6px 8px;">转单号</th><th style="padding:6px 8px;">发货时间</th></tr></thead>
+        <tbody>${orphan.map(rowHtml).join('')}</tbody>
+      </table>
+      <div style="font-size:12px; color:var(--text-secondary); margin-bottom:14px; padding:8px 10px; background:rgba(239,159,39,0.08); border-radius:6px;">
+        💡 原因:客服发货的这些订单,跟单这边没有对应的「offline_transfer」转单工单(没被转过来,或转单消息被删了)。<br>
+        解决:① 让客服补一条转单(related_type=offline_transfer)· 或 ② 点下方按钮把这些孤儿发货单【强制建为线下单】
+      </div>
+      <button class="btn primary" onclick="offlineImportOrphanShipped()">🧾 把这 ${orphan.length} 个孤儿发货单导入线下单</button>
+      ` : '<div style="color:var(--ok); padding:10px;">✅ 所有客服发货消息都能匹配到转单,数据正常。如果看板还看不到,点「🔄 刷新」。</div>'}
+      ${matched.length > 0 ? `
+      <details style="margin-top:14px;"><summary style="cursor:pointer; font-size:12px; color:var(--text-secondary);">查看 ${matched.length} 条正常匹配的发货消息</summary>
+      <table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;">
+        <tbody>${matched.map(rowHtml).join('')}</tbody>
+      </table></details>` : ''}
+    `;
+    OFFLINE._orphanShipped = orphan;   // 存起来供导入用
+    _offShowModal('🔍 发货同步诊断', html);
+  } catch (e) {
+    toast('诊断失败:' + (e.message || e), 'err', 4000);
+  }
+}
+window.offlineDiagShipped = offlineDiagShipped;
+
+// 把孤儿发货单(有发货消息但无转单)强制建为线下单 followup,直接标 shipped
+async function offlineImportOrphanShipped() {
+  const orphans = OFFLINE._orphanShipped || [];
+  if (orphans.length === 0) { toast('没有需要导入的', 'info'); return; }
+  if (!confirm(`把这 ${orphans.length} 个孤儿发货单导入线下单(直接标为已发货)?\n它们会出现在线下单看板「已发货」列。`)) return;
+  try {
+    const nowIso = new Date().toISOString();
+    let ok = 0;
+    for (const o of orphans) {
+      // 写一条 offline_followups(stage=shipped),并补一条 offline_transfer 消息让看板能显示订单信息
+      if (typeof sb !== 'undefined') {
+        await sb.from('offline_followups').upsert({ order_no: o.order_no, stage: 'shipped', stage_at: nowIso, updated_at: nowIso }, { onConflict: 'order_no' });
+      }
+      // 补建 offline_transfer 工单(让线下单看板有这条单的基础信息)
+      await cdmClient.from('cross_dept_messages').insert({
+        from_system: 'cs', to_system: 'po', related_type: 'offline_transfer',
+        related_ref: o.order_no, related_shop: o.shop,
+        title: `[补建·已发货] ${o.order_no}`,
+        body: `补建的线下单(客服已发货但无转单记录)· 转单号: ${o.tracking}`,
+        status: 'done', created_at_ms: o.at || Date.now(), updated_at: nowIso,
+      });
+      ok++;
+    }
+    toast(`🧾 已导入 ${ok} 个发货单到线下单`, 'success', 3000);
+    document.querySelectorAll('[data-off-modal]').forEach(el => el.remove());
+    await loadOfflineOrders();
+    renderOfflineOrders();
+  } catch (e) { toast('导入失败:' + (e.message || e), 'err', 4000); }
+}
+window.offlineImportOrphanShipped = offlineImportOrphanShipped;
+
+// 通用弹层(诊断用)
+function _offShowModal(title, bodyHtml) {
+  document.querySelectorAll('[data-off-modal]').forEach(el => el.remove());
+  const wrap = document.createElement('div');
+  wrap.setAttribute('data-off-modal', '1');
+  wrap.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; display:flex; align-items:flex-start; justify-content:center; padding:40px 20px; overflow:auto;';
+  wrap.onclick = (e) => { if (e.target === wrap) wrap.remove(); };
+  wrap.innerHTML = `<div style="background:var(--bg-card); border-radius:12px; max-width:760px; width:100%; padding:20px 22px; box-shadow:0 12px 40px rgba(0,0,0,0.25);">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <h3 style="margin:0; font-size:16px;">${title}</h3>
+      <button class="btn small" onclick="this.closest('[data-off-modal]').remove()">✕ 关闭</button>
+    </div>
+    ${bodyHtml}
+  </div>`;
+  document.body.appendChild(wrap);
+}
 
 async function _offWriteFu(orderNo, patch) {
   if (typeof sb === 'undefined') throw new Error('数据库未连接');

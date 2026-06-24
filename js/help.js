@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260623-ship-diag',
+    date: '2026-06-23',
+    type: 'feature',
+    title: '🔍 线下单加「发货诊断」:排查客服已发货为何没同步',
+    notes: [
+      '线下单工具栏加「🔍 发货诊断」按钮:直接查MESSAGEBUS库实际数据',
+      '对比offline_shipped(客服发货)vs offline_transfer(转单建单)消息',
+      '揪出"孤儿发货单"——客服发了货但跟单没有对应转单工单(所以看不到)',
+      '可一键把孤儿发货单导入线下单(建followup标shipped+补建transfer工单),直接进已发货列',
+    ],
+    files: ['offline-orders.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260622-ship-parsefix',
     date: '2026-06-22',
     type: 'fix',
