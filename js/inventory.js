@@ -825,19 +825,19 @@ function _invRenderEdit() {
         <div style="display:flex; gap:8px; align-items:center;">
           <div style="flex:1;">
             <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:2px;">🏠 国内仓</div>
-            <input type="number" min="0" value="${s.stock_qty_domestic||0}" oninput="INV_EDIT.stock_qty_domestic=parseInt(this.value)||0; _invSyncTotal(this);"
-                   style="width:100%; padding:8px 10px; font-size:15px; border:1px solid var(--border); border-radius:6px; text-align:center; font-weight:700; color:var(--text-primary); background:var(--bg-card);">
+            <input type="text" inputmode="numeric" pattern="[0-9]*" value="${s.stock_qty_domestic||0}" oninput="this.value=this.value.replace(/[^0-9]/g,''); INV_EDIT.stock_qty_domestic=parseInt(this.value)||0; _invSyncTotal(this);"
+                   style="width:100%; padding:9px 8px; font-size:17px; border:1px solid #cbd5e1; border-radius:6px; text-align:center; font-weight:700; color:#111827; background:#ffffff;">
           </div>
           <span style="font-size:16px; color:var(--text-tertiary); margin-top:14px;">+</span>
           <div style="flex:1;">
             <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:2px;">✈️ 海外仓</div>
-            <input type="number" min="0" value="${s.stock_qty_overseas||0}" oninput="INV_EDIT.stock_qty_overseas=parseInt(this.value)||0; _invSyncTotal(this);"
-                   style="width:100%; padding:8px 10px; font-size:15px; border:1px solid var(--border); border-radius:6px; text-align:center; font-weight:700; color:var(--text-primary); background:var(--bg-card);">
+            <input type="text" inputmode="numeric" pattern="[0-9]*" value="${s.stock_qty_overseas||0}" oninput="this.value=this.value.replace(/[^0-9]/g,''); INV_EDIT.stock_qty_overseas=parseInt(this.value)||0; _invSyncTotal(this);"
+                   style="width:100%; padding:9px 8px; font-size:17px; border:1px solid #cbd5e1; border-radius:6px; text-align:center; font-weight:700; color:#111827; background:#ffffff;">
           </div>
           <span style="font-size:16px; color:var(--text-tertiary); margin-top:14px;">=</span>
           <div style="flex:0 0 70px;">
             <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:2px;">合计</div>
-            <div id="invTotalStock" style="padding:8px 6px; font-size:14px; font-weight:700; text-align:center; color:var(--accent); background:var(--bg-elevated); border-radius:6px;">${(s.stock_qty_domestic||0)+(s.stock_qty_overseas||0)}</div>
+            <div id="invTotalStock" style="padding:9px 6px; font-size:17px; font-weight:700; text-align:center; color:#2563eb; background:#f1f5f9; border-radius:6px;">${(s.stock_qty_domestic||0)+(s.stock_qty_overseas||0)}</div>
           </div>
         </div>
       </div>
@@ -931,21 +931,21 @@ function _invRenderEdit() {
     <div style="margin-bottom:14px; display:flex; gap:14px; flex-wrap:wrap;">
       <div>
         <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">低库存预警线</label>
-        <input type="number" min="0" value="${s.stock_alert_threshold}" oninput="INV_EDIT.stock_alert_threshold=parseInt(this.value)||0"
+        <input type="text" inputmode="numeric" pattern="[0-9]*" value="${s.stock_alert_threshold}" oninput="this.value=this.value.replace(/[^0-9]/g,''); INV_EDIT.stock_alert_threshold=parseInt(this.value)||0"
                placeholder="低于此值告警"
-               style="width:120px; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center;">
+               style="width:120px; padding:9px 8px; font-size:15px; border:1px solid #cbd5e1; border-radius:6px; text-align:center; font-weight:700; color:#111827; background:#ffffff;">
       </div>
       <div>
         <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">🚚 在途数量</label>
-        <input type="number" min="0" value="${s.stock_qty_in_transit||0}" oninput="INV_EDIT.stock_qty_in_transit=parseInt(this.value)||0"
+        <input type="text" inputmode="numeric" pattern="[0-9]*" value="${s.stock_qty_in_transit||0}" oninput="this.value=this.value.replace(/[^0-9]/g,''); INV_EDIT.stock_qty_in_transit=parseInt(this.value)||0"
                placeholder="已下单未到仓"
-               style="width:120px; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center;">
+               style="width:120px; padding:9px 8px; font-size:15px; border:1px solid #cbd5e1; border-radius:6px; text-align:center; font-weight:700; color:#111827; background:#ffffff;">
       </div>
       <div>
         <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">✈️ 海外仓前置期(天)</label>
-        <input type="number" min="0" value="${s.overseas_lead_days != null ? s.overseas_lead_days : ''}" oninput="INV_EDIT.overseas_lead_days=this.value===''?null:(parseInt(this.value)||0)"
+        <input type="text" inputmode="numeric" pattern="[0-9]*" value="${s.overseas_lead_days != null ? s.overseas_lead_days : ''}" oninput="this.value=this.value.replace(/[^0-9]/g,''); INV_EDIT.overseas_lead_days=this.value===''?null:(parseInt(this.value)||0)"
                placeholder="空=默认30天"
-               style="width:130px; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center;">
+               style="width:130px; padding:9px 8px; font-size:15px; border:1px solid #cbd5e1; border-radius:6px; text-align:center; font-weight:700; color:#111827; background:#ffffff;">
       </div>
     </div>
     

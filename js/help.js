@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260623-input-fix',
+    date: '2026-06-23',
+    type: 'fix',
+    title: '🔢 库存编辑输入框数字看不清修复(绿底模态里数字不可见)',
+    notes: [
+      '问题:绿色编辑模态里国内/海外仓输入框背景跟着变绿+number类型spinner挤掉数字→看不清',
+      '修复:5个数字输入框(国内仓/海外仓/预警线/在途/前置期)改type=text+inputmode=numeric(去spinner)',
+      '强制白底#fff+纯黑字#111+字号17px·任何主题下都清楚',
+    ],
+    files: ['inventory.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260623-full-info',
     date: '2026-06-23',
     type: 'feature',
