@@ -35,11 +35,15 @@ function _offAttUrl(a) {
   return u;
 }
 function _offGetFu(orderNo) { return OFFLINE._followups[orderNo] || { stage: 'ordered' }; }
+// V20260623:订单号规范化(剥掉 # 前缀和首尾空格)· 用于跨消息匹配(转单 vs 发货可能一个带#一个不带)
+function _offNormNo(no) { return String(no || '').replace(/^#/, '').trim(); }
+// 按规范化订单号查发货信息(转单/发货订单号可能 # 不一致)
+function _offShippedOf(no) { return (OFFLINE._shipped && OFFLINE._shipped[_offNormNo(no)]) || null; }
 function _offStageOf(m) {
   const fu = _offGetFu(m.related_ref);
   if (fu.cancelled) return 'cancelled';
   // V20260622:客服已发货(offline_shipped 消息) → 覆盖为 shipped 终态(不论 followup 是 arrived 还是别的)
-  if (OFFLINE._shipped && OFFLINE._shipped[m.related_ref]) return 'shipped';
+  if (_offShippedOf(m.related_ref)) return 'shipped';
   let st = fu.stage || 'ordered';
   if (OFF_STAGE_NORMALIZE[st]) st = OFF_STAGE_NORMALIZE[st];   // V20260617:旧 pending/claimed → ordered · received → shipped
   return st;
@@ -68,7 +72,7 @@ async function loadOfflineOrders() {
     OFFLINE._shipped = {};
     OFFLINE._shippedUnmatched = [];
     try {
-      const knownOrderNos = new Set(orderNos);
+      const knownOrderNos = new Set(orderNos.map(_offNormNo));   // 规范化后匹配
       const { data: shippedMsgs } = await cdmClient
         .from('cross_dept_messages')
         .select('related_ref, related_shop, body, created_at_ms')
@@ -76,15 +80,16 @@ async function loadOfflineOrders() {
         .order('created_at_ms', { ascending: false }).limit(300);
       (shippedMsgs || []).forEach(m => {
         if (!m.related_ref) return;
+        const key = _offNormNo(m.related_ref);   // 规范化订单号(剥#)做匹配key
         const body = String(m.body || '');
-        const mt = body.match(/转单号[:：]\s*([^\s·\n]+)/);          // 物流单号
+        const mt = body.match(/(?:快递单号|转单号|物流单号)[:：]\s*([^\s·\n]+)/);   // 快递/转单号(兼容两种关键词)
         const tracking = mt ? mt[1] : '';
-        const mc = body.match(/转单号[:：]\s*[^\s·\n]+\s*·\s*([^\n]+?)(?:\s*\n|$)/);   // 承运商(可选)
+        const mc = body.match(/(?:快递单号|转单号|物流单号)[:：]\s*[^\s·\n]+\s*·\s*([^\n]+?)(?:\s*\n|$)/);   // 承运商(可选)
         const carrier = mc ? mc[1].trim() : '';
-        if (!OFFLINE._shipped[m.related_ref]) {                       // 同一单只取最新一条(已排序 desc)
-          OFFLINE._shipped[m.related_ref] = { tracking: tracking, carrier: carrier, at: m.created_at_ms };
+        if (!OFFLINE._shipped[key]) {                       // 同一单只取最新一条(已排序 desc)·幂等去重
+          OFFLINE._shipped[key] = { tracking: tracking, carrier: carrier, at: m.created_at_ms };
         }
-        if (!knownOrderNos.has(m.related_ref)) {                      // 匹配不到线下单 → 留作人工核对
+        if (!knownOrderNos.has(key)) {                      // 匹配不到线下单 → 留作人工核对
           OFFLINE._shippedUnmatched.push({ order_no: m.related_ref, shop: m.related_shop || '', tracking: tracking, at: m.created_at_ms });
         }
       });
@@ -164,8 +169,8 @@ function _offBoardCard(m, stage) {
     actions = `<button class="btn small" style="font-size:10.5px; padding:2px 8px; width:100%;" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ 推进到「${nextLabel}」</button>`;
   } else if (stage === 'shipped') {
     // V20260622:客服已发货 · 只读终态 + 转单号
-    const tk = (OFFLINE._shipped && OFFLINE._shipped[orderNo] && OFFLINE._shipped[orderNo].tracking) || '';
-    actions = `<span style="font-size:10.5px; color:var(--ok);">✅ 已发货${tk ? ` · 转单号 ${escapeHtml(tk)}` : ''}</span>`;
+    const _sh = _offShippedOf(orderNo); const tk = (_sh && _sh.tracking) || '';
+    actions = `<span style="font-size:10.5px; color:var(--ok);">✅ 已发货${tk ? ` · 快递单号 ${escapeHtml(tk)}` : ''}</span>`;
   } else if (stage === 'arrived') {
     // V20260622:跟单推进到头 · 等客服发货
     actions = `<span style="font-size:10.5px; color:var(--text-tertiary);">✅ 已到货 · 等客服发货</span>`;
@@ -216,7 +221,7 @@ function _offRenderGrid(msgs) {
         ${st === 'cancelled' ? '' : (next
           ? `<button class="btn small" style="width:100%; font-size:11px;" onclick="event.stopPropagation(); offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ 推进到「${OFF_STAGE_MAP[next].label}」</button>`
           : (st === 'shipped'
-              ? `<div style="text-align:center; font-size:11px; color:var(--ok);">✅ 已发货${(OFFLINE._shipped && OFFLINE._shipped[orderNo] && OFFLINE._shipped[orderNo].tracking) ? ` · 转单号 ${escapeHtml(OFFLINE._shipped[orderNo].tracking)}` : ''}</div>`
+              ? `<div style="text-align:center; font-size:11px; color:var(--ok);">✅ 已发货${(_offShippedOf(orderNo) && _offShippedOf(orderNo).tracking) ? ` · 快递单号 ${escapeHtml(_offShippedOf(orderNo).tracking)}` : ''}</div>`
               : (st === 'arrived'
                   ? `<div style="text-align:center; font-size:11px; color:var(--text-tertiary);">✅ 已到货 · 等客服发货</div>`
                   : '')))}
@@ -289,7 +294,7 @@ function offlineOpenDetail(msgId) {
         ${prev ? `<button class="btn small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${prev}'); offlineOpenDetail('${m.id}'); this.closest('[style*=fixed]').remove();" title="退回到上一步">← 返回「${OFF_STAGE_MAP[prev].label}」</button>` : ''}
         ${next ? `<button class="btn primary small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}'); offlineOpenDetail('${m.id}'); this.closest('[style*=fixed]').remove();" title="推进到下一步">推进到「${OFF_STAGE_MAP[next].label}」→</button>` : (
           stage === 'shipped'
-            ? `<span style="font-size:12.5px; color:var(--ok); align-self:center;">✅ 客服已发货${(OFFLINE._shipped && OFFLINE._shipped[orderNo] && OFFLINE._shipped[orderNo].tracking) ? ` · 转单号 <b>${escapeHtml(OFFLINE._shipped[orderNo].tracking)}</b>${OFFLINE._shipped[orderNo].carrier ? ` (${escapeHtml(OFFLINE._shipped[orderNo].carrier)})` : ''}` : ''}</span>`
+            ? `<span style="font-size:12.5px; color:var(--ok); align-self:center;">✅ 客服已发货${(_offShippedOf(orderNo) && _offShippedOf(orderNo).tracking) ? ` · 快递单号 <b>${escapeHtml(_offShippedOf(orderNo).tracking)}</b>${_offShippedOf(orderNo).carrier ? ` (${escapeHtml(_offShippedOf(orderNo).carrier)})` : ''}` : ''}</span>`
             : (stage === 'arrived'
                 ? '<span style="font-size:12px; color:var(--text-tertiary); align-self:center;">✅ 已到货 · 等客服发货(发货由客服操作)</span>'
                 : ''))}
@@ -354,15 +359,15 @@ async function offlineDiagShipped() {
       .limit(500);
     if (e2) throw e2;
 
-    const transferNos = new Set((transfers || []).map(t => t.related_ref).filter(Boolean));
+    const transferNos = new Set((transfers || []).map(t => _offNormNo(t.related_ref)).filter(Boolean));
     const shippedList = shipped || [];
-    // 分类:能匹配到转单 vs 匹配不到(孤儿发货消息)
+    // 分类:能匹配到转单 vs 匹配不到(孤儿发货消息)· 按规范化订单号匹配
     const matched = [], orphan = [];
     shippedList.forEach(m => {
       if (!m.related_ref) return;
-      const mt = String(m.body || '').match(/转单号[:：]\s*([^\s·\n]+)/);
+      const mt = String(m.body || '').match(/(?:快递单号|转单号|物流单号)[:：]\s*([^\s·\n]+)/);
       const row = { order_no: m.related_ref, shop: m.related_shop || '', tracking: mt ? mt[1] : '(未解析)', status: m.status, at: m.created_at_ms };
-      if (transferNos.has(m.related_ref)) matched.push(row); else orphan.push(row);
+      if (transferNos.has(_offNormNo(m.related_ref))) matched.push(row); else orphan.push(row);
     });
 
     const fmtTime = ms => ms ? new Date(ms).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
