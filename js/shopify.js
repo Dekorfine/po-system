@@ -1414,7 +1414,7 @@ async function renderSalesStats() {
 
   const rows = data || [];
 
-  // 按时间段切片（排除已取消 cancelled）
+  // 按时间段切片（排除已取消 cancelled）· V20260623:分币种汇总(不混加 USD/CNY)
   const stats = periods.map(p => {
     const since = new Date(now.getTime() - (p.days === 1 ? 0 : p.days) * 86400000);
     if (p.days === 1) {
@@ -1422,14 +1422,21 @@ async function renderSalesStats() {
     }
     const sinceIso = since.toISOString();
     const rs = rows.filter(r => r.shopify_created_at >= sinceIso && r.local_status !== 'cancelled');
-    const totalAmount = rs.reduce((s, x) => s + Number(x.total_price || 0), 0);
-    return { label: p.label, count: rs.length, amount: totalAmount };
+    // 按币种分组累加,避免 USD+CNY 直接相加
+    const byCurr = {};
+    rs.forEach(x => {
+      const c = (x.currency || 'USD').toUpperCase();
+      byCurr[c] = (byCurr[c] || 0) + Number(x.total_price || 0);
+    });
+    return { label: p.label, count: rs.length, byCurr };
   });
 
-  // 货币（取最常见的）
-  const currCount = {};
-  rows.forEach(r => { const c = r.currency || ''; if (c) currCount[c] = (currCount[c] || 0) + 1; });
-  const mainCurrency = Object.entries(currCount).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
+  // 格式化分币种金额:主币种为主,其他币种附后(如 "USD 12,000 +CNY 5,710")
+  const _fmtAmt = (byCurr) => {
+    const entries = Object.entries(byCurr).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) return '0';
+    return entries.map(([c, v]) => `${c} ${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`).join(' + ');
+  };
 
   container.innerHTML = `
     <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
@@ -1441,7 +1448,7 @@ async function renderSalesStats() {
           <div class="sales-stat-card" onclick="shopifyFilterByPeriod(${periods[i].days})" title="点击：筛选出${s.label}的订单">
             <div style="font-size: 11px; color: var(--text-tertiary);">${s.label}</div>
             <div style="font-size: 20px; font-weight: 700; color: var(--accent); margin-top:2px;">${s.count}<span style="font-size: 11px; font-weight: 400; color: var(--text-tertiary); margin-left: 3px;">单</span></div>
-            ${IS_ADMIN ? `<div style="font-size: 11px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">${mainCurrency} ${s.amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>` : '<div style="font-size: 11px; color: var(--text-tertiary);">🔒 销售额</div>'}
+            ${IS_ADMIN ? `<div style="font-size: 11px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">${_fmtAmt(s.byCurr)}</div>` : '<div style="font-size: 11px; color: var(--text-tertiary);">🔒 销售额</div>'}
           </div>
         `).join('')}
       </div>
@@ -2240,7 +2247,11 @@ function shopifyExportOrders() {
   if (orders.length === 0) { toast('当前筛选无数据', 'warn'); return; }
 
   const today = new Date().toISOString().slice(0, 10);
-  const totalUSD = orders.reduce((s, o) => s + Number(o.total_price || 0), 0);
+  // V20260623:分币种汇总(不混加 USD/CNY)
+  const _byCurr = {};
+  orders.forEach(o => { const c = (o.currency || 'USD').toUpperCase(); _byCurr[c] = (_byCurr[c] || 0) + Number(o.total_price || 0); });
+  const totalByCurrStr = Object.entries(_byCurr).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
+    .map(([c, v]) => `${c} ${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`).join(' &nbsp;+&nbsp; ') || 'USD 0.00';
   const totalQty = orders.reduce((s, o) => s + (o.line_items || []).reduce((q, li) => q + Number(li.quantity || 0), 0), 0);
 
   // 收集所有 line_items 平铺
@@ -2304,7 +2315,7 @@ function shopifyExportOrders() {
   <div>订单数：<b>${orders.length}</b></div>
   <div>产品行数：<b>${rows.length}</b></div>
   <div>总件数：<b>${totalQty}</b></div>
-  <div>总金额（USD）：<b>$ ${totalUSD.toLocaleString('en-US', { maximumFractionDigits: 2 })}</b></div>
+  <div>总金额（分币种）：<b>${totalByCurrStr}</b></div>
 </div>
 <div class="actions">
   <button onclick="window.print()">🖨 打印 / 保存为 PDF</button>

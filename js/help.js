@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260623-currency',
+    date: '2026-06-23',
+    type: 'fix',
+    title: '💱 销售业绩/导出金额分币种汇总(不再USD+CNY混加)',
+    notes: [
+      '问题:销售业绩面板和导出汇总把所有订单total_price不分币种直接相加(USD+CNY错加),用最常见币种标签显示',
+      '修复:按currency分组累加,显示各币种小计(如 USD 12,000 + CNY 5,710)',
+      '统一币种标准:原币种显示+分币种分别汇总,不混加',
+    ],
+    files: ['shopify.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260623-ship-diag',
     date: '2026-06-23',
     type: 'feature',
