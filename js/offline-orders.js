@@ -154,6 +154,28 @@ function renderOfflineOrders() {
   body.innerHTML = header + view;
 }
 
+// V20260623:看板每列分页(防一列上百卡变无限长列 · 与客服端对齐)
+const OFF_BOARD_PAGE_SIZE = 8;
+const OFF_BOARD_PAGE = {};   // stageKey -> 当前页(0-based)
+function offBoardSetPage(stageK, page) {
+  OFF_BOARD_PAGE[stageK] = page;
+  renderOfflineOrders();
+}
+window.offBoardSetPage = offBoardSetPage;
+
+// 单列翻页器 HTML(顶/底通用)· ‹ n / m › · 到头到尾置灰
+function _offColPager(stageK, safePage, totalPages) {
+  if (totalPages <= 1) return '';
+  const prevDis = safePage <= 0, nextDis = safePage >= totalPages - 1;
+  const btn = (label, dis, toPage) => `<button onclick="${dis ? '' : `offBoardSetPage('${stageK}',${toPage})`}"
+    style="width:24px; height:22px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); cursor:${dis ? 'default' : 'pointer'}; opacity:${dis ? '0.4' : '1'}; font-size:12px; line-height:1; padding:0;" ${dis ? 'disabled' : ''}>${label}</button>`;
+  return `<div style="display:flex; align-items:center; justify-content:center; gap:6px; padding:6px 0; font-size:11px; color:var(--text-secondary);">
+    ${btn('‹', prevDis, Math.max(0, safePage - 1))}
+    <span style="min-width:42px; text-align:center;">${safePage + 1} / ${totalPages}</span>
+    ${btn('›', nextDis, Math.min(totalPages - 1, safePage + 1))}
+  </div>`;
+}
+
 function _offRenderBoard(msgs) {
   const byStage = {};
   OFF_STAGES.forEach(s => byStage[s.k] = []);
@@ -163,15 +185,29 @@ function _offRenderBoard(msgs) {
     if (st === 'cancelled') cancelled.push(m);
     else (byStage[st] = byStage[st] || []).push(m);
   });
-  const cols = OFF_STAGES.map(s => `
-    <div style="background:${s.bg}; border-radius:10px; padding:10px; display:flex; flex-direction:column;">
-      <div style="font-size:12.5px; font-weight:700; color:${s.color}; padding:2px 4px 10px; display:flex; justify-content:space-between; align-items:center;">
-        <span>${s.label}</span><span style="background:var(--bg-card); padding:0 8px; border-radius:10px; opacity:0.9;">${byStage[s.k].length}</span>
+  const cols = OFF_STAGES.map(s => {
+    const list = byStage[s.k];
+    const total = list.length;
+    const totalPages = Math.max(1, Math.ceil(total / OFF_BOARD_PAGE_SIZE));
+    let safePage = OFF_BOARD_PAGE[s.k] || 0;
+    if (safePage > totalPages - 1) safePage = totalPages - 1;   // 列表变短自动收敛,不出空白页
+    if (safePage < 0) safePage = 0;
+    OFF_BOARD_PAGE[s.k] = safePage;
+    const start = safePage * OFF_BOARD_PAGE_SIZE;
+    const pageCards = list.slice(start, start + OFF_BOARD_PAGE_SIZE);   // 只渲染本页
+    const pager = _offColPager(s.k, safePage, totalPages);
+    return `
+    <div style="background:${s.bg}; border-radius:10px; padding:10px; display:flex; flex-direction:column; min-width:210px;">
+      <div style="font-size:12.5px; font-weight:700; color:${s.color}; padding:2px 4px 6px; display:flex; justify-content:space-between; align-items:center;">
+        <span>${s.label}</span><span style="background:var(--bg-card); padding:0 8px; border-radius:10px; opacity:0.9;">${total}</span>
       </div>
+      ${pager}
       <div style="display:flex; flex-direction:column; gap:8px; min-height:40px;">
-        ${byStage[s.k].map(m => _offBoardCard(m, s.k)).join('') || `<div style="font-size:11px; color:var(--text-tertiary); text-align:center; padding:14px 8px;">空</div>`}
+        ${pageCards.map(m => _offBoardCard(m, s.k)).join('') || `<div style="font-size:11px; color:var(--text-tertiary); text-align:center; padding:14px 8px;">空</div>`}
       </div>
-    </div>`).join('');
+      ${pager}
+    </div>`;
+  }).join('');
   let html = `<div class="offline-board">${cols}</div>`;
   if (cancelled.length) {
     html += `<details style="margin-top:12px;"><summary style="cursor:pointer; font-size:12px; color:var(--text-secondary);">🗑️ 已取消 (${cancelled.length})</summary><div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">${cancelled.map(m => _offBoardCard(m, 'cancelled')).join('')}</div></details>`;
@@ -218,7 +254,17 @@ function _offBoardCard(m, stage) {
 
 // ── 网格视图(大图卡片 · 自适应列 · 看大图为主)──
 function _offRenderGrid(msgs) {
-  const cards = msgs.map(m => {
+  // V20260623:网格分页(顶+底)
+  const total = msgs.length;
+  const totalPages = Math.max(1, Math.ceil(total / OFF_LIST_PAGE_SIZE));
+  let safePage = OFF_LIST_PAGE;
+  if (safePage > totalPages - 1) safePage = totalPages - 1;
+  if (safePage < 0) safePage = 0;
+  OFF_LIST_PAGE = safePage;
+  const start = safePage * OFF_LIST_PAGE_SIZE;
+  const pageMsgs = msgs.slice(start, start + OFF_LIST_PAGE_SIZE);
+  const pager = _offListPager(safePage, totalPages, total);
+  const cards = pageMsgs.map(m => {
     const st = _offStageOf(m);
     const meta = (st === 'cancelled') ? { label: '已取消', color: 'var(--danger)', bg: 'rgba(220,38,38,0.1)' } : OFF_STAGE_MAP[st];
     const fu = _offGetFu(m.related_ref);
@@ -256,11 +302,37 @@ function _offRenderGrid(msgs) {
       </div>
     </div>`;
   }).join('');
-  return `<div class="as-grid">${cards}</div>`;
+  return `${pager}<div class="as-grid">${cards}</div>${pager}`;
+}
+
+let OFF_LIST_PAGE = 0;
+const OFF_LIST_PAGE_SIZE = 20;
+function offListSetPage(page) { OFF_LIST_PAGE = page; renderOfflineOrders(); }
+window.offListSetPage = offListSetPage;
+function _offListPager(safePage, totalPages, total) {
+  if (totalPages <= 1) return '';
+  const prevDis = safePage <= 0, nextDis = safePage >= totalPages - 1;
+  const btn = (label, dis, toPage) => `<button onclick="${dis ? '' : `offListSetPage(${toPage})`}"
+    style="padding:4px 12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); cursor:${dis ? 'default' : 'pointer'}; opacity:${dis ? '0.4' : '1'}; font-size:12px;" ${dis ? 'disabled' : ''}>${label}</button>`;
+  return `<div style="display:flex; align-items:center; justify-content:center; gap:10px; padding:8px 0; font-size:12px; color:var(--text-secondary);">
+    ${btn('‹ 上一页', prevDis, Math.max(0, safePage - 1))}
+    <span>第 ${safePage + 1} / ${totalPages} 页 · 共 ${total} 单</span>
+    ${btn('下一页 ›', nextDis, Math.min(totalPages - 1, safePage + 1))}
+  </div>`;
 }
 
 function _offRenderList(msgs) {
-  const rows = msgs.map(m => {
+  // V20260623:列表分页(顶+底)· 单一滚动
+  const total = msgs.length;
+  const totalPages = Math.max(1, Math.ceil(total / OFF_LIST_PAGE_SIZE));
+  let safePage = OFF_LIST_PAGE;
+  if (safePage > totalPages - 1) safePage = totalPages - 1;
+  if (safePage < 0) safePage = 0;
+  OFF_LIST_PAGE = safePage;
+  const start = safePage * OFF_LIST_PAGE_SIZE;
+  const pageMsgs = msgs.slice(start, start + OFF_LIST_PAGE_SIZE);
+  const pager = _offListPager(safePage, totalPages, total);
+  const rows = pageMsgs.map(m => {
     const st = _offStageOf(m);
     const meta = (st === 'cancelled') ? { label: '已取消', color: 'var(--danger)', bg: 'rgba(220,38,38,0.1)' } : OFF_STAGE_MAP[st];
     const fu = _offGetFu(m.related_ref);
@@ -275,7 +347,7 @@ function _offRenderList(msgs) {
       ${next ? `<button class="btn small" style="margin-left:auto; font-size:10.5px; padding:2px 8px;" onclick="event.stopPropagation(); offlineAdvance('${m.id}','${escapeHtml(m.related_ref || '')}','${next}')">→ ${OFF_STAGE_MAP[next].label}</button>` : '<span style="margin-left:auto;"></span>'}
     </div>`;
   }).join('');
-  return `<div style="display:flex; flex-direction:column; gap:8px;">${rows}</div>`;
+  return `${pager}<div style="display:flex; flex-direction:column; gap:8px;">${rows}</div>${pager}`;
 }
 
 function offlineOpenDetail(msgId) {
