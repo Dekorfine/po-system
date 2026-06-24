@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260623-offline-pyfmu',
+    date: '2026-06-23',
+    type: 'fix',
+    title: '🔧 关键:线下单消息读取改指跟单库pyfmu(客服之前误写销售库xyhbw)',
+    notes: [
+      '根因:客服之前把转单/发货消息写到了销售库xyhbw,不是跟单库→跟单怎么读都读不到,白改',
+      '客服已改成写跟单库pyfmu(=sb)。跟单这边:线下单消息读取从cdmClient(xyhbw)改成sb(pyfmu)',
+      'loadOfflineOrders/发货诊断/孤儿导入 全部改读pyfmu;新增pyfmu库的线下单消息realtime订阅',
+      '其他跨部门工单仍在xyhbw(cross-dept.js的cdmClient不动)·只有线下单迁pyfmu',
+      '须在pyfmu库跑建表SQL:pyfmu_cross_dept_messages.sql(若表不存在)',
+    ],
+    files: ['offline-orders.js', 'cross-dept.js', 'index.html', 'help.js', 'sql/pyfmu_cross_dept_messages.sql'],
+  },
+  {
     v: '20260623-cs-match',
     date: '2026-06-23',
     type: 'fix',

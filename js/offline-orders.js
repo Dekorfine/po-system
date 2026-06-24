@@ -50,9 +50,12 @@ function _offStageOf(m) {
 }
 
 async function loadOfflineOrders() {
-  if (typeof cdmClient === 'undefined') return;
+  // V20260623:线下单消息已迁到【跟单库 pyfmu = sb】(客服之前误写销售库 xyhbw,现已改正)
+  //   只有线下单(转单/发货)在 pyfmu;其他跨部门工单仍在 xyhbw(cdmClient),互不影响
+  const _msgClient = (typeof sb !== 'undefined') ? sb : cdmClient;
+  if (typeof _msgClient === 'undefined') return;
   try {
-    const { data: msgs, error: e1 } = await cdmClient
+    const { data: msgs, error: e1 } = await _msgClient
       .from('cross_dept_messages')
       .select('id,from_system,from_user_name,to_system,to_user_id,to_user_name,related_ref,related_shop,priority,title,body,attachments,related_type,status,created_at_ms,updated_at')
       .eq('to_system', 'po').eq('related_type', 'offline_transfer')
@@ -68,12 +71,12 @@ async function loadOfflineOrders() {
       (fus || []).forEach(f => { OFFLINE._followups[f.order_no] = f; });
     }
 
-    // V20260622:读客服发货消息(offline_shipped)→ 反映「已发货」+ 转单号(发货由客服在 cs-system 做)
+    // V20260622:读客服发货消息(offline_shipped)→ 反映「已发货」+ 快递单号(发货由客服在 cs-system 做)
     OFFLINE._shipped = {};
     OFFLINE._shippedUnmatched = [];
     try {
       const knownOrderNos = new Set(orderNos.map(_offNormNo));   // 规范化后匹配
-      const { data: shippedMsgs } = await cdmClient
+      const { data: shippedMsgs } = await _msgClient
         .from('cross_dept_messages')
         .select('related_ref, related_shop, body, created_at_ms')
         .eq('to_system', 'po').eq('related_type', 'offline_shipped')
@@ -341,18 +344,19 @@ window.offlineSetView = offlineSetView;
 
 // V20260623:发货同步诊断 — 查 MESSAGEBUS 库实际数据,排查客服已发货为何没同步到跟单
 async function offlineDiagShipped() {
-  if (typeof cdmClient === 'undefined') { toast('未连接跨部门库', 'err'); return; }
-  toast('🔍 正在查 MESSAGEBUS 库...', 'info', 1500);
+  const _msgClient = (typeof sb !== 'undefined') ? sb : cdmClient;
+  if (typeof _msgClient === 'undefined') { toast('未连接跟单库', 'err'); return; }
+  toast('🔍 正在查跟单库 cross_dept_messages...', 'info', 1500);
   try {
     // 1) 查所有 offline_shipped(客服发货消息)
-    const { data: shipped, error: e1 } = await cdmClient
+    const { data: shipped, error: e1 } = await _msgClient
       .from('cross_dept_messages')
       .select('related_ref, related_shop, body, status, created_at_ms')
       .eq('to_system', 'po').eq('related_type', 'offline_shipped')
       .order('created_at_ms', { ascending: false }).limit(200);
     if (e1) throw e1;
     // 2) 查所有 offline_transfer(转单建单消息)的订单号
-    const { data: transfers, error: e2 } = await cdmClient
+    const { data: transfers, error: e2 } = await _msgClient
       .from('cross_dept_messages')
       .select('related_ref, status')
       .eq('to_system', 'po').eq('related_type', 'offline_transfer')
@@ -425,7 +429,7 @@ async function offlineImportOrphanShipped() {
         await sb.from('offline_followups').upsert({ order_no: o.order_no, stage: 'shipped', stage_at: nowIso, updated_at: nowIso }, { onConflict: 'order_no' });
       }
       // 补建 offline_transfer 工单(让线下单看板有这条单的基础信息)
-      await cdmClient.from('cross_dept_messages').insert({
+      await (typeof sb !== 'undefined' ? sb : cdmClient).from('cross_dept_messages').insert({
         from_system: 'cs', to_system: 'po', related_type: 'offline_transfer',
         related_ref: o.order_no, related_shop: o.shop,
         title: `[补建·已发货] ${o.order_no}`,
