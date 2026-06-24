@@ -424,11 +424,16 @@ function _invCardHtml(p) {
 }
 
 // V20260623:备货建议(嵌入库存 · 所有人可见 · 基于销量+库存算该不该备货)
+// V20260623:备货建议 — 以「销量」为主(从订单抓热销),不是只看已录库存
+//   逻辑:遍历所有卖过的 SKU(销量榜)→ 取 Top N 热销 → 看库存够不够 → 热销且没备够的优先建议
+var INV_RESTOCK_TOPN = 100;   // 默认看 Top 100 热销
+function invSetRestockTopN(n) { INV_RESTOCK_TOPN = parseInt(n) || 100; _invRenderList(); }
+window.invSetRestockTopN = invSetRestockTopN;
+
 function _invRenderRestock() {
   const listEl = document.getElementById('inventoryList');
   if (!listEl) return;
 
-  // 需要销量数据(SHOPIFY._orders)+ 分析函数(analytics.js)
   const ordersReady = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders && SHOPIFY._orders.length > 0);
   const anReady = (typeof _anAggBySku === 'function' && typeof _anMonthlyBySku === 'function');
   if (!ordersReady || !anReady) {
@@ -442,77 +447,105 @@ function _invRenderRestock() {
     return;
   }
 
-  // 近30天销量 + 近6月波动
+  const days = 30;
   const now = new Date();
-  const start = new Date(now.getTime() - 30 * 86400000);
-  const agg = _anAggBySku(start, now);
-  const aggMap = {}; agg.forEach(a => { aggMap[a.sku] = a; });
+  const start = new Date(now.getTime() - days * 86400000);
+  // ★ 以销量为主:取近30天所有卖过的 SKU,按销量降序 = 热销榜
+  const agg = _anAggBySku(start, now).filter(a => a.qty > 0 && !String(a.sku).startsWith('(无SKU)')).sort((x, y) => y.qty - x.qty);
   const monthly = _anMonthlyBySku(6);
   const mMap = {}; monthly.list.forEach(x => { mMap[x.sku] = x; });
+  // 库存表按 SKU 索引(可能没有 = 没备货)
+  const invBySku = {};
+  (INVENTORY._list || []).filter(p => p.sku && !p.deleted_at).forEach(p => { invBySku[p.sku] = p; });
 
-  // 用库存表(有 SKU 的)逐个算
-  const invList = (INVENTORY._list || []).filter(p => p.is_inventory_item && !p.deleted_at && p.sku);
-  const days = 30;
-  const rows = invList.map(p => {
-    const a = aggMap[p.sku] || { qty: 0 };
-    const m = mMap[p.sku] || { cv: 99, trendPct: 0 };
-    const stockTotal = Number(p.stock_qty || 0);
-    const stockDom = Number(p.stock_qty_domestic || 0);
-    const stockOvs = Number(p.stock_qty_overseas || 0);
-    const inTransit = Number(p.stock_qty_in_transit || 0);
-    const leadDays = (p.overseas_lead_days != null ? Number(p.overseas_lead_days) : 30);
+  // 取 Top N 热销
+  const topN = INV_RESTOCK_TOPN;
+  const hot = agg.slice(0, topN);
+
+  const rows = hot.map((a, idx) => {
+    const p = invBySku[a.sku] || null;   // null = 库存表里没有(没备货)
+    const m = mMap[a.sku] || { cv: 99, trendPct: 0 };
+    const stockTotal = p ? Number(p.stock_qty || 0) : 0;
+    const stockDom = p ? Number(p.stock_qty_domestic || 0) : 0;
+    const stockOvs = p ? Number(p.stock_qty_overseas || 0) : 0;
+    const inTransit = p ? Number(p.stock_qty_in_transit || 0) : 0;
+    const leadDays = (p && p.overseas_lead_days != null) ? Number(p.overseas_lead_days) : 30;
     const dailySales = a.qty / days;
-    const available = stockTotal + inTransit;   // 实际可用 = 现货 + 在途
+    const available = stockTotal + inTransit;
     const daysOfStock = dailySales > 0 ? Math.round(available / dailySales) : (available > 0 ? 999 : 0);
     const stable = m.cv <= 0.4, volatile = m.cv > 0.7, declining = m.trendPct < -40;
-    // 补货点 = 前置期 × 日均 + 安全库存(安全库存 = 7天量)
     const reorderPoint = Math.ceil(dailySales * leadDays + dailySales * 7);
+    const inStock = !!p;   // 是否已录入库存
     let advice, color, icon, suggestQty = 0, priority = 0;
-    if (a.qty === 0) { advice = '近30天无销量'; color = 'var(--text-tertiary)'; icon = '➖'; }
-    else if (volatile || declining) { advice = volatile ? '波动大·暂不备货' : '销量下滑·谨慎'; color = '#dc2626'; icon = '⚠️'; priority = 1; }
-    else if (available <= reorderPoint && stable) {
-      suggestQty = Math.max(0, Math.ceil(dailySales * 45 - available));   // 备到45天量
-      advice = `稳定畅销·建议备 ${suggestQty} 件`; color = '#0f6e56'; icon = '✅'; priority = 3;
+    if (!inStock) {
+      // 热销但库存表里根本没有 → 最该备货
+      suggestQty = Math.ceil(dailySales * 45);
+      advice = `热销未备货·建议备 ${suggestQty} 件`; color = '#dc2626'; icon = '🔥'; priority = 5;
+    } else if (volatile) { advice = '波动大·暂不备货'; color = '#92400e'; icon = '⚠️'; priority = 1; }
+    else if (declining) { advice = '销量下滑·谨慎'; color = '#92400e'; icon = '🔻'; priority = 1; }
+    else if (available <= 0) {
+      suggestQty = Math.ceil(dailySales * 45);
+      advice = `热销已断货·急备 ${suggestQty} 件`; color = '#dc2626'; icon = '🔥'; priority = 5;
+    } else if (available <= reorderPoint && stable) {
+      suggestQty = Math.max(0, Math.ceil(dailySales * 45 - available));
+      advice = `稳定畅销·建议备 ${suggestQty} 件`; color = '#0f6e56'; icon = '✅'; priority = 4;
     } else if (available <= reorderPoint) {
       suggestQty = Math.max(0, Math.ceil(dailySales * 30 - available));
-      advice = `低于补货点·建议备 ${suggestQty} 件`; color = '#854f0b'; icon = '🔶'; priority = 2;
-    } else if (stable) { advice = '库存充足'; color = '#1d6fa5'; icon = '👍'; }
-    else { advice = '按需备货'; color = 'var(--text-secondary)'; icon = '○'; }
-    return { p, qty30: a.qty, dailySales, stockTotal, stockDom, stockOvs, inTransit, available, daysOfStock, cv: m.cv, trendPct: m.trendPct, reorderPoint, advice, color, icon, suggestQty, priority };
+      advice = `低于补货点·建议备 ${suggestQty} 件`; color = '#854f0b'; icon = '🔶'; priority = 3;
+    } else if (stable) { advice = '库存充足'; color = '#1d6fa5'; icon = '👍'; priority = 1; }
+    else { advice = '库存够·按需'; color = 'var(--text-secondary)'; icon = '○'; }
+    return {
+      sku: a.sku, name: (p && p.name_cn) || a.name || '(无名)', image: (p && p.image_url) || a.image || '',
+      rank: idx + 1, qty30: a.qty, dailySales, stockTotal, stockDom, stockOvs, inTransit, available, daysOfStock,
+      cv: m.cv, trendPct: m.trendPct, reorderPoint, advice, color, icon, suggestQty, priority, inStock, p,
+    };
   }).sort((x, y) => y.priority - x.priority || y.qty30 - x.qty30);
 
   const recommend = rows.filter(r => r.suggestQty > 0);
-  const cards = rows.slice(0, 300).map(r => {
-    const p = r.p;
+  const notStocked = rows.filter(r => !r.inStock);
+  const cards = rows.map(r => {
     const cvLabel = r.cv >= 99 ? '—' : (r.cv <= 0.4 ? `<span style="color:#0f6e56;">稳</span>` : r.cv > 0.7 ? `<span style="color:#dc2626;">波动大</span>` : '一般');
     const trend = r.trendPct > 10 ? `<span style="color:#0f6e56;">↗+${Math.round(r.trendPct)}%</span>` : r.trendPct < -10 ? `<span style="color:#dc2626;">↘${Math.round(r.trendPct)}%</span>` : '→平';
     const doColor = r.daysOfStock > 0 && r.daysOfStock < 7 ? '#dc2626' : r.daysOfStock < 30 ? '#854f0b' : 'var(--text-secondary)';
-    return `<tr style="border-bottom:1px solid var(--border-subtle);">
+    const stockCell = r.inStock
+      ? `🏠${r.stockDom} ✈️${r.stockOvs}${r.inTransit ? ` 🚚${r.inTransit}` : ''}`
+      : `<span style="color:#dc2626; font-weight:700;">未备货</span>`;
+    const medal = r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank;
+    return `<tr style="border-bottom:1px solid var(--border-subtle); ${!r.inStock ? 'background:rgba(220,38,38,0.04);' : ''}">
+      <td style="padding:7px 8px; font-weight:700; color:var(--text-tertiary);">${medal}</td>
       <td style="padding:7px 8px;"><div style="display:flex; align-items:center; gap:8px;">
-        ${p.image_url ? `<img src="${escapeHtml(_invResizeImg(p.image_url, '120x120'))}" style="width:34px;height:34px;object-fit:cover;border-radius:5px;">` : '<div style="width:34px;height:34px;background:var(--bg-elevated);border-radius:5px;"></div>'}
-        <div style="min-width:0;"><div style="font-weight:600; font-size:12px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(p.name_cn || '(无名)')}</div><div style="font-family:monospace; font-size:10px; color:var(--text-tertiary);">${escapeHtml(p.sku)}</div></div>
+        ${r.image ? `<img src="${escapeHtml(_invResizeImg(r.image, '120x120'))}" onerror="this.style.display='none'" style="width:34px;height:34px;object-fit:cover;border-radius:5px;">` : '<div style="width:34px;height:34px;background:var(--bg-elevated);border-radius:5px;"></div>'}
+        <div style="min-width:0;"><div style="font-weight:600; font-size:12px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.name)}</div><div style="font-family:monospace; font-size:10px; color:var(--text-tertiary);">${escapeHtml(r.sku)}</div></div>
       </div></td>
       <td style="padding:7px 8px; font-weight:700;">${r.qty30}</td>
       <td style="padding:7px 8px;">${r.dailySales.toFixed(1)}/天</td>
-      <td style="padding:7px 8px; font-size:11px;">🏠${r.stockDom} ✈️${r.stockOvs}${r.inTransit ? ` 🚚${r.inTransit}` : ''}</td>
-      <td style="padding:7px 8px; color:${doColor}; font-weight:600;">${r.daysOfStock === 999 ? '充足' : r.daysOfStock === 0 ? '无货' : r.daysOfStock + '天'}</td>
+      <td style="padding:7px 8px; font-size:11px;">${stockCell}</td>
+      <td style="padding:7px 8px; color:${doColor}; font-weight:600;">${r.daysOfStock === 999 ? '充足' : r.daysOfStock === 0 ? (r.inStock ? '无货' : '—') : r.daysOfStock + '天'}</td>
       <td style="padding:7px 8px;">${cvLabel} ${trend}</td>
       <td style="padding:7px 8px; color:${r.color}; font-weight:600; font-size:11.5px;">${r.icon} ${escapeHtml(r.advice)}</td>
-      <td style="padding:7px 8px;">${r.suggestQty > 0 ? `<button class="btn small" style="font-size:10.5px; padding:2px 8px;" onclick="invAiRestockAdvice('${escapeHtml(p.sku)}')">🤖 AI建议</button>` : ''}</td>
+      <td style="padding:7px 8px;">${r.suggestQty > 0 ? `<button class="btn small" style="font-size:10.5px; padding:2px 8px;" onclick="invAiRestockAdvice('${escapeHtml(r.sku)}')">🤖 AI建议</button>` : ''}</td>
     </tr>`;
   }).join('');
 
+  const topnBtns = [50, 100, 200, 500].map(n =>
+    `<button onclick="invSetRestockTopN(${n})" style="padding:4px 12px; font-size:12px; border:1px solid ${INV_RESTOCK_TOPN === n ? 'var(--accent)' : 'var(--border)'}; border-radius:14px; background:${INV_RESTOCK_TOPN === n ? 'var(--accent)' : 'var(--bg-card)'}; color:${INV_RESTOCK_TOPN === n ? '#fff' : 'var(--text-secondary)'}; cursor:pointer; font-weight:${INV_RESTOCK_TOPN === n ? '600' : '400'};">Top ${n}</button>`
+  ).join('');
+
   listEl.innerHTML = `
-    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px;">
-      <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:var(--text-tertiary);">分析产品</div><div style="font-size:18px; font-weight:700;">${rows.length}</div></div>
-      <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:var(--text-tertiary);">建议备货</div><div style="font-size:18px; font-weight:700; color:#0f6e56;">${recommend.length}</div></div>
-      <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:var(--text-tertiary);">波动大/下滑</div><div style="font-size:18px; font-weight:700; color:#dc2626;">${rows.filter(r => r.priority === 1).length}</div></div>
-      <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:var(--text-tertiary);">快断货(&lt;7天)</div><div style="font-size:18px; font-weight:700; color:#854f0b;">${rows.filter(r => r.daysOfStock > 0 && r.daysOfStock < 7).length}</div></div>
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+      <span style="font-size:12px; color:var(--text-secondary); font-weight:600;">看近30天热销:</span>${topnBtns}
+      <span style="font-size:11px; color:var(--text-tertiary);">(从销售单订单抓热销榜 · 不限于已录库存)</span>
     </div>
-    <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:8px;">📊 基于近30天销量 + 近6月波动 + 当前库存(现货+在途)综合判断 · 补货点=前置期×日均+7天安全库存 · 建议量按45天 · 所有人可见</div>
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px;">
+      <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:var(--text-tertiary);">热销产品(Top ${topN})</div><div style="font-size:18px; font-weight:700;">${rows.length}</div></div>
+      <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:var(--text-tertiary);">建议备货</div><div style="font-size:18px; font-weight:700; color:#0f6e56;">${recommend.length}</div></div>
+      <div style="padding:10px 14px; background:rgba(220,38,38,0.06); border:1px solid rgba(220,38,38,0.3); border-radius:10px;"><div style="font-size:11px; color:#dc2626;">🔥 热销未备货</div><div style="font-size:18px; font-weight:700; color:#dc2626;">${notStocked.length}</div></div>
+      <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:var(--text-tertiary);">快断货(&lt;7天)</div><div style="font-size:18px; font-weight:700; color:#854f0b;">${rows.filter(r => r.inStock && r.daysOfStock > 0 && r.daysOfStock < 7).length}</div></div>
+    </div>
+    <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:8px;">📊 从销售单抓近30天热销榜 → 看库存够不够 · <span style="color:#dc2626; font-weight:600;">🔥 红底=热销但还没备货(最该备)</span> · 补货点=前置期×日均+7天安全库存 · 建议量按45天 · 所有人可见</div>
     <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px;">
       <thead><tr style="background:var(--bg-elevated); text-align:left;">
-        <th style="padding:8px;">产品</th><th style="padding:8px;">30天销量</th><th style="padding:8px;">日均</th><th style="padding:8px;">库存分布</th><th style="padding:8px;">可卖天数</th><th style="padding:8px;">波动/趋势</th><th style="padding:8px;">备货建议</th><th style="padding:8px;">AI</th>
+        <th style="padding:8px;">#</th><th style="padding:8px;">产品</th><th style="padding:8px;">30天销量</th><th style="padding:8px;">日均</th><th style="padding:8px;">库存</th><th style="padding:8px;">可卖天数</th><th style="padding:8px;">波动/趋势</th><th style="padding:8px;">备货建议</th><th style="padding:8px;">AI</th>
       </tr></thead><tbody>${cards}</tbody></table></div>`;
 }
 
