@@ -373,7 +373,7 @@ function _invCardHtml(p) {
           </div>
           <span style="font-size:13px; font-weight:700; color:${statusColor}; font-family:monospace;">${stock}</span>
           <span style="font-size:11px; color:var(--text-tertiary);">预警线 ${threshold}</span>
-          ${(Number(p.stock_qty_domestic||0) > 0 || Number(p.stock_qty_overseas||0) > 0) ? `<span style="font-size:10.5px; color:var(--text-secondary); margin-left:4px;">🏠 国内 ${Number(p.stock_qty_domestic||0)} · ✈️ 海外 ${Number(p.stock_qty_overseas||0)}</span>` : ''}
+          <span style="font-size:10.5px; color:var(--text-secondary); margin-left:6px; padding:1px 8px; background:var(--bg-elevated); border-radius:8px;">🏠 国内 <b>${Number(p.stock_qty_domestic||0)}</b> · ✈️ 海外 <b>${Number(p.stock_qty_overseas||0)}</b></span>
         </div>
         
         <!-- 绑定的平台 SKU -->
@@ -416,7 +416,7 @@ function _invRenderTrash() {
         <div>${p.image_url ? `<img src="${escapeHtml(_invResizeImg(p.image_url, '120x120'))}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;">` : `<div style="width:56px;height:56px;background:var(--bg-elevated);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);">📦</div>`}</div>
         <div style="min-width:0;">
           <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${escapeHtml(p.name_cn || '(无名)')}</div>
-          <div style="font-size:11px;color:var(--text-tertiary);font-family:monospace;">${escapeHtml(p.sku || '')} · 库存 ${Number(p.stock_qty||0)}</div>
+          <div style="font-size:11px;color:var(--text-tertiary);font-family:monospace;">${escapeHtml(p.sku || '')} · 库存 ${Number(p.stock_qty||0)} <span style="color:var(--text-secondary);">(🏠${Number(p.stock_qty_domestic||0)} ✈️${Number(p.stock_qty_overseas||0)})</span></div>
           <div style="font-size:11px;color:var(--text-tertiary);">🗑 删除于 ${escapeHtml(when)}${p.deleted_by ? ' · by ' + escapeHtml(p.deleted_by) : ''}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
@@ -451,6 +451,7 @@ function _invGridCardHtml(p) {
       ${p.spec ? `<div style="font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(p.spec)}">📐 ${escapeHtml(p.spec)}</div>` : ''}
       ${_invIsStale(p) ? `<div style="font-size:10.5px; color:#dc2626; font-weight:700;">🐢 压货 ${_invAgeDays(p)}天</div>` : (_invAgeDays(p) != null ? `<div style="font-size:10.5px; color:var(--text-tertiary);">库龄 ${_invAgeDays(p)}天</div>` : '')}
       <div style="height:6px; background:var(--bg-elevated); border-radius:3px; overflow:hidden;"><div style="width:${barPct}%; height:100%; background:${statusColor};"></div></div>
+      <div style="font-size:10px; color:var(--text-secondary); text-align:center; padding:1px 0;">🏠 国内 <b>${Number(p.stock_qty_domestic||0)}</b> · ✈️ 海外 <b>${Number(p.stock_qty_overseas||0)}</b></div>
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:10.5px; color:var(--text-secondary);">
         <span title="供应商">${p.default_supplier ? '🏭 ' + escapeHtml(p.default_supplier) : '<span style=\'color:var(--text-tertiary)\'>无供应商</span>'}</span>
         <span style="color:var(--text-tertiary);">预警 ${threshold}</span>
