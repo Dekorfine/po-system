@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260623-col-fix',
+    date: '2026-06-23',
+    type: 'fix',
+    title: '🔧 修复线下单400错误(客服表无transferred_to_po列→改select *)',
+    notes: [
+      '问题:select硬列了transferred_to_po,客服offline_orders表没这列→整查询400失败线下单全加载不出',
+      '修复:改select(*)·客服表实际有啥列读啥·某列不存在也不会挂',
+      'attachments随*一起读·去掉冗余懒加载',
+    ],
+    files: ['offline-orders.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260623-board-page',
     date: '2026-06-23',
     type: 'feature',

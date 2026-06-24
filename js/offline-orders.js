@@ -72,7 +72,7 @@ async function loadOfflineOrders() {
   try {
     // 列表查询:不取 attachments(重列),编辑/详情时再单独拉
     const { data: rows, error } = await cs.from('offline_orders')
-      .select('id, order_no, site, status, customer_name, customer_email, customer_phone, payment_method, payment_currency, payment_amount, received_amount, paid_at, invoice_no, products, notes, follow_dispatch_text, ship_to_name, ship_to_phone, ship_to_address, ship_to_address2, ship_to_city, ship_to_state, ship_to_zip, ship_to_country, ship_no, ship_carrier, shipped_at, dispatched_at, transferred_to_po, created_by, created_by_name, created_at, updated_at, po_stage')
+      .select('*')
       .eq('deleted', false)
       .order('updated_at', { ascending: false }).limit(500);
     if (error) throw error;
@@ -98,7 +98,8 @@ async function loadOfflineOrders() {
         priority: 'normal',
         title: `[线下单] ${orderNo}`,
         body: _offComposeBody(o),
-        attachments: [],          // 列表不拉附件,详情再取
+        attachments: Array.isArray(o.attachments) ? o.attachments : [],   // select * 已带附件
+        _attLoaded: true,
         _row: o,                  // 完整行(详情/商品行用)
         _csStatus: o.status,      // 客服状态(shipped 当已发货只读)
         created_at_ms: o.created_at ? new Date(o.created_at).getTime() : 0,
