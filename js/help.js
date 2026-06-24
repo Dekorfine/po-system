@@ -10,6 +10,21 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260622-ship-parsefix',
+    date: '2026-06-22',
+    type: 'fix',
+    title: '🔧 修复客服已发货同步:转单号正则双反斜杠bug + 加承运商/未匹配提示',
+    notes: [
+      '关键bug:转单号解析正则误写成双反斜杠(\\\\s),匹配的是字面反斜杠不是空格→转单号可能解析不出来',
+      '修复后:转单号「转单号: SF123 · 顺丰」正确解析为 SF123,承运商 顺丰',
+      '新增承运商解析(· 后面那段),详情弹窗显示「转单号 SF123 (顺丰)」',
+      '新增OFFLINE._shippedUnmatched:发货消息匹配不到线下单的留作人工核对(不静默丢弃)',
+      '架构说明:跟单读时实时计算shipped状态(不回写库),天然幂等无重复',
+      'cdmClient已确认连MESSAGEBUS库(xyhbwqugbnowfjuhqhsj),与客服对接库一致',
+    ],
+    files: ['offline-orders.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260622-inbox-open',
     date: '2026-06-22',
     type: 'feature',

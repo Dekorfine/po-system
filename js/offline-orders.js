@@ -66,16 +66,27 @@ async function loadOfflineOrders() {
 
     // V20260622:读客服发货消息(offline_shipped)→ 反映「已发货」+ 转单号(发货由客服在 cs-system 做)
     OFFLINE._shipped = {};
+    OFFLINE._shippedUnmatched = [];
     try {
+      const knownOrderNos = new Set(orderNos);
       const { data: shippedMsgs } = await cdmClient
         .from('cross_dept_messages')
-        .select('related_ref, body, created_at_ms')
+        .select('related_ref, related_shop, body, created_at_ms')
         .eq('to_system', 'po').eq('related_type', 'offline_shipped')
         .order('created_at_ms', { ascending: false }).limit(300);
       (shippedMsgs || []).forEach(m => {
-        if (!m.related_ref || OFFLINE._shipped[m.related_ref]) return;   // 同一单只取最新一条(已排序 desc)
-        const mt = String(m.body || '').match(/转单号[:：]\s*([^\s·\n]+)/);
-        OFFLINE._shipped[m.related_ref] = { tracking: mt ? mt[1] : '', at: m.created_at_ms };
+        if (!m.related_ref) return;
+        const body = String(m.body || '');
+        const mt = body.match(/转单号[:：]\s*([^\s·\n]+)/);          // 物流单号
+        const tracking = mt ? mt[1] : '';
+        const mc = body.match(/转单号[:：]\s*[^\s·\n]+\s*·\s*([^\n]+?)(?:\s*\n|$)/);   // 承运商(可选)
+        const carrier = mc ? mc[1].trim() : '';
+        if (!OFFLINE._shipped[m.related_ref]) {                       // 同一单只取最新一条(已排序 desc)
+          OFFLINE._shipped[m.related_ref] = { tracking: tracking, carrier: carrier, at: m.created_at_ms };
+        }
+        if (!knownOrderNos.has(m.related_ref)) {                      // 匹配不到线下单 → 留作人工核对
+          OFFLINE._shippedUnmatched.push({ order_no: m.related_ref, shop: m.related_shop || '', tracking: tracking, at: m.created_at_ms });
+        }
       });
     } catch (se) { console.warn('[offline] 读发货消息失败:', se.message); }
 
@@ -277,7 +288,7 @@ function offlineOpenDetail(msgId) {
         ${prev ? `<button class="btn small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${prev}'); offlineOpenDetail('${m.id}'); this.closest('[style*=fixed]').remove();" title="退回到上一步">← 返回「${OFF_STAGE_MAP[prev].label}」</button>` : ''}
         ${next ? `<button class="btn primary small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}'); offlineOpenDetail('${m.id}'); this.closest('[style*=fixed]').remove();" title="推进到下一步">推进到「${OFF_STAGE_MAP[next].label}」→</button>` : (
           stage === 'shipped'
-            ? `<span style="font-size:12.5px; color:var(--ok); align-self:center;">✅ 客服已发货${(OFFLINE._shipped && OFFLINE._shipped[orderNo] && OFFLINE._shipped[orderNo].tracking) ? ` · 转单号 <b>${escapeHtml(OFFLINE._shipped[orderNo].tracking)}</b>` : ''}</span>`
+            ? `<span style="font-size:12.5px; color:var(--ok); align-self:center;">✅ 客服已发货${(OFFLINE._shipped && OFFLINE._shipped[orderNo] && OFFLINE._shipped[orderNo].tracking) ? ` · 转单号 <b>${escapeHtml(OFFLINE._shipped[orderNo].tracking)}</b>${OFFLINE._shipped[orderNo].carrier ? ` (${escapeHtml(OFFLINE._shipped[orderNo].carrier)})` : ''}` : ''}</span>`
             : (stage === 'arrived'
                 ? '<span style="font-size:12px; color:var(--text-tertiary); align-self:center;">✅ 已到货 · 等客服发货(发货由客服操作)</span>'
                 : ''))}
