@@ -10,6 +10,21 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260623-cs-direct',
+    date: '2026-06-23',
+    type: 'feature',
+    title: '🔗 线下单改直连客服库offline_orders(替代消息桥·单一数据源)',
+    notes: [
+      '彻底改架构:不再走cross_dept_messages消息桥,直接读写客服库kwrajryhwyytkjkkidor的offline_orders表',
+      'loadOfflineOrders直读offline_orders(主键order_no·status·products内嵌)·映射成看板',
+      '跟单推进工序写po_stage列(to_order/producing/arrived)·不动客服status·status=shipped当已发货只读',
+      '_offWriteFu改写po_stage/notes到客服库·发货诊断改成连接检测',
+      'realtime订阅改客服库offline_orders·销售部读同库即可看到',
+      '须在客服库kwraj跑:客服库_offline_orders_po_stage.sql(加po_stage列+RLS放行)',
+    ],
+    files: ['offline-orders.js', 'cross-dept.js', 'index.html', 'help.js', 'sql/客服库_offline_orders_po_stage.sql(须跑)'],
+  },
+  {
     v: '20260623-analytics',
     date: '2026-06-23',
     type: 'feature',

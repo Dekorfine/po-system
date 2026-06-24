@@ -1,10 +1,21 @@
 // ============================================================================
-// V20260613b:线下单跟进模块(客服 cs → 跟单 po · 看板视图 · 全员协作推进)
-//   收件箱来源:cross_dept_messages(xyhbw · cdmClient)to_system='po' AND related_type='offline_transfer'
-//   跟进状态:offline_followups(pyfmu · sb · order_no 为 key)— 跟单内部流转,任何同事可推进
-//   出货回执:进"已发货"自动往 cross_dept_messages 写 po_shipped(cs 订阅后写 CLOUD.offline_orders)
-//   po-system 不直连 CLOUD · 只用 pyfmu(sb) + xyhbw(cdmClient)· 需跑 offline_followups.sql
+// V20260623:线下单【直连客服库】模式(替代消息桥)
+//   数据源:客服库 kwrajryhwyytkjkkidor · 表 offline_orders(单一数据源·主键 order_no)
+//   跟单:读全部 + 写自己的 po_stage 列(to_order/producing/arrived)记工序,不动客服 status
+//   status=shipped 当已发货只读;客服管 status/发货字段,跟单管 po_stage/notes
+//   (旧消息桥 cross_dept_messages 模式已停用)
 // ============================================================================
+
+// 客服库 client(线下单 offline_orders 在这个库)
+const CS_OFFLINE_URL = 'https://kwrajryhwyytkjkkidor.supabase.co';
+const CS_OFFLINE_KEY = 'sb_publishable_6j-rSrv1V95FROe-iX6Yew_unE_Y6n9';
+let csOfflineClient = null;
+function _getCsOffline() {
+  if (!csOfflineClient && window.supabase) {
+    csOfflineClient = window.supabase.createClient(CS_OFFLINE_URL, CS_OFFLINE_KEY, { auth: { persistSession: false } });
+  }
+  return csOfflineClient;
+}
 
 const OFF_STAGES = [
   { k: 'ordered',   label: '待下单', color: 'var(--text-secondary)', bg: 'rgba(136,135,128,0.08)' },
@@ -18,7 +29,7 @@ const OFF_NEXT = { ordered: 'producing', producing: 'arrived' };
 const OFF_PREV = { producing: 'ordered', arrived: 'producing' };
 // V20260617:旧数据兼容 — pending/claimed 一律视为 ordered(待下单)· 接单环节归客服,跟单拿到直接下单
 //   received(旧已签收)已取消 → 归并为 shipped(已发货终态)
-const OFF_STAGE_NORMALIZE = { pending: 'ordered', claimed: 'ordered', received: 'shipped' };
+const OFF_STAGE_NORMALIZE = { pending: 'ordered', claimed: 'ordered', received: 'shipped', to_order: 'ordered' };
 
 const OFFLINE = { _msgs: [], _followups: {}, _shipped: {}, _view: (typeof localStorage !== 'undefined' && localStorage.getItem('offline_view')) || 'board', _loadedAt: 0 };
 window.OFFLINE = OFFLINE;
@@ -40,78 +51,81 @@ function _offNormNo(no) { return String(no || '').replace(/^#/, '').trim(); }
 // 按规范化订单号查发货信息(转单/发货订单号可能 # 不一致)
 function _offShippedOf(no) { return (OFFLINE._shipped && OFFLINE._shipped[_offNormNo(no)]) || null; }
 function _offStageOf(m) {
+  // V20260623:客服 status=shipped → 已发货只读;否则用跟单 po_stage(followup.stage)
+  if (m && m._csStatus === 'shipped') return 'shipped';
+  if (m && m._row && m._row.status === 'cancelled') return 'cancelled';
   const fu = _offGetFu(m.related_ref);
   if (fu.cancelled) return 'cancelled';
-  // V20260622:客服已发货(offline_shipped 消息) → 覆盖为 shipped 终态(不论 followup 是 arrived 还是别的)
   if (_offShippedOf(m.related_ref)) return 'shipped';
   let st = fu.stage || 'ordered';
-  if (OFF_STAGE_NORMALIZE[st]) st = OFF_STAGE_NORMALIZE[st];   // V20260617:旧 pending/claimed → ordered · received → shipped
+  if (OFF_STAGE_NORMALIZE[st]) st = OFF_STAGE_NORMALIZE[st];   // 旧值兼容
   return st;
 }
 
 async function loadOfflineOrders() {
-  // V20260623b:双库兼容 — 线下单消息可能在 pyfmu(sb·新)或 xyhbw(cdmClient·旧),两边都查合并去重
-  //   避免迁库过渡期一边没数据就全空。其他跨部门工单仍各自在原库。
-  const clients = [];
-  if (typeof sb !== 'undefined') clients.push(sb);
-  if (typeof cdmClient !== 'undefined') clients.push(cdmClient);
-  if (clients.length === 0) return;
-  const _qOffline = async (relType, cols) => {
-    const results = [];
-    for (const cli of clients) {
-      try {
-        const { data } = await cli.from('cross_dept_messages').select(cols)
-          .eq('to_system', 'po').eq('related_type', relType)
-          .order('created_at_ms', { ascending: false }).limit(300);
-        if (data) results.push(...data);
-      } catch (e) { /* 某个库没这张表/无权限 → 跳过,用另一个库 */ }
-    }
-    return results;
-  };
+  // V20260623:直连客服库 kwrajryhwyytkjkkidor 的 offline_orders 表(单一数据源)
+  const cs = _getCsOffline();
+  if (!cs) { console.warn('[offline] 客服库 client 未就绪'); return; }
+  OFFLINE._followups = {};
+  OFFLINE._shipped = {};
+  OFFLINE._shippedUnmatched = [];
   try {
-    // 转单(两库合并 · 按 related_ref 去重,留最新)
-    const rawMsgs = await _qOffline('offline_transfer', 'id,from_system,from_user_name,to_system,to_user_id,to_user_name,related_ref,related_shop,priority,title,body,attachments,related_type,status,created_at_ms,updated_at');
-    const seen = {};
-    rawMsgs.filter(m => m.status !== 'deleted').forEach(m => {
-      const k = _offNormNo(m.related_ref) || m.id;
-      if (!seen[k] || (m.created_at_ms || 0) > (seen[k].created_at_ms || 0)) seen[k] = m;
+    // 列表查询:不取 attachments(重列),编辑/详情时再单独拉
+    const { data: rows, error } = await cs.from('offline_orders')
+      .select('id, order_no, site, status, customer_name, customer_email, customer_phone, payment_method, payment_currency, payment_amount, received_amount, paid_at, invoice_no, products, notes, follow_dispatch_text, ship_to_name, ship_to_phone, ship_to_address, ship_to_address2, ship_to_city, ship_to_state, ship_to_zip, ship_to_country, ship_no, ship_carrier, shipped_at, dispatched_at, transferred_to_po, created_by, created_by_name, created_at, updated_at, po_stage')
+      .eq('deleted', false)
+      .order('updated_at', { ascending: false }).limit(500);
+    if (error) throw error;
+
+    // 把每行 offline_orders 映射成渲染层需要的 m 形状
+    OFFLINE._msgs = (rows || []).map(o => {
+      const orderNo = o.order_no || '';
+      // po_stage(跟单工序)→ followups;客服 status=shipped 当已发货
+      OFFLINE._followups[orderNo] = {
+        order_no: orderNo,
+        stage: o.po_stage || 'ordered',
+        remark: o.notes || '',
+        cancelled: o.status === 'cancelled',
+      };
+      // 客服已发货 → 记快递单号
+      if (o.status === 'shipped' && o.ship_no) {
+        OFFLINE._shipped[_offNormNo(orderNo)] = { tracking: o.ship_no, carrier: o.ship_carrier || '', at: o.shipped_at };
+      }
+      return {
+        id: o.id,
+        related_ref: orderNo,
+        related_shop: o.site || '',
+        priority: 'normal',
+        title: `[线下单] ${orderNo}`,
+        body: _offComposeBody(o),
+        attachments: [],          // 列表不拉附件,详情再取
+        _row: o,                  // 完整行(详情/商品行用)
+        _csStatus: o.status,      // 客服状态(shipped 当已发货只读)
+        created_at_ms: o.created_at ? new Date(o.created_at).getTime() : 0,
+      };
     });
-    OFFLINE._msgs = Object.values(seen).sort((a, b) => (b.created_at_ms || 0) - (a.created_at_ms || 0));
-
-    const orderNos = OFFLINE._msgs.map(m => m.related_ref).filter(Boolean);
-    OFFLINE._followups = {};
-    if (orderNos.length > 0 && typeof sb !== 'undefined') {
-      const { data: fus, error: e2 } = await sb.from('offline_followups').select('*').in('order_no', orderNos);
-      if (e2) { if (!/offline_followups/.test(e2.message || '')) throw e2; }
-      (fus || []).forEach(f => { OFFLINE._followups[f.order_no] = f; });
-    }
-
-    // V20260622:读客服发货消息(offline_shipped)→ 反映「已发货」+ 快递单号(发货由客服在 cs-system 做)
-    OFFLINE._shipped = {};
-    OFFLINE._shippedUnmatched = [];
-    try {
-      const knownOrderNos = new Set(orderNos.map(_offNormNo));   // 规范化后匹配
-      const shippedMsgs = await _qOffline('offline_shipped', 'related_ref, related_shop, body, created_at_ms');
-      (shippedMsgs || []).forEach(m => {
-        if (!m.related_ref) return;
-        const key = _offNormNo(m.related_ref);   // 规范化订单号(剥#)做匹配key
-        const body = String(m.body || '');
-        const mt = body.match(/(?:快递单号|转单号|物流单号)[:：]\s*([^\s·\n]+)/);   // 快递/转单号(兼容两种关键词)
-        const tracking = mt ? mt[1] : '';
-        const mc = body.match(/(?:快递单号|转单号|物流单号)[:：]\s*[^\s·\n]+\s*·\s*([^\n]+?)(?:\s*\n|$)/);   // 承运商(可选)
-        const carrier = mc ? mc[1].trim() : '';
-        if (!OFFLINE._shipped[key]) {                       // 同一单只取最新一条(已排序 desc)·幂等去重
-          OFFLINE._shipped[key] = { tracking: tracking, carrier: carrier, at: m.created_at_ms };
-        }
-        if (!knownOrderNos.has(key)) {                      // 匹配不到线下单 → 留作人工核对
-          OFFLINE._shippedUnmatched.push({ order_no: m.related_ref, shop: m.related_shop || '', tracking: tracking, at: m.created_at_ms });
-        }
-      });
-    } catch (se) { console.warn('[offline] 读发货消息失败:', se.message); }
-
     OFFLINE._loadedAt = Date.now();
-  } catch (e) { console.warn('[offline] 加载线下单失败:', e.message); }
+  } catch (e) {
+    console.warn('[offline] 加载客服线下单失败:', e.message);
+    if (typeof toast === 'function') toast('线下单加载失败:' + (e.message || e), 'err', 4000);
+  }
 }
+
+// 把 offline_orders 行组装成展示文本(给详情/卡片备注用)
+function _offComposeBody(o) {
+  const lines = [];
+  if (o.customer_name) lines.push(`客户: ${o.customer_name}${o.customer_email ? ' · ' + o.customer_email : ''}`);
+  if (o.payment_currency || o.payment_amount) lines.push(`金额: ${o.payment_currency || ''} ${o.payment_amount || ''}${o.received_amount ? ' · 实收 ' + o.received_amount : ''}`);
+  const addr = [o.ship_to_name, o.ship_to_address, o.ship_to_city, o.ship_to_state, o.ship_to_zip, o.ship_to_country].filter(Boolean).join(', ');
+  if (addr) lines.push(`收货: ${addr}`);
+  if (Array.isArray(o.products) && o.products.length) {
+    lines.push('商品:');
+    o.products.forEach(p => lines.push(`  · ${p.sku || ''} ${p.name || p.variant_title || ''} ×${p.qty || p.quantity || 1}`));
+  }
+  if (o.ship_no) lines.push(`快递单号: ${o.ship_no}${o.ship_carrier ? ' · ' + o.ship_carrier : ''}`);
+  return lines.join('\n');
+}
+
 
 function renderOfflineOrders() {
   const body = document.getElementById('offlineBody');
@@ -128,7 +142,7 @@ function renderOfflineOrders() {
         ${vbtn('board', '▦ 看板')}${vbtn('grid', '⊞ 网格')}${vbtn('list', '☰ 列表')}
       </div>
       <button class="btn small" onclick="loadOfflineOrders().then(renderOfflineOrders)">🔄 刷新</button>
-      <button class="btn small" onclick="offlineDiagShipped()" title="查 MESSAGEBUS 库的客服发货消息,排查为什么没同步">🔍 发货诊断</button>
+      <button class="btn small" onclick="offlineDiagShipped()" title="检测客服库连接和数据">🔍 连接检测</button>
     </div>`;
   if (msgs.length === 0) {
     body.innerHTML = header + `<div class="empty-state" style="padding:40px; text-align:center; color:var(--text-tertiary);"><div style="font-size:34px;">🧾</div><div>还没有线下单(客服转单后出现在这里)</div></div>`;
@@ -267,6 +281,16 @@ function _offRenderList(msgs) {
 function offlineOpenDetail(msgId) {
   const m = OFFLINE._msgs.find(x => x.id === msgId);
   if (!m) return;
+  // V20260623:列表没取附件(重列),详情打开时懒加载一次
+  if (!m._attLoaded && m._row && m._row.order_no) {
+    const cs = _getCsOffline();
+    if (cs) {
+      cs.from('offline_orders').select('attachments').eq('order_no', m._row.order_no).maybeSingle()
+        .then(({ data }) => {
+          if (data && Array.isArray(data.attachments)) { m.attachments = data.attachments; m._attLoaded = true; offlineOpenDetail(msgId); }
+        }).catch(() => {});
+    }
+  }
   const orderNo = m.related_ref || '';
   const fu = _offGetFu(orderNo);
   const stage = _offStageOf(m);
@@ -354,116 +378,42 @@ function offlineSetView(v) {
 window.offlineSetView = offlineSetView;
 
 // V20260623:发货同步诊断 — 查 MESSAGEBUS 库实际数据,排查客服已发货为何没同步到跟单
+// V20260623:连接检测(直连客服库模式)— 查 offline_orders 数据状态
 async function offlineDiagShipped() {
-  const clients = [];
-  if (typeof sb !== 'undefined') clients.push({ name: 'pyfmu(跟单库)', cli: sb });
-  if (typeof cdmClient !== 'undefined') clients.push({ name: 'xyhbw(销售库)', cli: cdmClient });
-  if (clients.length === 0) { toast('未连接任何库', 'err'); return; }
-  toast('🔍 正在查两个库的 cross_dept_messages...', 'info', 1500);
+  const cs = _getCsOffline();
+  if (!cs) { toast('客服库 client 未就绪', 'err'); return; }
+  toast('🔍 正在检测客服库连接...', 'info', 1500);
   try {
-    // 双库查询,带库来源标注
-    const _q = async (relType, cols) => {
-      const out = [];
-      for (const { name, cli } of clients) {
-        try {
-          const { data } = await cli.from('cross_dept_messages').select(cols)
-            .eq('to_system', 'po').eq('related_type', relType)
-            .order('created_at_ms', { ascending: false }).limit(200);
-          (data || []).forEach(r => out.push({ ...r, _db: name }));
-        } catch (e) { /* 该库无表/无权限 */ }
-      }
-      return out;
-    };
-    const shipped = await _q('offline_shipped', 'related_ref, related_shop, body, status, created_at_ms');
-    const transfers = await _q('offline_transfer', 'related_ref, status');
-
-    // 统计各库分布
-    const dbStat = {};
-    [...shipped, ...transfers].forEach(r => { dbStat[r._db] = (dbStat[r._db] || 0) + 1; });
-
-    const transferNos = new Set((transfers || []).map(t => _offNormNo(t.related_ref)).filter(Boolean));
-    const shippedList = shipped || [];
-    // 分类:能匹配到转单 vs 匹配不到(孤儿发货消息)· 按规范化订单号匹配
-    const matched = [], orphan = [];
-    shippedList.forEach(m => {
-      if (!m.related_ref) return;
-      const mt = String(m.body || '').match(/(?:快递单号|转单号|物流单号)[:：]\s*([^\s·\n]+)/);
-      const row = { order_no: m.related_ref, shop: m.related_shop || '', tracking: mt ? mt[1] : '(未解析)', status: m.status, at: m.created_at_ms };
-      if (transferNos.has(_offNormNo(m.related_ref))) matched.push(row); else orphan.push(row);
+    const { data, error } = await cs.from('offline_orders')
+      .select('status, po_stage').eq('deleted', false).limit(1000);
+    if (error) throw error;
+    const rows = data || [];
+    const byStatus = {}, byPoStage = {};
+    rows.forEach(r => {
+      byStatus[r.status || '(空)'] = (byStatus[r.status || '(空)'] || 0) + 1;
+      byPoStage[r.po_stage || '(未设)'] = (byPoStage[r.po_stage || '(未设)'] || 0) + 1;
     });
-
-    const fmtTime = ms => ms ? new Date(ms).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-    const rowHtml = r => `<tr>
-      <td style="padding:5px 8px; font-family:monospace; font-weight:600;">${escapeHtml(r.order_no)}</td>
-      <td style="padding:5px 8px;">${escapeHtml(r.shop)}</td>
-      <td style="padding:5px 8px; font-family:monospace;">${escapeHtml(r.tracking)}</td>
-      <td style="padding:5px 8px; color:var(--text-tertiary);">${fmtTime(r.at)}</td></tr>`;
-
     const html = `
-      <div style="margin-bottom:14px; padding:10px 12px; background:var(--bg-elevated); border-radius:8px; font-size:13px; line-height:1.7;">
-        两库实际数据(pyfmu跟单库 + xyhbw销售库):<br>
-        · 数据分布:${Object.entries(dbStat).map(([k, v]) => `${k}=${v}`).join(' · ') || '两库都没数据 ⚠️'}<br>
-        · 客服发货消息(offline_shipped):<b>${shippedList.length}</b> 条<br>
-        · 转单建单消息(offline_transfer):<b>${transferNos.size}</b> 个订单号<br>
-        · 发货消息能匹配到转单的:<b style="color:var(--ok);">${matched.length}</b> 条 ✅<br>
-        · 发货消息<b style="color:var(--danger);">匹配不到</b>转单的(孤儿):<b style="color:var(--danger);">${orphan.length}</b> 条 ⚠️
+      <div style="padding:10px 12px; background:var(--bg-elevated); border-radius:8px; font-size:13px; line-height:1.8;">
+        ✅ 已连接客服库 <code>kwrajryhwyytkjkkidor</code> · 表 <code>offline_orders</code><br>
+        · 共 <b>${rows.length}</b> 条线下单(deleted=false)<br><br>
+        <b>按客服 status:</b><br>${Object.entries(byStatus).map(([k, v]) => `&nbsp;&nbsp;${k}: ${v}`).join('<br>')}<br><br>
+        <b>按跟单 po_stage:</b><br>${Object.entries(byPoStage).map(([k, v]) => `&nbsp;&nbsp;${k}: ${v}`).join('<br>')}
       </div>
-      ${orphan.length > 0 ? `
-      <div style="font-weight:600; color:var(--danger); margin:10px 0 6px;">⚠️ 这些发货消息在跟单找不到对应的转单(所以看不到):</div>
-      <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:14px;">
-        <thead><tr style="background:var(--bg-elevated); text-align:left;"><th style="padding:6px 8px;">订单号</th><th style="padding:6px 8px;">网站</th><th style="padding:6px 8px;">转单号</th><th style="padding:6px 8px;">发货时间</th></tr></thead>
-        <tbody>${orphan.map(rowHtml).join('')}</tbody>
-      </table>
-      <div style="font-size:12px; color:var(--text-secondary); margin-bottom:14px; padding:8px 10px; background:rgba(239,159,39,0.08); border-radius:6px;">
-        💡 原因:客服发货的这些订单,跟单这边没有对应的「offline_transfer」转单工单(没被转过来,或转单消息被删了)。<br>
-        解决:① 让客服补一条转单(related_type=offline_transfer)· 或 ② 点下方按钮把这些孤儿发货单【强制建为线下单】
-      </div>
-      <button class="btn primary" onclick="offlineImportOrphanShipped()">🧾 把这 ${orphan.length} 个孤儿发货单导入线下单</button>
-      ` : '<div style="color:var(--ok); padding:10px;">✅ 所有客服发货消息都能匹配到转单,数据正常。如果看板还看不到,点「🔄 刷新」。</div>'}
-      ${matched.length > 0 ? `
-      <details style="margin-top:14px;"><summary style="cursor:pointer; font-size:12px; color:var(--text-secondary);">查看 ${matched.length} 条正常匹配的发货消息</summary>
-      <table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;">
-        <tbody>${matched.map(rowHtml).join('')}</tbody>
-      </table></details>` : ''}
-    `;
-    OFFLINE._orphanShipped = orphan;   // 存起来供导入用
-    _offShowModal('🔍 发货同步诊断', html);
+      <div style="font-size:12px; color:var(--text-secondary); margin-top:10px; padding:8px 10px; background:rgba(37,99,235,0.06); border-radius:6px;">
+        💡 跟单只写 po_stage(工序)和 notes(备注),不动客服 status。status=shipped 当已发货只读。
+      </div>`;
+    _offShowModal('🔍 客服库连接检测', html);
   } catch (e) {
-    toast('诊断失败:' + (e.message || e), 'err', 4000);
+    const m = e.message || String(e);
+    let hint = '';
+    if (/permission denied|row-level security|403/i.test(m)) hint = '<br><br>⚠️ 权限被拒:需客服库放行 anon 读 offline_orders(见对接文档第5节)';
+    if (/relation .*offline_orders.* does not exist/i.test(m)) hint = '<br><br>⚠️ 表不存在:确认客服库表名是 offline_orders';
+    _offShowModal('🔍 连接检测失败', `<div style="padding:12px; color:var(--danger);">连接客服库失败:${escapeHtml(m)}${hint}</div>`);
   }
 }
 window.offlineDiagShipped = offlineDiagShipped;
 
-// 把孤儿发货单(有发货消息但无转单)强制建为线下单 followup,直接标 shipped
-async function offlineImportOrphanShipped() {
-  const orphans = OFFLINE._orphanShipped || [];
-  if (orphans.length === 0) { toast('没有需要导入的', 'info'); return; }
-  if (!confirm(`把这 ${orphans.length} 个孤儿发货单导入线下单(直接标为已发货)?\n它们会出现在线下单看板「已发货」列。`)) return;
-  try {
-    const nowIso = new Date().toISOString();
-    let ok = 0;
-    for (const o of orphans) {
-      // 写一条 offline_followups(stage=shipped),并补一条 offline_transfer 消息让看板能显示订单信息
-      if (typeof sb !== 'undefined') {
-        await sb.from('offline_followups').upsert({ order_no: o.order_no, stage: 'shipped', stage_at: nowIso, updated_at: nowIso }, { onConflict: 'order_no' });
-      }
-      // 补建 offline_transfer 工单(让线下单看板有这条单的基础信息)
-      await (typeof sb !== 'undefined' ? sb : cdmClient).from('cross_dept_messages').insert({
-        from_system: 'cs', to_system: 'po', related_type: 'offline_transfer',
-        related_ref: o.order_no, related_shop: o.shop,
-        title: `[补建·已发货] ${o.order_no}`,
-        body: `补建的线下单(客服已发货但无转单记录)· 转单号: ${o.tracking}`,
-        status: 'done', created_at_ms: o.at || Date.now(), updated_at: nowIso,
-      });
-      ok++;
-    }
-    toast(`🧾 已导入 ${ok} 个发货单到线下单`, 'success', 3000);
-    document.querySelectorAll('[data-off-modal]').forEach(el => el.remove());
-    await loadOfflineOrders();
-    renderOfflineOrders();
-  } catch (e) { toast('导入失败:' + (e.message || e), 'err', 4000); }
-}
-window.offlineImportOrphanShipped = offlineImportOrphanShipped;
 
 // 通用弹层(诊断用)
 function _offShowModal(title, bodyHtml) {
@@ -483,25 +433,27 @@ function _offShowModal(title, bodyHtml) {
 }
 
 async function _offWriteFu(orderNo, patch) {
-  if (typeof sb === 'undefined') throw new Error('数据库未连接');
+  // V20260623:直写客服库 offline_orders · 只动 po_stage / notes(不碰 status/ship_*/payment_* 等客服字段)
+  const cs = _getCsOffline();
+  if (!cs) throw new Error('客服库未连接');
   const cur = OFFLINE._followups[orderNo] || { order_no: orderNo };
   const merged = { ...cur, ...patch, order_no: orderNo, updated_at: new Date().toISOString() };
-  // V20260617:只 upsert 表里确实存在的列(防 cur 里残留旧字段导致 column does not exist)
-  const ALLOWED = ['order_no', 'stage', 'claimed_by_id', 'claimed_by_name', 'stage_at', 'claimed_at', 'cancelled', 'remark', 'updated_at'];
-  const row = {};
-  ALLOWED.forEach(k => { if (merged[k] !== undefined) row[k] = merged[k]; });
-  const { error } = await sb.from('offline_followups').upsert(row, { onConflict: 'order_no' });
+
+  // 映射到 offline_orders 的列:跟单工序 → po_stage;备注 → notes
+  const dbPatch = {};
+  if (patch.stage !== undefined) dbPatch.po_stage = patch.stage;
+  if (patch.remark !== undefined) dbPatch.notes = patch.remark;
+  if (patch.cancelled === true) dbPatch.po_stage = 'cancelled';   // 跟单侧取消只标自己的工序,不动客服 status
+  if (Object.keys(dbPatch).length === 0) { OFFLINE._followups[orderNo] = merged; return; }
+
+  const { error } = await cs.from('offline_orders').update(dbPatch).eq('order_no', orderNo);
   if (error) {
     const m = error.message || '';
-    // 表不存在才提示跑 SQL;其它错误(列缺失/权限)显示真实原因,不再笼统误导
-    if (/relation .*offline_followups.* does not exist/i.test(m)) {
-      throw new Error('表未建 · 请在跟单主库(pyfmu)跑 offline_followups.sql');
-    }
-    if (/column .* does not exist/i.test(m)) {
-      throw new Error('表缺字段 · 请重跑 offline_followups.sql 全文(' + m + ')');
+    if (/column .*po_stage.* does not exist/i.test(m)) {
+      throw new Error('客服库缺 po_stage 列 · 请在客服库 kwraj 跑:ALTER TABLE offline_orders ADD COLUMN IF NOT EXISTS po_stage text;');
     }
     if (/permission denied|row-level security|403/i.test(m)) {
-      throw new Error('权限被拒 · 请在 pyfmu 跑:ALTER TABLE offline_followups DISABLE ROW LEVEL SECURITY; GRANT ALL ON offline_followups TO anon;');
+      throw new Error('权限被拒 · 需客服库放行 anon 更新 offline_orders(见对接文档第5节 RLS 策略)');
     }
     throw new Error('保存失败:' + m);
   }

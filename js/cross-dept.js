@@ -626,25 +626,22 @@ function cdmSubscribeRealtime() {
     })
     .subscribe(s => { if (s === 'SUBSCRIBED') console.log('[CDM] ✓ Realtime 已订阅 v22-CW'); });
 
-  // V20260623:线下单消息已迁到 pyfmu(sb) → 单独订阅 pyfmu 的 cross_dept_messages,捕获客服转单/发货
-  //   (跨部门其他工单仍在 xyhbw·cdmClient 上面那个订阅;线下单单独在这里)
-  if (typeof sb !== 'undefined' && !window._offlineRealtimeChannel) {
-    window._offlineRealtimeChannel = sb
-      .channel('offline-msgs-po-' + me.id)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cross_dept_messages' }, p => {
-        const row = p.new || p.old;
-        if (!row) return;
-        if (row.to_system === 'po' && (row.related_type === 'offline_transfer' || row.related_type === 'offline_shipped') && typeof loadOfflineOrders === 'function') {
-          loadOfflineOrders().then(() => {
-            if (typeof CURRENT_TAB !== 'undefined' && CURRENT_TAB === 'offline' && typeof renderOfflineOrders === 'function') renderOfflineOrders();
-            if (typeof updateBadges === 'function') updateBadges();
-            if (p.eventType === 'INSERT' && row.from_user_id !== me.id && typeof toast === 'function') {
-              toast(row.related_type === 'offline_shipped' ? '📦 客服已发货一单' : '🧾 收到一条新的线下转单', 'ok', 3000);
-            }
-          }).catch(() => {});
-        }
-      })
-      .subscribe(s => { if (s === 'SUBSCRIBED') console.log('[offline] ✓ pyfmu 线下单消息 Realtime 已订阅'); });
+  // V20260623:线下单已直连客服库 offline_orders → 订阅客服库该表的变化(实时刷新)
+  if (typeof _getCsOffline === 'function' && !window._offlineRealtimeChannel) {
+    const csCli = _getCsOffline();
+    if (csCli) {
+      window._offlineRealtimeChannel = csCli
+        .channel('offline-orders-po-' + me.id)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'offline_orders' }, p => {
+          if (typeof loadOfflineOrders === 'function') {
+            loadOfflineOrders().then(() => {
+              if (typeof CURRENT_TAB !== 'undefined' && CURRENT_TAB === 'offline' && typeof renderOfflineOrders === 'function') renderOfflineOrders();
+              if (typeof updateBadges === 'function') updateBadges();
+            }).catch(() => {});
+          }
+        })
+        .subscribe(s => { if (s === 'SUBSCRIBED') console.log('[offline] ✓ 客服库 offline_orders Realtime 已订阅'); });
+    }
   }
 }
 function cdmHandleRealtimeChange(payload) {
