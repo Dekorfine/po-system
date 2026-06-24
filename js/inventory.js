@@ -153,6 +153,9 @@ async function renderInventory() {
     <div style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; align-items:center;">
       ${[
         { k: 'all',     label: '📋 全部' },
+        { k: 'restock', label: '📊 备货建议' },
+        { k: 'domestic', label: '🏠 有国内仓' },
+        { k: 'overseas', label: '✈️ 有海外仓' },
         { k: 'low',     label: '⚠️ 低库存' },
         { k: 'out',     label: '🔴 缺货' },
         { k: 'today',   label: '📅 今日消耗' },
@@ -254,6 +257,10 @@ function _invRenderList() {
   if (INVENTORY._filter === 'trash') {
     return _invRenderTrash();
   }
+  // 备货建议 = 单独渲染
+  if (INVENTORY._filter === 'restock') {
+    return _invRenderRestock();
+  }
   
   let list = INVENTORY._list;
   // V20260608:兜底过滤 — 即使 _list 混进了非库存/已删的脏数据,也只显示真正的库存品(回收站视图除外)
@@ -279,6 +286,10 @@ function _invRenderList() {
     list = list.filter(p => p.stock_qty <= 0);
   } else if (INVENTORY._filter === 'unbound') {
     list = list.filter(p => !Array.isArray(p.platform_skus) || p.platform_skus.length === 0);
+  } else if (INVENTORY._filter === 'domestic') {
+    list = list.filter(p => Number(p.stock_qty_domestic || 0) > 0);
+  } else if (INVENTORY._filter === 'overseas') {
+    list = list.filter(p => Number(p.stock_qty_overseas || 0) > 0);
   }
   // 按平台店铺筛(绑定了该店 domain 的)
   if (INVENTORY._store) {
@@ -311,6 +322,25 @@ function _invRenderList() {
   const cur = INVENTORY._page;
   const pageItems = list.slice((cur - 1) * pageSize, cur * pageSize);
   
+  // 国内仓/海外仓汇总(基于当前筛选后的 list)
+  const sumDom = list.reduce((s, p) => s + Number(p.stock_qty_domestic || 0), 0);
+  const sumOvs = list.reduce((s, p) => s + Number(p.stock_qty_overseas || 0), 0);
+  const cntDom = list.filter(p => Number(p.stock_qty_domestic || 0) > 0).length;
+  const cntOvs = list.filter(p => Number(p.stock_qty_overseas || 0) > 0).length;
+  const whSummary = `
+    <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+      <div onclick="invSetFilter('domestic')" style="flex:1; min-width:160px; cursor:pointer; padding:10px 14px; background:rgba(136,135,128,0.08); border:1px solid var(--border-subtle); border-radius:10px;">
+        <div style="font-size:11px; color:var(--text-tertiary);">🏠 国内仓合计</div>
+        <div style="font-size:20px; font-weight:700; color:var(--text-primary); font-family:'JetBrains Mono',monospace;">${sumDom.toLocaleString()}</div>
+        <div style="font-size:10.5px; color:var(--text-tertiary);">${cntDom} 款产品有国内仓库存 · 点击只看</div>
+      </div>
+      <div onclick="invSetFilter('overseas')" style="flex:1; min-width:160px; cursor:pointer; padding:10px 14px; background:rgba(37,99,235,0.06); border:1px solid var(--border-subtle); border-radius:10px;">
+        <div style="font-size:11px; color:var(--text-tertiary);">✈️ 海外仓合计</div>
+        <div style="font-size:20px; font-weight:700; color:#1d6fa5; font-family:'JetBrains Mono',monospace;">${sumOvs.toLocaleString()}</div>
+        <div style="font-size:10.5px; color:var(--text-tertiary);">${cntOvs} 款产品有海外仓库存 · 点击只看</div>
+      </div>
+    </div>`;
+
   // 压货汇总(整库,不受当前筛选影响)
   const staleAll = (INVENTORY._list || []).filter(_invIsStale);
   const staleBanner = staleAll.length > 0 ? `
@@ -333,7 +363,7 @@ function _invRenderList() {
     bodyHtml = pageItems.map(p => _invCardHtml(p)).join('');
   }
   
-  listEl.innerHTML = `${staleBanner}${pager}${bodyHtml}${total > pageSize ? pager : ''}`;
+  listEl.innerHTML = `${whSummary}${staleBanner}${pager}${bodyHtml}${total > pageSize ? pager : ''}`;
 }
 
 function _invCardHtml(p) {
@@ -392,6 +422,165 @@ function _invCardHtml(p) {
     </div>
   `;
 }
+
+// V20260623:备货建议(嵌入库存 · 所有人可见 · 基于销量+库存算该不该备货)
+function _invRenderRestock() {
+  const listEl = document.getElementById('inventoryList');
+  if (!listEl) return;
+
+  // 需要销量数据(SHOPIFY._orders)+ 分析函数(analytics.js)
+  const ordersReady = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders && SHOPIFY._orders.length > 0);
+  const anReady = (typeof _anAggBySku === 'function' && typeof _anMonthlyBySku === 'function');
+  if (!ordersReady || !anReady) {
+    listEl.innerHTML = `
+      <div style="padding:36px; text-align:center; color:var(--text-tertiary); background:var(--bg-card); border:1px dashed var(--border); border-radius:10px;">
+        <div style="font-size:30px; margin-bottom:8px;">📊</div>
+        <div style="font-size:14px; margin-bottom:6px;">备货建议需要销量数据</div>
+        <div style="font-size:12px;">请先打开一次「销售单」加载订单,再回来看备货建议</div>
+        <button class="btn primary" style="margin-top:12px;" onclick="renderInventory()">🔄 重试</button>
+      </div>`;
+    return;
+  }
+
+  // 近30天销量 + 近6月波动
+  const now = new Date();
+  const start = new Date(now.getTime() - 30 * 86400000);
+  const agg = _anAggBySku(start, now);
+  const aggMap = {}; agg.forEach(a => { aggMap[a.sku] = a; });
+  const monthly = _anMonthlyBySku(6);
+  const mMap = {}; monthly.list.forEach(x => { mMap[x.sku] = x; });
+
+  // 用库存表(有 SKU 的)逐个算
+  const invList = (INVENTORY._list || []).filter(p => p.is_inventory_item && !p.deleted_at && p.sku);
+  const days = 30;
+  const rows = invList.map(p => {
+    const a = aggMap[p.sku] || { qty: 0 };
+    const m = mMap[p.sku] || { cv: 99, trendPct: 0 };
+    const stockTotal = Number(p.stock_qty || 0);
+    const stockDom = Number(p.stock_qty_domestic || 0);
+    const stockOvs = Number(p.stock_qty_overseas || 0);
+    const inTransit = Number(p.stock_qty_in_transit || 0);
+    const leadDays = (p.overseas_lead_days != null ? Number(p.overseas_lead_days) : 30);
+    const dailySales = a.qty / days;
+    const available = stockTotal + inTransit;   // 实际可用 = 现货 + 在途
+    const daysOfStock = dailySales > 0 ? Math.round(available / dailySales) : (available > 0 ? 999 : 0);
+    const stable = m.cv <= 0.4, volatile = m.cv > 0.7, declining = m.trendPct < -40;
+    // 补货点 = 前置期 × 日均 + 安全库存(安全库存 = 7天量)
+    const reorderPoint = Math.ceil(dailySales * leadDays + dailySales * 7);
+    let advice, color, icon, suggestQty = 0, priority = 0;
+    if (a.qty === 0) { advice = '近30天无销量'; color = 'var(--text-tertiary)'; icon = '➖'; }
+    else if (volatile || declining) { advice = volatile ? '波动大·暂不备货' : '销量下滑·谨慎'; color = '#dc2626'; icon = '⚠️'; priority = 1; }
+    else if (available <= reorderPoint && stable) {
+      suggestQty = Math.max(0, Math.ceil(dailySales * 45 - available));   // 备到45天量
+      advice = `稳定畅销·建议备 ${suggestQty} 件`; color = '#0f6e56'; icon = '✅'; priority = 3;
+    } else if (available <= reorderPoint) {
+      suggestQty = Math.max(0, Math.ceil(dailySales * 30 - available));
+      advice = `低于补货点·建议备 ${suggestQty} 件`; color = '#854f0b'; icon = '🔶'; priority = 2;
+    } else if (stable) { advice = '库存充足'; color = '#1d6fa5'; icon = '👍'; }
+    else { advice = '按需备货'; color = 'var(--text-secondary)'; icon = '○'; }
+    return { p, qty30: a.qty, dailySales, stockTotal, stockDom, stockOvs, inTransit, available, daysOfStock, cv: m.cv, trendPct: m.trendPct, reorderPoint, advice, color, icon, suggestQty, priority };
+  }).sort((x, y) => y.priority - x.priority || y.qty30 - x.qty30);
+
+  const recommend = rows.filter(r => r.suggestQty > 0);
+  const cards = rows.slice(0, 300).map(r => {
+    const p = r.p;
+    const cvLabel = r.cv >= 99 ? '—' : (r.cv <= 0.4 ? `<span style="color:#0f6e56;">稳</span>` : r.cv > 0.7 ? `<span style="color:#dc2626;">波动大</span>` : '一般');
+    const trend = r.trendPct > 10 ? `<span style="color:#0f6e56;">↗+${Math.round(r.trendPct)}%</span>` : r.trendPct < -10 ? `<span style="color:#dc2626;">↘${Math.round(r.trendPct)}%</span>` : '→平';
+    const doColor = r.daysOfStock > 0 && r.daysOfStock < 7 ? '#dc2626' : r.daysOfStock < 30 ? '#854f0b' : 'var(--text-secondary)';
+    return `<tr style="border-bottom:1px solid var(--border-subtle);">
+      <td style="padding:7px 8px;"><div style="display:flex; align-items:center; gap:8px;">
+        ${p.image_url ? `<img src="${escapeHtml(_invResizeImg(p.image_url, '120x120'))}" style="width:34px;height:34px;object-fit:cover;border-radius:5px;">` : '<div style="width:34px;height:34px;background:var(--bg-elevated);border-radius:5px;"></div>'}
+        <div style="min-width:0;"><div style="font-weight:600; font-size:12px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(p.name_cn || '(无名)')}</div><div style="font-family:monospace; font-size:10px; color:var(--text-tertiary);">${escapeHtml(p.sku)}</div></div>
+      </div></td>
+      <td style="padding:7px 8px; font-weight:700;">${r.qty30}</td>
+      <td style="padding:7px 8px;">${r.dailySales.toFixed(1)}/天</td>
+      <td style="padding:7px 8px; font-size:11px;">🏠${r.stockDom} ✈️${r.stockOvs}${r.inTransit ? ` 🚚${r.inTransit}` : ''}</td>
+      <td style="padding:7px 8px; color:${doColor}; font-weight:600;">${r.daysOfStock === 999 ? '充足' : r.daysOfStock === 0 ? '无货' : r.daysOfStock + '天'}</td>
+      <td style="padding:7px 8px;">${cvLabel} ${trend}</td>
+      <td style="padding:7px 8px; color:${r.color}; font-weight:600; font-size:11.5px;">${r.icon} ${escapeHtml(r.advice)}</td>
+      <td style="padding:7px 8px;">${r.suggestQty > 0 ? `<button class="btn small" style="font-size:10.5px; padding:2px 8px;" onclick="invAiRestockAdvice('${escapeHtml(p.sku)}')">🤖 AI建议</button>` : ''}</td>
+    </tr>`;
+  }).join('');
+
+  listEl.innerHTML = `
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px;">
+      <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:var(--text-tertiary);">分析产品</div><div style="font-size:18px; font-weight:700;">${rows.length}</div></div>
+      <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:var(--text-tertiary);">建议备货</div><div style="font-size:18px; font-weight:700; color:#0f6e56;">${recommend.length}</div></div>
+      <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:var(--text-tertiary);">波动大/下滑</div><div style="font-size:18px; font-weight:700; color:#dc2626;">${rows.filter(r => r.priority === 1).length}</div></div>
+      <div style="padding:10px 14px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:var(--text-tertiary);">快断货(&lt;7天)</div><div style="font-size:18px; font-weight:700; color:#854f0b;">${rows.filter(r => r.daysOfStock > 0 && r.daysOfStock < 7).length}</div></div>
+    </div>
+    <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:8px;">📊 基于近30天销量 + 近6月波动 + 当前库存(现货+在途)综合判断 · 补货点=前置期×日均+7天安全库存 · 建议量按45天 · 所有人可见</div>
+    <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px;">
+      <thead><tr style="background:var(--bg-elevated); text-align:left;">
+        <th style="padding:8px;">产品</th><th style="padding:8px;">30天销量</th><th style="padding:8px;">日均</th><th style="padding:8px;">库存分布</th><th style="padding:8px;">可卖天数</th><th style="padding:8px;">波动/趋势</th><th style="padding:8px;">备货建议</th><th style="padding:8px;">AI</th>
+      </tr></thead><tbody>${cards}</tbody></table></div>`;
+}
+
+// AI 下库存建议(单品)· 注:GitHub Pages 浏览器直连 api.anthropic.com 会被 CORS 拦
+//   这里先给基于规则的详细建议;如需真 AI 需配服务端代理(见提示)
+async function invAiRestockAdvice(sku) {
+  const p = (INVENTORY._list || []).find(x => x.sku === sku);
+  if (!p) return;
+  if (typeof toast === 'function') toast('🤖 正在生成备货建议...', 'info', 1500);
+  // 重新算该 SKU 的数据
+  const now = new Date(); const start = new Date(now.getTime() - 30 * 86400000);
+  const agg = (typeof _anAggBySku === 'function') ? _anAggBySku(start, now) : [];
+  const a = agg.find(x => x.sku === sku) || { qty: 0 };
+  const monthly = (typeof _anMonthlyBySku === 'function') ? _anMonthlyBySku(6) : { list: [] };
+  const m = monthly.list.find(x => x.sku === sku) || { cv: 99, series: [], trendPct: 0 };
+  const stockTotal = Number(p.stock_qty || 0), inTransit = Number(p.stock_qty_in_transit || 0);
+  const leadDays = (p.overseas_lead_days != null ? Number(p.overseas_lead_days) : 30);
+  const dailySales = a.qty / 30;
+  const available = stockTotal + inTransit;
+  const daysOfStock = dailySales > 0 ? Math.round(available / dailySales) : 999;
+  const reorderPoint = Math.ceil(dailySales * leadDays + dailySales * 7);
+  const suggestQty = dailySales > 0 ? Math.max(0, Math.ceil(dailySales * 45 - available)) : 0;
+
+  // 用规则生成结构化建议(CORS 限制下不依赖外部 AI)
+  let verdict, reason;
+  if (a.qty === 0) { verdict = '⏸ 暂不备货'; reason = '近30天没有销量,先观察,别压货。'; }
+  else if (m.cv > 0.7) { verdict = '⚠️ 暂不建议备货'; reason = `销量波动很大(变异系数 ${m.cv.toFixed(2)}),各月销量忽高忽低,备货风险高。建议先观察 1-2 个月趋势稳定再说。`; }
+  else if (m.trendPct < -40) { verdict = '🔻 谨慎备货'; reason = `销量明显下滑(近期比前期跌 ${Math.round(Math.abs(m.trendPct))}%),需求在减弱,即使现在缺货也建议少量补或不补。`; }
+  else if (available <= reorderPoint && m.cv <= 0.4) { verdict = `✅ 建议备货 ${suggestQty} 件`; reason = `销量稳定(变异系数 ${m.cv.toFixed(2)}),日均卖 ${dailySales.toFixed(1)} 件,当前可用 ${available} 件只够卖 ${daysOfStock} 天,已低于补货点 ${reorderPoint} 件(海外仓前置期 ${leadDays} 天)。建议备到 45 天量,即补 ${suggestQty} 件。`; }
+  else if (available <= reorderPoint) { verdict = `🔶 可适量备货`; reason = `日均 ${dailySales.toFixed(1)} 件,可用 ${available} 件够 ${daysOfStock} 天,接近补货点。销量还算平稳,可按 30 天量补货。`; }
+  else { verdict = '👍 暂时充足'; reason = `当前可用 ${available} 件够卖 ${daysOfStock} 天,高于补货点 ${reorderPoint} 件,暂不用补。`; }
+
+  const seriesStr = (m.series || []).map((v, i) => `${monthly.monthKeys ? monthly.monthKeys[i].slice(5) : i + 1}月:${v}`).join(' · ');
+  const html = `
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+      ${p.image_url ? `<img src="${escapeHtml(_invResizeImg(p.image_url, '160x160'))}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;">` : ''}
+      <div><div style="font-weight:700;">${escapeHtml(p.name_cn || '(无名)')}</div><div style="font-family:monospace; font-size:11px; color:var(--text-tertiary);">${escapeHtml(sku)}</div></div>
+    </div>
+    <div style="font-size:20px; font-weight:700; margin-bottom:10px;">${verdict}</div>
+    <div style="font-size:13px; line-height:1.7; color:var(--text-secondary); margin-bottom:12px;">${reason}</div>
+    <div style="background:var(--bg-elevated); border-radius:8px; padding:12px; font-size:12px; line-height:1.9;">
+      <div>近30天销量:<b>${a.qty}</b> 件 · 日均 <b>${dailySales.toFixed(1)}</b> 件</div>
+      <div>近6月分布:${escapeHtml(seriesStr) || '—'}</div>
+      <div>稳定性(变异系数):<b>${m.cv >= 99 ? '—' : m.cv.toFixed(2)}</b>(≤0.4 稳定 · &gt;0.7 波动大)</div>
+      <div>当前可用:<b>${available}</b> 件(现货 ${stockTotal} + 在途 ${inTransit})· 够卖 <b>${daysOfStock === 999 ? '充足' : daysOfStock + '天'}</b></div>
+      <div>补货点:<b>${reorderPoint}</b> 件(海外仓前置期 ${leadDays} 天 × 日均 + 7天安全库存)</div>
+    </div>`;
+  _invShowModal('🤖 备货建议 · ' + sku, html);
+}
+window.invAiRestockAdvice = invAiRestockAdvice;
+window._invRenderRestock = _invRenderRestock;
+
+// 库存模块自带的简易弹层(不依赖其他文件)
+function _invShowModal(title, bodyHtml) {
+  const old = document.getElementById('invModalOverlay');
+  if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'invModalOverlay';
+  ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; display:flex; align-items:flex-start; justify-content:center; padding:30px 16px; overflow:auto;';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  ov.innerHTML = `<div style="background:var(--bg-card); border-radius:12px; max-width:560px; width:100%; padding:20px;">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
+      <span style="font-size:16px; font-weight:700;">${title}</span>
+      <button class="btn small" style="margin-left:auto;" onclick="document.getElementById('invModalOverlay').remove()">✕</button>
+    </div>${bodyHtml}</div>`;
+  document.body.appendChild(ov);
+}
+window._invShowModal = _invShowModal;
 
 // V20260607三期:回收站渲染(已删库存 · 主管可恢复/彻底移出)
 function _invRenderTrash() {
@@ -589,13 +778,13 @@ function _invRenderEdit() {
           <div style="flex:1;">
             <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:2px;">🏠 国内仓</div>
             <input type="number" min="0" value="${s.stock_qty_domestic||0}" oninput="INV_EDIT.stock_qty_domestic=parseInt(this.value)||0; _invSyncTotal(this);"
-                   style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center; font-weight:700;">
+                   style="width:100%; padding:8px 10px; font-size:15px; border:1px solid var(--border); border-radius:6px; text-align:center; font-weight:700; color:var(--text-primary); background:var(--bg-card);">
           </div>
           <span style="font-size:16px; color:var(--text-tertiary); margin-top:14px;">+</span>
           <div style="flex:1;">
             <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:2px;">✈️ 海外仓</div>
             <input type="number" min="0" value="${s.stock_qty_overseas||0}" oninput="INV_EDIT.stock_qty_overseas=parseInt(this.value)||0; _invSyncTotal(this);"
-                   style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; text-align:center; font-weight:700;">
+                   style="width:100%; padding:8px 10px; font-size:15px; border:1px solid var(--border); border-radius:6px; text-align:center; font-weight:700; color:var(--text-primary); background:var(--bg-card);">
           </div>
           <span style="font-size:16px; color:var(--text-tertiary); margin-top:14px;">=</span>
           <div style="flex:0 0 70px;">
