@@ -392,70 +392,91 @@ function _offRenderList(msgs) {
   return `${pager}<div style="display:flex; flex-direction:column; gap:8px;">${rows}</div>${pager}`;
 }
 
-function offlineOpenDetail(msgId) {
-  const m = OFFLINE._msgs.find(x => x.id === msgId);
+function offlineOpenDetail(orderId) {
+  const m = OFFLINE._msgs.find(x => String(x.id) === String(orderId));
   if (!m) return;
-  // V20260623:列表没取附件(重列),详情打开时懒加载一次
-  if (!m._attLoaded && m._row && m._row.order_no) {
-    const cs = _getCsOffline();
-    if (cs) {
-      cs.from('offline_orders').select('attachments').eq('order_no', m._row.order_no).maybeSingle()
-        .then(({ data }) => {
-          if (data && Array.isArray(data.attachments)) { m.attachments = data.attachments; m._attLoaded = true; offlineOpenDetail(msgId); }
-        }).catch(() => {});
-    }
-  }
-  const orderNo = m.related_ref || '';
+  const o = m._row || {};
+  const orderNo = m.related_ref || o.order_no || '(无单号)';
+  const site = m.related_shop || o.site || '';
   const fu = _offGetFu(orderNo);
   const stage = _offStageOf(m);
-  const stageMeta = stage === 'cancelled' ? { label:'已取消', color:'var(--danger)', bg:'rgba(220,38,38,0.1)' } : OFF_STAGE_MAP[stage];
+  const stageMeta = stage === 'cancelled' ? { label: '已取消', color: 'var(--danger)', bg: 'rgba(220,38,38,0.1)' } : OFF_STAGE_MAP[stage];
   const next = OFF_NEXT[stage];
   const prev = OFF_PREV[stage];
-  const vouchers = (Array.isArray(m.attachments) ? m.attachments : []).map(a => {
-    const u = _offAttUrl(a);
-    if (u === '__BASE64__') return `<div style="padding:8px; color:var(--danger); font-size:12px;">⚠ 附件是 base64 内嵌 · 应改存 Storage URL</div>`;
-    if (!u) return '';
-    // V20260617b:正向判断"是否图片"——只有确认是图片才走灯箱,其余(PDF/未知)一律文件卡片+新标签打开
-    //   覆盖各种字段:url后缀 / type / content_type / mimetype / name / filename
-    const meta = [u, a && a.type, a && a.content_type, a && a.mimetype, a && a.mime, a && a.name, a && a.filename]
-      .filter(Boolean).join(' ').toLowerCase();
-    const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic)(\?|$)/.test(meta) || /image\//.test(meta);
-    if (isImage) {
-      return `<img src="${escapeHtml(u)}" loading="lazy" onclick="openImgLightbox && openImgLightbox('${escapeHtml(u)}')" style="max-width:120px; max-height:120px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in;">`;
-    }
-    // 非图片(PDF 或未知格式)→ 文件卡片,新标签打开
-    const fname = (a && (a.name || a.filename)) || (/pdf/.test(meta) ? 'PDF 文档' : '附件文件');
-    const icon = /pdf/.test(meta) ? '📄' : '📎';
-    return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:8px; padding:10px 14px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:8px; text-decoration:none; color:var(--text-primary); font-size:12.5px;" title="点击在新标签页打开">
-      <span style="font-size:22px;">${icon}</span>
-      <span style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(fname)}</span>
-      <span style="color:var(--accent); font-size:11px; margin-left:4px;">↗ 打开</span>
-    </a>`;
-  }).join('');
 
-  // 跟单操作区:当前阶段 + 推进/返回 + 备注
+  // 金额 / 客户
+  const curr = o.payment_currency || 'USD';
+  const amt = o.payment_amount || o.received_amount || 0;
+  const amtStr = amt ? `${curr} ${Number(amt).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '';
+
+  // 商品行表格
+  const products = Array.isArray(o.products) ? o.products : [];
+  const prodRows = products.map(p => {
+    const pimg = p.image || p.image_url || p.img || (Array.isArray(p.images) ? p.images[0] : '') || '';
+    return `<tr style="border-bottom:1px solid var(--border-subtle);">
+      <td style="padding:6px 8px;">${pimg ? `<img src="${escapeHtml(_offImg(pimg, '120x120'))}" onerror="this.style.display='none'" style="width:38px;height:38px;object-fit:cover;border-radius:5px;">` : '<div style="width:38px;height:38px;background:var(--bg-elevated);border-radius:5px;"></div>'}</td>
+      <td style="padding:6px 8px; font-family:monospace; font-size:11px;">${escapeHtml(p.sku || '')}</td>
+      <td style="padding:6px 8px; font-size:12px;">${escapeHtml(p.name || p.title || '')}${p.variant_title ? `<div style="color:var(--text-tertiary); font-size:10.5px;">${escapeHtml(p.variant_title)}</div>` : ''}</td>
+      <td style="padding:6px 8px; text-align:center; font-weight:600;">×${p.qty || p.quantity || 1}</td>
+      <td style="padding:6px 8px; text-align:right; font-size:11.5px;">${p.unit_price || p.price ? `${curr} ${p.unit_price || p.price}` : ''}</td>
+    </tr>`;
+  }).join('');
+  const prodTable = products.length ? `
+    <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin:14px 0 6px;">📦 商品明细(${products.length} 项)</div>
+    <table style="width:100%; border-collapse:collapse; font-size:12px; background:var(--bg-elevated); border-radius:8px; overflow:hidden;">
+      <thead><tr style="text-align:left; color:var(--text-tertiary); font-size:11px;"><th style="padding:6px 8px;">图</th><th style="padding:6px 8px;">SKU</th><th style="padding:6px 8px;">品名</th><th style="padding:6px 8px; text-align:center;">数量</th><th style="padding:6px 8px; text-align:right;">单价</th></tr></thead>
+      <tbody>${prodRows}</tbody>
+    </table>` : '';
+
+  // 收货地址
+  const addr = [o.ship_to_name, o.ship_to_phone, o.ship_to_address, o.ship_to_address2, o.ship_to_city, o.ship_to_state, o.ship_to_zip, o.ship_to_country].filter(Boolean).join(' · ');
+  const addrBlock = addr ? `<div style="font-size:12px; margin-top:12px;"><span style="color:var(--text-secondary);">📍 收货:</span> ${escapeHtml(addr)}</div>` : '';
+
+  // 客户信息块
+  const custBlock = `
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; font-size:12.5px; margin-top:10px;">
+      ${o.customer_name ? `<div><span style="color:var(--text-secondary);">👤 客户:</span> ${escapeHtml(o.customer_name)}</div>` : ''}
+      ${o.customer_email ? `<div><span style="color:var(--text-secondary);">✉️ 邮箱:</span> ${escapeHtml(o.customer_email)}</div>` : ''}
+      ${o.customer_phone ? `<div><span style="color:var(--text-secondary);">📞 电话:</span> ${escapeHtml(o.customer_phone)}</div>` : ''}
+      ${amtStr ? `<div><span style="color:var(--text-secondary);">💰 金额:</span> <b>${escapeHtml(amtStr)}</b>${o.payment_method ? ` (${escapeHtml(o.payment_method)})` : ''}</div>` : ''}
+      ${o.created_by_name ? `<div><span style="color:var(--text-secondary);">录入:</span> ${escapeHtml(o.created_by_name)}</div>` : ''}
+      ${o.invoice_no ? `<div><span style="color:var(--text-secondary);">发票号:</span> ${escapeHtml(o.invoice_no)}</div>` : ''}
+    </div>`;
+
+  // 客服派单文案 / 备注
+  const dispatchBlock = o.follow_dispatch_text ? `<div style="font-size:12px; margin-top:12px; padding:8px 10px; background:rgba(239,159,39,0.08); border-radius:6px; line-height:1.6;"><span style="color:#854f0b; font-weight:600;">📋 客服派单说明:</span><br>${escapeHtml(o.follow_dispatch_text)}</div>` : '';
+
+  // 附件凭证
+  const vouchers = (Array.isArray(o.attachments) ? o.attachments : []).map(a => {
+    const u = _offAttUrl(a);
+    if (!u || u === '__BASE64__') return '';
+    const meta = [u, a && a.type, a && a.name].filter(Boolean).join(' ').toLowerCase();
+    const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic)(\?|$)/.test(meta) || /image\//.test(meta);
+    if (isImage) return `<img src="${escapeHtml(u)}" loading="lazy" onclick="openImgLightbox && openImgLightbox('${escapeHtml(u)}')" style="max-width:100px; max-height:100px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in;">`;
+    return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:6px; padding:8px 12px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:8px; text-decoration:none; color:var(--text-primary); font-size:12px;">📎 附件 ↗</a>`;
+  }).filter(Boolean).join('');
+
+  // 跟单操作区:返回上一步 + 推进下一步 + 备注
   const opsArea = stage === 'cancelled' ? `
     <div style="padding:12px; background:rgba(220,38,38,0.06); border-radius:8px; text-align:center; color:var(--danger); font-size:13px;">此单已取消</div>
   ` : `
     <div style="background:var(--bg-elevated); border-radius:10px; padding:14px; margin-bottom:12px;">
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-        <span style="font-size:12px; color:var(--text-secondary);">当前阶段:</span>
+        <span style="font-size:12px; color:var(--text-secondary);">当前工序:</span>
         <span style="background:${stageMeta.bg}; color:${stageMeta.color}; padding:3px 12px; border-radius:10px; font-size:12.5px; font-weight:700;">${stageMeta.label}</span>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
-        ${prev ? `<button class="btn small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${prev}'); offlineOpenDetail('${m.id}'); this.closest('[style*=fixed]').remove();" title="退回到上一步">← 返回「${OFF_STAGE_MAP[prev].label}」</button>` : ''}
-        ${next ? `<button class="btn primary small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}'); offlineOpenDetail('${m.id}'); this.closest('[style*=fixed]').remove();" title="推进到下一步">推进到「${OFF_STAGE_MAP[next].label}」→</button>` : (
+        ${prev ? `<button class="btn small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${prev}'); this.closest('[data-off-detail]').remove();" title="退回上一步">← 返回「${OFF_STAGE_MAP[prev].label}」</button>` : ''}
+        ${next ? `<button class="btn primary small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}'); this.closest('[data-off-detail]').remove();" title="推进下一步">推进到「${OFF_STAGE_MAP[next].label}」→</button>` : (
           stage === 'shipped'
-            ? `<span style="font-size:12.5px; color:var(--ok); align-self:center;">✅ 客服已发货${(_offShippedOf(orderNo) && _offShippedOf(orderNo).tracking) ? ` · 快递单号 <b>${escapeHtml(_offShippedOf(orderNo).tracking)}</b>${_offShippedOf(orderNo).carrier ? ` (${escapeHtml(_offShippedOf(orderNo).carrier)})` : ''}` : ''}</span>`
-            : (stage === 'arrived'
-                ? '<span style="font-size:12px; color:var(--text-tertiary); align-self:center;">✅ 已到货 · 等客服发货(发货由客服操作)</span>'
-                : ''))}
+            ? `<span style="font-size:12.5px; color:var(--ok); align-self:center;">✅ 客服已发货${(_offShippedOf(orderNo) && _offShippedOf(orderNo).tracking) ? ` · 快递单号 <b>${escapeHtml(_offShippedOf(orderNo).tracking)}</b>` : (o.ship_no ? ` · ${escapeHtml(o.ship_no)}` : '')}</span>`
+            : (stage === 'arrived' ? '<span style="font-size:12px; color:var(--text-tertiary); align-self:center;">✅ 已到货 · 等客服发货</span>' : ''))}
       </div>
       <div>
-        <label style="font-size:11.5px; color:var(--text-secondary); display:block; margin-bottom:5px;">📝 跟单备注(什么时候下单、当前情况、跟厂进度等)</label>
-        <textarea id="offRemarkInput" rows="3" autocomplete="off" data-1p-ignore data-lpignore="true"
+        <label style="font-size:11.5px; color:var(--text-secondary); display:block; margin-bottom:5px;">📝 跟单备注(下单时间、当前情况、跟厂进度)</label>
+        <textarea id="offRemarkInput" rows="3" autocomplete="off"
           style="width:100%; padding:8px; font-size:12.5px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); resize:vertical; box-sizing:border-box;"
-          placeholder="例:6/13 已下单给三洪,约 15 天交期 / 6/20 催了进度,说本周出货">${escapeHtml(fu.remark || '')}</textarea>
+          placeholder="例:6/13 已下单给三洪,约15天交期 / 6/20 催进度,本周出货">${escapeHtml(fu.remark || '')}</textarea>
         <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
           <button class="btn primary small" onclick="offlineSaveRemark('${escapeHtml(orderNo)}')">💾 保存备注</button>
           <span id="offRemarkStatus" style="font-size:11px; color:var(--text-tertiary);"></span>
@@ -464,24 +485,27 @@ function offlineOpenDetail(msgId) {
     </div>`;
 
   const html = `
-    <div style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px;" onclick="if(event.target===this) this.remove();">
-      <div style="background:var(--bg-card); border-radius:12px; max-width:640px; width:100%; max-height:88vh; overflow:auto; padding:20px;">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; position:sticky; top:-20px; background:var(--bg-card); padding-top:4px; z-index:3;">
-          <span style="font-size:17px; font-weight:700;">🧾 ${escapeHtml(orderNo || '(无单号)')}</span>
-          ${m.related_shop ? `<span style="font-size:12px; color:var(--text-secondary); background:var(--bg-elevated); padding:1px 8px; border-radius:8px;">${escapeHtml(m.related_shop)}</span>` : ''}
-          <button class="btn small" style="margin-left:auto;" onclick="this.closest('[style*=fixed]').remove()">✕</button>
+    <div data-off-detail="1" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; display:flex; align-items:flex-start; justify-content:center; padding:30px 16px; overflow:auto;" onclick="if(event.target===this) this.remove();">
+      <div style="background:var(--bg-card); border-radius:12px; max-width:640px; width:100%; padding:20px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          ${site ? `<span style="font-size:11px; font-weight:700; color:var(--accent); background:var(--accent-soft); padding:1px 7px; border-radius:5px;">${escapeHtml(site)}</span>` : ''}
+          <span style="font-size:17px; font-weight:700;">🧾 ${escapeHtml(orderNo)}</span>
+          <button class="btn small" style="margin-left:auto;" onclick="this.closest('[data-off-detail]').remove()">✕ 关闭</button>
         </div>
-        <div style="font-size:11.5px; color:var(--text-tertiary); margin-bottom:10px;">来自客服 ${escapeHtml(m.from_user_name || '')} · ${m.created_at_ms ? new Date(m.created_at_ms).toLocaleString('zh-CN') : ''}</div>
-        ${opsArea}
-        ${vouchers ? `<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">${vouchers}</div>` : ''}
-        <pre style="white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:13px; line-height:1.7; background:var(--bg-elevated); padding:12px; border-radius:8px; margin:0 0 12px;">${escapeHtml(m.body || '(无内容)')}</pre>
+        ${custBlock}
+        ${addrBlock}
+        ${dispatchBlock}
+        ${prodTable}
+        ${vouchers ? `<div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin:14px 0 6px;">📎 凭证/附件</div><div style="display:flex; gap:8px; flex-wrap:wrap;">${vouchers}</div>` : ''}
+        <div style="margin-top:16px;">${opsArea}</div>
         <div style="display:flex; gap:8px; justify-content:flex-end;">
-          <button class="btn small" style="color:var(--danger);" onclick="offlineCancel('${m.id}','${escapeHtml(orderNo)}'); this.closest('[style*=fixed]').remove();">🗑️ 取消此单</button>
+          <button class="btn small" style="color:var(--danger);" onclick="offlineCancel('${m.id}','${escapeHtml(orderNo)}'); this.closest('[data-off-detail]').remove();">🗑️ 取消此单</button>
         </div>
       </div>
     </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
 }
+window.offlineOpenDetail = offlineOpenDetail;
 window.offlineOpenDetail = offlineOpenDetail;
 
 function offlineSetView(v) {
