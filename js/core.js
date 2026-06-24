@@ -2942,7 +2942,7 @@ const TAB_LAYOUT_DEFAULT = {
   finance:       'side',
   cross_dept:    'side',
   performance:   'side',
-  analytics:     'side',
+  analytics:     'top',     // V20260623:数据分析(独立顶部tab,和销售单/采购单并列)
   photoreq:      'side',
   inspection:    'side',
   workflows:     'side',   // V20260531:工作流速查
