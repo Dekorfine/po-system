@@ -217,40 +217,76 @@ function _offRenderBoard(msgs) {
 }
 
 function _offBoardCard(m, stage) {
+  const o = m._row || {};
   const fu = _offGetFu(m.related_ref);
-  const orderNo = m.related_ref || '(无单号)';
-  const pri = m.priority === 'urgent' ? '<span style="background:var(--danger); color:white; padding:0 5px; border-radius:6px; font-size:9.5px; font-weight:600;">急</span>' : '';
-  const thumb = (Array.isArray(m.attachments) ? m.attachments : []).map(a => {
-    const u = _offAttUrl(a);
-    if (u === '__BASE64__') return `<span style="font-size:9px; color:var(--danger);" title="附件是 base64 · 应改 Storage URL">⚠</span>`;
-    if (!u) return '';
-    return `<img src="${escapeHtml(u)}" loading="lazy" onerror="this.style.display='none'" onclick="event.stopPropagation(); openImgLightbox && openImgLightbox('${escapeHtml(u)}')" style="width:40px; height:40px; object-fit:cover; border-radius:5px; cursor:zoom-in;">`;
-  }).slice(0, 4).join('');
+  const orderNo = m.related_ref || o.order_no || '(无单号)';
+  const site = m.related_shop || o.site || '';
+  // 金额(原币种)
+  const curr = o.payment_currency || 'USD';
+  const amt = o.payment_amount || o.received_amount || 0;
+  const amtStr = amt ? `${curr} ${Number(amt).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '';
+  // 客户
+  const cust = o.customer_name || '';
+  const email = o.customer_email || '';
+  // 商品件数
+  const products = Array.isArray(o.products) ? o.products : [];
+  const itemCount = products.reduce((s, p) => s + Number(p.qty || p.quantity || 1), 0);
+  const creator = o.created_by_name || o.created_by || '';
+  // 商品图(优先 products 里的图,其次 attachments)
+  let imgUrl = '';
+  for (const p of products) {
+    const u = p.image || p.image_url || p.img || (Array.isArray(p.images) ? p.images[0] : '');
+    if (u) { imgUrl = u; break; }
+  }
+  if (!imgUrl && Array.isArray(o.attachments)) {
+    for (const a of o.attachments) { const u = _offAttUrl(a); if (u && u !== '__BASE64__') { imgUrl = u; break; } }
+  }
+  const imgCell = imgUrl
+    ? `<img src="${escapeHtml(_offImg(imgUrl, '120x120'))}" loading="lazy" onerror="this.style.display='none'" style="width:42px; height:42px; object-fit:cover; border-radius:6px; flex-shrink:0;">`
+    : `<div style="width:42px; height:42px; background:var(--bg-elevated); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">🧾</div>`;
+
   const next = (stage !== 'cancelled') ? OFF_NEXT[stage] : null;
   const nextLabel = next ? OFF_STAGE_MAP[next].label : null;
-  const claimer = fu.claimed_by_name ? `👤 ${escapeHtml(fu.claimed_by_name)}` : '';
   let actions = '';
   if (next) {
-    actions = `<button class="btn small" style="font-size:10.5px; padding:2px 8px; width:100%;" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ 推进到「${nextLabel}」</button>`;
+    actions = `<button class="btn small" style="font-size:11px; padding:3px 10px; width:100%; background:var(--accent); color:white; border:0; border-radius:6px;" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ ${nextLabel}</button>`;
   } else if (stage === 'shipped') {
-    // V20260622:客服已发货 · 只读终态 + 转单号
-    const _sh = _offShippedOf(orderNo); const tk = (_sh && _sh.tracking) || '';
-    actions = `<span style="font-size:10.5px; color:var(--ok);">✅ 已发货${tk ? ` · 快递单号 ${escapeHtml(tk)}` : ''}</span>`;
+    const _sh = _offShippedOf(orderNo); const tk = (_sh && _sh.tracking) || o.ship_no || '';
+    actions = `<div style="font-size:10.5px; color:var(--ok); text-align:center; padding:3px;">✅ 已发货${tk ? ` · ${escapeHtml(tk)}` : ''}</div>`;
   } else if (stage === 'arrived') {
-    // V20260622:跟单推进到头 · 等客服发货
-    actions = `<span style="font-size:10.5px; color:var(--text-tertiary);">✅ 已到货 · 等客服发货</span>`;
+    actions = `<div style="font-size:10.5px; color:var(--text-tertiary); text-align:center; padding:3px;">✅ 已到货 · 等客服发货</div>`;
   }
+
   return `
-  <div onclick="offlineOpenDetail('${m.id}')" style="background:var(--bg-card); border:1px solid var(--border); border-radius:9px; padding:10px; cursor:pointer; ${stage === 'cancelled' ? 'opacity:0.55; min-width:170px;' : ''}">
-    <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
-      <span style="font-weight:700; font-size:13.5px;">${escapeHtml(orderNo)}</span>${pri}
-      ${m.related_shop ? `<span style="font-size:10px; color:var(--text-tertiary); margin-left:auto; white-space:nowrap;">${escapeHtml(m.related_shop)}</span>` : ''}
+  <div onclick="offlineOpenDetail('${m.id}')" style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:11px; cursor:pointer; ${stage === 'cancelled' ? 'opacity:0.55;' : ''}">
+    <div style="display:flex; gap:9px;">
+      ${imgCell}
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px;">
+          ${site ? `<span style="font-size:9.5px; font-weight:700; color:var(--accent); background:var(--accent-soft); padding:1px 5px; border-radius:4px;">${escapeHtml(site)}</span>` : ''}
+          <span style="font-weight:700; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(orderNo)}</span>
+          ${amtStr ? `<span style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-left:auto; white-space:nowrap;">${escapeHtml(amtStr)}</span>` : ''}
+        </div>
+        ${cust ? `<div style="font-size:11.5px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">👤 ${escapeHtml(cust)}</div>` : ''}
+        ${email ? `<div style="font-size:10px; color:var(--text-tertiary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">✉️ ${escapeHtml(email)}</div>` : ''}
+        <div style="font-size:10px; color:var(--text-tertiary); margin-top:2px;">📦 ${itemCount} 件${creator ? ` · 录入 ${escapeHtml(creator)}` : ''}</div>
+      </div>
     </div>
-    ${claimer ? `<div style="font-size:10.5px; color:var(--text-secondary); margin-bottom:6px;">${claimer}</div>` : ''}
-    ${fu.remark ? `<div style="font-size:10px; color:var(--text-secondary); margin-bottom:6px; padding:4px 6px; background:var(--bg-elevated); border-radius:5px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;" title="${escapeHtml(fu.remark)}">📝 ${escapeHtml(fu.remark)}</div>` : ''}
-    ${thumb ? `<div style="display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap;">${thumb}</div>` : ''}
-    ${stage !== 'cancelled' ? `<div onclick="event.stopPropagation();">${actions}</div>` : ''}
+    ${fu.remark ? `<div style="font-size:10px; color:var(--text-secondary); margin-top:7px; padding:4px 6px; background:var(--bg-elevated); border-radius:5px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;" title="${escapeHtml(fu.remark)}">📝 ${escapeHtml(fu.remark)}</div>` : ''}
+    ${actions ? `<div style="margin-top:8px;" onclick="event.stopPropagation();">${actions}</div>` : ''}
   </div>`;
+}
+
+// Shopify CDN 图片压缩(文件名后插 _WxH)
+function _offImg(url, size) {
+  if (!url || typeof url !== 'string') return url;
+  if (!/cdn\.shopify\.com|\/cdn\/shop\//i.test(url)) return url;
+  try {
+    const [base, query] = url.split('?');
+    const cleaned = base.replace(/_(\d+x\d+|\d+x|x\d+)(?=\.\w+$)/i, '');
+    const resized = cleaned.replace(/(\.\w+)$/i, `_${size}$1`);
+    return query ? `${resized}?${query}` : resized;
+  } catch (e) { return url; }
 }
 
 // ── 网格视图(大图卡片 · 自适应列 · 看大图为主)──
@@ -266,37 +302,42 @@ function _offRenderGrid(msgs) {
   const pageMsgs = msgs.slice(start, start + OFF_LIST_PAGE_SIZE);
   const pager = _offListPager(safePage, totalPages, total);
   const cards = pageMsgs.map(m => {
+    const o = m._row || {};
     const st = _offStageOf(m);
     const meta = (st === 'cancelled') ? { label: '已取消', color: 'var(--danger)', bg: 'rgba(220,38,38,0.1)' } : OFF_STAGE_MAP[st];
     const fu = _offGetFu(m.related_ref);
     const orderNo = m.related_ref || '(无单号)';
+    const site = m.related_shop || o.site || '';
     const next = (st !== 'cancelled' && st !== 'received') ? OFF_NEXT[st] : null;
-    const atts = (Array.isArray(m.attachments) ? m.attachments : []);
-    const firstUrl = (() => { for (const a of atts) { const u = _offAttUrl(a); if (u && u !== '__BASE64__') return u; } return ''; })();
-    const _firstAtt = atts.find(a => { const u = _offAttUrl(a); return u && u !== '__BASE64__'; });
-    const _fMeta = [firstUrl, _firstAtt && _firstAtt.type, _firstAtt && _firstAtt.content_type, _firstAtt && _firstAtt.mimetype, _firstAtt && _firstAtt.name, _firstAtt && _firstAtt.filename].filter(Boolean).join(' ').toLowerCase();
-    const firstIsImage = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic)(\?|$)/.test(_fMeta) || /image\//.test(_fMeta);
-    const firstIsPdf = firstUrl && !firstIsImage;   // 非图片当文件(PDF/未知)处理
-    const hasB64 = atts.some(a => _offAttUrl(a) === '__BASE64__');
-    const cover = (firstUrl && !firstIsPdf)
-      ? `<div style="height:150px; background:var(--bg-elevated); border-radius:8px 8px 0 0; overflow:hidden; display:flex; align-items:center; justify-content:center;"><img src="${escapeHtml(firstUrl)}" loading="lazy" onerror="this.parentElement.innerHTML='<span style=&quot;color:var(--text-tertiary);font-size:28px;&quot;>🧾</span>'" onclick="event.stopPropagation(); openImgLightbox && openImgLightbox('${escapeHtml(firstUrl)}')" style="width:100%; height:100%; object-fit:cover; cursor:zoom-in;"></div>`
-      : firstIsPdf
-        ? `<div style="height:150px; background:var(--bg-elevated); border-radius:8px 8px 0 0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-tertiary); gap:4px;"><span style="font-size:34px;">📄</span><span style="font-size:11px;">PDF 凭证 · 点卡片查看</span></div>`
-      : `<div style="height:150px; background:var(--bg-elevated); border-radius:8px 8px 0 0; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:30px;">${hasB64 ? '<span style=\"font-size:12px; color:var(--danger);\">⚠ 凭证为base64</span>' : '🧾'}</div>`;
+    const curr = o.payment_currency || 'USD';
+    const amt = o.payment_amount || o.received_amount || 0;
+    const amtStr = amt ? `${curr} ${Number(amt).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '';
+    const cust = o.customer_name || '';
+    const products = Array.isArray(o.products) ? o.products : [];
+    const itemCount = products.reduce((s, p) => s + Number(p.qty || p.quantity || 1), 0);
+    // 商品图(products 优先,其次 attachments)
+    let firstUrl = '';
+    for (const p of products) { const u = p.image || p.image_url || p.img || (Array.isArray(p.images) ? p.images[0] : ''); if (u) { firstUrl = u; break; } }
+    if (!firstUrl && Array.isArray(o.attachments)) { for (const a of o.attachments) { const u = _offAttUrl(a); if (u && u !== '__BASE64__') { firstUrl = u; break; } } }
+    const cover = firstUrl
+      ? `<div style="height:150px; background:var(--bg-elevated); border-radius:8px 8px 0 0; overflow:hidden;"><img src="${escapeHtml(_offImg(firstUrl, '400x400'))}" loading="lazy" onerror="this.parentElement.innerHTML='<div style=&quot;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:28px;&quot;>🧾</div>'" style="width:100%; height:100%; object-fit:cover;"></div>`
+      : `<div style="height:150px; background:var(--bg-elevated); border-radius:8px 8px 0 0; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:30px;">🧾</div>`;
     return `
     <div class="as-card" onclick="offlineOpenDetail('${m.id}')" style="cursor:pointer; ${st === 'cancelled' ? 'opacity:0.55;' : ''} padding:0; overflow:hidden;">
       ${cover}
       <div style="padding:10px 12px;">
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
           <span style="background:${meta.bg || 'var(--bg-elevated)'}; color:${meta.color}; padding:1px 8px; border-radius:8px; font-size:10.5px; font-weight:600;">${meta.label}</span>
-          ${m.priority === 'urgent' ? '<span style="background:var(--danger); color:white; padding:0 6px; border-radius:6px; font-size:10px;">急</span>' : ''}
+          ${site ? `<span style="font-size:9.5px; font-weight:700; color:var(--accent); background:var(--accent-soft); padding:1px 5px; border-radius:4px;">${escapeHtml(site)}</span>` : ''}
+          ${amtStr ? `<span style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-left:auto;">${escapeHtml(amtStr)}</span>` : ''}
         </div>
-        <div style="font-weight:700; font-size:14px; margin-bottom:3px;">${escapeHtml(orderNo)}</div>
-        <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:8px;">${m.related_shop ? escapeHtml(m.related_shop) : ''}${fu.claimed_by_name ? ` · 👤 ${escapeHtml(fu.claimed_by_name)}` : ''}</div>
+        <div style="font-weight:700; font-size:14px; margin-bottom:2px;">${escapeHtml(orderNo)}</div>
+        ${cust ? `<div style="font-size:11.5px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">👤 ${escapeHtml(cust)}</div>` : ''}
+        <div style="font-size:10.5px; color:var(--text-tertiary); margin-bottom:8px;">📦 ${itemCount} 件${o.created_by_name ? ` · 录入 ${escapeHtml(o.created_by_name)}` : ''}</div>
         ${st === 'cancelled' ? '' : (next
-          ? `<button class="btn small" style="width:100%; font-size:11px;" onclick="event.stopPropagation(); offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ 推进到「${OFF_STAGE_MAP[next].label}」</button>`
+          ? `<button class="btn small" style="width:100%; font-size:11px; background:var(--accent); color:white; border:0; border-radius:6px; padding:4px;" onclick="event.stopPropagation(); offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ ${OFF_STAGE_MAP[next].label}</button>`
           : (st === 'shipped'
-              ? `<div style="text-align:center; font-size:11px; color:var(--ok);">✅ 已发货${(_offShippedOf(orderNo) && _offShippedOf(orderNo).tracking) ? ` · 快递单号 ${escapeHtml(_offShippedOf(orderNo).tracking)}` : ''}</div>`
+              ? `<div style="text-align:center; font-size:11px; color:var(--ok);">✅ 已发货${(_offShippedOf(orderNo) && _offShippedOf(orderNo).tracking) ? ` · ${escapeHtml(_offShippedOf(orderNo).tracking)}` : ''}</div>`
               : (st === 'arrived'
                   ? `<div style="text-align:center; font-size:11px; color:var(--text-tertiary);">✅ 已到货 · 等客服发货</div>`
                   : '')))}
@@ -458,7 +499,7 @@ async function offlineDiagShipped() {
   toast('🔍 正在检测客服库连接...', 'info', 1500);
   try {
     const { data, error } = await cs.from('offline_orders')
-      .select('status, po_stage').eq('deleted', false).limit(1000);
+      .select('status, po_stage, products').eq('deleted', false).limit(1000);
     if (error) throw error;
     const rows = data || [];
     const byStatus = {}, byPoStage = {};
@@ -466,12 +507,22 @@ async function offlineDiagShipped() {
       byStatus[r.status || '(空)'] = (byStatus[r.status || '(空)'] || 0) + 1;
       byPoStage[r.po_stage || '(未设)'] = (byPoStage[r.po_stage || '(未设)'] || 0) + 1;
     });
+    // 取一条有商品的样本,看 products 项有没有图片字段
+    let prodSample = '(无)';
+    const withProd = rows.find(r => Array.isArray(r.products) && r.products.length);
+    if (withProd) {
+      const p0 = withProd.products[0];
+      prodSample = '字段:' + Object.keys(p0).join(', ');
+      const imgKey = ['image', 'image_url', 'img', 'images'].find(k => p0[k]);
+      prodSample += imgKey ? ` · ✅有图(${imgKey})` : ' · ⚠️没有图片字段';
+    }
     const html = `
       <div style="padding:10px 12px; background:var(--bg-elevated); border-radius:8px; font-size:13px; line-height:1.8;">
         ✅ 已连接客服库 <code>kwrajryhwyytkjkkidor</code> · 表 <code>offline_orders</code><br>
         · 共 <b>${rows.length}</b> 条线下单(deleted=false)<br><br>
         <b>按客服 status:</b><br>${Object.entries(byStatus).map(([k, v]) => `&nbsp;&nbsp;${k}: ${v}`).join('<br>')}<br><br>
-        <b>按跟单 po_stage:</b><br>${Object.entries(byPoStage).map(([k, v]) => `&nbsp;&nbsp;${k}: ${v}`).join('<br>')}
+        <b>按跟单 po_stage:</b><br>${Object.entries(byPoStage).map(([k, v]) => `&nbsp;&nbsp;${k}: ${v}`).join('<br>')}<br><br>
+        <b>商品行(products)样本:</b><br>&nbsp;&nbsp;${escapeHtml(prodSample)}
       </div>
       <div style="font-size:12px; color:var(--text-secondary); margin-top:10px; padding:8px 10px; background:rgba(37,99,235,0.06); border-radius:6px;">
         💡 跟单只写 po_stage(工序)和 notes(备注),不动客服 status。status=shipped 当已发货只读。
