@@ -18,6 +18,7 @@ function _getCsOffline() {
 }
 
 const OFF_STAGES = [
+  { k: 'pending_payment', label: '待付款', color: '#92400e', bg: 'rgba(239,159,39,0.08)', readonly: true },
   { k: 'ordered',   label: '待下单', color: 'var(--text-secondary)', bg: 'rgba(136,135,128,0.08)' },
   { k: 'producing', label: '生产中', color: '#854f0b',               bg: 'rgba(239,159,39,0.1)' },
   { k: 'arrived',   label: '已到货', color: '#1d6fa5',               bg: 'rgba(37,99,235,0.1)' },
@@ -51,14 +52,19 @@ function _offNormNo(no) { return String(no || '').replace(/^#/, '').trim(); }
 // 按规范化订单号查发货信息(转单/发货订单号可能 # 不一致)
 function _offShippedOf(no) { return (OFFLINE._shipped && OFFLINE._shipped[_offNormNo(no)]) || null; }
 function _offStageOf(m) {
-  // V20260623:客服 status=shipped → 已发货只读;否则用跟单 po_stage(followup.stage)
-  if (m && m._csStatus === 'shipped') return 'shipped';
-  if (m && m._row && m._row.status === 'cancelled') return 'cancelled';
+  // V20260623:按客服 status 区分付款阶段
+  const csStatus = (m && m._csStatus) || (m && m._row && m._row.status) || '';
+  if (csStatus === 'shipped') return 'shipped';        // 客服已发货 → 已发货只读
+  if (csStatus === 'cancelled') return 'cancelled';
+  // 未付款/草稿 → 单独「待付款」列(跟单还不接手,等客服收款)
+  if (csStatus === 'pending_payment' || csStatus === 'draft') return 'pending_payment';
+  // 已付款(paid)/已下单(dispatched)→ 跟单按 po_stage 推进工序
   const fu = _offGetFu(m.related_ref);
   if (fu.cancelled) return 'cancelled';
   if (_offShippedOf(m.related_ref)) return 'shipped';
   let st = fu.stage || 'ordered';
   if (OFF_STAGE_NORMALIZE[st]) st = OFF_STAGE_NORMALIZE[st];   // 旧值兼容
+  if (st === 'pending_payment') st = 'ordered';   // 防 po_stage 误存付款态
   return st;
 }
 
@@ -248,7 +254,9 @@ function _offBoardCard(m, stage) {
   const next = (stage !== 'cancelled') ? OFF_NEXT[stage] : null;
   const nextLabel = next ? OFF_STAGE_MAP[next].label : null;
   let actions = '';
-  if (next) {
+  if (stage === 'pending_payment') {
+    actions = `<div style="font-size:10.5px; color:#92400e; text-align:center; padding:3px; background:rgba(239,159,39,0.1); border-radius:5px;">⏳ 等客服收款 · 收款后转「待下单」</div>`;
+  } else if (next) {
     actions = `<button class="btn small" style="font-size:11px; padding:3px 10px; width:100%; background:var(--accent); color:white; border:0; border-radius:6px;" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ ${nextLabel}</button>`;
   } else if (stage === 'shipped') {
     const _sh = _offShippedOf(orderNo); const tk = (_sh && _sh.tracking) || o.ship_no || '';
@@ -468,7 +476,9 @@ function offlineOpenDetail(orderId) {
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
         ${prev ? `<button class="btn small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${prev}'); this.closest('[data-off-detail]').remove();" title="退回上一步">← 返回「${OFF_STAGE_MAP[prev].label}」</button>` : ''}
         ${next ? `<button class="btn primary small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}'); this.closest('[data-off-detail]').remove();" title="推进下一步">推进到「${OFF_STAGE_MAP[next].label}」→</button>` : (
-          stage === 'shipped'
+          stage === 'pending_payment'
+            ? '<span style="font-size:12px; color:#92400e; align-self:center;">⏳ 此单未付款 · 等客服收款后才转「待下单」(跟单暂不操作)</span>'
+            : stage === 'shipped'
             ? `<span style="font-size:12.5px; color:var(--ok); align-self:center;">✅ 客服已发货${(_offShippedOf(orderNo) && _offShippedOf(orderNo).tracking) ? ` · 快递单号 <b>${escapeHtml(_offShippedOf(orderNo).tracking)}</b>` : (o.ship_no ? ` · ${escapeHtml(o.ship_no)}` : '')}</span>`
             : (stage === 'arrived' ? '<span style="font-size:12px; color:var(--text-tertiary); align-self:center;">✅ 已到货 · 等客服发货</span>' : ''))}
       </div>

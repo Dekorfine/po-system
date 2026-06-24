@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260623-pay-sep',
+    date: '2026-06-23',
+    type: 'fix',
+    title: '💰 线下单未付款/已付款分开(待付款单独一列·只读)',
+    notes: [
+      '问题:未付款单(客服status=pending_payment)混进了「待下单」列',
+      '修复:加「待付款」列放最前·按客服status区分:pending_payment/draft→待付款列(跟单不接手)',
+      'paid/dispatched→按po_stage推进工序·shipped→已发货只读·cancelled→已取消',
+      '待付款卡片只读(无推进按钮)·提示「等客服收款·收款后转待下单」',
+      '看板变6列:待付款/待下单/生产中/已到货/已发货',
+    ],
+    files: ['offline-orders.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260623-transit',
     date: '2026-06-23',
     type: 'feature',
