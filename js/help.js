@@ -10,6 +10,17 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260624-img-big',
+    date: '2026-06-24',
+    type: 'fix',
+    title: '🔍 备货建议产品图加大(34→52px)+ 点击放大预览',
+    notes: [
+      '备货建议表格缩略图 34x34→52x52·点击放大看800大图(openImgLightbox)',
+      'AI建议弹窗产品图也加点击放大',
+    ],
+    files: ['inventory.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260624-batch2',
     date: '2026-06-24',
     type: 'feature',

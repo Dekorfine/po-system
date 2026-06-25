@@ -568,7 +568,7 @@ function _invRenderRestock() {
     return `<tr style="border-bottom:1px solid var(--border-subtle); ${!r.inStock ? 'background:rgba(220,38,38,0.04);' : ''}">
       <td style="padding:7px 8px; font-weight:700; color:var(--text-tertiary);">${medal}</td>
       <td style="padding:7px 8px;"><div style="display:flex; align-items:center; gap:8px;">
-        ${r.image ? `<img src="${escapeHtml(_invResizeImg(r.image, '120x120'))}" onerror="this.style.display='none'" style="width:34px;height:34px;object-fit:cover;border-radius:5px;">` : '<div style="width:34px;height:34px;background:var(--bg-elevated);border-radius:5px;"></div>'}
+        ${r.image ? `<img src="${escapeHtml(_invResizeImg(r.image, '160x160'))}" onerror="this.style.display='none'" onclick="event.stopPropagation(); openImgLightbox && openImgLightbox('${escapeHtml(_invResizeImg(r.image, '800x800'))}')" style="width:52px;height:52px;object-fit:cover;border-radius:6px;cursor:zoom-in;" loading="lazy">` : '<div style="width:52px;height:52px;background:var(--bg-elevated);border-radius:6px;"></div>'}
         <div style="min-width:0;"><div style="font-weight:600; font-size:12px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.name)}</div><div style="font-family:monospace; font-size:10px; color:var(--text-tertiary);">${escapeHtml(r.sku)}${r.mappedFrom && r.mappedFrom.length ? ` <span style="color:var(--accent);" title="已合并网站SKU销量:${escapeHtml(r.mappedFrom.join(' '))}">🔗合并${r.mappedFrom.length}</span>` : ''}</div></div>
       </div></td>
       <td style="padding:7px 8px; font-weight:700;">${r.qty30}</td>
@@ -634,7 +634,7 @@ async function invAiRestockAdvice(sku) {
     </div>`;
   const headBlock = `
     <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
-      ${p.image_url ? `<img src="${escapeHtml(_invResizeImg(p.image_url, '160x160'))}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;">` : ''}
+      ${p.image_url ? `<img src="${escapeHtml(_invResizeImg(p.image_url, '160x160'))}" onclick="openImgLightbox && openImgLightbox('${escapeHtml(_invResizeImg(p.image_url, '800x800'))}')" style="width:48px;height:48px;object-fit:cover;border-radius:8px;cursor:zoom-in;">` : ''}
       <div><div style="font-weight:700;">${escapeHtml(p.name_cn || '(无名)')}</div><div style="font-family:monospace; font-size:11px; color:var(--text-tertiary);">${escapeHtml(sku)}</div></div>
     </div>`;
   _invShowModal('🤖 AI 备货建议 · ' + sku, headBlock + dataBlock +
