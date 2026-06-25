@@ -475,59 +475,105 @@ async function cdmInit() {
 }
 function cdmOnTabActivate() { cdmInit(); }
 
-// V20260622:一键把「已付款转单」工单转入线下单模块(标记 related_type='offline_transfer')
-//   只转标题含「已付款转单」且当前不是 offline_transfer 的(精准·不误伤别的工单)· 带预览确认
+// V20260624:跨部门「已付款转单」工单 对账 — 新架构下线下单读客服库 offline_orders,
+//   跨部门工单只是旧消息桥的残留。此函数:查每个转单工单的订单号在不在 offline_orders,
+//   已在的(线下单已显示)→ 一键标记已处理清理;不在的(线下单真缺)→ 列出让客服补建。
 async function cdmMigrateOfflineOrders() {
   if (typeof cdmClient === 'undefined') { toast('未连接跨部门库', 'err'); return; }
+  if (typeof _getCsOffline !== 'function') { toast('客服库 client 未就绪', 'err'); return; }
+  toast('🔍 正在对账(查这些转单是否已进线下单)...', 'info', 2000);
   try {
-    // 扫描:to_system='po' · 标题含"已付款转单" · related_type 还不是 offline_transfer/offline_shipped · 未删除
+    // 1) 跨部门所有未完成的「已付款转单」工单
     const { data, error } = await cdmClient
       .from('cross_dept_messages')
-      .select('id, title, related_ref, related_type, status')
+      .select('id, title, related_ref, status')
       .eq('to_system', 'po')
       .ilike('title', '%已付款转单%')
       .order('created_at_ms', { ascending: false })
       .limit(1000);
     if (error) throw error;
-    const candidates = (data || []).filter(m =>
-      m.status !== 'deleted' &&
-      m.related_type !== 'offline_transfer' &&
-      m.related_type !== 'offline_shipped' &&
-      m.related_ref   // 必须有订单号(线下单靠它关联)
+    const tickets = (data || []).filter(m =>
+      m.status !== 'deleted' && m.status !== 'done' && m.status !== 'cancelled' && m.related_ref
     );
-    if (candidates.length === 0) {
-      toast('没有需要转入的「已付款转单」工单(可能都已转过)', 'info', 3000);
+    if (tickets.length === 0) {
+      _cdmShowOfflineAudit('没有待处理的「已付款转单」工单(都已清理)', '', []);
       return;
     }
-    // 预览确认(列前几个订单号)
-    const sample = candidates.slice(0, 8).map(m => m.related_ref).join('、');
-    const more = candidates.length > 8 ? ` 等共 ${candidates.length} 单` : '';
-    if (!confirm(`将把这些「已付款转单」工单转入线下单模块:\n\n${sample}${more}\n\n转入后:\n· 出现在「线下单」看板(待下单列)按线下单流程跟进\n· 跨部门工单标记为「已完成」(从收件箱待处理移除)\n\n确认转入?`)) return;
+    // 2) 去客服库 offline_orders 查这些订单号在不在
+    const cs = _getCsOffline();
+    const refs = [...new Set(tickets.map(t => String(t.related_ref).replace(/^#/, '').trim()))];
+    const { data: existRows, error: e2 } = await cs.from('offline_orders')
+      .select('order_no, status, deleted').in('order_no', refs);
+    if (e2) throw e2;
+    const existSet = new Set((existRows || []).filter(r => !r.deleted).map(r => String(r.order_no).replace(/^#/, '').trim()));
 
-    // 批量更新(分批 · 每批 50 个 id):标记 offline_transfer + status=done(已移交线下单跟进,跨部门任务完成)
-    const nowIso = new Date().toISOString();
-    let ok = 0, fail = 0;
-    for (let i = 0; i < candidates.length; i += 50) {
-      const batch = candidates.slice(i, i + 50).map(m => m.id);
-      const { error: ue } = await cdmClient
-        .from('cross_dept_messages')
-        .update({ related_type: 'offline_transfer', status: 'done', updated_at: nowIso })
-        .in('id', batch);
-      if (ue) { fail += batch.length; console.warn('[CDM] 转线下单批次失败:', ue.message); }
-      else ok += batch.length;
-    }
-    toast(`🧾 已转入线下单并标记已处理:${ok} 单${fail ? ` · 失败 ${fail}` : ''}`, fail ? 'warn' : 'success', 4000);
-    // 刷新线下单 + 跨部门列表
-    if (typeof loadOfflineOrders === 'function') loadOfflineOrders().then(() => {
-      if (typeof updateBadges === 'function') updateBadges();
-    }).catch(() => {});
-    if (typeof cdmLoadMessages === 'function') { cdmLoadMessages().then(() => { if (typeof cdmRender === 'function') cdmRender(); }).catch(() => {}); }
-    else if (typeof cdmInit === 'function') cdmInit();
+    // 3) 分类:已在线下单(可清理) vs 线下单真缺(需客服补建)
+    const dup = [], missing = [];
+    tickets.forEach(t => {
+      const ref = String(t.related_ref).replace(/^#/, '').trim();
+      if (existSet.has(ref)) dup.push(t); else missing.push(t);
+    });
+
+    // 4) 弹窗展示结果 + 操作
+    const dupSample = dup.map(t => t.related_ref).join('、') || '无';
+    const missSample = missing.map(t => t.related_ref).join('、') || '无';
+    const html = `
+      <div style="font-size:13px; line-height:1.8;">
+        <div style="padding:10px 12px; background:rgba(29,158,117,0.08); border-radius:8px; margin-bottom:10px;">
+          ✅ <b>已在线下单(${dup.length} 单)</b> — 这些订单号在客服 offline_orders 里、线下单模块已显示。<br>
+          跨部门这几条是旧消息桥的重复工单,可一键标记已处理清理:<br>
+          <span style="font-family:monospace; font-size:11.5px; color:var(--text-secondary);">${dupSample}</span>
+        </div>
+        <div style="padding:10px 12px; background:${missing.length ? 'rgba(220,38,38,0.06)' : 'rgba(136,135,128,0.06)'}; border-radius:8px;">
+          ${missing.length ? '⚠️' : '✓'} <b>线下单里没有(${missing.length} 单)</b> — 这些订单号不在客服 offline_orders 表。<br>
+          ${missing.length ? '说明客服只发了跨部门工单、没在线下单系统建单。<b>新架构下跟单不能替客服建单</b>,需让客服在客服系统把这几单补建到 offline_orders:<br><span style="font-family:monospace; font-size:11.5px; color:var(--danger);">' + missSample + '</span>' : '无,全部都在线下单里 👍'}
+        </div>
+        <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;">
+          ${dup.length ? `<button class="btn primary small" onclick="_cdmCleanDupTransfers('${dup.map(t => t.id).join(',')}')">✅ 清理 ${dup.length} 条重复工单(标记已处理)</button>` : ''}
+          <button class="btn small" onclick="this.closest('[data-cdm-audit]').remove()">关闭</button>
+        </div>
+      </div>`;
+    _cdmShowOfflineAudit('🔍 线下单转单对账', html, []);
   } catch (e) {
-    toast('转入失败:' + (e.message || e), 'err', 4000);
+    toast('对账失败:' + (e.message || e), 'err', 4000);
   }
 }
 window.cdmMigrateOfflineOrders = cdmMigrateOfflineOrders;
+
+// 清理重复的转单工单(标记 done)
+async function _cdmCleanDupTransfers(idsStr) {
+  const ids = idsStr.split(',').filter(Boolean);
+  if (!ids.length) return;
+  try {
+    const nowIso = new Date().toISOString();
+    let ok = 0;
+    for (let i = 0; i < ids.length; i += 50) {
+      const batch = ids.slice(i, i + 50);
+      const { error } = await cdmClient.from('cross_dept_messages')
+        .update({ status: 'done', updated_at: nowIso }).in('id', batch);
+      if (!error) ok += batch.length;
+    }
+    toast(`✅ 已清理 ${ok} 条重复转单工单`, 'success', 3000);
+    const overlay = document.querySelector('[data-cdm-audit]'); if (overlay) overlay.remove();
+    if (typeof cdmLoadMessages === 'function') cdmLoadMessages().then(() => { if (typeof cdmRender === 'function') cdmRender(); if (typeof updateBadges === 'function') updateBadges(); }).catch(() => {});
+  } catch (e) { toast('清理失败:' + (e.message || e), 'err', 4000); }
+}
+window._cdmCleanDupTransfers = _cdmCleanDupTransfers;
+
+// 对账结果弹窗
+function _cdmShowOfflineAudit(title, html, _) {
+  const old = document.querySelector('[data-cdm-audit]'); if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.setAttribute('data-cdm-audit', '1');
+  ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto;';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  ov.innerHTML = `<div style="background:var(--bg-card); border-radius:12px; max-width:600px; width:100%; padding:20px;">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;"><span style="font-size:16px; font-weight:700;">${title}</span>
+      <button class="btn small" style="margin-left:auto;" onclick="this.closest('[data-cdm-audit]').remove()">✕</button></div>
+    ${html || '<div style="color:var(--text-secondary);">' + title + '</div>'}</div>`;
+  document.body.appendChild(ov);
+}
+window._cdmShowOfflineAudit = _cdmShowOfflineAudit;
 
 // V20260622:单条快捷标记已处理(status=done · 从收件箱待处理移除)
 async function cdmQuickResolve(msgId) {
@@ -1097,7 +1143,7 @@ function cdmRenderAdminButtons() {
   if (!isSup) { el.innerHTML = ''; return; }
   const mineCount = SHOP_OWNERS.filter(s => s.system === 'po').length;
   el.innerHTML = `
-    <button class="btn" onclick="cdmMigrateOfflineOrders()" title="把所有「已付款转单」工单转入线下单模块(标记为 offline_transfer)" style="background:#0f6e56; color:white; font-weight:600;">🧾 转入线下单</button>
+    <button class="btn" onclick="cdmMigrateOfflineOrders()" title="查这些「已付款转单」工单是否已进线下单·重复的可清理·真缺的提示客服补建" style="background:#0f6e56; color:white; font-weight:600;">🔍 线下单对账</button>
     <button class="btn" onclick="cdmOpenTimeoutSettings()" title="设置每个分类+优先级的超时天数">⏰ 超时阈值</button>
     <button class="btn" onclick="cdmOpenShopOwnersManager()" title="维护本部门员工与网站的负责关系">🌐 店铺负责人 (${mineCount})</button>
     <button class="btn" onclick="cdmManualPublishStaff()" title="把跟单团队发布到共享人员目录 · 让美工/客服发工单时能选到你们">👥 同步人员到共享目录</button>
