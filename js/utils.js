@@ -1370,6 +1370,8 @@ async function shopifyStartProcessing(orderId) {
     // 手动同步内存(setOrderStatus 只写库),省去整列表重载
     const o = (SHOPIFY._orders || []).find(x => x.id === orderId);
     if (o) o.local_status = 'processing';
+    // V20260624:写出库流水(库存出库追溯)· 不阻塞主流程,失败静默
+    if (o && typeof _writeStockMovements === 'function') { _writeStockMovements(o).catch(() => {}); }
     SHOPIFY._currentFilter = 'pending';   // V20260620:待处理tab移除·开始处理后留待审核
     SHOPIFY_PAGE = 1;
     toast('已进入"待处理"');
@@ -1389,6 +1391,58 @@ async function shopifyStartProcessing(orderId) {
     toast('操作失败：' + (e.message || e), 'err');
   }
 }
+
+// V20260624:写库存出库流水(出库追溯)— 订单line_items按platform_skus映射到内部SKU,逐个写一条
+async function _writeStockMovements(order) {
+  if (!order || typeof sb === 'undefined') return;
+  // 确保产品库已加载
+  if (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.loadAll && (!PRODUCTS_CACHE._all || !PRODUCTS_CACHE._all.length)) {
+    try { await PRODUCTS_CACHE.loadAll(); } catch (_) {}
+  }
+  const products = (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE._all) ? PRODUCTS_CACHE._all : [];
+  if (!products.length) return;
+  // 建 网站SKU(大写) → 库存产品 反查表(含内部SKU自己 + platform_skus)
+  const map = {};
+  products.forEach(p => {
+    if (!p.is_inventory_item) return;
+    const own = String(p.sku || '').trim().toUpperCase();
+    if (own) map[own] = p;
+    (Array.isArray(p.platform_skus) ? p.platform_skus : []).forEach(ps => {
+      const k = String(ps.sku || '').trim().toUpperCase();
+      if (k) map[k] = p;
+    });
+  });
+  const orderNo = order.shopify_order_number || order.order_no || order.name || '';
+  const rows = [];
+  (order.line_items || []).forEach(li => {
+    const sku = String(li.sku || '').trim();
+    if (!sku) return;
+    const p = map[sku.toUpperCase()];
+    if (!p) return;   // 没匹配到库存产品 = 不记(只追溯库存品)
+    rows.push({
+      internal_sku: p.sku,
+      product_name: p.name_cn || li.title || '',
+      platform_sku: sku,
+      shop_domain: order.shop_domain || '',
+      store_label: order.store_label || order.store_code || '',
+      order_no: orderNo,
+      shopify_order_id: String(order.shopify_order_id || order.id || ''),
+      qty: Number(li.quantity || 0),
+      warehouse: 'pending',   // 待人工标国内/海外
+      moved_at: order.shopify_created_at || new Date().toISOString(),
+      created_by: (typeof CURRENT_USER !== 'undefined' && CURRENT_USER && CURRENT_USER.name) || '',
+    });
+  });
+  if (!rows.length) return;
+  // upsert(幂等:同订单同网站SKU不重复记)
+  try {
+    await sb.from('stock_movements').upsert(rows, { onConflict: 'order_no,platform_sku' });
+  } catch (e) {
+    // 表没建或权限问题 → 静默(不影响下单)
+    if (!/relation .*stock_movements.* does not exist/i.test(e.message || '')) console.warn('[stock_movements] 写流水失败:', e.message);
+  }
+}
+window._writeStockMovements = _writeStockMovements;
 
 // 滚动定位到指定订单卡片并高亮(跳到待处理后用)· 自动翻到它所在的分页
 function _shopifyScrollToOrder(orderId, _tries) {

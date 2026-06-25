@@ -154,6 +154,7 @@ async function renderInventory() {
       ${[
         { k: 'all',     label: '📋 全部' },
         { k: 'restock', label: '📊 备货建议' },
+        { k: 'movements', label: '📤 出库流水' },
         { k: 'domestic', label: '🏠 有国内仓' },
         { k: 'overseas', label: '✈️ 有海外仓' },
         { k: 'low',     label: '⚠️ 低库存' },
@@ -260,6 +261,10 @@ function _invRenderList() {
   // 备货建议 = 单独渲染
   if (INVENTORY._filter === 'restock') {
     return _invRenderRestock();
+  }
+  // 出库流水 = 单独渲染
+  if (INVENTORY._filter === 'movements') {
+    return _invRenderMovements();
   }
   
   let list = INVENTORY._list;
@@ -451,12 +456,60 @@ function _invRenderRestock() {
   const now = new Date();
   const start = new Date(now.getTime() - days * 86400000);
   // ★ 以销量为主:取近30天所有卖过的 SKU,按销量降序 = 热销榜
-  const agg = _anAggBySku(start, now).filter(a => a.qty > 0 && !String(a.sku).startsWith('(无SKU)')).sort((x, y) => y.qty - x.qty);
+  let agg = _anAggBySku(start, now).filter(a => a.qty > 0 && !String(a.sku).startsWith('(无SKU)')).sort((x, y) => y.qty - x.qty);
   const monthly = _anMonthlyBySku(6);
-  const mMap = {}; monthly.list.forEach(x => { mMap[x.sku] = x; });
   // 库存表按 SKU 索引(可能没有 = 没备货)
+  const invList = (INVENTORY._list || []).filter(p => p.sku && !p.deleted_at);
   const invBySku = {};
-  (INVENTORY._list || []).filter(p => p.sku && !p.deleted_at).forEach(p => { invBySku[p.sku] = p; });
+  invList.forEach(p => { invBySku[p.sku] = p; });
+
+  // ★ V20260624:SKU 智能映射 — 网站SKU → 内部SKU(从 platform_skus 反查)
+  //   同款产品在不同网站用不同 SKU,归并到内部 SKU 再算销量,销量才准
+  const skuToInternal = {};   // 各网站SKU(大写) → 内部SKU
+  invList.forEach(p => {
+    (Array.isArray(p.platform_skus) ? p.platform_skus : []).forEach(ps => {
+      const k = String(ps.sku || '').trim().toUpperCase();
+      if (k) skuToInternal[k] = p.sku;
+    });
+    // 内部 SKU 自己也映射到自己
+    skuToInternal[String(p.sku).trim().toUpperCase()] = p.sku;
+  });
+  // 把销量聚合从"原始SKU"归并到"内部SKU"
+  const mergedAgg = {};
+  agg.forEach(a => {
+    const internal = skuToInternal[String(a.sku).trim().toUpperCase()] || a.sku;
+    if (!mergedAgg[internal]) mergedAgg[internal] = { ...a, sku: internal, qty: 0, mappedFrom: [] };
+    mergedAgg[internal].qty += a.qty;
+    if (internal !== a.sku) mergedAgg[internal].mappedFrom.push(`${a.sku}(${a.qty})`);
+    // 名称/图优先用库存表的
+    const invP = invBySku[internal];
+    if (invP) { mergedAgg[internal].name = invP.name_cn || mergedAgg[internal].name; mergedAgg[internal].image = invP.image_url || mergedAgg[internal].image; }
+  });
+  agg = Object.values(mergedAgg).sort((x, y) => y.qty - x.qty);
+  // 月度波动也按内部SKU归并
+  const mMap = {};
+  monthly.list.forEach(x => {
+    const internal = skuToInternal[String(x.sku).trim().toUpperCase()] || x.sku;
+    if (!mMap[internal]) mMap[internal] = x;
+    else {
+      // 合并 series(同内部SKU多个网站SKU的月度相加)
+      const merged = mMap[internal];
+      if (Array.isArray(merged.series) && Array.isArray(x.series)) merged.series = merged.series.map((v, i) => v + (x.series[i] || 0));
+    }
+  });
+
+  // 归并后重算变异系数 CV(合并了多网站series的要重算)
+  Object.values(mMap).forEach(s => {
+    if (!Array.isArray(s.series) || !s.series.length) return;
+    const n = s.series.length;
+    const mean = s.series.reduce((a, b) => a + b, 0) / n;
+    const variance = s.series.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+    s.cv = mean > 0 ? Math.sqrt(variance) / mean : (s.series.some(x => x > 0) ? 99 : 0);
+    const half = Math.floor(n / 2);
+    const fh = s.series.slice(0, half).reduce((a, b) => a + b, 0) / Math.max(1, half);
+    const sh = s.series.slice(half).reduce((a, b) => a + b, 0) / Math.max(1, n - half);
+    s.trendPct = fh > 0 ? ((sh - fh) / fh * 100) : (sh > 0 ? 100 : 0);
+  });
 
   // 取 Top N 热销
   const topN = INV_RESTOCK_TOPN;
@@ -498,6 +551,7 @@ function _invRenderRestock() {
       sku: a.sku, name: (p && p.name_cn) || a.name || '(无名)', image: (p && p.image_url) || a.image || '',
       rank: idx + 1, qty30: a.qty, dailySales, stockTotal, stockDom, stockOvs, inTransit, available, daysOfStock,
       cv: m.cv, trendPct: m.trendPct, reorderPoint, advice, color, icon, suggestQty, priority, inStock, p,
+      mappedFrom: Array.isArray(a.mappedFrom) ? a.mappedFrom : [],
     };
   }).sort((x, y) => y.priority - x.priority || y.qty30 - x.qty30);
 
@@ -515,7 +569,7 @@ function _invRenderRestock() {
       <td style="padding:7px 8px; font-weight:700; color:var(--text-tertiary);">${medal}</td>
       <td style="padding:7px 8px;"><div style="display:flex; align-items:center; gap:8px;">
         ${r.image ? `<img src="${escapeHtml(_invResizeImg(r.image, '120x120'))}" onerror="this.style.display='none'" style="width:34px;height:34px;object-fit:cover;border-radius:5px;">` : '<div style="width:34px;height:34px;background:var(--bg-elevated);border-radius:5px;"></div>'}
-        <div style="min-width:0;"><div style="font-weight:600; font-size:12px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.name)}</div><div style="font-family:monospace; font-size:10px; color:var(--text-tertiary);">${escapeHtml(r.sku)}</div></div>
+        <div style="min-width:0;"><div style="font-weight:600; font-size:12px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.name)}</div><div style="font-family:monospace; font-size:10px; color:var(--text-tertiary);">${escapeHtml(r.sku)}${r.mappedFrom && r.mappedFrom.length ? ` <span style="color:var(--accent);" title="已合并网站SKU销量:${escapeHtml(r.mappedFrom.join(' '))}">🔗合并${r.mappedFrom.length}</span>` : ''}</div></div>
       </div></td>
       <td style="padding:7px 8px; font-weight:700;">${r.qty30}</td>
       <td style="padding:7px 8px;">${r.dailySales.toFixed(1)}/天</td>
@@ -635,6 +689,99 @@ async function invAiRestockAdvice(sku) {
 }
 window.invAiRestockAdvice = invAiRestockAdvice;
 window._invRenderRestock = _invRenderRestock;
+
+// V20260624:出库流水(海外仓/国内仓出库追溯)— 查每个产品被哪个订单/网站卖了多少、出哪个仓
+var INV_MOVE_CACHE = null;
+var INV_MOVE_FILTER = 'all';   // all/overseas/domestic/pending
+async function _invRenderMovements() {
+  const listEl = document.getElementById('inventoryList');
+  if (!listEl) return;
+  listEl.innerHTML = `<div style="padding:30px; text-align:center; color:var(--text-tertiary);">📤 加载出库流水...</div>`;
+  // 拉数据
+  let rows = INV_MOVE_CACHE;
+  if (!rows) {
+    try {
+      const { data, error } = await sb.from('stock_movements').select('*').order('moved_at', { ascending: false }).limit(2000);
+      if (error) throw error;
+      rows = data || [];
+      INV_MOVE_CACHE = rows;
+    } catch (e) {
+      const noTable = /relation .*stock_movements.* does not exist|does not exist/i.test(e.message || '');
+      listEl.innerHTML = `<div style="padding:36px; text-align:center; color:var(--text-tertiary); background:var(--bg-card); border:1px dashed var(--border); border-radius:10px;">
+        <div style="font-size:30px; margin-bottom:8px;">📤</div>
+        <div style="font-size:14px; margin-bottom:6px;">${noTable ? '出库流水表还没建' : '加载失败'}</div>
+        <div style="font-size:12px;">${noTable ? '请先在 pyfmu 库跑 <b>出库流水表.sql</b>,然后从销售单「开始处理」订单就会自动记录出库' : escapeHtml(e.message || String(e))}</div>
+      </div>`;
+      return;
+    }
+  }
+  // 搜索过滤
+  const q = (INVENTORY._search || '').trim().toLowerCase();
+  let list = rows;
+  if (q) list = list.filter(r => [r.internal_sku, r.product_name, r.platform_sku, r.order_no, r.shop_domain, r.store_label].filter(Boolean).join(' ').toLowerCase().includes(q));
+  if (INV_MOVE_FILTER !== 'all') list = list.filter(r => (r.warehouse || 'pending') === INV_MOVE_FILTER);
+
+  // 汇总
+  const sumOvs = rows.filter(r => r.warehouse === 'overseas').reduce((s, r) => s + Number(r.qty || 0), 0);
+  const sumDom = rows.filter(r => r.warehouse === 'domestic').reduce((s, r) => s + Number(r.qty || 0), 0);
+  const sumPend = rows.filter(r => (r.warehouse || 'pending') === 'pending').reduce((s, r) => s + Number(r.qty || 0), 0);
+
+  const chip = (k, label, n, color) => `<button onclick="invMoveSetFilter('${k}')" style="padding:5px 12px; font-size:12px; border:1px solid ${INV_MOVE_FILTER === k ? (color || 'var(--accent)') : 'var(--border)'}; border-radius:14px; cursor:pointer; background:${INV_MOVE_FILTER === k ? (color || 'var(--accent)') : 'var(--bg-card)'}; color:${INV_MOVE_FILTER === k ? '#fff' : 'var(--text-secondary)'};">${label} ${n}</button>`;
+
+  const trs = list.slice(0, 500).map(r => {
+    const wh = r.warehouse || 'pending';
+    const whBadge = wh === 'overseas' ? '<span style="color:#1d6fa5; font-weight:600;">✈️ 海外仓</span>'
+                  : wh === 'domestic' ? '<span style="color:#0f6e56; font-weight:600;">🏠 国内仓</span>'
+                  : '<span style="color:#92400e;">⏳ 待标</span>';
+    const dt = r.moved_at ? new Date(r.moved_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : '';
+    return `<tr style="border-bottom:1px solid var(--border-subtle);">
+      <td style="padding:6px 8px;"><div style="font-weight:600; font-size:12px;">${escapeHtml(r.product_name || '(无名)')}</div><div style="font-family:monospace; font-size:10px; color:var(--text-tertiary);">${escapeHtml(r.internal_sku)}${r.platform_sku && r.platform_sku !== r.internal_sku ? ` ← ${escapeHtml(r.platform_sku)}` : ''}</div></td>
+      <td style="padding:6px 8px; font-size:11.5px;">${escapeHtml(r.store_label || r.shop_domain || '')}</td>
+      <td style="padding:6px 8px; font-family:monospace; font-size:11.5px;">${escapeHtml(r.order_no || '')}</td>
+      <td style="padding:6px 8px; font-weight:700; text-align:center;">${r.qty}</td>
+      <td style="padding:6px 8px; font-size:11.5px;">${whBadge}</td>
+      <td style="padding:6px 8px; font-size:11px; color:var(--text-tertiary);">${dt}</td>
+      <td style="padding:6px 8px;">
+        <select onchange="invMoveSetWarehouse('${r.id}', this.value)" style="font-size:11px; padding:2px 4px; border:1px solid var(--border); border-radius:4px;">
+          <option value="pending" ${wh === 'pending' ? 'selected' : ''}>待标</option>
+          <option value="overseas" ${wh === 'overseas' ? 'selected' : ''}>✈️海外</option>
+          <option value="domestic" ${wh === 'domestic' ? 'selected' : ''}>🏠国内</option>
+        </select>
+      </td>
+    </tr>`;
+  }).join('');
+
+  listEl.innerHTML = `
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px;">
+      <div style="padding:10px 14px; background:rgba(37,99,235,0.06); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:#1d6fa5;">✈️ 海外仓出库</div><div style="font-size:18px; font-weight:700; color:#1d6fa5;">${sumOvs}</div></div>
+      <div style="padding:10px 14px; background:rgba(15,110,86,0.06); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:#0f6e56;">🏠 国内仓出库</div><div style="font-size:18px; font-weight:700; color:#0f6e56;">${sumDom}</div></div>
+      <div style="padding:10px 14px; background:rgba(239,159,39,0.08); border:1px solid var(--border-subtle); border-radius:10px;"><div style="font-size:11px; color:#92400e;">⏳ 待标仓库</div><div style="font-size:18px; font-weight:700; color:#92400e;">${sumPend}</div></div>
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
+      ${chip('all', '全部', rows.length)}
+      ${chip('overseas', '✈️ 海外仓', rows.filter(r => r.warehouse === 'overseas').length, '#1d6fa5')}
+      ${chip('domestic', '🏠 国内仓', rows.filter(r => r.warehouse === 'domestic').length, '#0f6e56')}
+      ${chip('pending', '⏳ 待标', rows.filter(r => (r.warehouse || 'pending') === 'pending').length, '#92400e')}
+      <button class="btn small" onclick="INV_MOVE_CACHE=null; _invRenderMovements();" style="margin-left:auto;">🔄 刷新</button>
+    </div>
+    <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:8px;">📤 每次从销售单「开始处理」订单,匹配到库存的产品自动记一条出库 · 右侧选「海外/国内」标这单出哪个仓 · 显示 ${list.length} 条</div>
+    <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12px;">
+      <thead><tr style="background:var(--bg-elevated); text-align:left;">
+        <th style="padding:8px;">产品</th><th style="padding:8px;">网站</th><th style="padding:8px;">订单号</th><th style="padding:8px;">数量</th><th style="padding:8px;">出库仓</th><th style="padding:8px;">时间</th><th style="padding:8px;">标仓</th>
+      </tr></thead><tbody>${trs || '<tr><td colspan="7" style="padding:30px; text-align:center; color:var(--text-tertiary);">暂无出库记录</td></tr>'}</tbody></table></div>`;
+}
+window._invRenderMovements = _invRenderMovements;
+function invMoveSetFilter(k) { INV_MOVE_FILTER = k; _invRenderMovements(); }
+window.invMoveSetFilter = invMoveSetFilter;
+async function invMoveSetWarehouse(id, wh) {
+  try {
+    await sb.from('stock_movements').update({ warehouse: wh }).eq('id', id);
+    if (INV_MOVE_CACHE) { const r = INV_MOVE_CACHE.find(x => x.id === id); if (r) r.warehouse = wh; }
+    if (typeof toast === 'function') toast('已标记 ' + (wh === 'overseas' ? '海外仓' : wh === 'domestic' ? '国内仓' : '待标'), 'success', 1500);
+    _invRenderMovements();
+  } catch (e) { if (typeof toast === 'function') toast('标记失败:' + (e.message || e), 'err'); }
+}
+window.invMoveSetWarehouse = invMoveSetWarehouse;
 
 // 库存模块自带的简易弹层(不依赖其他文件)
 function _invShowModal(title, bodyHtml) {
