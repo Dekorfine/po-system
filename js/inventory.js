@@ -1439,7 +1439,7 @@ let INV_ADJUST = null;
 function invOpenAdjust(productId) {
   const p = INVENTORY._list.find(x => String(x.id) === String(productId));
   if (!p) { toast('找不到产品', 'err'); return; }
-  INV_ADJUST = { id: p.id, sku: p.sku, title: p.name_cn, current: Number(p.stock_qty || 0), delta: 0, mode: 'add' };
+  INV_ADJUST = { id: p.id, sku: p.sku, title: p.name_cn, current: Number(p.stock_qty || 0), delta: 0, mode: 'add', orderNo: '', pullItems: null, pullState: '', boundSku: '', boundShop: '', boundOrderId: '', warehouse: 'pending' };
   document.getElementById('inventoryAdjustModal').style.display = 'flex';
   _invRenderAdjust();
 }
@@ -1484,6 +1484,37 @@ function _invRenderAdjust() {
            placeholder="数量"
            style="width:100%; padding:10px; font-size:16px; border:1px solid var(--border); border-radius:6px; text-align:center; margin-bottom:12px;">
     
+    ${s.mode === 'subtract' ? `
+    <div style="border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:12px; background:rgba(37,99,235,0.03);">
+      <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">🔗 绑定订单(出库追溯)</div>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <input type="text" id="invAdjOrderNo" value="${escapeHtml(s.orderNo || '')}" oninput="INV_ADJUST.orderNo=this.value"
+               placeholder="输入订单号(如 RD56521)"
+               style="flex:1; padding:7px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px;"
+               onkeydown="if(event.key==='Enter'){invAdjPullOrder();}">
+        <button class="btn small" onclick="invAdjPullOrder()" style="white-space:nowrap;">🔍 拉取订单</button>
+      </div>
+      ${s.pullState === 'loading' ? '<div style="font-size:11px; color:var(--text-tertiary);">拉取中...</div>' : ''}
+      ${s.pullState === 'notfound' ? '<div style="font-size:11px; color:var(--danger);">没找到这个订单号(可手动直接填订单号也行)</div>' : ''}
+      ${s.pullItems && s.pullItems.length ? `
+        <div style="font-size:11px; color:var(--text-secondary); margin-bottom:6px;">订单 ${escapeHtml(s.orderNo)} 的产品 · 点选一个绑定:</div>
+        <div style="display:flex; flex-direction:column; gap:4px; max-height:160px; overflow-y:auto;">
+          ${s.pullItems.map((it, i) => `
+            <div onclick="invAdjPickItem(${i})" style="display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid ${s.boundSku === it.sku ? 'var(--accent)' : 'var(--border)'}; border-radius:6px; cursor:pointer; background:${s.boundSku === it.sku ? 'rgba(37,99,235,0.08)' : 'var(--bg-card)'};">
+              ${it.image ? `<img src="${escapeHtml(it.image)}" style="width:28px;height:28px;object-fit:cover;border-radius:4px;">` : '<div style="width:28px;height:28px;background:var(--bg-elevated);border-radius:4px;"></div>'}
+              <div style="flex:1; min-width:0;"><div style="font-size:11.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(it.name || '')}</div><div style="font-family:monospace; font-size:10px; color:var(--text-tertiary);">${escapeHtml(it.sku || '(无SKU)')} × ${it.qty}</div></div>
+              ${s.boundSku === it.sku ? '<span style="color:var(--accent); font-size:14px;">✓</span>' : ''}
+            </div>`).join('')}
+        </div>` : ''}
+      ${s.boundSku ? `<div style="font-size:11px; color:#0f6e56; margin-top:6px;">✓ 已绑定:${escapeHtml(s.boundSku)}${s.boundShop ? ' · ' + escapeHtml(s.boundShop) : ''}</div>` : ''}
+      <div style="display:flex; gap:6px; margin-top:8px; align-items:center;">
+        <span style="font-size:11px; color:var(--text-tertiary);">出哪个仓:</span>
+        ${[{ k: 'pending', l: '待标' }, { k: 'overseas', l: '✈️海外' }, { k: 'domestic', l: '🏠国内' }].map(w =>
+          `<button onclick="INV_ADJUST.warehouse='${w.k}'; _invRenderAdjust()" style="padding:3px 10px; font-size:11px; border:1px solid ${(s.warehouse || 'pending') === w.k ? 'var(--accent)' : 'var(--border)'}; border-radius:12px; background:${(s.warehouse || 'pending') === w.k ? 'var(--accent)' : 'var(--bg-card)'}; color:${(s.warehouse || 'pending') === w.k ? '#fff' : 'var(--text-secondary)'}; cursor:pointer;">${w.l}</button>`
+        ).join('')}
+      </div>
+    </div>` : ''}
+    
     <div style="text-align:center; padding:10px; background:var(--bg-elevated); border-radius:6px;">
       调整后:<span style="font-size:20px; font-weight:700; color:${preview < 0 ? 'var(--danger)' : 'var(--success)'}; font-family:monospace;">${preview}</span>
       ${preview < 0 ? '<div style="font-size:11px; color:var(--danger);">⚠ 库存不能为负</div>' : ''}
@@ -1523,6 +1554,31 @@ async function invSaveAdjust() {
     });
     
     if (typeof PRODUCTS_CACHE !== 'undefined') PRODUCTS_CACHE.invalidate();
+
+    // V20260624:出库(-)且绑了订单号 → 写出库流水(stock_movements,与自动流水合并查)
+    if (s.mode === 'subtract' && (s.orderNo || '').trim()) {
+      try {
+        await sb.from('stock_movements').upsert({
+          internal_sku: s.sku,
+          product_name: s.title || '',
+          platform_sku: s.boundSku || s.sku,
+          shop_domain: s.boundShop || '',
+          store_label: s.boundShop || '',
+          order_no: (s.orderNo || '').trim().replace(/^#/, ''),
+          shopify_order_id: s.boundOrderId || '',
+          qty: s.delta,
+          warehouse: s.warehouse || 'pending',
+          moved_at: new Date().toISOString(),
+          created_by: myName,
+          note: '手动出库',
+        }, { onConflict: 'order_no,platform_sku' });
+        if (typeof INV_MOVE_CACHE !== 'undefined') INV_MOVE_CACHE = null;   // 让出库流水视图重拉
+      } catch (me) {
+        // 表没建静默(不影响库存调整本身)
+        if (!/does not exist/i.test(me.message || '')) console.warn('[stock_movements] 手动出库写流水失败:', me.message);
+      }
+    }
+
     toast(`✓ 库存已更新 → ${newQty}`, 'success');
     invCloseAdjust();
     setTimeout(() => renderInventory(), 150);
@@ -1531,6 +1587,55 @@ async function invSaveAdjust() {
   }
 }
 window.invSaveAdjust = invSaveAdjust;
+
+// V20260624:出库调整 — 拉取订单 + 选产品自动绑SKU
+async function invAdjPullOrder() {
+  const s = INV_ADJUST;
+  if (!s) return;
+  const no = (s.orderNo || '').trim().replace(/^#/, '');
+  if (!no) { toast('请先输入订单号', 'warn'); return; }
+  s.pullState = 'loading'; s.pullItems = null; _invRenderAdjust();
+  try {
+    // 按订单号查 shopify_orders(shopify_order_number)
+    const { data, error } = await sb.from('shopify_orders')
+      .select('id, shopify_order_id, shopify_order_number, shop_domain, store_label, store_code, line_items')
+      .or(`shopify_order_number.eq.${no},shopify_order_number.eq.#${no}`)
+      .limit(1);
+    if (error) throw error;
+    const o = (data && data[0]) || null;
+    if (!o) { s.pullState = 'notfound'; s.pullItems = null; _invRenderAdjust(); return; }
+    s.pullState = '';
+    s.boundOrderId = String(o.shopify_order_id || o.id || '');
+    s.boundShop = o.store_label || o.store_code || o.shop_domain || '';
+    s.pullItems = (o.line_items || []).map(li => ({
+      sku: String(li.sku || '').trim(),
+      name: li.title || li.name_cn || '',
+      qty: Number(li.quantity || 0),
+      image: li.image_url || (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku && li.sku ? (PRODUCTS_CACHE.effectiveBySku(li.sku) || {}).image_url : '') || '',
+    }));
+    // 若订单里有和当前产品(含platform_skus)匹配的,自动预选
+    const curP = INVENTORY._list.find(x => String(x.id) === String(s.id));
+    const myskus = new Set([String(s.sku).toUpperCase(), ...((curP && Array.isArray(curP.platform_skus) ? curP.platform_skus : []).map(ps => String(ps.sku || '').toUpperCase()))]);
+    const match = s.pullItems.find(it => myskus.has(String(it.sku).toUpperCase()));
+    if (match) { s.boundSku = match.sku; }
+    _invRenderAdjust();
+  } catch (e) {
+    s.pullState = 'notfound'; _invRenderAdjust();
+    toast('拉取失败:' + (e.message || e), 'err');
+  }
+}
+window.invAdjPullOrder = invAdjPullOrder;
+
+function invAdjPickItem(i) {
+  const s = INV_ADJUST;
+  if (!s || !s.pullItems || !s.pullItems[i]) return;
+  const it = s.pullItems[i];
+  s.boundSku = it.sku;
+  // 自动按选的数量填出库量(可改)
+  if (it.qty > 0) s.delta = it.qty;
+  _invRenderAdjust();
+}
+window.invAdjPickItem = invAdjPickItem;
 
 // ============================================================
 // V20260601-INV-SKU-IMG:SKU 拉 Shopify · 粘贴上传 · 图片预览
