@@ -10,6 +10,17 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260624-img-zoom',
+    date: '2026-06-24',
+    type: 'feature',
+    title: '🔍 线下单缩略图点击放大看大图(行式/看板/详情都支持)',
+    notes: [
+      '行式列表缩略图·看板卡片图·详情商品图 都加点击放大(openImgLightbox·800大图)',
+      'event.stopPropagation防止点图误触发开详情',
+    ],
+    files: ['offline-orders.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260624-audit',
     date: '2026-06-24',
     type: 'fix',

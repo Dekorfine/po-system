@@ -288,7 +288,7 @@ function _offBoardCard(m, stage) {
     for (const a of o.attachments) { const u = _offAttUrl(a); if (u && u !== '__BASE64__') { imgUrl = u; break; } }
   }
   const imgCell = imgUrl
-    ? `<img src="${escapeHtml(_offImg(imgUrl, '120x120'))}" loading="lazy" onerror="this.style.display='none'" style="width:42px; height:42px; object-fit:cover; border-radius:6px; flex-shrink:0;">`
+    ? `<img src="${escapeHtml(_offImg(imgUrl, '120x120'))}" loading="lazy" onerror="this.style.display='none'" onclick="event.stopPropagation(); openImgLightbox && openImgLightbox('${escapeHtml(_offImg(imgUrl, '800x800'))}')" style="width:42px; height:42px; object-fit:cover; border-radius:6px; flex-shrink:0; cursor:zoom-in;">`
     : `<div style="width:42px; height:42px; background:var(--bg-elevated); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">🧾</div>`;
 
   const next = (stage !== 'cancelled') ? OFF_NEXT[stage] : null;
@@ -451,7 +451,7 @@ function _offRenderList(msgs) {
     for (const p of products) { const u = p.image || p.image_url || p.img || (Array.isArray(p.images) ? p.images[0] : ''); if (u) { imgUrl = u; break; } }
     if (!imgUrl && Array.isArray(o.attachments)) { for (const a of o.attachments) { const u = _offAttUrl(a); if (u && u !== '__BASE64__') { imgUrl = u; break; } } }
     const imgCell = imgUrl
-      ? `<img src="${escapeHtml(_offImg(imgUrl, '120x120'))}" loading="lazy" onerror="this.style.display='none'; this.parentElement.innerHTML='🧾';" style="width:46px; height:46px; object-fit:cover; border-radius:6px;">`
+      ? `<img src="${escapeHtml(_offImg(imgUrl, '120x120'))}" loading="lazy" onerror="this.style.display='none'; this.parentElement.innerHTML='🧾';" onclick="event.stopPropagation(); openImgLightbox && openImgLightbox('${escapeHtml(_offImg(imgUrl, '800x800'))}')" style="width:46px; height:46px; object-fit:cover; border-radius:6px; cursor:zoom-in;">`
       : '🧾';
 
     // 进度色块(3段:待下单/生产中/已发货)
@@ -521,7 +521,7 @@ function offlineOpenDetail(orderId) {
   const prodRows = products.map(p => {
     const pimg = p.image || p.image_url || p.img || (Array.isArray(p.images) ? p.images[0] : '') || '';
     return `<tr style="border-bottom:1px solid var(--border-subtle);">
-      <td style="padding:6px 8px;">${pimg ? `<img src="${escapeHtml(_offImg(pimg, '120x120'))}" onerror="this.style.display='none'" style="width:38px;height:38px;object-fit:cover;border-radius:5px;">` : '<div style="width:38px;height:38px;background:var(--bg-elevated);border-radius:5px;"></div>'}</td>
+      <td style="padding:6px 8px;">${pimg ? `<img src="${escapeHtml(_offImg(pimg, '120x120'))}" onerror="this.style.display='none'" onclick="openImgLightbox && openImgLightbox('${escapeHtml(_offImg(pimg, '800x800'))}')" style="width:38px;height:38px;object-fit:cover;border-radius:5px; cursor:zoom-in;">` : '<div style="width:38px;height:38px;background:var(--bg-elevated);border-radius:5px;"></div>'}</td>
       <td style="padding:6px 8px; font-family:monospace; font-size:11px;">${escapeHtml(p.sku || '')}</td>
       <td style="padding:6px 8px; font-size:12px;">${escapeHtml(p.name || p.title || '')}${p.variant_title ? `<div style="color:var(--text-tertiary); font-size:10.5px;">${escapeHtml(p.variant_title)}</div>` : ''}</td>
       <td style="padding:6px 8px; text-align:center; font-weight:600;">×${p.qty || p.quantity || 1}</td>
