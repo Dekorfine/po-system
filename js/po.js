@@ -3,6 +3,19 @@
 // 采购单(PO) + 产品维护 + 同款绑定 + 自定义 PO
 // ============================================================
 // 依赖：core.js · utils.js · shopify.js
+
+// V20260620:Shopify CDN 图片压缩(文件名后插 _WxH · 仅 shopify cdn 生效),列表不下原图(几MB)
+function _poResizeImg(url, size) {
+  if (!url || typeof url !== 'string') return url;
+  if (!/cdn\.shopify\.com|\/cdn\/shop\//i.test(url)) return url;
+  try {
+    const [base, query] = url.split('?');
+    const cleaned = base.replace(/_(\d+x\d+|\d+x|x\d+)(?=\.\w+$)/i, '');
+    const resized = cleaned.replace(/(\.\w+)$/i, `_${size}$1`);
+    return query ? `${resized}?${query}` : resized;
+  } catch (e) { return url; }
+}
+if (typeof window !== 'undefined') window._poResizeImg = _poResizeImg;
 // ============================================================
 
 // ============ 自定义采购单（不基于销售单，线下/补货/定制） ============
@@ -1086,6 +1099,14 @@ async function openPoForm(salesOrderId, selectedLineItemIds = null) {
       remaining,
       assignedQty: (li.quantity || 0) - remaining,
       isInsurance,   // 标记 · 渲染时可加提示
+      // V20260624:库存现货信息(下采购单时智能提示·人工决定用不用库存)
+      stockProductId: eff.id || null,
+      stockInternalSku: eff.sku || '',
+      stockDom: Number(eff.stock_qty_domestic || 0),
+      stockOvs: Number(eff.stock_qty_overseas || 0),
+      useStock: false,            // 是否用库存发货(人工勾)
+      useStockWh: '',             // 出哪个仓(overseas/domestic)
+      useStockQty: 0,             // 用库存数量
     };
   });
 
@@ -1139,6 +1160,28 @@ function renderPoForm() {
           <div class="sku">${escapeHtml(displaySku)}${wasEdited ? '<span style="margin-left:6px; font-size:10px; padding:1px 6px; background:rgba(124,58,237,0.12); color:#7c3aed; border-radius:3px;">已修改</span>' : ''}</div>
           <div class="name">${escapeHtml(displayTitle)}${displayEn ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(displayEn)}</span>` : ''}${sel.isInsurance ? ' <span style="font-size:10px; padding:1px 7px; background:rgba(220,38,38,0.1); color:#dc2626; border-radius:3px; font-weight:600;">🛡 保险/费用项 · 默认不采购</span>' : ''}</div>
           <div class="variant">${escapeHtml(li.variant_title || '')}${fullyAssigned ? ' · <span style="color:var(--success)">✓ 已全部开 PO</span>' : sel.assignedQty > 0 ? ` · 剩 ${sel.remaining}/${li.quantity}` : ''}</div>
+          ${(!fullyAssigned && (sel.stockDom > 0 || sel.stockOvs > 0)) ? `
+            <div style="margin-top:6px; padding:8px 10px; background:${sel.useStock ? 'rgba(15,110,86,0.08)' : 'rgba(37,99,235,0.05)'}; border:1px solid ${sel.useStock ? 'rgba(15,110,86,0.4)' : 'rgba(37,99,235,0.25)'}; border-radius:6px;">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span style="font-size:11.5px; font-weight:600; color:#1d6fa5;">📦 库存有现货:</span>
+                <span style="font-size:11.5px;">🏠 国内 ${sel.stockDom} · ✈️ 海外 ${sel.stockOvs}</span>
+                <label style="display:flex; align-items:center; gap:4px; cursor:pointer; font-size:11.5px; margin-left:auto;">
+                  <input type="checkbox" ${sel.useStock ? 'checked' : ''} onchange="poFormToggleUseStock('${li.shopify_line_item_id}', this.checked)">
+                  <span style="font-weight:600; color:#0f6e56;">用库存发货(不找工厂)</span>
+                </label>
+              </div>
+              ${sel.useStock ? `
+                <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
+                  <span style="font-size:11px; color:var(--text-secondary);">出哪个仓:</span>
+                  ${sel.stockOvs > 0 ? `<button onclick="poFormSetStockWh('${li.shopify_line_item_id}','overseas')" style="padding:3px 10px; font-size:11px; border:1px solid ${sel.useStockWh === 'overseas' ? 'var(--accent)' : 'var(--border)'}; border-radius:12px; background:${sel.useStockWh === 'overseas' ? 'var(--accent)' : 'var(--bg-card)'}; color:${sel.useStockWh === 'overseas' ? '#fff' : 'var(--text-secondary)'}; cursor:pointer;">✈️ 海外仓(${sel.stockOvs})</button>` : ''}
+                  ${sel.stockDom > 0 ? `<button onclick="poFormSetStockWh('${li.shopify_line_item_id}','domestic')" style="padding:3px 10px; font-size:11px; border:1px solid ${sel.useStockWh === 'domestic' ? 'var(--accent)' : 'var(--border)'}; border-radius:12px; background:${sel.useStockWh === 'domestic' ? 'var(--accent)' : 'var(--bg-card)'}; color:${sel.useStockWh === 'domestic' ? '#fff' : 'var(--text-secondary)'}; cursor:pointer;">🏠 国内仓(${sel.stockDom})</button>` : ''}
+                  <span style="font-size:11px; color:var(--text-secondary);">用</span>
+                  <input type="number" min="1" max="${sel.useStockWh === 'overseas' ? sel.stockOvs : sel.useStockWh === 'domestic' ? sel.stockDom : sel.remaining}" value="${sel.useStockQty || sel.remaining}" oninput="poFormSetStockQty('${li.shopify_line_item_id}', this.value)" style="width:56px; padding:3px 6px; font-size:12px; border:1px solid var(--border); border-radius:5px; text-align:center;">
+                  <span style="font-size:11px; color:var(--text-secondary);">个 (需 ${sel.remaining})</span>
+                  ${(sel.useStockQty || sel.remaining) < sel.remaining ? `<span style="font-size:11px; color:#854f0b;">· 剩 ${sel.remaining - (sel.useStockQty || sel.remaining)} 个仍走工厂下单</span>` : '<span style="font-size:11px; color:#0f6e56;">· 全部用库存,不下采购单</span>'}
+                </div>
+                ${!sel.useStockWh ? '<div style="font-size:11px; color:#854f0b; margin-top:4px;">⚠ 请选择出库仓</div>' : ''}` : ''}
+            </div>` : ''}
           ${fullyAssigned && validAssignments.length > 0 ? `
             <div style="margin-top:4px; padding:6px 8px; background:rgba(234,179,8,0.08); border-left:3px solid var(--warning); border-radius:4px; font-size:11px;">
               <b style="color:var(--warning);">⚠ 已开过 PO：</b>${validAssignments.map(a => `
@@ -1454,6 +1497,39 @@ function poFormToggleItem(liid, checked) {
   PO_FORM_STATE.lineItemSelections[liid].checked = checked;
   renderPoForm();
 }
+// V20260624:用库存发货(下采购单时智能用现货)
+function poFormToggleUseStock(liid, checked) {
+  const sel = PO_FORM_STATE.lineItemSelections[liid];
+  if (!sel) return;
+  sel.useStock = checked;
+  if (checked) {
+    // 默认优先海外仓(够的话),否则国内仓;数量默认填满需求(不超库存)
+    if (!sel.useStockWh) sel.useStockWh = sel.stockOvs > 0 ? 'overseas' : (sel.stockDom > 0 ? 'domestic' : '');
+    const cap = sel.useStockWh === 'overseas' ? sel.stockOvs : sel.useStockWh === 'domestic' ? sel.stockDom : 0;
+    sel.useStockQty = Math.min(sel.remaining, cap || sel.remaining);
+  } else {
+    sel.useStockWh = ''; sel.useStockQty = 0;
+  }
+  renderPoForm();
+}
+function poFormSetStockWh(liid, wh) {
+  const sel = PO_FORM_STATE.lineItemSelections[liid];
+  if (!sel) return;
+  sel.useStockWh = wh;
+  const cap = wh === 'overseas' ? sel.stockOvs : sel.stockDom;
+  sel.useStockQty = Math.min(sel.useStockQty || sel.remaining, cap);
+  renderPoForm();
+}
+function poFormSetStockQty(liid, val) {
+  const sel = PO_FORM_STATE.lineItemSelections[liid];
+  if (!sel) return;
+  const cap = sel.useStockWh === 'overseas' ? sel.stockOvs : sel.useStockWh === 'domestic' ? sel.stockDom : sel.remaining;
+  sel.useStockQty = Math.max(0, Math.min(parseInt(val) || 0, cap, sel.remaining));
+  renderPoForm();
+}
+window.poFormToggleUseStock = poFormToggleUseStock;
+window.poFormSetStockWh = poFormSetStockWh;
+window.poFormSetStockQty = poFormSetStockQty;
 // V5-W3-2026-05-26: per-line 备注 setter (跟单编辑某行备注时调用)
 //   不调 renderPoForm()(避免每输一个字符就重渲染丢焦点)
 //   标记 lineNotesManuallyEdited[liid] 防止自动逻辑覆盖
@@ -1873,6 +1949,57 @@ function closePoForm() {
   PO_FORM_STATE = null;
 }
 
+// V20260624:用库存发货 — 扣对应仓库库存 + 写出库流水 + 绑订单号
+async function _poApplyStockFulfillment(so, stockLines) {
+  const orderNo = so.shopify_order_number || so.name || '';
+  const shopLabel = so.store_label || so.store_code || so.shop_domain || '';
+  const myName = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) ? CURRENT_AGENT : '?';
+  const items = so.line_items || [];
+  try {
+    for (const [liid, sel] of stockLines) {
+      const li = items.find(x => x.shopify_line_item_id === liid);
+      if (!sel.stockProductId) { toast('某产品未关联库存,无法用库存', 'warn'); return false; }
+      const qty = sel.useStockQty;
+      const wh = sel.useStockWh;   // overseas / domestic
+      // 重新读当前库存(避免并发)
+      const { data: prod, error: pe } = await sb.from('products')
+        .select('id, sku, name_cn, stock_qty, stock_qty_domestic, stock_qty_overseas').eq('id', sel.stockProductId).single();
+      if (pe) throw pe;
+      const curWh = wh === 'overseas' ? Number(prod.stock_qty_overseas || 0) : Number(prod.stock_qty_domestic || 0);
+      if (curWh < qty) { toast(`${prod.name_cn || prod.sku} ${wh === 'overseas' ? '海外仓' : '国内仓'}库存不足(只剩 ${curWh})`, 'warn'); return false; }
+      // 扣库存(对应仓 + 总量)
+      const upd = { stock_qty: Math.max(0, Number(prod.stock_qty || 0) - qty) };
+      if (wh === 'overseas') upd.stock_qty_overseas = curWh - qty;
+      else upd.stock_qty_domestic = curWh - qty;
+      const { error: ue } = await sb.from('products').update(upd).eq('id', prod.id);
+      if (ue) throw ue;
+      // 写出库流水
+      try {
+        await sb.from('stock_movements').upsert({
+          internal_sku: prod.sku,
+          product_name: prod.name_cn || (li && li.title) || '',
+          platform_sku: (li && li.sku) || prod.sku,
+          shop_domain: so.shop_domain || '',
+          store_label: shopLabel,
+          order_no: orderNo,
+          shopify_order_id: String(so.shopify_order_id || so.id || ''),
+          qty,
+          warehouse: wh,
+          moved_at: new Date().toISOString(),
+          created_by: myName,
+          note: '采购单用库存发货',
+        }, { onConflict: 'order_no,platform_sku' });
+      } catch (me) { if (!/does not exist/i.test(me.message || '')) console.warn('[stock_movements] 写流水失败:', me.message); }
+    }
+    if (typeof PRODUCTS_CACHE !== 'undefined') PRODUCTS_CACHE.invalidate();
+    if (typeof INV_MOVE_CACHE !== 'undefined') INV_MOVE_CACHE = null;
+    return true;
+  } catch (e) {
+    toast('扣减库存失败:' + (e.message || e), 'err', 4000);
+    return false;
+  }
+}
+
 async function poFormSave() {
   // V28t:防双击/重复保存(避免出现 2 张相同 PO)
   if (poFormSave._busy) return;
@@ -1889,9 +2016,31 @@ async function poFormSave() {
 
 async function _poFormSaveInner() {
   const so = PO_FORM_STATE.salesOrder;
+
+  // V20260624:先处理「用库存发货」的行 — 扣库存 + 写出库流水,并把库存覆盖的数量从 PO 需求里扣掉
+  const stockLines = Object.entries(PO_FORM_STATE.lineItemSelections)
+    .filter(([_, sel]) => sel.useStock && sel.useStockQty > 0 && sel.useStockWh);
+  // 校验:勾了用库存但没选仓
+  const badStock = Object.entries(PO_FORM_STATE.lineItemSelections).find(([_, sel]) => sel.useStock && sel.useStockQty > 0 && !sel.useStockWh);
+  if (badStock) { toast('有产品勾了「用库存」但没选出库仓', 'warn'); return; }
+  if (stockLines.length) {
+    const ok = await _poApplyStockFulfillment(so, stockLines);
+    if (!ok) return;   // 扣库存失败,中止(不开 PO,避免库存/PO不一致)
+    // 库存覆盖后,把对应行的 PO 需求量减掉;全覆盖的取消勾选
+    stockLines.forEach(([liid, sel]) => {
+      const left = Math.max(0, sel.remaining - sel.useStockQty);
+      sel.qty = left;
+      if (left === 0) sel.checked = false;   // 全用库存 → 不进 PO
+    });
+  }
+
   const selected = Object.entries(PO_FORM_STATE.lineItemSelections).filter(([_, sel]) => sel.checked && sel.qty > 0);
   const customLines = (PO_FORM_STATE.customLines || []).filter(cl => cl.qty > 0);
-  if (selected.length === 0 && customLines.length === 0) { toast('请勾选至少 1 个产品（或添加自定义行）', 'warn'); return; }
+  if (selected.length === 0 && customLines.length === 0) {
+    // 可能全部用库存覆盖了 → 不是错误
+    if (stockLines.length) { toast('✓ 已全部用库存发货,无需开采购单', 'success', 3500); closePoForm(); if (typeof renderShopifyOrders === 'function') renderShopifyOrders(); return; }
+    toast('请勾选至少 1 个产品（或添加自定义行）', 'warn'); return;
+  }
 
   const supplierName = document.getElementById('poFormSupplierInput').value.trim();
   if (!supplierName) { toast('请选择/输入供应商', 'warn'); return; }
@@ -4216,8 +4365,8 @@ function renderPoList() {
               return `
               <div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:6px;">
                 ${li.image_url
-                  ? `<img src="${escapeHtml(li.image_url)}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid var(--border-subtle); cursor:zoom-in; flex-shrink:0;" onclick="openImgLightbox('${escapeHtml(li.image_url)}')">`
-                  : `<div style="width:50px; height:50px; border-radius:6px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:18px; flex-shrink:0;">📷</div>`}
+                  ? `<img src="${escapeHtml(_poResizeImg(li.image_url, '160x160'))}" style="width:80px; height:80px; object-fit:cover; border-radius:6px; border:1px solid var(--border-subtle); cursor:zoom-in; flex-shrink:0;" onclick="openImgLightbox('${escapeHtml(_poResizeImg(li.image_url, '800x800'))}')" loading="lazy">`
+                  : `<div style="width:80px; height:80px; border-radius:6px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:26px; flex-shrink:0;">📷</div>`}
                 <div style="flex:1; min-width:0; font-size:12px;">
                   <div style="color:var(--text-tertiary); font-family:monospace; font-size:10px;">${skuClickable}</div>
                   <div style="color:var(--text-primary);">${titleClickable}${titleEnStr ? ` <span style="color:var(--text-tertiary); font-size:11px; font-weight:400;">/ ${escapeHtml(titleEnStr)}</span>` : ''} ${(li.qty||0) >= 2 ? `<span style="background:var(--danger); color:white; padding:2px 8px; border-radius:5px; font-weight:700; font-size:14px; margin:0 4px;">× ${li.qty}</span>` : `<span style="color:var(--text-tertiary)">× ${li.qty}</span>`} @ ¥${Number(li.price).toFixed(2)}</div>
