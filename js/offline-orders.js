@@ -35,7 +35,7 @@ const OFF_FLOW_STAGES = ['ordered', 'producing', 'shipped'];
 //   received(旧已签收)已取消 → 归并为 shipped(已发货终态)
 const OFF_STAGE_NORMALIZE = { pending: 'ordered', claimed: 'ordered', received: 'shipped', to_order: 'ordered', arrived: 'producing' };
 
-const OFFLINE = { _msgs: [], _followups: {}, _shipped: {}, _view: (typeof localStorage !== 'undefined' && localStorage.getItem('offline_view')) || 'list', _scope: 'active', _loadedAt: 0 };
+const OFFLINE = { _msgs: [], _followups: {}, _shipped: {}, _view: (typeof localStorage !== 'undefined' && localStorage.getItem('offline_view')) || 'list', _scope: 'active', _search: '', _timeFilter: '', _siteFilter: '', _loadedAt: 0 };
 window.OFFLINE = OFFLINE;
 
 function _offIsBase64(v) {
@@ -174,7 +174,8 @@ function renderOfflineOrders() {
       ${sbtn('active', '进行中', activeMsgs.length, '⏳')}
       ${sbtn('shipped', '已发货', shippedMsgs.length, '📦')}
       ${pendingMsgs.length ? `<span style="font-size:11px; color:var(--text-tertiary); margin-left:4px;">·  待付款 ${pendingMsgs.length} 单(客服收款后才转来,跟单不显示防误下单)</span>` : ''}
-    </div>`;
+    </div>
+    ${_offToolbar()}`;
 
   if (allMsgs.length === 0) {
     body.innerHTML = header + `<div class="empty-state" style="padding:40px; text-align:center; color:var(--text-tertiary);"><div style="font-size:34px;">🧾</div><div>还没有线下单(客服转单后出现在这里)</div></div>`;
@@ -182,20 +183,121 @@ function renderOfflineOrders() {
   }
 
   // 当前 scope 的数据
-  const msgs = OFFLINE._scope === 'shipped' ? shippedMsgs : activeMsgs;
+  let msgs = OFFLINE._scope === 'shipped' ? shippedMsgs : activeMsgs;
+  // 应用 搜索 + 时间 + 网站 筛选
+  msgs = _offApplyFilters(msgs);
   if (msgs.length === 0) {
-    const emptyTxt = OFFLINE._scope === 'shipped' ? '还没有已发货的单' : '没有进行中的单(待下单/生产中)· 客服收款转单后出现在这里';
-    body.innerHTML = header + `<div class="empty-state" style="padding:40px; text-align:center; color:var(--text-tertiary);"><div style="font-size:30px;">${OFFLINE._scope === 'shipped' ? '📦' : '✅'}</div><div>${emptyTxt}</div></div>`;
+    const hasFilter = OFFLINE._search || OFFLINE._timeFilter || OFFLINE._siteFilter;
+    const emptyTxt = hasFilter ? '没有匹配的订单(试试清除筛选)'
+      : OFFLINE._scope === 'shipped' ? '还没有已发货的单' : '没有进行中的单(待下单/生产中)· 客服收款转单后出现在这里';
+    body.innerHTML = header + `<div class="empty-state" style="padding:40px; text-align:center; color:var(--text-tertiary);"><div style="font-size:30px;">${hasFilter ? '🔍' : OFFLINE._scope === 'shipped' ? '📦' : '✅'}</div><div>${emptyTxt}</div>${hasFilter ? '<button class="btn small" style="margin-top:12px;" onclick="offlineClearFilters()">清除筛选</button>' : ''}</div>`;
     return;
   }
+
+  // 重复订单号检测(黄条警告)· 基于当前 scope 全部数据(不受分页影响)
+  const seen = {}, dups = new Set();
+  msgs.forEach(m => { const no = (m._row && m._row.order_no) || m.related_ref; if (no) { if (seen[no]) dups.add(no); seen[no] = true; } });
+  const dupBanner = dups.size ? `<div style="margin-bottom:10px; padding:9px 14px; background:rgba(239,159,39,0.12); border:1px solid rgba(239,159,39,0.4); border-radius:8px; font-size:12px; color:#854f0b;">⚠️ 发现 ${dups.size} 个重复订单号:${[...dups].slice(0, 8).map(escapeHtml).join('、')}${dups.size > 8 ? ' 等' : ''} · 可能客服重复建单,建议核对</div>` : '';
 
   const view = OFFLINE._view === 'grid' ? _offRenderGrid(msgs)
              : OFFLINE._view === 'board' ? _offRenderBoard(msgs)
              : _offRenderList(msgs);
-  body.innerHTML = header + view;
+  body.innerHTML = header + dupBanner + view;
 }
 function offlineSetScope(s) { OFFLINE._scope = s; OFF_LIST_PAGE = 0; renderOfflineOrders(); }
 window.offlineSetScope = offlineSetScope;
+
+// ── 工具栏:智能搜索 + 时间筛选 + 网站筛选 + 每页数量 ──
+const OFF_TIME_FILTERS = [
+  { k: '', label: '全部' },
+  { k: 'today', label: '今天' },
+  { k: '3d', label: '近3天' },
+  { k: '7d', label: '近7天' },
+  { k: '30d', label: '近30天' },
+];
+function _offToolbar() {
+  // 网站下拉(从所有单提取站点码)
+  const sites = {};
+  (OFFLINE._msgs || []).forEach(m => { const s = (m._row && m._row.site) || m.related_shop; if (s) sites[s] = true; });
+  const siteOpts = '<option value="">🌐 全部网站</option>' + Object.keys(sites).sort().map(s => `<option value="${escapeHtml(s)}" ${OFFLINE._siteFilter === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
+  const timeBtns = OFF_TIME_FILTERS.map(t =>
+    `<button onclick="offlineSetTime('${t.k}')" style="padding:4px 11px; font-size:11.5px; border:1px solid ${(OFFLINE._timeFilter || '') === t.k ? 'var(--accent)' : 'var(--border)'}; border-radius:14px; cursor:pointer; background:${(OFFLINE._timeFilter || '') === t.k ? 'var(--accent)' : 'var(--bg-card)'}; color:${(OFFLINE._timeFilter || '') === t.k ? '#fff' : 'var(--text-secondary)'};">${t.label}</button>`
+  ).join('');
+  const sizeSel = [20, 50, 100].map(n => `<option value="${n}" ${OFF_LIST_PAGE_SIZE === n ? 'selected' : ''}>${n}/页</option>`).join('');
+  const hasFilter = OFFLINE._search || OFFLINE._timeFilter || OFFLINE._siteFilter;
+  return `
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+      <div style="position:relative; flex:1; min-width:220px;">
+        <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--text-tertiary); font-size:13px;">🔍</span>
+        <input type="text" id="offSearchInput" value="${escapeHtml(OFFLINE._search || '')}" oninput="offlineSetSearch(this.value)"
+          placeholder="搜订单号 / 客户名 / 邮箱 / 网站 / 快递单号 / SKU"
+          style="width:100%; padding:8px 10px 8px 32px; font-size:12.5px; border:1px solid var(--border); border-radius:7px; box-sizing:border-box; background:var(--bg-card);">
+      </div>
+      <div style="display:inline-flex; gap:5px; align-items:center;">
+        <span style="font-size:11px; color:var(--text-tertiary);">下单时间:</span>${timeBtns}
+      </div>
+      <select onchange="offlineSetSite(this.value)" style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">${siteOpts}</select>
+      <select onchange="offlineSetPageSize(this.value)" style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">${sizeSel}</select>
+      ${hasFilter ? `<button class="btn small" onclick="offlineClearFilters()" style="font-size:11px;">✕ 清除筛选</button>` : ''}
+    </div>`;
+}
+
+// 应用筛选(搜索 + 时间 + 网站)
+function _offApplyFilters(msgs) {
+  let out = msgs;
+  const q = (OFFLINE._search || '').trim().toLowerCase();
+  if (q) {
+    out = out.filter(m => {
+      const o = m._row || {};
+      const hay = [
+        o.order_no, m.related_ref, o.site, m.related_shop,
+        o.customer_name, o.customer_email, o.customer_phone,
+        o.ship_no, o.ship_carrier, o.created_by_name,
+        ...(Array.isArray(o.products) ? o.products.map(p => (p.sku || '') + ' ' + (p.name || '')) : []),
+      ].filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  if (OFFLINE._siteFilter) {
+    out = out.filter(m => ((m._row && m._row.site) || m.related_shop) === OFFLINE._siteFilter);
+  }
+  if (OFFLINE._timeFilter) {
+    const now = Date.now();
+    const span = { today: 1, '3d': 3, '7d': 7, '30d': 30 }[OFFLINE._timeFilter];
+    if (span) {
+      let cutoff;
+      if (OFFLINE._timeFilter === 'today') { const d = new Date(); d.setHours(0, 0, 0, 0); cutoff = d.getTime(); }
+      else cutoff = now - span * 86400000;
+      out = out.filter(m => {
+        const o = m._row || {};
+        const t = o.created_at ? new Date(o.created_at).getTime() : (m.created_at_ms || 0);
+        return t >= cutoff;
+      });
+    }
+  }
+  return out;
+}
+
+let _offSearchTimer = null;
+function offlineSetSearch(v) {
+  OFFLINE._search = v; OFF_LIST_PAGE = 0;
+  // 防抖:输入停 250ms 再渲染(避免每键全量重渲)
+  clearTimeout(_offSearchTimer);
+  _offSearchTimer = setTimeout(() => {
+    renderOfflineOrders();
+    const inp = document.getElementById('offSearchInput');
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+  }, 250);
+}
+function offlineSetTime(k) { OFFLINE._timeFilter = k; OFF_LIST_PAGE = 0; renderOfflineOrders(); }
+function offlineSetSite(v) { OFFLINE._siteFilter = v; OFF_LIST_PAGE = 0; renderOfflineOrders(); }
+function offlineSetPageSize(n) { OFF_LIST_PAGE_SIZE = parseInt(n) || 20; OFF_LIST_PAGE = 0; renderOfflineOrders(); }
+function offlineClearFilters() { OFFLINE._search = ''; OFFLINE._timeFilter = ''; OFFLINE._siteFilter = ''; OFF_LIST_PAGE = 0; renderOfflineOrders(); }
+window.offlineSetSearch = offlineSetSearch;
+window.offlineSetTime = offlineSetTime;
+window.offlineSetSite = offlineSetSite;
+window.offlineSetPageSize = offlineSetPageSize;
+window.offlineClearFilters = offlineClearFilters;
 
 // V20260623:看板每列分页(防一列上百卡变无限长列 · 与客服端对齐)
 const OFF_BOARD_PAGE_SIZE = 8;
@@ -396,7 +498,7 @@ function _offRenderGrid(msgs) {
 }
 
 let OFF_LIST_PAGE = 0;
-const OFF_LIST_PAGE_SIZE = 20;
+let OFF_LIST_PAGE_SIZE = 20;
 function offListSetPage(page) { OFF_LIST_PAGE = page; renderOfflineOrders(); }
 window.offListSetPage = offListSetPage;
 function _offListPager(safePage, totalPages, total) {
