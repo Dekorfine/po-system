@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260624-inv-audit',
+    date: '2026-06-24',
+    type: 'feature',
+    title: '🕓 库存操作留痕:每个SKU下可查谁/何时/加减多少',
+    notes: [
+      '库存编辑弹窗加「🕓 库存操作记录」区(点开懒加载)·显示该SKU所有加减记录',
+      '含:手动入库/出库/设置·订单自动扣减·采购单用库存发货·都带操作人+时间+数量变化+调整后',
+      '采购单用库存发货也补写inventory_movements留痕(之前只写stock_movements)',
+      '须在pyfmu库跑 库存操作记录表.sql(若表已存在则安全补字段)',
+    ],
+    files: ['inventory.js', 'po.js', 'index.html', 'help.js', 'sql/库存操作记录表.sql(须跑)'],
+  },
+  {
     v: '20260624-po-use-stock',
     date: '2026-06-24',
     type: 'feature',

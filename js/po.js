@@ -1973,6 +1973,15 @@ async function _poApplyStockFulfillment(so, stockLines) {
       else upd.stock_qty_domestic = curWh - qty;
       const { error: ue } = await sb.from('products').update(upd).eq('id', prod.id);
       if (ue) throw ue;
+      // 写库存操作记录(留痕·在该SKU下可查)
+      try {
+        await sb.from('inventory_movements').insert({
+          product_id: prod.id, internal_sku: prod.sku,
+          movement_type: 'order_deduct', qty_change: -qty, qty_after: upd.stock_qty,
+          ref_type: 'order', ref_id: orderNo, operator: myName,
+          note: `采购单用库存发货(${wh === 'overseas' ? '海外仓' : '国内仓'})`,
+        });
+      } catch (ie) { if (!/does not exist/i.test(ie.message || '')) console.warn('[inventory_movements] 写留痕失败:', ie.message); }
       // 写出库流水
       try {
         await sb.from('stock_movements').upsert({

@@ -1154,11 +1154,60 @@ function _invRenderEdit() {
     </div>
     
     ${!s.isNew ? `
+    <!-- V20260624:库存操作记录(留痕)-->
+    <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border-subtle);">
+      <details ontoggle="if(this.open) _invLoadAuditLog('${escapeHtml(s.sku)}')">
+        <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--text-secondary);">🕓 库存操作记录(谁/何时/加减多少)</summary>
+        <div id="invAuditLog" style="margin-top:8px; font-size:11.5px; color:var(--text-tertiary);">点开加载...</div>
+      </details>
+    </div>` : ''}
+
+    ${!s.isNew ? `
     <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border-subtle);">
       <button onclick="invDelete()" class="btn small" style="font-size:11px; color:var(--danger); border-color:rgba(220,38,38,0.3);">🗑 删除(可在回收站恢复)</button>
     </div>` : ''}
   `;
 }
+
+// V20260624:加载某 SKU 的库存操作记录(留痕)
+async function _invLoadAuditLog(sku) {
+  const el = document.getElementById('invAuditLog');
+  if (!el) return;
+  el.innerHTML = '加载中...';
+  try {
+    const { data, error } = await sb.from('inventory_movements')
+      .select('movement_type, qty_change, qty_after, operator, note, ref_type, created_at')
+      .eq('internal_sku', sku)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    if (!data || !data.length) { el.innerHTML = '<div style="color:var(--text-tertiary); padding:6px 0;">暂无操作记录</div>'; return; }
+    const typeLabel = (t, chg) => {
+      if (t === 'inbound') return '<span style="color:#0f6e56;">➕ 入库</span>';
+      if (t === 'order_deduct') return '<span style="color:#1d6fa5;">🛒 订单扣减</span>';
+      if (t === 'manual_adjust') return chg >= 0 ? '<span style="color:#0f6e56;">➕ 手动入库</span>' : '<span style="color:#dc2626;">➖ 手动出库</span>';
+      return '<span>调整</span>';
+    };
+    el.innerHTML = `<div style="display:flex; flex-direction:column; gap:0; max-height:260px; overflow-y:auto;">
+      ${data.map(m => {
+        const dt = m.created_at ? new Date(m.created_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+        const chg = Number(m.qty_change || 0);
+        return `<div style="display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px solid var(--border-subtle); font-size:11.5px;">
+          <span style="min-width:88px;">${typeLabel(m.movement_type, chg)}</span>
+          <span style="font-weight:700; color:${chg >= 0 ? '#0f6e56' : '#dc2626'}; min-width:42px; text-align:right; font-family:monospace;">${chg >= 0 ? '+' : ''}${chg}</span>
+          <span style="color:var(--text-tertiary); min-width:54px; font-family:monospace;">→ ${m.qty_after}</span>
+          <span style="color:var(--text-secondary); flex:1;">👤 ${escapeHtml(m.operator || '?')}</span>
+          <span style="color:var(--text-tertiary); white-space:nowrap;">${dt}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="font-size:10.5px; color:var(--text-tertiary); margin-top:6px;">显示最近 ${data.length} 条 · 含手动调整+订单扣减</div>`;
+  } catch (e) {
+    const noTable = /does not exist/i.test(e.message || '');
+    el.innerHTML = `<div style="color:var(--danger); padding:6px 0;">${noTable ? '操作记录表(inventory_movements)还没建,需先跑SQL' : '加载失败:' + escapeHtml(e.message || String(e))}</div>`;
+  }
+}
+window._invLoadAuditLog = _invLoadAuditLog;
 
 function _invSetPsShop(idx, value) {
   if (!INV_EDIT) return;
