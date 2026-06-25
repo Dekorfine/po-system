@@ -21,19 +21,20 @@ const OFF_STAGES = [
   { k: 'pending_payment', label: '待付款', color: '#92400e', bg: 'rgba(239,159,39,0.08)', readonly: true },
   { k: 'ordered',   label: '待下单', color: 'var(--text-secondary)', bg: 'rgba(136,135,128,0.08)' },
   { k: 'producing', label: '生产中', color: '#854f0b',               bg: 'rgba(239,159,39,0.1)' },
+  { k: 'arrived',   label: '货到工厂', color: '#1d6fa5',             bg: 'rgba(37,99,235,0.1)' },
   { k: 'shipped',   label: '已发货', color: '#0f6e56',               bg: 'rgba(29,158,117,0.1)' },
 ];
 const OFF_STAGE_MAP = Object.fromEntries(OFF_STAGES.map(s => [s.k, s]));
-// V20260624:简化为3段(去掉已到货)· 待下单→生产中→已发货 · 跟单点发货=自动隐藏
-const OFF_NEXT = { ordered: 'producing', producing: 'shipped' };
-const OFF_PREV = { producing: 'ordered', shipped: 'producing' };
+// V20260624:4段 · 待下单→生产中→货到工厂→已发货 · 跟单点发货=自动隐藏
+const OFF_NEXT = { ordered: 'producing', producing: 'arrived', arrived: 'shipped' };
+const OFF_PREV = { producing: 'ordered', arrived: 'producing', shipped: 'arrived' };
 // 进行中阶段(主列表只显示这些)· 待付款和已发货不在主列表
-const OFF_ACTIVE_STAGES = ['ordered', 'producing'];
+const OFF_ACTIVE_STAGES = ['ordered', 'producing', 'arrived'];
 // 行式进度展示用的阶段(不含待付款)
-const OFF_FLOW_STAGES = ['ordered', 'producing', 'shipped'];
+const OFF_FLOW_STAGES = ['ordered', 'producing', 'arrived', 'shipped'];
 // V20260617:旧数据兼容 — pending/claimed 一律视为 ordered(待下单)· 接单环节归客服,跟单拿到直接下单
 //   received(旧已签收)已取消 → 归并为 shipped(已发货终态)
-const OFF_STAGE_NORMALIZE = { pending: 'ordered', claimed: 'ordered', received: 'shipped', to_order: 'ordered', arrived: 'producing' };
+const OFF_STAGE_NORMALIZE = { pending: 'ordered', claimed: 'ordered', received: 'shipped', to_order: 'ordered' };
 
 const OFFLINE = { _msgs: [], _followups: {}, _shipped: {}, _view: (typeof localStorage !== 'undefined' && localStorage.getItem('offline_view')) || 'list', _scope: 'active', _search: '', _timeFilter: '', _siteFilter: '', _loadedAt: 0 };
 window.OFFLINE = OFFLINE;
@@ -839,7 +840,7 @@ async function offlineAdvance(msgId, orderNo, toStage) {
   if (!orderNo) { alert('该单没有订单号 · 无法推进'); return; }
   const label = OFF_STAGE_MAP[toStage] ? OFF_STAGE_MAP[toStage].label : toStage;
   // V20260624:3段流程 · 跟单可推进到 ordered/producing/shipped(点发货=标记发货+自动隐藏)
-  if (toStage !== 'ordered' && toStage !== 'producing' && toStage !== 'shipped') {
+  if (toStage !== 'ordered' && toStage !== 'producing' && toStage !== 'arrived' && toStage !== 'shipped') {
     if (typeof toast === 'function') toast('无效的工序', 'info', 2000);
     return;
   }
