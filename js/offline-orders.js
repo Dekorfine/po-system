@@ -21,18 +21,21 @@ const OFF_STAGES = [
   { k: 'pending_payment', label: '待付款', color: '#92400e', bg: 'rgba(239,159,39,0.08)', readonly: true },
   { k: 'ordered',   label: '待下单', color: 'var(--text-secondary)', bg: 'rgba(136,135,128,0.08)' },
   { k: 'producing', label: '生产中', color: '#854f0b',               bg: 'rgba(239,159,39,0.1)' },
-  { k: 'arrived',   label: '已到货', color: '#1d6fa5',               bg: 'rgba(37,99,235,0.1)' },
   { k: 'shipped',   label: '已发货', color: '#0f6e56',               bg: 'rgba(29,158,117,0.1)' },
 ];
 const OFF_STAGE_MAP = Object.fromEntries(OFF_STAGES.map(s => [s.k, s]));
-// V20260622:新流程 — 跟单只推进到「已到货 arrived」;发货由客服在 cs-system 做(填转单号),跟单只读显示
-const OFF_NEXT = { ordered: 'producing', producing: 'arrived' };
-const OFF_PREV = { producing: 'ordered', arrived: 'producing' };
+// V20260624:简化为3段(去掉已到货)· 待下单→生产中→已发货 · 跟单点发货=自动隐藏
+const OFF_NEXT = { ordered: 'producing', producing: 'shipped' };
+const OFF_PREV = { producing: 'ordered', shipped: 'producing' };
+// 进行中阶段(主列表只显示这些)· 待付款和已发货不在主列表
+const OFF_ACTIVE_STAGES = ['ordered', 'producing'];
+// 行式进度展示用的阶段(不含待付款)
+const OFF_FLOW_STAGES = ['ordered', 'producing', 'shipped'];
 // V20260617:旧数据兼容 — pending/claimed 一律视为 ordered(待下单)· 接单环节归客服,跟单拿到直接下单
 //   received(旧已签收)已取消 → 归并为 shipped(已发货终态)
-const OFF_STAGE_NORMALIZE = { pending: 'ordered', claimed: 'ordered', received: 'shipped', to_order: 'ordered' };
+const OFF_STAGE_NORMALIZE = { pending: 'ordered', claimed: 'ordered', received: 'shipped', to_order: 'ordered', arrived: 'producing' };
 
-const OFFLINE = { _msgs: [], _followups: {}, _shipped: {}, _view: (typeof localStorage !== 'undefined' && localStorage.getItem('offline_view')) || 'board', _loadedAt: 0 };
+const OFFLINE = { _msgs: [], _followups: {}, _shipped: {}, _view: (typeof localStorage !== 'undefined' && localStorage.getItem('offline_view')) || 'list', _scope: 'active', _loadedAt: 0 };
 window.OFFLINE = OFFLINE;
 
 function _offIsBase64(v) {
@@ -137,29 +140,62 @@ function _offComposeBody(o) {
 function renderOfflineOrders() {
   const body = document.getElementById('offlineBody');
   if (!body) return;
-  const msgs = OFFLINE._msgs || [];
-  const vbtn = (k, label) => `<button onclick="offlineSetView('${k}')" style="padding:5px 11px; font-size:11.5px; border:0; ${k !== 'board' ? 'border-left:1px solid var(--border);' : ''} cursor:pointer; background:${OFFLINE._view === k ? 'var(--accent)' : 'var(--bg-card)'}; color:${OFFLINE._view === k ? 'white' : 'var(--text-secondary)'}; font-weight:${OFFLINE._view === k ? '600' : '400'};">${label}</button>`;
+  const allMsgs = OFFLINE._msgs || [];
+  // 默认视图 = 列表
+  if (!OFFLINE._view) OFFLINE._view = 'list';
+  if (!OFFLINE._scope) OFFLINE._scope = 'active';   // active=进行中 / shipped=已发货
+
+  // 分组:进行中(待下单+生产中)· 已发货 · (待付款和取消不进主流程)
+  const activeMsgs = [], shippedMsgs = [], pendingMsgs = [];
+  allMsgs.forEach(m => {
+    const st = _offStageOf(m);
+    if (st === 'cancelled') return;
+    if (st === 'shipped') shippedMsgs.push(m);
+    else if (st === 'pending_payment') pendingMsgs.push(m);
+    else activeMsgs.push(m);   // ordered + producing
+  });
+
+  const vbtn = (k, label) => `<button onclick="offlineSetView('${k}')" style="padding:5px 11px; font-size:11.5px; border:0; ${k !== 'list' ? 'border-left:1px solid var(--border);' : ''} cursor:pointer; background:${OFFLINE._view === k ? 'var(--accent)' : 'var(--bg-card)'}; color:${OFFLINE._view === k ? 'white' : 'var(--text-secondary)'}; font-weight:${OFFLINE._view === k ? '600' : '400'};">${label}</button>`;
+  const sbtn = (k, label, count, icon) => `<button onclick="offlineSetScope('${k}')" style="padding:6px 13px; font-size:12.5px; border:1px solid ${OFFLINE._scope === k ? 'var(--accent)' : 'var(--border)'}; border-radius:8px; cursor:pointer; background:${OFFLINE._scope === k ? 'var(--accent)' : 'var(--bg-card)'}; color:${OFFLINE._scope === k ? 'white' : 'var(--text-secondary)'}; font-weight:${OFFLINE._scope === k ? '600' : '400'};">${icon} ${label} <span style="background:${OFFLINE._scope === k ? 'rgba(255,255,255,0.25)' : 'var(--bg-elevated)'}; padding:0 6px; border-radius:8px; font-size:11px;">${count}</span></button>`;
+
   const header = `
-    <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
       <h2 style="margin:0; font-size:17px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         🧾 线下单
-        <span style="font-size:11px; font-weight:400; color:var(--text-tertiary);">客服转来的已付款订单 · 全员协作推进 · 发货后自动回写客服(提成统计)</span>
+        <span style="font-size:11px; font-weight:400; color:var(--text-tertiary);">客服转来的已付款订单 · 一行一单 · 点发货后自动隐藏</span>
       </h2>
       <div style="margin-left:auto; display:inline-flex; gap:0; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
-        ${vbtn('board', '▦ 看板')}${vbtn('grid', '⊞ 网格')}${vbtn('list', '☰ 列表')}
+        ${vbtn('list', '☰ 列表')}${vbtn('board', '▦ 看板')}${vbtn('grid', '⊞ 网格')}
       </div>
       <button class="btn small" onclick="loadOfflineOrders().then(renderOfflineOrders)">🔄 刷新</button>
       <button class="btn small" onclick="offlineDiagShipped()" title="检测客服库连接和数据">🔍 连接检测</button>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+      ${sbtn('active', '进行中', activeMsgs.length, '⏳')}
+      ${sbtn('shipped', '已发货', shippedMsgs.length, '📦')}
+      ${pendingMsgs.length ? `<span style="font-size:11px; color:var(--text-tertiary); margin-left:4px;">·  待付款 ${pendingMsgs.length} 单(客服收款后才转来,跟单不显示防误下单)</span>` : ''}
     </div>`;
-  if (msgs.length === 0) {
+
+  if (allMsgs.length === 0) {
     body.innerHTML = header + `<div class="empty-state" style="padding:40px; text-align:center; color:var(--text-tertiary);"><div style="font-size:34px;">🧾</div><div>还没有线下单(客服转单后出现在这里)</div></div>`;
     return;
   }
+
+  // 当前 scope 的数据
+  const msgs = OFFLINE._scope === 'shipped' ? shippedMsgs : activeMsgs;
+  if (msgs.length === 0) {
+    const emptyTxt = OFFLINE._scope === 'shipped' ? '还没有已发货的单' : '没有进行中的单(待下单/生产中)· 客服收款转单后出现在这里';
+    body.innerHTML = header + `<div class="empty-state" style="padding:40px; text-align:center; color:var(--text-tertiary);"><div style="font-size:30px;">${OFFLINE._scope === 'shipped' ? '📦' : '✅'}</div><div>${emptyTxt}</div></div>`;
+    return;
+  }
+
   const view = OFFLINE._view === 'grid' ? _offRenderGrid(msgs)
-             : OFFLINE._view === 'list' ? _offRenderList(msgs)
-             : _offRenderBoard(msgs);
+             : OFFLINE._view === 'board' ? _offRenderBoard(msgs)
+             : _offRenderList(msgs);
   body.innerHTML = header + view;
 }
+function offlineSetScope(s) { OFFLINE._scope = s; OFF_LIST_PAGE = 0; renderOfflineOrders(); }
+window.offlineSetScope = offlineSetScope;
 
 // V20260623:看板每列分页(防一列上百卡变无限长列 · 与客服端对齐)
 const OFF_BOARD_PAGE_SIZE = 8;
@@ -192,7 +228,11 @@ function _offRenderBoard(msgs) {
     if (st === 'cancelled') cancelled.push(m);
     else (byStage[st] = byStage[st] || []).push(m);
   });
-  const cols = OFF_STAGES.map(s => {
+  // V20260624:看板列按 scope 过滤 — 进行中只显示待下单/生产中,已发货只显示已发货
+  const shownStages = OFFLINE._scope === 'shipped'
+    ? OFF_STAGES.filter(s => s.k === 'shipped')
+    : OFF_STAGES.filter(s => OFF_ACTIVE_STAGES.includes(s.k));
+  const cols = shownStages.map(s => {
     const list = byStage[s.k];
     const total = list.length;
     const totalPages = Math.max(1, Math.ceil(total / OFF_BOARD_PAGE_SIZE));
@@ -372,7 +412,7 @@ function _offListPager(safePage, totalPages, total) {
 }
 
 function _offRenderList(msgs) {
-  // V20260623:列表分页(顶+底)· 单一滚动
+  // V20260624:行式列表(一行一单·像销售单)· 缩略图+进度色块+右侧推进/发货按钮
   const total = msgs.length;
   const totalPages = Math.max(1, Math.ceil(total / OFF_LIST_PAGE_SIZE));
   let safePage = OFF_LIST_PAGE;
@@ -382,22 +422,81 @@ function _offRenderList(msgs) {
   const start = safePage * OFF_LIST_PAGE_SIZE;
   const pageMsgs = msgs.slice(start, start + OFF_LIST_PAGE_SIZE);
   const pager = _offListPager(safePage, totalPages, total);
+  const isShippedScope = OFFLINE._scope === 'shipped';
+
+  // 图例(进行中才显示进度图例)
+  const legend = isShippedScope ? '' : `
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:8px; padding:7px 12px; background:var(--bg-elevated); border-radius:7px; font-size:11px; color:var(--text-secondary); flex-wrap:wrap;">
+      <span>进度:</span>
+      <span style="display:inline-flex; align-items:center; gap:4px;"><span style="width:10px; height:10px; border-radius:2px; background:#1d9e75; display:inline-block;"></span>已完成</span>
+      <span style="display:inline-flex; align-items:center; gap:4px;"><span style="width:10px; height:10px; border-radius:2px; background:#ef9f27; display:inline-block;"></span>进行中</span>
+      <span style="display:inline-flex; align-items:center; gap:4px;"><span style="width:10px; height:10px; border-radius:2px; background:var(--border); display:inline-block;"></span>未到</span>
+    </div>`;
+
   const rows = pageMsgs.map(m => {
+    const o = m._row || {};
     const st = _offStageOf(m);
-    const meta = (st === 'cancelled') ? { label: '已取消', color: 'var(--danger)', bg: 'rgba(220,38,38,0.1)' } : OFF_STAGE_MAP[st];
-    const fu = _offGetFu(m.related_ref);
-    const next = (st !== 'cancelled' && st !== 'received') ? OFF_NEXT[st] : null;
+    const orderNo = m.related_ref || o.order_no || '(无单号)';
+    const site = m.related_shop || o.site || '';
+    const fu = _offGetFu(orderNo);
+    const curr = o.payment_currency || 'USD';
+    const amt = o.payment_amount || o.received_amount || 0;
+    const amtStr = amt ? `${curr} ${Number(amt).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '';
+    const cust = o.customer_name || '';
+    const products = Array.isArray(o.products) ? o.products : [];
+    const itemCount = products.reduce((s, p) => s + Number(p.qty || p.quantity || 1), 0);
+    const creator = o.created_by_name || '';
+    // 缩略图(产品主图优先)
+    let imgUrl = '';
+    for (const p of products) { const u = p.image || p.image_url || p.img || (Array.isArray(p.images) ? p.images[0] : ''); if (u) { imgUrl = u; break; } }
+    if (!imgUrl && Array.isArray(o.attachments)) { for (const a of o.attachments) { const u = _offAttUrl(a); if (u && u !== '__BASE64__') { imgUrl = u; break; } } }
+    const imgCell = imgUrl
+      ? `<img src="${escapeHtml(_offImg(imgUrl, '120x120'))}" loading="lazy" onerror="this.style.display='none'; this.parentElement.innerHTML='🧾';" style="width:46px; height:46px; object-fit:cover; border-radius:6px;">`
+      : '🧾';
+
+    // 进度色块(3段:待下单/生产中/已发货)
+    const stageIdx = OFF_FLOW_STAGES.indexOf(st === 'shipped' ? 'shipped' : st);
+    const blocks = OFF_FLOW_STAGES.map((sk, i) => {
+      let bg, color, check = '';
+      if (i < stageIdx) { bg = '#1d9e75'; color = '#fff'; check = '✓ '; }
+      else if (i === stageIdx) { bg = '#ef9f27'; color = '#412402'; }
+      else { bg = 'var(--bg-elevated)'; color = 'var(--text-tertiary)'; }
+      return `<div style="flex:1; text-align:center; padding:4px 2px; background:${bg}; color:${color}; font-size:10.5px; font-weight:600; border-radius:3px;">${check}${OFF_STAGE_MAP[sk].label}</div>`;
+    }).join('<div style="width:3px;"></div>');
+
+    // 右侧操作
+    let actionCell;
+    if (isShippedScope || st === 'shipped') {
+      const tk = (_offShippedOf(orderNo) && _offShippedOf(orderNo).tracking) || o.ship_no || '';
+      actionCell = `<div style="font-size:11px; color:var(--ok); display:flex; align-items:center; gap:4px; white-space:nowrap; justify-content:flex-end;">✅ 已发货${tk ? ' · ' + escapeHtml(tk) : ''}</div>`;
+    } else {
+      const next = OFF_NEXT[st];
+      if (next === 'shipped') {
+        actionCell = `<button class="btn small" style="white-space:nowrap; font-size:12px; background:#0f6e56; color:#fff; border:0;" onclick="event.stopPropagation(); offlineAdvance('${m.id}','${escapeHtml(orderNo)}','shipped')">📦 点发货</button>`;
+      } else if (next) {
+        actionCell = `<button class="btn small" style="white-space:nowrap; font-size:12px; background:var(--accent); color:#fff; border:0;" onclick="event.stopPropagation(); offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}')">→ ${OFF_STAGE_MAP[next].label}</button>`;
+      } else { actionCell = ''; }
+    }
+
     return `
-    <div onclick="offlineOpenDetail('${m.id}')" style="display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; cursor:pointer; ${st === 'cancelled' ? 'opacity:0.55;' : ''}">
-      <span style="background:${meta.bg || 'var(--bg-elevated)'}; color:${meta.color}; padding:2px 9px; border-radius:8px; font-size:11px; font-weight:600; white-space:nowrap;">${meta.label}</span>
-      <span style="font-weight:700;">${escapeHtml(m.related_ref || '(无单号)')}</span>
-      ${m.related_shop ? `<span style="font-size:11px; color:var(--text-secondary);">${escapeHtml(m.related_shop)}</span>` : ''}
-      ${fu.claimed_by_name ? `<span style="font-size:11px; color:var(--text-secondary);">👤 ${escapeHtml(fu.claimed_by_name)}</span>` : ''}
-      ${m.priority === 'urgent' ? '<span style="background:var(--danger); color:white; padding:0 6px; border-radius:6px; font-size:10px;">急</span>' : ''}
-      ${next ? `<button class="btn small" style="margin-left:auto; font-size:10.5px; padding:2px 8px;" onclick="event.stopPropagation(); offlineAdvance('${m.id}','${escapeHtml(m.related_ref || '')}','${next}')">→ ${OFF_STAGE_MAP[next].label}</button>` : '<span style="margin-left:auto;"></span>'}
+    <div onclick="offlineOpenDetail('${m.id}')" style="display:flex; align-items:center; gap:12px; padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; margin-bottom:7px; cursor:pointer;">
+      <div style="width:46px; height:46px; border-radius:6px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:20px;">${imgCell}</div>
+      <div style="width:160px; flex-shrink:0;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          ${site ? `<span style="font-size:9.5px; font-weight:700; color:var(--accent); background:var(--accent-soft); padding:1px 5px; border-radius:4px;">${escapeHtml(site)}</span>` : ''}
+          <span style="font-weight:700; font-size:14px;">${escapeHtml(orderNo)}</span>
+        </div>
+        ${cust ? `<div style="font-size:11px; color:var(--text-secondary); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px;">👤 ${escapeHtml(cust)}</div>` : ''}
+      </div>
+      <div style="width:120px; flex-shrink:0;">
+        ${amtStr ? `<div style="font-weight:600; font-size:12.5px;">${escapeHtml(amtStr)}</div>` : ''}
+        <div style="font-size:10.5px; color:var(--text-tertiary);">📦 ${itemCount} 件${creator ? ' · ' + escapeHtml(creator) : ''}</div>
+      </div>
+      ${isShippedScope ? '<div style="flex:1;"></div>' : `<div style="flex:1; display:flex; align-items:center; min-width:190px;">${blocks}</div>`}
+      <div style="flex-shrink:0; min-width:100px; text-align:right;">${actionCell}</div>
     </div>`;
   }).join('');
-  return `${pager}<div style="display:flex; flex-direction:column; gap:8px;">${rows}</div>${pager}`;
+  return `${legend}${pager}<div style="display:flex; flex-direction:column;">${rows}</div>${pager}`;
 }
 
 function offlineOpenDetail(orderId) {
@@ -475,12 +574,12 @@ function offlineOpenDetail(orderId) {
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
         ${prev ? `<button class="btn small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${prev}'); this.closest('[data-off-detail]').remove();" title="退回上一步">← 返回「${OFF_STAGE_MAP[prev].label}」</button>` : ''}
-        ${next ? `<button class="btn primary small" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}'); this.closest('[data-off-detail]').remove();" title="推进下一步">推进到「${OFF_STAGE_MAP[next].label}」→</button>` : (
+        ${next ? `<button class="btn primary small" style="${next === 'shipped' ? 'background:#0f6e56;' : ''}" onclick="offlineAdvance('${m.id}','${escapeHtml(orderNo)}','${next}'); this.closest('[data-off-detail]').remove();" title="推进下一步">${next === 'shipped' ? '📦 点发货(移至已发货)' : '推进到「' + OFF_STAGE_MAP[next].label + '」→'}</button>` : (
           stage === 'pending_payment'
             ? '<span style="font-size:12px; color:#92400e; align-self:center;">⏳ 此单未付款 · 等客服收款后才转「待下单」(跟单暂不操作)</span>'
             : stage === 'shipped'
-            ? `<span style="font-size:12.5px; color:var(--ok); align-self:center;">✅ 客服已发货${(_offShippedOf(orderNo) && _offShippedOf(orderNo).tracking) ? ` · 快递单号 <b>${escapeHtml(_offShippedOf(orderNo).tracking)}</b>` : (o.ship_no ? ` · ${escapeHtml(o.ship_no)}` : '')}</span>`
-            : (stage === 'arrived' ? '<span style="font-size:12px; color:var(--text-tertiary); align-self:center;">✅ 已到货 · 等客服发货</span>' : ''))}
+            ? `<span style="font-size:12.5px; color:var(--ok); align-self:center;">✅ 已发货${(_offShippedOf(orderNo) && _offShippedOf(orderNo).tracking) ? ` · 快递单号 <b>${escapeHtml(_offShippedOf(orderNo).tracking)}</b>` : (o.ship_no ? ` · ${escapeHtml(o.ship_no)}` : '')}</span>`
+            : '')}
       </div>
       <div>
         <label style="font-size:11.5px; color:var(--text-secondary); display:block; margin-bottom:5px;">📝 跟单备注(下单时间、当前情况、跟厂进度)</label>
@@ -637,15 +736,19 @@ window.offlineClaim = offlineClaim;
 async function offlineAdvance(msgId, orderNo, toStage) {
   if (!orderNo) { alert('该单没有订单号 · 无法推进'); return; }
   const label = OFF_STAGE_MAP[toStage] ? OFF_STAGE_MAP[toStage].label : toStage;
-  // V20260622:跟单只推进到「已到货 arrived」为止 · 发货由客服在 cs-system 做(填转单号),跟单不再写 po_shipped 回执
-  if (toStage !== 'ordered' && toStage !== 'producing' && toStage !== 'arrived') {
-    if (typeof toast === 'function') toast('发货由客服操作 · 跟单推进到「已到货」即可', 'info', 2500);
+  // V20260624:3段流程 · 跟单可推进到 ordered/producing/shipped(点发货=标记发货+自动隐藏)
+  if (toStage !== 'ordered' && toStage !== 'producing' && toStage !== 'shipped') {
+    if (typeof toast === 'function') toast('无效的工序', 'info', 2000);
     return;
   }
   try {
     const nowIso = new Date().toISOString();
     await _offWriteFu(orderNo, { stage: toStage, stage_at: nowIso });
-    if (typeof toast === 'function') toast(`→ ${orderNo} 已推进到「${label}」`, 'ok', 2200);
+    if (toStage === 'shipped') {
+      if (typeof toast === 'function') toast(`📦 ${orderNo} 已标记发货 · 移至「已发货」`, 'ok', 2500);
+    } else {
+      if (typeof toast === 'function') toast(`→ ${orderNo} 已推进到「${label}」`, 'ok', 2200);
+    }
     renderOfflineOrders();
     if (typeof updateBadges === 'function') updateBadges();
   } catch (e) { _offErr(e); }
