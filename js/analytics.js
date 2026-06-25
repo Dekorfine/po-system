@@ -31,10 +31,16 @@ const ANALYTICS_RANGES = [
 function _anIsNoise(li) {
   const title = String(li.title || li.name_cn || '').toLowerCase();
   const sku = String(li.sku || '').trim();
+  const skuLower = sku.toLowerCase();
   const noiseWords = ['insurance', 'protection', 'shipping protection', 'shipping fee',
     'price difference', 'difference', 'extra fee', 'handling', 'tip', 'gift',
-    '保险', '差价', '运费', '补差', '邮费', '赠品', '小费', '附加费', '手续费'];
+    'orderarmor', 'order armor', 'warranty', 'route protection', 'package protection',
+    'shipping insurance', 'order protection', 'damage protection', 'guarantee',
+    '保险', '差价', '运费', '补差', '邮费', '赠品', '小费', '附加费', '手续费', '保价', '保障', '保障服务'];
   if (noiseWords.some(w => title.includes(w))) return true;
+  // SKU 前缀黑名单(保险/保障类产品的内部 SKU,如 OrderArmor 的 BSI-xxx)
+  const noiseSkuPrefix = ['bsi-', 'ins-', 'protect', 'warranty', 'route-'];
+  if (noiseSkuPrefix.some(p => skuLower.startsWith(p))) return true;
   // 无 SKU 且单价很低的常是杂项(但保留有 SKU 的)
   if (!sku && Number(li.price || 0) < 5) return true;
   return false;

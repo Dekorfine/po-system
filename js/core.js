@@ -2632,6 +2632,13 @@ function setBadge(id, n) {
 
 // ============ Tab 切换 ============
 function switchTab(name, fromPopstate) {
+  // V20260624:离开当前 tab 前记住滚动位置,进入目标 tab 后恢复(从 PO 返回销售单不再跳顶)
+  try {
+    if (typeof CURRENT_TAB !== 'undefined' && CURRENT_TAB && CURRENT_TAB !== name) {
+      window._tabScrollPos = window._tabScrollPos || {};
+      window._tabScrollPos[CURRENT_TAB] = window.scrollY || document.documentElement.scrollTop || 0;
+    }
+  } catch(_) {}
   CURRENT_TAB = name;
   try { localStorage.setItem('current_tab', name); } catch(_) {}
   // V20260526q: 用 pushState 把 tab 切换记录到浏览器历史
@@ -2657,6 +2664,13 @@ function switchTab(name, fromPopstate) {
     }
   } catch(_) {}
   renderActiveTab();
+  // 恢复目标 tab 之前的滚动位置(渲染后)
+  try {
+    const saved = (window._tabScrollPos || {})[name];
+    if (saved != null) {
+      requestAnimationFrame(() => { window.scrollTo(0, saved); setTimeout(() => window.scrollTo(0, saved), 60); });
+    }
+  } catch(_) {}
 }
 
 // V20260526q: 监听浏览器返回/前进 · 在应用内切换 tab(不跳出)

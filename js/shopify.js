@@ -1393,6 +1393,9 @@ async function shopifyReloadOrdersAndRender(force = false) {
 async function renderSalesStats() {
   const container = document.getElementById('salesStatsContainer');
   if (!container) return;
+  // V20260624:按需求去掉「销售业绩」卡片(占地方·业绩另有报表)
+  container.innerHTML = '';
+  return;
 
   const now = new Date();
   const periods = [

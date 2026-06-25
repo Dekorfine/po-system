@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260624-batch1',
+    date: '2026-06-24',
+    type: 'fix',
+    title: '🔧 4项优化:备货建议排除保险·销售业绩去掉·搜索框加大·返回保持滚动位置',
+    notes: [
+      '①备货建议排除OrderArmor等保险/保障产品(加关键词orderarmor/warranty/保障+SKU前缀bsi-/ins-黑名单)',
+      '③销售单去掉「销售业绩」5卡片·销售单搜索框加大(高度padding12+字号15+最小宽360)',
+      '④从PO返回销售单保持原滚动位置(switchTab记住每个tab的scrollY·返回恢复·不再跳顶)',
+      '(②⑤海外/国内仓出库追溯·⑥SKU智能映射 = 大功能,下一批单独做)',
+    ],
+    files: ['analytics.js', 'shopify.js', 'core.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260624-stage4',
     date: '2026-06-24',
     type: 'feature',
