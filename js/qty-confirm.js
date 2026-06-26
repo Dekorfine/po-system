@@ -47,9 +47,9 @@ async function loadQtyConfirm() {
 }
 window.loadQtyConfirm = loadQtyConfirm;
 
-function _qcFilteredList() {
+// 仅按当前状态 tab 筛选(不含店铺/搜索)· 给店铺下拉算每店数量用
+function _qcStatusFilteredList() {
   let all = QC._list || [];
-  // 状态筛选
   switch (QC._filter) {
     case 'todo':      all = all.filter(r => r.status === 'revise' || r.status === 'confirmed'); break;
     case 'revise':    all = all.filter(r => r.status === 'revise'); break;
@@ -57,6 +57,11 @@ function _qcFilteredList() {
     case 'pending':   all = all.filter(r => r.status === 'pending'); break;
     case 'closed':    all = all.filter(r => r.status === 'closed'); break;
   }
+  return all;
+}
+
+function _qcFilteredList() {
+  let all = _qcStatusFilteredList();
   // 店铺筛选
   if (QC._shop) all = all.filter(r => (r.shop || '') === QC._shop);
   // 智能搜索:单号/客户名/邮箱/SKU/商品名/备注
@@ -85,10 +90,10 @@ function _qcFilteredList() {
   return all;
 }
 
-// 全部店铺(去重,做筛选下拉)
+// 全部店铺(去重,做筛选下拉)· 数量 = 当前状态 tab 下该店的单数(选店铺时数字才对得上)
 function _qcShops() {
   const m = {};
-  (QC._list || []).forEach(r => { if (r.shop) m[r.shop] = (m[r.shop] || 0) + 1; });
+  _qcStatusFilteredList().forEach(r => { if (r.shop) m[r.shop] = (m[r.shop] || 0) + 1; });
   return Object.keys(m).sort().map(s => ({ shop: s, count: m[s] }));
 }
 
@@ -145,9 +150,10 @@ function renderQtyConfirm() {
         placeholder="🔍 搜单号 / 客户 / 邮箱 / SKU / 商品名(多词空格分隔)"
         style="flex:1; min-width:240px; padding:7px 12px; font-size:12.5px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card);">
       <select id="qcShopFilter" onchange="qcOnShop(this.value)" style="padding:7px 12px; font-size:12.5px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card); cursor:pointer;">
-        <option value="">🏪 全部网站</option>
+        <option value="">🏪 全部网站 · ${_qcStatusFilteredList().length}</option>
         ${_qcShops().map(s => `<option value="${escapeHtml(s.shop)}" ${QC._shop===s.shop?'selected':''}>${escapeHtml(_qcBrandName(s.shop))} · ${s.count}</option>`).join('')}
       </select>
+      <span style="font-size:11.5px; color:var(--text-tertiary); white-space:nowrap;">${QC._shop?`${escapeHtml(_qcBrandName(QC._shop))}:`:'共'} <b style="color:var(--text-primary);">${list.length}</b> 单</span>
       ${(QC._search || QC._shop) ? `<button class="btn small" onclick="qcClearFilters()">✕ 清除筛选</button>` : ''}
     </div>`;
 
