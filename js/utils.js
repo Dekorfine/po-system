@@ -1589,6 +1589,69 @@ const SHOPIFY_LAST_SYNC_KEY = 'shopify_last_sync_at';
 const SHOPIFY_AUTOSYNC_INTERVAL_MS = 15 * 60 * 1000;  // V20260601-perf:5→15分钟 · 减少多人多 tab 重复同步压力
 const SHOPIFY_VISIBILITY_THRESHOLD_MS = 2 * 60 * 1000;  // 切回页面距上次 > 2 分钟触发
 
+// ============ V20260626:全公司单同步(数据库锁)· 根治 Edge Function 超额 ============
+// 背景:Shopify→DB 同步原本每个标签页各拉各的,10店×几十标签页×24h = 数百万次 Edge 调用。
+// 其实大家读同一个库,pollSharedChanges(查DB·便宜)已把新单同步给所有人。所以全公司只需「一个标签页」
+// 真正去打 Shopify,其余人靠 DB 轮询收单即可。用 sync_locks 表 + try_acquire_sync_lock RPC 选主(带 TTL)。
+const SHOPIFY_SYNC_LOCK_NAME = 'shopify_autosync';
+const SHOPIFY_SYNC_LOCK_TTL_S = 90;                 // 锁有效期 90 秒(心跳每 30s 续约 · 持有者掉线后≤90s 被接管)
+const SHOPIFY_LEADER_HEARTBEAT_MS = 30 * 1000;      // 心跳/续约间隔
+const SHOPIFY_IDLE_MS = 30 * 60 * 1000;             // 30 分钟无操作 → 本标签页不再竞争当 leader(防过夜空挂)
+
+// 注意:utils.js 在 shopify.js 之前加载,这里【不能】在顶层引用 SHOPIFY.*(那时还没定义)。
+// 故 leader 状态用本模块级变量持有,不挂在 SHOPIFY 对象上。
+const _shopifyTabId = 'tab_' + Math.random().toString(36).slice(2) + Date.now().toString(36);  // 每标签页唯一 · 只在内存
+let _shopifyIsLeader = false;
+let _shopifyLeaderTimer = null;
+let _shopifyLastActivity = Date.now();
+
+// 用户活动打点(节流 · 只记时间戳)→ 判断这个标签页是不是"有人在看在用"
+(function _shopifyTrackActivity() {
+  let _t = 0;
+  const mark = () => { const n = Date.now(); if (n - _t > 5000) { _t = n; _shopifyLastActivity = n; } };
+  ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'wheel'].forEach(ev =>
+    window.addEventListener(ev, mark, { passive: true })
+  );
+})();
+
+// 暴露只读 leader 状态(调试/指示器可用)
+function shopifyIsSyncLeader() { return _shopifyIsLeader; }
+
+// 这个标签页此刻是否"活跃"(可见 + 近 30 分钟内有人操作)· 只有活跃标签页才去抢当 leader
+function shopifyTabIsActive() {
+  return document.visibilityState === 'visible' &&
+    (Date.now() - _shopifyLastActivity < SHOPIFY_IDLE_MS);
+}
+
+// 心跳:活跃标签页尝试拿/续锁;拿到才是 leader(才会真正打 Shopify)。不活跃则让出。
+async function shopifyHeartbeatLeader() {
+  if (typeof sb === 'undefined' || !sb) return;
+  if (!shopifyAutoSyncOn()) { _shopifyIsLeader = false; return; }
+  if (!shopifyTabIsActive()) {
+    // 不活跃:让出 leader,锁交还(让别的活跃标签页快速接管)
+    if (_shopifyIsLeader) {
+      _shopifyIsLeader = false;
+      try { await sb.rpc('release_sync_lock', { p_lock_name: SHOPIFY_SYNC_LOCK_NAME, p_holder: _shopifyTabId }); } catch (_) {}
+    }
+    return;
+  }
+  try {
+    const { data, error } = await sb.rpc('try_acquire_sync_lock', {
+      p_lock_name: SHOPIFY_SYNC_LOCK_NAME,
+      p_holder: _shopifyTabId,
+      p_ttl_seconds: SHOPIFY_SYNC_LOCK_TTL_S,
+    });
+    if (error) { console.warn('[同步选主] RPC 报错', error.message); return; }   // 锁不可用时不同步(宁缺勿超额)
+    const wasLeader = _shopifyIsLeader;
+    _shopifyIsLeader = (data === true);
+    // 刚刚抢到 leader(交接)且距上次同步已超过一个周期 → 立刻补一次,避免交接造成空档
+    if (_shopifyIsLeader && !wasLeader) {
+      const last = parseInt(localStorage.getItem(SHOPIFY_LAST_SYNC_KEY) || '0', 10);
+      if (Date.now() - last > SHOPIFY_AUTOSYNC_INTERVAL_MS) shopifyQuickSyncAllStores();
+    }
+  } catch (e) { console.warn('[同步选主] 异常', e.message); }
+}
+
 function shopifyAutoSyncOn() {
   // V28ξ-4:默认开启 · 用户可以手动点 [⏱️ 自动] 按钮关掉
   // localStorage 没值时默认 '1'(开)· 显式 '0' 才算关
@@ -1672,9 +1735,17 @@ window.shopifyDeepBackfill = shopifyDeepBackfill;
 
 async function shopifyQuickSyncAllStores() {
   if (!SHOPIFY._initialized) return;
+  // V20260626:并发护栏 · 自动同步不与上一轮自身/手动单店同步重叠
+  if (SHOPIFY._autoSyncing || SHOPIFY._syncing) return;
   const stores = (SHOPIFY._stores || []).filter(s => (s.connected || s.platform === 'woo') && (s.shop_domain || s.domain));
   if (stores.length === 0) return;
-  
+  SHOPIFY._autoSyncing = true;
+  try {
+  return await _shopifyQuickSyncAllStoresInner(stores);
+  } finally { SHOPIFY._autoSyncing = false; }
+}
+
+async function _shopifyQuickSyncAllStoresInner(stores) {
   // 增量同步:只拉最近 7 天的(店小秘式 · 不全量)
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
@@ -1732,34 +1803,43 @@ async function shopifyQuickSyncAllStores() {
 
 function shopifyStartAutoSync() {
   shopifyStopAutoSync();
-  
-  // V28ξ-4:启动立即跑一次(打开浏览器就同步 · 不用切到 sales tab)
-  // 延迟 3 秒避免跟其它初始化抢资源
-  setTimeout(() => {
-    if (shopifyAutoSyncOn()) shopifyQuickSyncAllStores();
-  }, 3000);
 
-  // V20260605:每日自动深度回扫一次(静默)· 让 B2B 导入单/部分发货/数周前的单自愈
+  // V20260626:先选主 · 心跳每 30s 续锁。只有抢到锁的「唯一标签页」才真正打 Shopify(根治 Edge 超额)。
+  shopifyHeartbeatLeader();
+  _shopifyLeaderTimer = setInterval(shopifyHeartbeatLeader, SHOPIFY_LEADER_HEARTBEAT_MS);
+
+  // 启动后延迟 3.5 秒:若本标签页是 leader 才同步一次(打开就同步 · 但不是 leader 不抢着打)
+  setTimeout(() => {
+    if (shopifyAutoSyncOn() && _shopifyIsLeader) shopifyQuickSyncAllStores();
+  }, 3500);
+
+  // V20260605:每日自动深度回扫一次(静默)· 仅 leader 跑(全公司一天一次即可,不再每浏览器各跑)
   setTimeout(() => {
     try {
+      if (!_shopifyIsLeader) return;
       const last = parseInt(localStorage.getItem('shopify_last_backfill') || '0', 10);
       if (Date.now() - last > 20 * 3600 * 1000) {   // 距上次 >20 小时才跑
         if (typeof shopifyDeepBackfill === 'function') shopifyDeepBackfill(60, true);
       }
     } catch (e) {}
-  }, 15000);   // 延迟 15 秒 · 让首屏/快速同步先完成
-  
-  // 周期同步(每 5 分钟跑全店增量)
+  }, 16000);   // 延迟 16 秒 · 让首屏/选主/快速同步先完成
+
+  // 周期同步(每 15 分钟)· 仅 leader + 活跃标签页执行(非 leader 靠 pollSharedChanges 收单)
   SHOPIFY._autoSyncTimer = setInterval(() => {
     if (!shopifyAutoSyncOn()) return;
+    if (!_shopifyIsLeader) return;
+    if (!shopifyTabIsActive()) return;
     shopifyQuickSyncAllStores();
   }, SHOPIFY_AUTOSYNC_INTERVAL_MS);
-  
-  // V28ξ-4:visibilitychange · 用户切回页面(从其它 tab/app 回来)如果距上次 > 2 分钟就触发
+
+  // V28ξ-4:visibilitychange · 切回页面先抢一次 leader,抢到且距上次 > 阈值才同步
   if (!SHOPIFY._visibilityHandler) {
-    SHOPIFY._visibilityHandler = () => {
+    SHOPIFY._visibilityHandler = async () => {
       if (document.visibilityState !== 'visible') return;
       if (!shopifyAutoSyncOn()) return;
+      _shopifyLastActivity = Date.now();
+      await shopifyHeartbeatLeader();              // 切回来立刻竞争 leader
+      if (!_shopifyIsLeader) return;               // 没抢到就不打(别人在打 · DB 轮询会收到)
       const lastTs = parseInt(localStorage.getItem(SHOPIFY_LAST_SYNC_KEY) || '0', 10);
       if (Date.now() - lastTs >= SHOPIFY_VISIBILITY_THRESHOLD_MS) {
         shopifyQuickSyncAllStores();
@@ -1767,12 +1847,30 @@ function shopifyStartAutoSync() {
     };
     document.addEventListener('visibilitychange', SHOPIFY._visibilityHandler);
   }
+
+  // 关闭/刷新页面时尽量交还锁,让其它活跃标签页秒接管
+  if (!SHOPIFY._unloadHandler) {
+    SHOPIFY._unloadHandler = () => {
+      if (!_shopifyIsLeader) return;
+      try { sb.rpc('release_sync_lock', { p_lock_name: SHOPIFY_SYNC_LOCK_NAME, p_holder: _shopifyTabId }); } catch (_) {}
+    };
+    window.addEventListener('beforeunload', SHOPIFY._unloadHandler);
+  }
 }
 
 function shopifyStopAutoSync() {
   if (SHOPIFY._autoSyncTimer) { 
     clearInterval(SHOPIFY._autoSyncTimer); 
     SHOPIFY._autoSyncTimer = null; 
+  }
+  // V20260626:停掉选主心跳 + 交还锁
+  if (_shopifyLeaderTimer) {
+    clearInterval(_shopifyLeaderTimer);
+    _shopifyLeaderTimer = null;
+  }
+  if (_shopifyIsLeader) {
+    _shopifyIsLeader = false;
+    try { sb.rpc('release_sync_lock', { p_lock_name: SHOPIFY_SYNC_LOCK_NAME, p_holder: _shopifyTabId }); } catch (_) {}
   }
   if (SHOPIFY._visibilityHandler) {
     document.removeEventListener('visibilitychange', SHOPIFY._visibilityHandler);

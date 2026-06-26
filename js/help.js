@@ -10,6 +10,21 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-edge-sync-lock',
+    date: '2026-06-26',
+    type: 'fix',
+    title: '🛡️ 根治 Supabase Edge Function 超额:全公司单同步(数据库锁选主)',
+    notes: [
+      '问题:Shopify→DB 自动同步原本每个浏览器标签页各拉各的·10店×多标签页×24h = 本期 233 万次 Edge 调用(超 2M 上限·触发限流)',
+      '根治:新增 sync_locks 锁表 + try_acquire_sync_lock RPC 选主·全公司同一时刻只有一个「活跃标签页」真正打 Shopify·其余人靠 pollSharedChanges 查库收单',
+      '心跳每 30s 续锁(TTL 90s)·leader 掉线≤90s 被其它活跃标签页接管·交接自动补一次同步防空档',
+      '只有「可见 + 30 分钟内有人操作」的标签页才竞争 leader·后台/过夜/空挂标签页不再打 Shopify',
+      '每日深度回扫也只 leader 跑(不再每浏览器各跑一次)·手动同步按钮不受影响',
+      '预计 Edge 调用从数百万/月降到 ~3 万/月(店数级)·⚠️ 需先跑 sql/sync-lock.sql·并在 Supabase 后台关 Spend Cap 解除本期限流',
+    ],
+    files: ['utils.js', 'index.html', 'help.js', 'sql/sync-lock.sql'],
+  },
+  {
     v: '20260626-copy-orderno',
     date: '2026-06-26',
     type: 'feature',
