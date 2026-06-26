@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-woo-status-fix',
+    date: '2026-06-26',
+    type: 'fix',
+    title: '🔧 修复 Woo(Mooielight)订单同步进库却不显示在「待审核」',
+    notes: [
+      '现象:同步提示入库N单、全部订单有数,但默认「待审核」tab 空 → 看似没同步进来',
+      '根因:Woo 导入的新单 local_status 为空,而「待审核」只认 === pending,空状态只在「全部订单」可见',
+      '修复:加载时把空/缺失 local_status 的订单归一为 pending(待审核)· 仅动空值,绝不改 processing/done/cancelled/archived(防误伤已审核/已开PO单·批量审核会标 processing 但不一定开PO)',
+      '⚠️ 若某些 Woo 单是被 woo-api 标成了 processing(Woo原生状态撞了内部"已开PO")· 前端不能安全改 · 需在 woo-api Edge Function 把新单默认 local_status=pending',
+    ],
+    files: ['shopify.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260626-edge-sync-lock',
     date: '2026-06-26',
     type: 'fix',

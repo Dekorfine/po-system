@@ -305,6 +305,18 @@ const SHOPIFY = {
     return { rows: merged, cursor: newCursor, fetchedCount: fetched.length, removed };
   },
 
+  // V20260626:本地状态归一 · Woo(及任何来源)新单若 local_status 为空,当「待审核」处理,
+  // 否则只在「全部订单」可见、不进默认待审核列表(Mooielight 同步进来却看不到的根因之一)。
+  // 只动「空/缺失」值,绝不改 processing/done/cancelled/archived,避免误伤已审核或已开 PO 的单。
+  _normalizeLocalStatus(rows) {
+    if (Array.isArray(rows)) {
+      for (const o of rows) {
+        if (o && (o.local_status == null || o.local_status === '')) o.local_status = 'pending';
+      }
+    }
+    return rows;
+  },
+
   async loadOrdersFromDB(force = false, opts = {}) {
     const CACHE_MS = 5 * 60 * 1000;  // V20260601-perf:60s→5min · 减少全表 select(*) 重复拉(省 egress/CPU)
     const cacheKey = JSON.stringify({ from: opts.from || '', to: opts.to || '', shops: (opts.shops || []).slice().sort() });  // V20260601-loadfix2:含 shops 分桶
@@ -317,7 +329,7 @@ const SHOPIFY = {
       try {
         const entry = await _ordersIdbGet(cacheKey);
         if (entry && Array.isArray(entry.data) && entry.data.length > 0) {
-          this._orders = entry.data;
+          this._orders = this._normalizeLocalStatus(entry.data);
           this._ordersLoadedAt = entry.ts || Date.now();
           this._ordersCacheKey = cacheKey;
           this._ordersCursor = entry.cursor || this._computeOrdersCursor(this._orders);
@@ -331,7 +343,7 @@ const SHOPIFY = {
     // ③ 无缓存 / force / 缓存失效 → 同步从 supabase 拉
     // V20260601-loadfix2:按 shops + 日期下推 + 分页拉全(选店只查该店 · 不被大店挤出 limit 500)
     const { rows } = await this._fetchOrdersScoped(opts);
-    this._orders = rows;
+    this._orders = this._normalizeLocalStatus(rows);
     this._ordersCursor = this._computeOrdersCursor(rows);   // V20260605-incr:首次/强制全量后记录游标
     this._ordersLoadedAt = Date.now();
     this._ordersCacheKey = cacheKey;
@@ -356,7 +368,7 @@ const SHOPIFY = {
         fresh = r.rows; newCursor = this._computeOrdersCursor(fresh);
       }
       const changed = before !== fresh.length || fetchedCount > 0 || removed > 0;
-      this._orders = fresh;
+      this._orders = this._normalizeLocalStatus(fresh);
       this._ordersCursor = newCursor;
       this._ordersLoadedAt = Date.now();
       this._ordersCacheKey = cacheKey;
