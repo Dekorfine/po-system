@@ -2867,9 +2867,16 @@ function renderShopifyOrders() {
             ${siteCode ? `<span class="site-pill" style="background:${shop === 'manual' ? 'var(--warning)' : 'var(--accent)'}; color:white; font-size:11px; padding:2px 7px; border-radius:4px; font-weight:700;" title="${shop === 'manual' ? '手动创建的订单' : ''}">${siteCode}</span>` : ''}
           </div>
           <div class="so-top-meta">
-            ${adminLink ? `<a href="${adminLink}" target="_blank" rel="noopener" class="so-order-no" title="在 Shopify 后台打开">
-              ${escapeHtml(o.shopify_order_number || '#' + (o.shopify_order_id || ''))} <span class="ext">↗</span>
-            </a>` : `<span class="so-order-no" style="color:var(--text-primary); font-weight:600;" title="手动创建的订单">${escapeHtml(o.shopify_order_number || '#' + (o.shopify_order_id || ''))} <span style="font-size:10px; color:var(--text-tertiary);">(手动)</span></span>`}
+            ${(() => {
+              // V20260626:订单号一键复制(对标 Linear/Stripe 的 ID 复制 · 复制纯订单号方便去查资料)
+              const _no = (o.shopify_order_number || ('#' + (o.shopify_order_id || ''))).toString();
+              const noHtml = escapeHtml(_no);
+              const numEl = adminLink
+                ? `<a href="${adminLink}" target="_blank" rel="noopener" class="so-order-no" title="在 Shopify 后台打开">${noHtml} <span class="ext">↗</span></a>`
+                : `<span class="so-order-no" style="color:var(--text-primary); font-weight:600;" title="手动创建的订单">${noHtml} <span style="font-size:10px; color:var(--text-tertiary);">(手动)</span></span>`;
+              const copyBtn = `<button type="button" class="so-copy-no" data-copy="${noHtml}" title="复制订单号 ${noHtml}" onclick="event.preventDefault();event.stopPropagation();copyText(this.dataset.copy,'订单号');return false;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>`;
+              return `<span class="so-order-no-wrap">${numEl}${copyBtn}</span>`;
+            })()}
             <span>下单 <b>${dateStr} ${timeStr}</b></span>
             ${(() => {
               // V5-W3-2026-05-25: 加客户付款时间(纯 ADD)

@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-copy-orderno',
+    date: '2026-06-26',
+    type: 'feature',
+    title: '📋 销售单 PO 订单号一键复制(对标 Linear/Stripe·复制纯订单号方便查资料)',
+    notes: [
+      '订单号右侧加复制按钮·鼠标移到那一行才浮现·点一下复制纯订单号(如 121030)弹 toast「已复制 订单号：121030」',
+      '复制按钮 stopPropagation·不触发展开/进后台·不影响原有 ↗ 后台链接',
+      '新增全局 copyText(text,label) 通用复制(clipboard 失败退回 execCommand 兜底)·后续 SKU/单号复制可复用',
+    ],
+    files: ['shopify.js', 'utils.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260625-qc-shop-chips',
     date: '2026-06-25',
     type: 'feature',

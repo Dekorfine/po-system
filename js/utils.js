@@ -1080,6 +1080,34 @@ function toast(msg, type, duration) {
   return t;
 }
 
+// V20260626:通用一键复制到剪贴板 + toast 反馈(订单号 / SKU / 单号等复用,对标 Linear/Stripe 的 ID 复制)
+// navigator.clipboard 不可用(非 https / 老浏览器)时退回 execCommand('copy') 兜底
+function copyText(text, label) {
+  text = (text == null ? '' : String(text)).trim();
+  if (!text) { try { toast('没有可复制的内容', 'err'); } catch (_) {} return; }
+  const ok = () => { try { toast('已复制 ' + (label ? label + '：' : '') + text, 'success', 1800); } catch (_) {} };
+  const fail = () => { try { toast('复制失败,请手动选择文本', 'err'); } catch (_) {} };
+  const fallback = () => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      const done = document.execCommand('copy');
+      document.body.removeChild(ta);
+      done ? ok() : fail();
+    } catch (_) { fail(); }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(ok).catch(fallback);
+  } else {
+    fallback();
+  }
+}
+if (typeof window !== 'undefined') window.copyText = copyText;
+
 
 // ============ 图片上传到 Supabase Storage ============
 // V20260608:上传前压缩(大图缩到 1600px · JPEG)→ 上传更快更稳;失败自动重试一次
