@@ -98,7 +98,9 @@ function _qcShops() {
 }
 
 function _qcCounts() {
-  const all = QC._list || [];
+  // 选了店铺时,顶部 tab 计数也只算这个店铺(和列表/下拉一致)
+  let all = QC._list || [];
+  if (QC._shop) all = all.filter(r => (r.shop || '') === QC._shop);
   const now = Date.now();
   return {
     revise:    all.filter(r => r.status === 'revise').length,
