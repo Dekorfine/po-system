@@ -147,16 +147,25 @@ function renderQtyConfirm() {
       ${tab('pending', '客服处理中', c.pending)}
       ${tab('closed', '已完成', c.closed)}
     </div>
-    <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; align-items:center;">
+    <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
       <input type="text" id="qcSearchInput" value="${escapeHtml(QC._search)}" oninput="qcOnSearch(this.value)" autocomplete="off" data-1p-ignore data-lpignore="true"
         placeholder="🔍 搜单号 / 客户 / 邮箱 / SKU / 商品名(多词空格分隔)"
-        style="flex:1; min-width:240px; padding:7px 12px; font-size:12.5px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card);">
-      <select id="qcShopFilter" onchange="qcOnShop(this.value)" style="padding:7px 12px; font-size:12.5px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card); cursor:pointer;">
-        <option value="">🏪 全部网站 · ${_qcStatusFilteredList().length}</option>
-        ${_qcShops().map(s => `<option value="${escapeHtml(s.shop)}" ${QC._shop===s.shop?'selected':''}>${escapeHtml(_qcBrandName(s.shop))} · ${s.count}</option>`).join('')}
-      </select>
-      <span style="font-size:11.5px; color:var(--text-tertiary); white-space:nowrap;">${QC._shop?`${escapeHtml(_qcBrandName(QC._shop))}:`:'共'} <b style="color:var(--text-primary);">${list.length}</b> 单</span>
-      ${(QC._search || QC._shop) ? `<button class="btn small" onclick="qcClearFilters()">✕ 清除筛选</button>` : ''}
+        style="flex:1; min-width:280px; padding:11px 16px; font-size:14px; border:1px solid var(--border); border-radius:9px; background:var(--bg-card);">
+      ${(QC._search || QC._shop) ? `<button class="btn small" onclick="qcClearFilters()" style="white-space:nowrap;">✕ 清除筛选</button>` : ''}
+    </div>
+    <div style="margin-bottom:14px;">
+      <div style="font-size:11px; color:var(--text-tertiary); margin-bottom:6px; font-weight:600;">📍 按店铺筛选${QC._shop ? ` · 当前:<span style="color:var(--accent);">${escapeHtml(_qcBrandName(QC._shop))}</span>` : ''}</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button onclick="qcOnShop('')" style="padding:8px 16px; font-size:13px; font-weight:${!QC._shop?'700':'500'}; border:1.5px solid ${!QC._shop?'var(--accent)':'var(--border)'}; border-radius:10px; cursor:pointer; background:${!QC._shop?'var(--accent)':'var(--bg-card)'}; color:${!QC._shop?'#fff':'var(--text-secondary)'}; display:inline-flex; align-items:center; gap:6px;">
+          🏪 全部网站 <span style="background:${!QC._shop?'rgba(255,255,255,0.25)':'var(--bg-elevated)'}; color:${!QC._shop?'#fff':'var(--text-tertiary)'}; padding:0 8px; border-radius:9px; font-size:12px; font-weight:700;">${_qcStatusFilteredList().length}</span>
+        </button>
+        ${_qcShops().map(s => {
+          const on = QC._shop === s.shop;
+          return `<button onclick="qcOnShop('${escapeHtml(s.shop)}')" style="padding:8px 16px; font-size:13px; font-weight:${on?'700':'500'}; border:1.5px solid ${on?'var(--accent)':'var(--border)'}; border-radius:10px; cursor:pointer; background:${on?'var(--accent)':'var(--bg-card)'}; color:${on?'#fff':'var(--text-secondary)'}; display:inline-flex; align-items:center; gap:6px;">
+            ${escapeHtml(_qcBrandName(s.shop))} <span style="background:${on?'rgba(255,255,255,0.25)':'var(--bg-elevated)'}; color:${on?'#fff':'var(--text-tertiary)'}; padding:0 8px; border-radius:9px; font-size:12px; font-weight:700;">${s.count}</span>
+          </button>`;
+        }).join('')}
+      </div>
     </div>`;
 
   if (list.length === 0) {
