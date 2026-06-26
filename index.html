@@ -26,17 +26,17 @@
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
 <link rel="preload" href="js/core.js?v=20260624batch1" as="script">
-<link rel="preload" href="js/utils.js?v=20260624batch2" as="script">
-<link rel="preload" href="js/shopify.js?v=20260624batch1" as="script">
+<link rel="preload" href="js/utils.js?v=20260626copyno" as="script">
+<link rel="preload" href="js/shopify.js?v=20260626copyno" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script defer src="js/core.js?v=20260624batch1"></script>
-<script defer src="js/utils.js?v=20260624batch2"></script>
+<script defer src="js/utils.js?v=20260626copyno"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260625shopchips"></script>
+<script defer src="js/help.js?v=20260626copyno"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -48,7 +48,7 @@
 <script defer src="js/hr-panel.js?v=20260531hr"></script>
 <script defer src="js/missing.js?v=20260615ins"></script>
 <script defer src="js/orders.js?v=20260615sort"></script>
-<script defer src="js/shopify.js?v=20260624batch1"></script>
+<script defer src="js/shopify.js?v=20260626copyno"></script>
 <script defer src="js/po.js?v=20260624audit"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
 <script defer src="js/inventory.js?v=20260624audit"></script>
@@ -4298,6 +4298,20 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .so-order-no:hover { color: var(--accent); }
 .so-order-no .ext { font-size: 10px; opacity: 0.6; }
+
+/* V20260626:订单号一键复制按钮(对标 Linear/Stripe · 行 hover 浮现 · 复用全局 copyText) */
+.so-order-no-wrap { display: inline-flex; align-items: center; gap: 2px; }
+.so-copy-no {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0; margin: 0;
+  border: none; background: transparent; border-radius: 5px;
+  color: var(--text-tertiary); cursor: pointer; flex-shrink: 0;
+  opacity: 0.32; transition: opacity .12s ease, background .12s ease, color .12s ease;
+}
+.so-card:hover .so-copy-no { opacity: 0.6; }
+.so-copy-no:hover { opacity: 1; background: rgba(37,99,235,0.1); color: var(--accent); }
+.so-copy-no:active { transform: scale(0.9); }
+.so-copy-no svg { width: 13px; height: 13px; pointer-events: none; }
 
 /* V20260526j: 销售单卡片店小秘风格 · flex 紧凑布局 · 用 !important 防止被缓存的旧 CSS 覆盖 */
 .so-card-body {
