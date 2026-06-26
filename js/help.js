@@ -10,6 +10,17 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260624-label-fix',
+    date: '2026-06-24',
+    type: 'fix',
+    title: '🏷️ 线下单「生产中」改文字为「已下单·生产中」(点这步=已向工厂下单)',
+    notes: [
+      '只改producing阶段显示文字·流程仍3段(待下单→已下单·生产中→货到工厂)',
+      'po_stage值不变(ordered/producing/arrived)·不影响数据和客服对接',
+    ],
+    files: ['offline-orders.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260624-inv-audit',
     date: '2026-06-24',
     type: 'feature',

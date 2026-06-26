@@ -20,7 +20,7 @@ function _getCsOffline() {
 const OFF_STAGES = [
   { k: 'pending_payment', label: '待付款', color: '#92400e', bg: 'rgba(239,159,39,0.08)', readonly: true },
   { k: 'ordered',   label: '待下单', color: 'var(--text-secondary)', bg: 'rgba(136,135,128,0.08)' },
-  { k: 'producing', label: '生产中', color: '#854f0b',               bg: 'rgba(239,159,39,0.1)' },
+  { k: 'producing', label: '已下单·生产中', color: '#854f0b',          bg: 'rgba(239,159,39,0.1)' },
   { k: 'arrived',   label: '货到工厂', color: '#1d6fa5',             bg: 'rgba(37,99,235,0.1)' },
   { k: 'shipped',   label: '已发货', color: '#0f6e56',               bg: 'rgba(29,158,117,0.1)' },
 ];
