@@ -264,6 +264,22 @@ function _qcItemRow(it, imgMap) {
     </div>`;
 }
 
+// 客户换款参考图(qty_confirmations.images · po库 公共桶 qc-uploads · URL 直接可访问)
+function _qcRefImages(r) {
+  const arr = Array.isArray(r.images) ? r.images : [];
+  const thumbs = arr.map(im => {
+    const url = (im && (im.url || im)) || '';
+    if (!url || /^data:/.test(String(url))) return '';   // 只认 URL,不渲染 base64
+    return `<img src="${escapeHtml(url)}" loading="lazy" onclick="event.stopPropagation(); openImgLightbox && openImgLightbox('${escapeHtml(url)}')" style="width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in;">`;
+  }).filter(Boolean).join('');
+  if (!thumbs) return '';
+  return `
+    <div style="background:rgba(0,113,227,0.04); border:1px dashed rgba(0,113,227,0.25); border-radius:7px; padding:8px 10px; margin-bottom:8px;">
+      <div style="font-size:11px; font-weight:600; color:var(--accent); margin-bottom:5px;">📎 客户参考图(换款)· ${arr.length} 张 · 点图看大图</div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">${thumbs}</div>
+    </div>`;
+}
+
 function _qcCard(r) {
   const meta = QC_STATUS[r.status] || { label: r.status, color: 'var(--text-secondary)', bg: 'var(--bg-elevated)' };
   const items = Array.isArray(r.items) ? r.items : [];
@@ -296,6 +312,8 @@ function _qcCard(r) {
       <div style="font-size:11px; font-weight:600; color:#b91c1c; margin-bottom:3px;">📣 客户诉求(数量怎么改):</div>
       <div style="font-size:12.5px; color:var(--text-primary); line-height:1.5; white-space:pre-wrap;">${escapeHtml(r.note)}</div>
     </div>` : (r.note ? `<div style="font-size:11.5px; color:var(--text-secondary); margin-bottom:8px;">📝 ${escapeHtml(r.note)}</div>` : '')}
+
+    ${_qcRefImages(r)}
 
     <div style="display:flex; align-items:center; gap:10px; font-size:10.5px; color:var(--text-tertiary); flex-wrap:wrap;">
       ${r.email_sent_at ? `<span>发信 ${_qcDate(r.email_sent_at)}</span>` : ''}

@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-qtyconfirm-ref-images',
+    date: '2026-06-26',
+    type: 'feature',
+    title: '🖼 数量核实卡片显示客户换款参考图(缩略图+看大图)',
+    notes: [
+      'qty_confirmations.images(jsonb [{url,name}],po库公共桶 qc-uploads,URL 直接可访问)在卡片里渲染缩略图条',
+      '点缩略图复用现有全局灯箱 openImgLightbox 看大图;数据同表天然同步,无需额外搬运',
+      '只认 URL 不渲染 base64;qty-confirm 已 select(*),images 列自动读入',
+    ],
+    files: ['qty-confirm.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260626-workmain-subtab-filter-reset',
     date: '2026-06-26',
     type: 'fix',
