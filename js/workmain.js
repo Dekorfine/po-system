@@ -19,6 +19,7 @@ const WORKMAIN = {
   _type: '',
   _operator: '',
   _return: '',              // ''=全部 pending=待处理退货 handled=已处理退货
+  _flagOnly: false,         // 只看重点(flagged)
   // 补件追踪
   _refills: [],             // 统一形状(refills 表 + aftersales 带 refill 的行)
   _refillsLoaded: false,
@@ -42,6 +43,86 @@ function _wmEsc(s) {
 }
 function _wmToast(msg, type) { try { toast(msg, type); } catch (_) { /* no-op */ } }
 function _wmCs() { return (typeof _getCsOffline === 'function') ? _getCsOffline() : null; }
+
+// ---- 图片缩略图 + 灯箱(主窗口 position:fixed 版 · 对齐客服端设计)----
+const _WM_IMG_REG = {};   // key -> 图片数组,供灯箱按 key 取
+function _wmCollectImgs(r) {
+  const out = [];
+  const push = arr => { if (Array.isArray(arr)) arr.forEach(a => { const url = (a && (a.url || a)) || ''; if (url && !/^data:/.test(String(url))) out.push({ url: String(url), name: (a && a.name) || '' }); }); };
+  push(r.attachments); push(r.communication_images);
+  return out;
+}
+// 列表里的单缩略图 + 数量角标(无图返回空)
+function _wmThumb(imgs, key) {
+  _WM_IMG_REG[key] = imgs;
+  if (!imgs || !imgs.length) return '';
+  const more = imgs.length > 1 ? `<span class="wm-thumb-count">${imgs.length}</span>` : '';
+  return `<span class="wm-thumb-wrap" title="点击看大图" onclick="event.stopPropagation();_wmOpenLightbox(_WM_IMG_REG['${key}'],0)">${more}<img class="wm-thumb" loading="lazy" src="${_wmEsc(imgs[0].url)}" alt=""></span>`;
+}
+
+let _wmLB = { imgs: [], i: 0 };
+function _wmOpenLightbox(imgs, startIdx) {
+  _wmLB.imgs = (imgs || []).filter(x => x && x.url);
+  _wmLB.i = startIdx || 0;
+  if (!_wmLB.imgs.length) return;
+  document.body.style.overflow = 'hidden';   // 锁滚动
+  _wmRenderLightbox();
+  document.addEventListener('keydown', _wmLbKey);
+}
+function _wmCloseLightbox() {
+  const el = document.getElementById('wmLightbox');
+  if (el) el.style.display = 'none';
+  document.body.style.overflow = '';
+  document.removeEventListener('keydown', _wmLbKey);
+}
+function _wmLbKey(e) {
+  if (e.key === 'Escape') _wmCloseLightbox();
+  else if (e.key === 'ArrowLeft') { _wmLB.i = (_wmLB.i - 1 + _wmLB.imgs.length) % _wmLB.imgs.length; _wmRenderLightbox(); }
+  else if (e.key === 'ArrowRight') { _wmLB.i = (_wmLB.i + 1) % _wmLB.imgs.length; _wmRenderLightbox(); }
+}
+function _wmRenderLightbox() {
+  let el = document.getElementById('wmLightbox');
+  if (!el) { el = document.createElement('div'); el.id = 'wmLightbox'; document.body.appendChild(el); }
+  const cur = _wmLB.imgs[_wmLB.i]; const multi = _wmLB.imgs.length > 1;
+  el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  el.style.display = 'flex';
+  el.innerHTML = `
+    <div style="max-width:90vw;max-height:90vh;display:flex;flex-direction:column;gap:10px" onclick="event.stopPropagation()">
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-height:0">
+        ${multi ? `<button onclick="_wmLB.i=(_wmLB.i-1+_wmLB.imgs.length)%_wmLB.imgs.length;_wmRenderLightbox()" style="position:absolute;left:-50px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.2);color:#fff;border:none;width:40px;height:40px;border-radius:50%;cursor:pointer;font-size:20px">‹</button>` : ''}
+        <img src="${_wmEsc(cur.url)}" style="max-width:100%;max-height:80vh;object-fit:contain;border-radius:6px" alt="">
+        ${multi ? `<button onclick="_wmLB.i=(_wmLB.i+1)%_wmLB.imgs.length;_wmRenderLightbox()" style="position:absolute;right:-50px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.2);color:#fff;border:none;width:40px;height:40px;border-radius:50%;cursor:pointer;font-size:20px">›</button>` : ''}
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;color:#fff;font-size:12px">
+        <span>${_wmLB.i + 1} / ${_wmLB.imgs.length}</span>
+        <a href="${_wmEsc(cur.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="background:rgba(255,255,255,.18);color:#fff;border-radius:6px;padding:4px 10px;text-decoration:none">在新标签打开原图 ↗</a>
+      </div>
+    </div>`;
+  el.onclick = _wmCloseLightbox;   // 点遮罩空白关闭
+}
+
+// ---- 🚩 重要(flagged)· 主管标记重点 ----
+async function workmainToggleFlag(src, id) {
+  if (typeof IS_ADMIN !== 'undefined' && !IS_ADMIN) { _wmToast('仅主管可标记重点', 'err'); return; }
+  const cs = _wmCs(); if (!cs) return;
+  const table = (src === 'aftersale') ? 'aftersales' : 'refunds';
+  const arr = (src === 'aftersale') ? WORKMAIN._aftersales : WORKMAIN._refunds;
+  const r = arr.find(x => x.id === id); if (!r) return;
+  const nv = !r.flagged;
+  try {
+    const { error } = await cs.from(table).update({ flagged: nv }).eq('id', id);
+    if (error) throw error;
+    r.flagged = nv;
+    _wmToast(nv ? '已标记重点' : '已取消重点', 'success');
+    renderWorkmain();
+  } catch (e) {
+    const m = e.message || String(e);
+    if (/column .*flagged.* does not exist/i.test(m)) _wmToast(`${table} 缺 flagged 列,请先 ALTER TABLE 加上`, 'err');
+    else if (/permission denied|row-level security|42501/i.test(m)) _wmToast('权限被拒:客服库需放行 anon 更新', 'err');
+    else _wmToast('操作失败:' + m, 'err');
+  }
+}
+function workmainToggleFlagOnly() { WORKMAIN._flagOnly = !WORKMAIN._flagOnly; WORKMAIN._page = 0; renderWorkmain(); }
 
 // 枚举展示(已知的给中文,未知的把 key 人性化兜底;退款类型筛选项直接从数据里取真实值,不靠硬编码)
 const _WM_STATUS = { pending: '待审核', approved: '已审核·待退', completed: '已完成', rejected: '已拒绝' };
@@ -146,6 +227,7 @@ async function loadWorkmainRefunds(force) {
 function _wmFilteredRefunds() {
   const kw = (WORKMAIN._search || '').trim().toLowerCase();
   return WORKMAIN._refunds.filter(r => {
+    if (WORKMAIN._flagOnly && !r.flagged) return false;
     if (WORKMAIN._time && !_wmInTime(r.created_at, WORKMAIN._time)) return false;
     if (WORKMAIN._supplier && (r.supplier_name || r.supplier_names || '') !== WORKMAIN._supplier) return false;
     if (WORKMAIN._status && r.status !== WORKMAIN._status) return false;
@@ -210,7 +292,9 @@ function _wmRenderRefunds() {
   }
 
   const all = WORKMAIN._refunds;
-  const list = _wmFilteredRefunds();
+  const list = _wmFilteredRefunds().sort((a, b) =>
+    (b.flagged ? 1 : 0) - (a.flagged ? 1 : 0) || (new Date(b.created_at || 0) - new Date(a.created_at || 0))
+  );
 
   // 筛选项来源(从真实数据取,保证和库一致)
   const suppliers = [...new Set(all.map(r => r.supplier_name || r.supplier_names).filter(Boolean))].sort();
@@ -247,7 +331,7 @@ function _wmRenderRefunds() {
         <button class="wm-btn-clear" onclick="workmainClearFilters()">✕ 清除</button>
         <button class="wm-btn-refresh" onclick="loadWorkmainRefunds(true).then(renderWorkmain)">🔄 刷新</button>
       </div>
-      <div class="wm-chip-row">${timeChips}<span class="wm-sep"></span>${returnChips}</div>
+      <div class="wm-chip-row">${timeChips}<span class="wm-sep"></span>${returnChips}<span class="wm-sep"></span>${flagChip}</div>
     </div>`;
 
   // 分页
@@ -300,21 +384,30 @@ function _wmRefundCard(r) {
     : `<span class="wm-rb wm-rb-pending">🟠 待处理退货</span>`;
   const amount = (r.amount != null ? Number(r.amount).toFixed(2) : '—') + ' ' + (r.currency || '');
   const expanded = WORKMAIN._expanded === r.id;
-  const imgCnt = Array.isArray(r.attachments) ? r.attachments.length : 0;
+  const imgs = _wmCollectImgs(r);
+  const thumb = _wmThumb(imgs, 'refund:' + r.id);
+
+  // 🚩 重要(主管标记)· 未标记时仅主管可见可点;已标记则人人可见红旗
+  const canFlag = (typeof IS_ADMIN === 'undefined') || IS_ADMIN;
+  const flagBtn = (r.flagged || canFlag)
+    ? `<button class="wm-flag ${r.flagged ? 'on' : ''}" title="${r.flagged ? '重点退款(点取消)' : '主管标记重点'}" ${canFlag ? '' : 'disabled'} onclick="event.stopPropagation();workmainToggleFlag('refund',${r.id})">🚩</button>`
+    : '';
 
   const actionBtn = handled
-    ? `<button class="wm-act wm-act-undo" onclick="workmainToggleReturn(${r.id}, false)">↩ 取消已处理</button>`
-    : `<button class="wm-act wm-act-done" onclick="workmainToggleReturn(${r.id}, true)">✅ 标记已处理退货</button>`;
+    ? `<button class="wm-act wm-act-undo" onclick="event.stopPropagation();workmainToggleReturn(${r.id}, false)">↩ 取消已处理</button>`
+    : `<button class="wm-act wm-act-done" onclick="event.stopPropagation();workmainToggleReturn(${r.id}, true)">✅ 标记已处理退货</button>`;
 
   return `
-  <div class="wm-card ${expanded ? 'expanded' : ''}" data-id="${r.id}">
+  <div class="wm-card ${expanded ? 'expanded' : ''} ${r.flagged ? 'flagged' : ''}" data-id="${r.id}">
     <div class="wm-card-head" onclick="workmainToggleExpand(${r.id})">
       <div class="wm-card-main">
+        ${flagBtn}
         <span class="wm-order">${_wmEsc(r.order_ref || '无单号')}</span>
         <span class="wm-cust">${_wmEsc(r.customer || '—')}</span>
         <span class="wm-prod">${_wmEsc(r.product_name || '—')}</span>
       </div>
       <div class="wm-card-meta">
+        ${thumb}
         <span class="wm-type">${_wmEsc(_wmTypeLabel(r))}</span>
         <span class="wm-amount">${_wmEsc(amount)}</span>
         <span class="wm-status ${stCls}">${_wmEsc(st)}</span>
@@ -325,7 +418,7 @@ function _wmRefundCard(r) {
     <div class="wm-card-sub">
       <span>录入 ${_wmEsc(r.created_by_name || '—')} · ${_wmFmtDate(r.created_at)}</span>
       ${r.supplier_name || r.supplier_names ? `<span>供应商 ${_wmEsc(r.supplier_name || r.supplier_names)}</span>` : ''}
-      ${imgCnt ? `<span>📎 ${imgCnt} 图</span>` : ''}
+      ${r.refund_reason ? `<span class="wm-reason">${_wmEsc(r.refund_reason)}</span>` : ''}
       <span class="wm-card-actions">${actionBtn}</span>
     </div>
     ${expanded ? _wmRefundDetail(r) : ''}
@@ -342,12 +435,12 @@ function _wmRefundDetail(r) {
   ].filter(Boolean).join('  →  ');
 
   let imgs = '';
-  if (Array.isArray(r.attachments) && r.attachments.length) {
-    imgs = `<div class="wm-d-imgs">${r.attachments.map(a => {
-      const url = (a && (a.url || a)) || '';
-      if (!url || /^data:/.test(String(url))) return '';   // 不渲染 base64
-      return `<a href="${_wmEsc(url)}" target="_blank" rel="noopener"><img loading="lazy" src="${_wmEsc(url)}" alt=""></a>`;
-    }).join('')}</div>`;
+  const all = _wmCollectImgs(r);
+  if (all.length) {
+    const key = 'refund-d:' + r.id; _WM_IMG_REG[key] = all;
+    imgs = `<div class="wm-d-imgs">${all.map((im, i) =>
+      `<img class="wm-d-img" loading="lazy" src="${_wmEsc(im.url)}" alt="" onclick="_wmOpenLightbox(_WM_IMG_REG['${key}'],${i})">`
+    ).join('')}</div>`;
   }
 
   return `<div class="wm-detail">
@@ -384,6 +477,7 @@ function workmainSetPageSize(n) { WORKMAIN._pageSize = parseInt(n) || 20; WORKMA
 function workmainClearFilters() {
   WORKMAIN._search = ''; WORKMAIN._time = ''; WORKMAIN._supplier = '';
   WORKMAIN._status = ''; WORKMAIN._type = ''; WORKMAIN._operator = ''; WORKMAIN._return = '';
+  WORKMAIN._flagOnly = false;
   WORKMAIN._refillScope = ''; WORKMAIN._refillStatus = '';
   WORKMAIN._asStatus = ''; WORKMAIN._asType = '';
   WORKMAIN._page = 0; renderWorkmain();
@@ -623,12 +717,12 @@ function _wmRefillCard(r) {
 function _wmRefillDetail(r) {
   const row = (k, v) => v ? `<div class="wm-d-row"><span class="wm-d-k">${k}</span><span class="wm-d-v">${_wmEsc(v)}</span></div>` : '';
   let imgs = '';
-  if (Array.isArray(r.attachments) && r.attachments.length) {
-    imgs = `<div class="wm-d-imgs">${r.attachments.map(a => {
-      const url = (a && (a.url || a)) || '';
-      if (!url || /^data:/.test(String(url))) return '';
-      return `<a href="${_wmEsc(url)}" target="_blank" rel="noopener"><img loading="lazy" src="${_wmEsc(url)}" alt=""></a>`;
-    }).join('')}</div>`;
+  const all = _wmCollectImgs(r);
+  if (all.length) {
+    const key = 'rf-d:' + r._src + ':' + r.id; _WM_IMG_REG[key] = all;
+    imgs = `<div class="wm-d-imgs">${all.map((im, i) =>
+      `<img class="wm-d-img" loading="lazy" src="${_wmEsc(im.url)}" alt="" onclick="_wmOpenLightbox(_WM_IMG_REG['${key}'],${i})">`
+    ).join('')}</div>`;
   }
   return `<div class="wm-detail">
     ${row('补件清单', r.items_text)}
@@ -834,16 +928,13 @@ function _wmAftersaleCard(r) {
 
 function _wmAftersaleDetail(r) {
   const row = (k, v) => v ? `<div class="wm-d-row"><span class="wm-d-k">${k}</span><span class="wm-d-v">${_wmEsc(v)}</span></div>` : '';
-  const atts = []
-    .concat(Array.isArray(r.attachments) ? r.attachments : [])
-    .concat(Array.isArray(r.communication_images) ? r.communication_images : []);
+  const atts = _wmCollectImgs(r);
   let imgs = '';
   if (atts.length) {
-    imgs = `<div class="wm-d-imgs">${atts.map(a => {
-      const url = (a && (a.url || a)) || '';
-      if (!url || /^data:/.test(String(url))) return '';
-      return `<a href="${_wmEsc(url)}" target="_blank" rel="noopener"><img loading="lazy" src="${_wmEsc(url)}" alt=""></a>`;
-    }).join('')}</div>`;
+    const key = 'as-d:' + r.id; _WM_IMG_REG[key] = atts;
+    imgs = `<div class="wm-d-imgs">${atts.map((im, i) =>
+      `<img class="wm-d-img" loading="lazy" src="${_wmEsc(im.url)}" alt="" onclick="_wmOpenLightbox(_WM_IMG_REG['${key}'],${i})">`
+    ).join('')}</div>`;
   }
   return `<div class="wm-detail">
     ${row('问题类型', _wmIssueLabel(r))}
