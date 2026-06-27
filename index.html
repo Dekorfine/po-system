@@ -36,7 +36,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260626wm6"></script>
+<script defer src="js/help.js?v=20260626wm7"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -58,7 +58,7 @@
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script defer src="js/cross-dept.js?v=20260624audit"></script>
 <script defer src="js/offline-orders.js?v=20260624labelfix"></script>
-<script defer src="js/workmain.js?v=20260626wm6"></script>
+<script defer src="js/workmain.js?v=20260626wm7"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
 <script defer src="js/translator.js?v=20260525z"></script>
@@ -198,7 +198,15 @@ body {
 .tab-content.active { display: block; }
 
 /* ============ 工作主线(workmain)============ */
-.wm-wrap { max-width: 1280px; margin: 0 auto; }
+/* 客服端设计 token(Apple 灰白 + 苹果蓝)· scoped 到本模块,不影响其它 tab */
+.wm-wrap {
+  max-width: 1280px; margin: 0 auto;
+  --accent: #0071e3; --accent-soft: rgba(0,113,227,.08); --accent-mid: rgba(0,113,227,.15);
+  --text-primary: #1d1d1f; --text-secondary: #424245; --text-tertiary: #86868b;
+  --border: rgba(0,0,0,.085); --bg-soft: #fafafc; --success: #34c759;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased; color: var(--text-primary);
+}
 .wm-subtabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border, #e5e7eb); margin-bottom: 14px; flex-wrap: wrap; }
 .wm-subtab { border: none; background: transparent; padding: 9px 16px; font-size: 14px; font-weight: 600; color: var(--text-tertiary, #9ca3af); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .wm-subtab:hover { color: var(--text-primary, #111827); }
@@ -229,11 +237,27 @@ body {
 .wm-card-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .wm-type { font-size: 12px; color: var(--text-secondary, #4b5563); background: var(--bg-soft, #f3f4f6); padding: 2px 8px; border-radius: 6px; }
 .wm-amount { font-weight: 700; font-size: 14px; color: var(--text-primary, #111827); }
-.wm-status { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
-.wm-st-pending { background: #fef3c7; color: #92400e; }
-.wm-st-approved { background: #dbeafe; color: #1e40af; }
-.wm-st-done { background: #d1fae5; color: #065f46; }
-.wm-st-reject { background: #fee2e2; color: #991b1b; }
+.wm-status { font-size: 11px; padding: 1px 7px; border-radius: 10px; font-weight: 600; }
+.wm-st-pending { background: #fef9c3; color: #ca8a04; }
+.wm-st-approved { background: #e0f2fe; color: #0369a1; }
+.wm-st-done { background: #dcfce7; color: #16a34a; }
+.wm-st-reject { background: #fef2f2; color: #dc2626; }
+/* 🚩 重要 flag */
+.wm-flag { padding: 3px 6px; font-size: 11px; border-radius: 6px; cursor: pointer; line-height: 1; flex-shrink: 0;
+  color: #cbd5e1; border: 1px solid transparent; background: transparent; opacity: .4; transition: all .12s; }
+.wm-flag:hover:not(:disabled) { opacity: .8; }
+.wm-flag.on { color: #dc2626; border: 1px solid #dc2626; background: #fee2e2; opacity: 1; }
+.wm-flag:disabled { cursor: default; }
+.wm-card.flagged { border-left: 3px solid #dc2626; }
+/* 缩略图 + 角标 */
+.wm-thumb-wrap { position: relative; display: inline-flex; cursor: pointer; flex-shrink: 0; }
+.wm-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 5px; border: 1px solid var(--border, rgba(0,0,0,.085)); }
+.wm-thumb-wrap:hover .wm-thumb { border-color: var(--accent, #0071e3); }
+.wm-thumb-count { position: absolute; top: -4px; right: -4px; background: rgba(3,105,161,.94); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 9px; line-height: 1.3; }
+.wm-reason { color: var(--text-tertiary, #86868b); max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-chip-flag.active { background: #dc2626; border-color: #dc2626; }
+.wm-d-img { width: 76px; height: 76px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border, #e5e7eb); cursor: pointer; transition: transform .1s; }
+.wm-d-img:hover { transform: scale(1.04); border-color: var(--accent, #0071e3); }
 .wm-rb { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
 .wm-rb-pending { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
 .wm-rb-done { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
