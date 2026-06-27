@@ -25,18 +25,18 @@
 <link rel="preconnect" href="https://xyhbwqugbnowfjuhqhsj.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
-<link rel="preload" href="js/core.js?v=20260624batch1" as="script">
+<link rel="preload" href="js/core.js?v=20260626wm1" as="script">
 <link rel="preload" href="js/utils.js?v=20260626edgelock" as="script">
 <link rel="preload" href="js/shopify.js?v=20260626woostatus" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="js/core.js?v=20260624batch1"></script>
+<script defer src="js/core.js?v=20260626wm1"></script>
 <script defer src="js/utils.js?v=20260626edgelock"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260626woostatus"></script>
+<script defer src="js/help.js?v=20260626wm2"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -58,6 +58,7 @@
 <!-- V5-W3-2026-05-26: 跨部门协作模块(与美工/客服通过消息总线 Supabase 通信)-->
 <script defer src="js/cross-dept.js?v=20260624audit"></script>
 <script defer src="js/offline-orders.js?v=20260624labelfix"></script>
+<script defer src="js/workmain.js?v=20260626wm2"></script>
 <!-- V4-2026-05-24: 会议要点 / 温暖问候 / 智能搜索 / AI 翻译 -->
 <!-- ?v= 版本号参数:浏览器会重新下载,避免缓存旧版本 -->
 <script defer src="js/translator.js?v=20260525z"></script>
@@ -195,6 +196,70 @@ body {
 /* Tab Content */
 .tab-content { display: none; }
 .tab-content.active { display: block; }
+
+/* ============ 工作主线(workmain)============ */
+.wm-wrap { max-width: 1280px; margin: 0 auto; }
+.wm-subtabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border, #e5e7eb); margin-bottom: 14px; flex-wrap: wrap; }
+.wm-subtab { border: none; background: transparent; padding: 9px 16px; font-size: 14px; font-weight: 600; color: var(--text-tertiary, #9ca3af); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.wm-subtab:hover { color: var(--text-primary, #111827); }
+.wm-subtab.active { color: var(--accent, #2563eb); border-bottom-color: var(--accent, #2563eb); }
+.wm-placeholder, .wm-empty { text-align: center; color: var(--text-tertiary, #9ca3af); padding: 56px 16px; font-size: 14px; }
+.wm-placeholder span { font-size: 12px; opacity: .8; }
+.wm-filters { background: var(--bg-soft, #f9fafb); border: 1px solid var(--border, #e5e7eb); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+.wm-filter-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.wm-search { flex: 1 1 240px; min-width: 200px; padding: 7px 11px; border: 1px solid var(--border, #d1d5db); border-radius: 7px; font-size: 13px; }
+.wm-sel { padding: 7px 9px; border: 1px solid var(--border, #d1d5db); border-radius: 7px; font-size: 13px; background: #fff; }
+.wm-btn-clear, .wm-btn-refresh { padding: 7px 11px; border: 1px solid var(--border, #d1d5db); border-radius: 7px; background: #fff; font-size: 13px; cursor: pointer; }
+.wm-btn-clear:hover, .wm-btn-refresh:hover { background: var(--bg-soft, #f3f4f6); }
+.wm-chip-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 9px; }
+.wm-chip { padding: 5px 11px; border: 1px solid var(--border, #d1d5db); border-radius: 999px; background: #fff; font-size: 12px; cursor: pointer; color: var(--text-secondary, #4b5563); }
+.wm-chip:hover { border-color: var(--accent, #2563eb); }
+.wm-chip.active { background: var(--accent, #2563eb); color: #fff; border-color: var(--accent, #2563eb); }
+.wm-sep { width: 1px; height: 18px; background: var(--border, #e5e7eb); margin: 0 4px; }
+.wm-stat { font-size: 12px; color: var(--text-tertiary, #9ca3af); margin: 4px 2px 10px; }
+.wm-stat b { color: var(--text-primary, #111827); }
+.wm-list { display: flex; flex-direction: column; gap: 8px; }
+.wm-card { border: 1px solid var(--border, #e5e7eb); border-radius: 10px; background: #fff; overflow: hidden; }
+.wm-card.expanded { border-color: var(--accent, #2563eb); box-shadow: 0 1px 6px rgba(37,99,235,.08); }
+.wm-card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 14px 4px; cursor: pointer; flex-wrap: wrap; }
+.wm-card-main { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
+.wm-order { font-weight: 700; font-size: 14px; color: var(--text-primary, #111827); }
+.wm-cust { font-size: 13px; color: var(--text-secondary, #4b5563); }
+.wm-prod { font-size: 12px; color: var(--text-tertiary, #9ca3af); }
+.wm-card-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.wm-type { font-size: 12px; color: var(--text-secondary, #4b5563); background: var(--bg-soft, #f3f4f6); padding: 2px 8px; border-radius: 6px; }
+.wm-amount { font-weight: 700; font-size: 14px; color: var(--text-primary, #111827); }
+.wm-status { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+.wm-st-pending { background: #fef3c7; color: #92400e; }
+.wm-st-approved { background: #dbeafe; color: #1e40af; }
+.wm-st-done { background: #d1fae5; color: #065f46; }
+.wm-st-reject { background: #fee2e2; color: #991b1b; }
+.wm-rb { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+.wm-rb-pending { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+.wm-rb-done { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+.wm-exp-arrow { font-size: 10px; color: var(--text-tertiary, #9ca3af); }
+.wm-card-sub { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 4px 14px 11px; font-size: 12px; color: var(--text-tertiary, #9ca3af); }
+.wm-card-actions { margin-left: auto; }
+.wm-act { padding: 5px 12px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid; }
+.wm-act-done { background: var(--accent, #2563eb); color: #fff; border-color: var(--accent, #2563eb); }
+.wm-act-done:hover { filter: brightness(1.05); }
+.wm-act-undo { background: #fff; color: var(--text-secondary, #4b5563); border-color: var(--border, #d1d5db); }
+.wm-act-undo:hover { background: var(--bg-soft, #f3f4f6); }
+.wm-detail { border-top: 1px dashed var(--border, #e5e7eb); padding: 12px 14px; background: var(--bg-soft, #fafafa); }
+.wm-d-flow { font-size: 12px; color: var(--text-secondary, #4b5563); margin-bottom: 10px; font-weight: 600; }
+.wm-d-row { display: flex; gap: 8px; padding: 3px 0; font-size: 13px; }
+.wm-d-k { flex: 0 0 84px; color: var(--text-tertiary, #9ca3af); }
+.wm-d-v { color: var(--text-primary, #111827); white-space: pre-wrap; word-break: break-word; }
+.wm-d-imgs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.wm-d-imgs img { width: 76px; height: 76px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border, #e5e7eb); }
+.wm-d-note { margin-top: 10px; font-size: 11px; color: var(--text-tertiary, #9ca3af); }
+.wm-pager { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; padding: 8px 2px; }
+.wm-page-btn { min-width: 30px; height: 30px; padding: 0 8px; border: 1px solid var(--border, #d1d5db); background: #fff; border-radius: 7px; font-size: 13px; cursor: pointer; color: var(--text-secondary, #4b5563); }
+.wm-page-btn:hover:not(:disabled) { border-color: var(--accent, #2563eb); }
+.wm-page-btn.active { background: var(--accent, #2563eb); color: #fff; border-color: var(--accent, #2563eb); }
+.wm-page-btn:disabled { opacity: .4; cursor: not-allowed; }
+.wm-page-info { font-size: 12px; color: var(--text-tertiary, #9ca3af); margin-left: 6px; }
+.wm-page-size { margin-left: auto; }
 
 /* Banner / Stats / Toolbar shared */
 .section-block { max-width: 1480px; margin: 18px auto 0; padding: 0 32px; }
@@ -5716,6 +5781,7 @@ if ('serviceWorker' in navigator) {
     <div class="tab-item" data-tab="po" onclick="switchTab('po')">📦 采购单 <span class="badge zero" id="badgePo">0</span><a href="?tab=po" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="orders" onclick="switchTab('orders')">📋 催单 <span class="badge zero" id="badgeOrders">0</span><a href="?tab=orders" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="offline" onclick="switchTab('offline')">🧾 线下单 <span class="badge zero" id="badgeOffline">0</span><a href="?tab=offline" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="workmain" onclick="switchTab('workmain')">🧩 工作主线<a href="?tab=workmain" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="客服售后/补件/退款 · 跟单查看+处理">↗</a></div>
     <div class="tab-item" data-tab="missing" onclick="switchTab('missing')">🔍 找灯 <span class="badge zero" id="badgeMissing">0</span><a href="?tab=missing" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="purchases" onclick="switchTab('purchases')">🛒 线上采购 <span class="badge zero" id="badgePurchases">0</span><a href="?tab=purchases" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="aftersales" onclick="switchTab('aftersales')">🔧 售后 <span class="badge zero" id="badgeAftersales">0</span><a href="?tab=aftersales" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
@@ -5740,6 +5806,11 @@ if ('serviceWorker' in navigator) {
 
 <!-- V5-W3-2026-05-26: IDE 风格侧边栏(less-used tab,图标 only) — 由 JS 动态填充 -->
 <aside id="sideTabBar" class="side-tab-bar" style="display:none;"></aside>
+
+<!-- ============ TAB: 工作主线(客服售后/补件/退款镜像) ============ -->
+<div class="tab-content" data-tab="workmain">
+  <div id="workmainRoot"></div>
+</div>
 
 <!-- ============ TAB 1: 催单 ============ -->
 <div class="tab-content active" data-tab="orders">
