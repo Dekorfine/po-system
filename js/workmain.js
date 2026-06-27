@@ -567,7 +567,8 @@ function _wmNormRefill(row, src) {
     product_name: row.product_name,
     items_text: itemsText.trim(),
     supplier_name: row.supplier_name || row.supplier_names || '',
-    refill_status: row.refill_status || 'pending_order',
+    // 关键:refills 的下单状态在 status 列;aftersales 在 refill_status 列(客服交底口径)
+    refill_status: (src === 'refills' ? row.status : row.refill_status) || 'pending_order',
     refill_scope: row.refill_scope || '',
     refill_ordered_by: row.refill_ordered_by || '',
     refill_ordered_at: row.refill_ordered_at || null,
@@ -779,7 +780,10 @@ async function workmainRefillSetStatus(src, id, status) {
 async function workmainRefillMarkOrdered(src, id) {
   const who = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) || '';
   const at = new Date().toISOString();
-  const ok = await _wmRefillUpdate(src, id, { refill_status: 'ordered', refill_ordered_at: at, refill_ordered_by: who });
+  // refills 下单状态列是 status;aftersales 是 refill_status
+  const statusCol = (src === 'refills') ? 'status' : 'refill_status';
+  const patch = { [statusCol]: 'ordered', refill_ordered_at: at, refill_ordered_by: who };
+  const ok = await _wmRefillUpdate(src, id, patch);
   if (!ok) return;
   _wmToast('已标记「已下单」', 'success');
   const r = WORKMAIN._refills.find(x => x._src === src && x.id === id);

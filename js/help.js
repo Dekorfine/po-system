@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-refill-status-column-fix',
+    date: '2026-06-26',
+    type: 'fix',
+    title: '🎯 补件下单状态读对列(refills.status),同步客服已下单',
+    notes: [
+      '客服交底:refills 行的下单状态在 refills.status(不是 refill_status,后者是废列残留值)',
+      '修复:归一化时 refills 取 status、aftersales 取 refill_status;未下单=pending_order/空,已下单=ordered/producing/shipped/delivered',
+      '「标记已下单」写回也按来源选列:refills 写 status、aftersales 写 refill_status',
+      '至此客服侧 90% 已下单可 1:1 同步显示;refills.refill_status 废列不再读',
+    ],
+    files: ['workmain.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260626-refill-simplify',
     date: '2026-06-26',
     type: 'change',
