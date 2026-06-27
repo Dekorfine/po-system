@@ -24,9 +24,8 @@ const WORKMAIN = {
   _refills: [],             // 统一形状(refills 表 + aftersales 带 refill 的行)
   _refillsLoaded: false,
   _refillsLoading: false,
-  _refillScope: '',         // ''=全部 parts whole_lamp
-  _refillStatus: '',        // ''=全部 pending_order ordered ...
-  _refillUndone: false,     // 只看未下单(refill_status=pending_order)
+  // 补件追踪(简化:跟单只看 未下单/已下单)
+  _refillOrder: '',         // ''=全部 undone=未下单 done=已下单
   // 售后清单
   _aftersales: [],
   _asLoaded: false,
@@ -142,7 +141,9 @@ function _wmTypeLabel(r) { return r.refund_type_custom || _WM_TYPE[r.refund_type
 function _wmPayLabel(r) { return r.payment_method_custom || _WM_PAY[r.payment_method] || _wmHumanize(r.payment_method) || '—'; }
 
 // 补件枚举
-const _WM_REFILL_STATUS = { pending_order: '待下单', ordered: '已下单', producing: '生产中', shipped: '已发货', delivered: '已送达' };
+const _WM_REFILL_STATUS = { pending_order: '待下单', ordered: '已下单', labeled: '已下单', producing: '生产中', shipped: '已发货', delivered: '已送达' };
+// 跟单只关心二元:未下单(pending_order/空)vs 已下单(其余一切,稳健兼容 ordered/labeled/…)
+function _wmRefillDone(r) { return !!(r.refill_status && r.refill_status !== 'pending_order'); }
 const _WM_REFILL_STATUS_ORDER = ['pending_order', 'ordered', 'producing', 'shipped', 'delivered'];
 const _WM_REFILL_STATUS_CLS = { pending_order: 'wm-st-pending', ordered: 'wm-st-approved', producing: 'wm-st-approved', shipped: 'wm-st-approved', delivered: 'wm-st-done' };
 const _WM_SCOPE = { parts: '小配件(客服下单)', whole_lamp: '整灯(跟单下单)' };
@@ -282,7 +283,7 @@ function workmainSetSub(k) {
   // 切子标签自动清掉共享筛选,避免上一个标签的"今天/只看重点/供应商"等串过来把列表过滤空
   WORKMAIN._search = ''; WORKMAIN._time = ''; WORKMAIN._supplier = ''; WORKMAIN._operator = '';
   WORKMAIN._status = ''; WORKMAIN._type = ''; WORKMAIN._return = ''; WORKMAIN._flagOnly = false;
-  WORKMAIN._refillScope = ''; WORKMAIN._refillStatus = ''; WORKMAIN._refillUndone = false;
+  WORKMAIN._refillOrder = '';
   WORKMAIN._asStatus = ''; WORKMAIN._asType = '';
   WORKMAIN._expanded = null;
   renderWorkmain();
@@ -492,7 +493,7 @@ function workmainClearFilters() {
   WORKMAIN._search = ''; WORKMAIN._time = ''; WORKMAIN._supplier = '';
   WORKMAIN._status = ''; WORKMAIN._type = ''; WORKMAIN._operator = ''; WORKMAIN._return = '';
   WORKMAIN._flagOnly = false;
-  WORKMAIN._refillScope = ''; WORKMAIN._refillStatus = ''; WORKMAIN._refillUndone = false;
+  WORKMAIN._refillOrder = '';
   WORKMAIN._asStatus = ''; WORKMAIN._asType = '';
   WORKMAIN._page = 0; renderWorkmain();
 }
@@ -622,12 +623,11 @@ function _wmFilteredRefills() {
   const kw = (WORKMAIN._search || '').trim().toLowerCase();
   return WORKMAIN._refills.filter(r => {
     if (WORKMAIN._flagOnly && !r.flagged) return false;
-    if (WORKMAIN._refillUndone && r.refill_status !== 'pending_order') return false;
+    if (WORKMAIN._refillOrder === 'undone' && _wmRefillDone(r)) return false;
+    if (WORKMAIN._refillOrder === 'done' && !_wmRefillDone(r)) return false;
     if (WORKMAIN._time && !_wmInTime(r.created_at, WORKMAIN._time)) return false;
     if (WORKMAIN._supplier && (r.supplier_name || '') !== WORKMAIN._supplier) return false;
     if (WORKMAIN._operator && (r.created_by_name || '') !== WORKMAIN._operator) return false;
-    if (WORKMAIN._refillScope && (r.refill_scope || '') !== WORKMAIN._refillScope) return false;
-    if (WORKMAIN._refillStatus && r.refill_status !== WORKMAIN._refillStatus) return false;
     if (kw) {
       const hay = [r.order_ref, r.customer, r.product_name, r.items_text, r.created_by_name]
         .map(x => String(x || '').toLowerCase()).join(' ');
@@ -650,10 +650,8 @@ function _wmRenderRefills() {
 
   const timeChips = [['', '全部'], ['today', '今天'], ['yesterday', '昨天'], ['week', '本周'], ['month', '本月'], ['quarter', '本季'], ['year', '本年']]
     .map(([k, l]) => `<button class="wm-chip ${WORKMAIN._time === k ? 'active' : ''}" onclick="workmainSetTime('${k}')">${l}</button>`).join('');
-  const scopeChips = [['', '全部分类'], ['parts', '🔩 小配件'], ['whole_lamp', '💡 整灯']]
-    .map(([k, l]) => `<button class="wm-chip ${WORKMAIN._refillScope === k ? 'active' : ''}" onclick="workmainSetRefillScope('${k}')">${l}</button>`).join('');
-  const statusChips = [['', '全部进度'], ['pending_order', '待下单'], ['ordered', '已下单'], ['producing', '生产中'], ['shipped', '已发货'], ['delivered', '已送达']]
-    .map(([k, l]) => `<button class="wm-chip ${WORKMAIN._refillStatus === k ? 'active' : ''}" onclick="workmainSetRefillStatus('${k}')">${l}</button>`).join('');
+  const orderChips = [['', '全部'], ['undone', '🔲 未下单'], ['done', '✅ 已下单']]
+    .map(([k, l]) => `<button class="wm-chip ${k === 'undone' ? 'wm-chip-undone' : ''} ${k === 'done' ? 'wm-chip-done' : ''} ${WORKMAIN._refillOrder === k ? 'active' : ''}" onclick="workmainSetRefillOrder('${k}')">${l}</button>`).join('');
 
   const filterBar = `
     <div class="wm-filters">
@@ -669,7 +667,7 @@ function _wmRenderRefills() {
         <button class="wm-btn-clear" onclick="workmainClearFilters()">✕ 清除</button>
         <button class="wm-btn-refresh" onclick="loadWorkmainRefills(true).then(renderWorkmain)">🔄 刷新</button>
       </div>
-      <div class="wm-chip-row">${timeChips}<span class="wm-sep"></span><button class="wm-chip wm-chip-undone ${WORKMAIN._refillUndone ? 'active' : ''}" onclick="workmainToggleRefillUndone()">🔲 只看未下单</button>${scopeChips}<span class="wm-sep"></span>${statusChips}<span class="wm-sep"></span><button class="wm-chip wm-chip-flag ${WORKMAIN._flagOnly ? 'active' : ''}" onclick="workmainToggleFlagOnly()">🚩 只看重点</button></div>
+      <div class="wm-chip-row"><span class="wm-chip-label">下单状态</span>${orderChips}<span class="wm-sep"></span>${timeChips}<span class="wm-sep"></span><button class="wm-chip wm-chip-flag ${WORKMAIN._flagOnly ? 'active' : ''}" onclick="workmainToggleFlagOnly()">🚩 只看重点</button></div>
     </div>`;
 
   const total = list.length, pageSize = WORKMAIN._pageSize;
@@ -679,16 +677,17 @@ function _wmRenderRefills() {
   const slice = list.slice(page * pageSize, page * pageSize + pageSize);
   const pager = _wmPager(page, totalPages, total);
 
-  const orderedCnt = list.filter(r => r.refill_status && r.refill_status !== 'pending_order').length;
-  const stat = `<div class="wm-stat">共 <b>${total}</b> 条 · 已下单及之后 <b>${orderedCnt}</b> · 待下单 <b>${total - orderedCnt}</b></div>`;
+  const doneCnt = list.filter(_wmRefillDone).length;
+  const stat = `<div class="wm-stat">共 <b>${total}</b> 条 · 已下单 <b>${doneCnt}</b> · 未下单 <b>${total - doneCnt}</b></div>`;
 
   const rows = slice.length ? slice.map(_wmRefillCard).join('') : `<div class="wm-empty">没有符合条件的补件记录</div>`;
   return `${filterBar}${stat}${pager}<div class="wm-list">${rows}</div>${total > pageSize ? pager : ''}`;
 }
 
 function _wmRefillCard(r) {
-  const st = _WM_REFILL_STATUS[r.refill_status] || r.refill_status || '—';
-  const stCls = _WM_REFILL_STATUS_CLS[r.refill_status] || '';
+  const done = _wmRefillDone(r);
+  const stCls = done ? 'wm-st-done' : 'wm-st-pending';
+  const stLabel = done ? '已下单' : '待下单';
   const expanded = WORKMAIN._expanded === r._src + ':' + r.id;
   const srcTag = r._src === 'aftersales' ? '<span class="wm-srctag">售后转入</span>' : '<span class="wm-srctag">补件单</span>';
   const imgs = _wmCollectImgs(r);
@@ -698,23 +697,13 @@ function _wmRefillCard(r) {
     ? `<button class="wm-flag ${r.flagged ? 'on' : ''}" title="${r.flagged ? '重点(点取消)' : '主管标记重点'}" ${canFlag ? '' : 'disabled'} onclick="event.stopPropagation();workmainRefillToggleFlag('${r._src}',${r.id})">🚩</button>`
     : '';
 
-  // 分类下拉(双方可改)
-  const scopeSel = `<select class="wm-mini-sel" onclick="event.stopPropagation()" onchange="workmainRefillSetScope('${r._src}',${r.id},this.value)">
-      <option value="" ${!r.refill_scope ? 'selected' : ''}>未分类</option>
-      <option value="parts" ${r.refill_scope === 'parts' ? 'selected' : ''}>🔩 小配件(客服)</option>
-      <option value="whole_lamp" ${r.refill_scope === 'whole_lamp' ? 'selected' : ''}>💡 整灯(跟单)</option>
-    </select>`;
-  // 进度推进下拉
-  const statusSel = `<select class="wm-mini-sel" onclick="event.stopPropagation()" onchange="workmainRefillSetStatus('${r._src}',${r.id},this.value)">
-      ${_WM_REFILL_STATUS_ORDER.map(s => `<option value="${s}" ${r.refill_status === s ? 'selected' : ''}>${_WM_REFILL_STATUS[s]}</option>`).join('')}
-    </select>`;
-  // 整灯「标记已下单」:待下单状态才显示
-  const markBtn = (r.refill_status === 'pending_order')
+  // 未下单:跟单可选「📝 标记已下单」(不强制);已下单:显示下单时间(若有)
+  const markBtn = !done
     ? `<button class="wm-act wm-act-done" onclick="event.stopPropagation();workmainRefillMarkOrdered('${r._src}',${r.id})">📝 标记已下单</button>`
     : (r.refill_ordered_at ? `<span class="wm-rb wm-rb-done" title="${_wmEsc(r.refill_ordered_by || '')}">已下单 · ${_wmFmtDate(r.refill_ordered_at)}</span>` : '');
 
   return `
-  <div class="wm-card ${expanded ? 'expanded' : ''}">
+  <div class="wm-card ${expanded ? 'expanded' : ''} ${r.flagged ? 'flagged' : ''}">
     <div class="wm-card-head" onclick="workmainToggleExpand('${r._src}:${r.id}')">
       <div class="wm-card-main">
         ${flagBtn}
@@ -725,15 +714,13 @@ function _wmRefillCard(r) {
       </div>
       <div class="wm-card-meta">
         ${thumb}
-        <span class="wm-status ${stCls}">${_wmEsc(st)}</span>
+        <span class="wm-status ${stCls}">${stLabel}</span>
         <span class="wm-exp-arrow">${expanded ? '▲' : '▼'}</span>
       </div>
     </div>
     <div class="wm-card-sub">
       <span>录入 ${_wmEsc(r.created_by_name || '—')} · ${_wmFmtDate(r.created_at)}</span>
       ${r.supplier_name ? `<span>供应商 ${_wmEsc(r.supplier_name)}</span>` : ''}
-      <span class="wm-inline-ctl">分类 ${scopeSel}</span>
-      <span class="wm-inline-ctl">进度 ${statusSel}</span>
       <span class="wm-card-actions">${markBtn}</span>
     </div>
     ${expanded ? _wmRefillDetail(r) : ''}
@@ -752,13 +739,12 @@ function _wmRefillDetail(r) {
   }
   return `<div class="wm-detail">
     ${row('补件清单', r.items_text)}
-    ${row('分类', _WM_SCOPE[r.refill_scope] || '未分类')}
-    ${row('当前进度', _WM_REFILL_STATUS[r.refill_status] || r.refill_status)}
-    ${r.refill_ordered_at ? row('已下单', `${r.refill_ordered_by || ''} · ${_wmFmtTime(r.refill_ordered_at)}`) : ''}
+    ${row('下单状态', _wmRefillDone(r) ? '已下单' : '待下单')}
+    ${r.refill_ordered_at ? row('下单记录', `${r.refill_ordered_by || ''} · ${_wmFmtTime(r.refill_ordered_at)}`) : ''}
     ${row('供应商', r.supplier_name)}
     ${row('来源', r._src === 'aftersales' ? '售后转入补件(aftersales)' : '补件单(refills)')}
     ${imgs}
-    <div class="wm-d-note">小配件归客服下单、整灯归跟单下单;分类双方可改。「标记已下单」会自动通知客服。</div>
+    <div class="wm-d-note">客服会把配件下单并标注;跟单只需看「未下单/已下单」。未下单的可点「标记已下单」(可选,会自动通知客服)。</div>
   </div>`;
 }
 
@@ -809,9 +795,7 @@ async function workmainRefillMarkOrdered(src, id) {
 }
 
 // ---- 补件筛选 setter ----
-function workmainSetRefillScope(k) { WORKMAIN._refillScope = k; WORKMAIN._page = 0; renderWorkmain(); }
-function workmainSetRefillStatus(k) { WORKMAIN._refillStatus = k; WORKMAIN._page = 0; renderWorkmain(); }
-function workmainToggleRefillUndone() { WORKMAIN._refillUndone = !WORKMAIN._refillUndone; WORKMAIN._page = 0; renderWorkmain(); }
+function workmainSetRefillOrder(k) { WORKMAIN._refillOrder = k; WORKMAIN._page = 0; renderWorkmain(); }
 
 // 补件 🚩 重要(写回对应来源表 aftersales/refills)
 async function workmainRefillToggleFlag(src, id) {
