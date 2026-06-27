@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-workmain-subtab-filter-reset',
+    date: '2026-06-26',
+    type: 'fix',
+    title: '🔧 切子标签自动清筛选(修"售后看不到数据")',
+    notes: [
+      '现象:退款点过"今天"等筛选,切到售后会带过去,售后无今天的单 → 列表被过滤空,看着像没数据(其实权限/数据都正常)',
+      '根因:顶部筛选四标签共享,切标签未重置',
+      '修复:workmainSetSub 切换时清空 search/time/supplier/operator/status/type/return/flagOnly/refillScope/refillStatus/asStatus/asType,每个子标签进去都是干净的"全部"',
+    ],
+    files: ['workmain.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260626-workmain-hotfix-login',
     date: '2026-06-26',
     type: 'fix',

@@ -278,6 +278,12 @@ function renderWorkmain() {
 function workmainSetSub(k) {
   WORKMAIN._sub = k;
   WORKMAIN._page = 0;
+  // 切子标签自动清掉共享筛选,避免上一个标签的"今天/只看重点/供应商"等串过来把列表过滤空
+  WORKMAIN._search = ''; WORKMAIN._time = ''; WORKMAIN._supplier = ''; WORKMAIN._operator = '';
+  WORKMAIN._status = ''; WORKMAIN._type = ''; WORKMAIN._return = ''; WORKMAIN._flagOnly = false;
+  WORKMAIN._refillScope = ''; WORKMAIN._refillStatus = '';
+  WORKMAIN._asStatus = ''; WORKMAIN._asType = '';
+  WORKMAIN._expanded = null;
   renderWorkmain();
   if (k === 'refunds' && !WORKMAIN._loaded) loadWorkmainRefunds().then(renderWorkmain);
   if (k === 'refills' && !WORKMAIN._refillsLoaded) loadWorkmainRefills().then(renderWorkmain);
