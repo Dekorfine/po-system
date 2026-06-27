@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-workmain-refills',
+    date: '2026-06-26',
+    type: 'feature',
+    title: '🧩 工作主线 第二期:补件追踪(整灯已下单 + 分类 + 自动通知)',
+    notes: [
+      '补件追踪:汇集 aftersales(refill_needed=true 的售后转入补件)+ refills 表,统一列表',
+      '注意 aftersales 无 archived 列,只按 deleted 过滤;refills 空且结构未知,用 select(*) 防御读',
+      '分类 refill_scope 下拉(🔩小配件·客服 / 💡整灯·跟单)双方可改;进度 refill_status 下拉推进(待下单→已下单→生产中→已发货→已送达)',
+      '整灯「📝 标记已下单」(待下单态显示)→ refill_status=ordered + refill_ordered_at/by(本人)+ 自动通知客服(related_type=refill_ordered)',
+      '筛选 chip:分类(全部/小配件/整灯)+ 进度(待下单…已送达)+ 共享顶部筛选;顶/底分页·单一滚动·图片懒加载·写回对应来源表',
+    ],
+    files: ['workmain.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260626-workmain-refunds',
     date: '2026-06-26',
     type: 'feature',
