@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-workmain-hotfix-login',
+    date: '2026-06-26',
+    type: 'fix',
+    title: '🚑 热修:flagChip 未定义导致无法登录 + 渲染防护',
+    notes: [
+      '根因:退款渲染用了未定义的 flagChip 变量(wm7);落地页是 ?tab=workmain,登录时即渲染工作主线 → 抛错 → 整个 bootstrap 崩溃 → 卡在登录页(后台数据其实已加载)',
+      '修复:补上 flagChip 定义',
+      '加防护:renderWorkmain 的子标签渲染包 try/catch,以后任何子标签出错只在本标签内显示报错,绝不再连累登录/启动',
+    ],
+    files: ['workmain.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260626-workmain-flag-rollout',
     date: '2026-06-26',
     type: 'feature',

@@ -260,11 +260,17 @@ function renderWorkmain() {
   ).join('')}</div>`;
 
   let body = '';
-  if (WORKMAIN._sub === 'refunds') body = _wmRenderRefunds();
-  else if (WORKMAIN._sub === 'refills') body = _wmRenderRefills();
-  else if (WORKMAIN._sub === 'aftersales') body = _wmRenderAftersales();
-  else if (WORKMAIN._sub === 'summary') body = _wmRenderSummary();
-  else body = `<div class="wm-placeholder">🚧 即将上线</div>`;
+  try {
+    if (WORKMAIN._sub === 'refunds') body = _wmRenderRefunds();
+    else if (WORKMAIN._sub === 'refills') body = _wmRenderRefills();
+    else if (WORKMAIN._sub === 'aftersales') body = _wmRenderAftersales();
+    else if (WORKMAIN._sub === 'summary') body = _wmRenderSummary();
+    else body = `<div class="wm-placeholder">🚧 即将上线</div>`;
+  } catch (e) {
+    // 防护:工作主线渲染出错绝不连累整体启动/登录(本 tab 常是落地页)
+    console.error('[工作主线] 渲染失败', e);
+    body = `<div class="wm-placeholder">⚠️ 此子标签渲染出错:${_wmEsc(e && e.message || e)}<br><span>其它功能不受影响 · 可切换子标签或刷新页面</span></div>`;
+  }
 
   host.innerHTML = `<div class="wm-wrap">${subBar}${body}</div>`;
 }
