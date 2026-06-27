@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-refill-undone-filter',
+    date: '2026-06-26',
+    type: 'feature',
+    title: '🔲 补件追踪新增「只看未下单」筛选',
+    notes: [
+      '客服在配件补发标记的「已下单」本就实时同步:补件追踪直连客服库读同一个 refill_status,客服标 ordered 跟单刷新即见,无需额外搬运',
+      '新增「🔲 只看未下单」开关:一键只显示 refill_status=pending_order(待下单)的补件,跟单专注未下单的处理',
+      '切子标签/清除筛选时一并重置',
+    ],
+    files: ['workmain.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260626-qtyconfirm-ref-images',
     date: '2026-06-26',
     type: 'feature',

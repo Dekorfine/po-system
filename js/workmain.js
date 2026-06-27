@@ -26,6 +26,7 @@ const WORKMAIN = {
   _refillsLoading: false,
   _refillScope: '',         // ''=全部 parts whole_lamp
   _refillStatus: '',        // ''=全部 pending_order ordered ...
+  _refillUndone: false,     // 只看未下单(refill_status=pending_order)
   // 售后清单
   _aftersales: [],
   _asLoaded: false,
@@ -281,7 +282,7 @@ function workmainSetSub(k) {
   // 切子标签自动清掉共享筛选,避免上一个标签的"今天/只看重点/供应商"等串过来把列表过滤空
   WORKMAIN._search = ''; WORKMAIN._time = ''; WORKMAIN._supplier = ''; WORKMAIN._operator = '';
   WORKMAIN._status = ''; WORKMAIN._type = ''; WORKMAIN._return = ''; WORKMAIN._flagOnly = false;
-  WORKMAIN._refillScope = ''; WORKMAIN._refillStatus = '';
+  WORKMAIN._refillScope = ''; WORKMAIN._refillStatus = ''; WORKMAIN._refillUndone = false;
   WORKMAIN._asStatus = ''; WORKMAIN._asType = '';
   WORKMAIN._expanded = null;
   renderWorkmain();
@@ -491,7 +492,7 @@ function workmainClearFilters() {
   WORKMAIN._search = ''; WORKMAIN._time = ''; WORKMAIN._supplier = '';
   WORKMAIN._status = ''; WORKMAIN._type = ''; WORKMAIN._operator = ''; WORKMAIN._return = '';
   WORKMAIN._flagOnly = false;
-  WORKMAIN._refillScope = ''; WORKMAIN._refillStatus = '';
+  WORKMAIN._refillScope = ''; WORKMAIN._refillStatus = ''; WORKMAIN._refillUndone = false;
   WORKMAIN._asStatus = ''; WORKMAIN._asType = '';
   WORKMAIN._page = 0; renderWorkmain();
 }
@@ -621,6 +622,7 @@ function _wmFilteredRefills() {
   const kw = (WORKMAIN._search || '').trim().toLowerCase();
   return WORKMAIN._refills.filter(r => {
     if (WORKMAIN._flagOnly && !r.flagged) return false;
+    if (WORKMAIN._refillUndone && r.refill_status !== 'pending_order') return false;
     if (WORKMAIN._time && !_wmInTime(r.created_at, WORKMAIN._time)) return false;
     if (WORKMAIN._supplier && (r.supplier_name || '') !== WORKMAIN._supplier) return false;
     if (WORKMAIN._operator && (r.created_by_name || '') !== WORKMAIN._operator) return false;
@@ -667,7 +669,7 @@ function _wmRenderRefills() {
         <button class="wm-btn-clear" onclick="workmainClearFilters()">✕ 清除</button>
         <button class="wm-btn-refresh" onclick="loadWorkmainRefills(true).then(renderWorkmain)">🔄 刷新</button>
       </div>
-      <div class="wm-chip-row">${timeChips}<span class="wm-sep"></span>${scopeChips}<span class="wm-sep"></span>${statusChips}<span class="wm-sep"></span><button class="wm-chip wm-chip-flag ${WORKMAIN._flagOnly ? 'active' : ''}" onclick="workmainToggleFlagOnly()">🚩 只看重点</button></div>
+      <div class="wm-chip-row">${timeChips}<span class="wm-sep"></span><button class="wm-chip wm-chip-undone ${WORKMAIN._refillUndone ? 'active' : ''}" onclick="workmainToggleRefillUndone()">🔲 只看未下单</button>${scopeChips}<span class="wm-sep"></span>${statusChips}<span class="wm-sep"></span><button class="wm-chip wm-chip-flag ${WORKMAIN._flagOnly ? 'active' : ''}" onclick="workmainToggleFlagOnly()">🚩 只看重点</button></div>
     </div>`;
 
   const total = list.length, pageSize = WORKMAIN._pageSize;
@@ -809,6 +811,7 @@ async function workmainRefillMarkOrdered(src, id) {
 // ---- 补件筛选 setter ----
 function workmainSetRefillScope(k) { WORKMAIN._refillScope = k; WORKMAIN._page = 0; renderWorkmain(); }
 function workmainSetRefillStatus(k) { WORKMAIN._refillStatus = k; WORKMAIN._page = 0; renderWorkmain(); }
+function workmainToggleRefillUndone() { WORKMAIN._refillUndone = !WORKMAIN._refillUndone; WORKMAIN._page = 0; renderWorkmain(); }
 
 // 补件 🚩 重要(写回对应来源表 aftersales/refills)
 async function workmainRefillToggleFlag(src, id) {
