@@ -2503,6 +2503,13 @@ function renderActiveTab() {
     }
   }
   else if (CURRENT_TAB === 'missing') { renderMissing(); updateMissingStats(); }
+  else if (CURRENT_TAB === 'workmain') {
+    // V20260626:工作主线(客服售后/补件/退款镜像)· 先渲染再异步加载退款
+    if (typeof renderWorkmain === 'function') renderWorkmain();
+    if (typeof loadWorkmainRefunds === 'function' && WORKMAIN && !WORKMAIN._loaded) {
+      loadWorkmainRefunds().then(() => { if (typeof renderWorkmain === 'function') renderWorkmain(); });
+    }
+  }
   else if (CURRENT_TAB === 'offline') {
     // V20260613:线下单(客服转单)· 进 tab 拉一次 · 先用缓存渲染再刷新
     if (typeof renderOfflineOrders === 'function') renderOfflineOrders();

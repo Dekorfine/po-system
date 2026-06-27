@@ -10,6 +10,22 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-workmain-refunds',
+    date: '2026-06-26',
+    type: 'feature',
+    title: '🧩 新增「工作主线」tab(第一期:退款管理 + 已处理退货 + 自动通知客服)',
+    notes: [
+      '镜像客服端工作主线 · 数据直连客服 CLOUD 库 kwrajryhwyytkjkkidor 的 refunds 表(复用 offline 的 client,不做跨库同步)',
+      '退款管理:列表(顶/底分页·单一滚动)、搜索、时间/状态/退款类型/供应商/录入人筛选、退货 chip(全部/待处理/已处理)、详情展开(图片懒加载·只读客服审核流)',
+      '跟单动作「✅ 标记已处理退货 / 取消」→ 写 return_status/return_handled_at/return_handled_by(处理人取当前登录账号)',
+      '自动通知客服:点「已处理退货」后,复用 cross_dept_messages(与转单工单同一套)发一条工单给客服(to_system=cs·带 order_ref·related_type=refund_return_handled);取消不发;通知失败不影响主流程',
+      '边界:客服审核流 refunds.status 只读不改;跟单仅写 return_* 三列 + 发通知',
+      '售后清单 / 补件追踪 / 月度汇总 三个子标签先占位「即将上线」· 跑稳退款再扩',
+      '⚠️ 依赖:客服库已建 return_* 列 + 放行 anon 读写 refunds(grant select,update),否则报权限被拒',
+    ],
+    files: ['workmain.js(新增)', 'index.html', 'core.js', 'help.js'],
+  },
+  {
     v: '20260626-woo-status-fix',
     date: '2026-06-26',
     type: 'fix',
