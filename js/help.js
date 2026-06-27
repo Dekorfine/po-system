@@ -10,6 +10,31 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-workmain-summary',
+    date: '2026-06-26',
+    type: 'feature',
+    title: '🧩 工作主线 第四期(收尾):月度汇总 + CSV 导出',
+    notes: [
+      '月度汇总(只读聚合·范围跟随顶部时间快筛):退款按"退款类型×币种"汇总笔数+金额(仅 approved/completed)·含各币种合计',
+      '售后按供应商 / 问题类型计数;补件按进度计数',
+      '一键导出 CSV(带 BOM 防 Excel 中文乱码)',
+      '至此「客服工作主线」四个子标签全部上线:退款管理 / 售后清单 / 补件追踪 / 月度汇总',
+    ],
+    files: ['workmain.js', 'index.html', 'help.js'],
+  },
+  {
+    v: '20260626-workmain-visible-rename',
+    date: '2026-06-26',
+    type: 'fix',
+    title: '🔧 修复「客服工作主线」tab 看不见 + 改名',
+    notes: [
+      '根因:applyModuleVisibility 会隐藏所有未登记进 ALL_MODULES 的 tab,workmain 没登记 → 连管理员都被 display:none',
+      '修复:把 workmain 登记进 ALL_MODULES + TAB_META,并加入 ALWAYS_VISIBLE_MODULES(像线下单/跨部门那样全员可见)',
+      '改名:🧩 工作主线 → 🧩 客服工作主线(顶部 nav + 模块注册表 + 布局 meta 一致)',
+    ],
+    files: ['core.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260626-workmain-aftersales',
     date: '2026-06-26',
     type: 'feature',

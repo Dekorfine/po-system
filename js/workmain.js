@@ -181,7 +181,8 @@ function renderWorkmain() {
   if (WORKMAIN._sub === 'refunds') body = _wmRenderRefunds();
   else if (WORKMAIN._sub === 'refills') body = _wmRenderRefills();
   else if (WORKMAIN._sub === 'aftersales') body = _wmRenderAftersales();
-  else body = `<div class="wm-placeholder">🚧 「${subTabs.find(t => t.k === WORKMAIN._sub).label.replace(/^[^\s]+\s/, '')}」即将上线<br><span>售后/补件/退款已上线,月度汇总收尾中。</span></div>`;
+  else if (WORKMAIN._sub === 'summary') body = _wmRenderSummary();
+  else body = `<div class="wm-placeholder">🚧 即将上线</div>`;
 
   host.innerHTML = `<div class="wm-wrap">${subBar}${body}</div>`;
 }
@@ -193,6 +194,13 @@ function workmainSetSub(k) {
   if (k === 'refunds' && !WORKMAIN._loaded) loadWorkmainRefunds().then(renderWorkmain);
   if (k === 'refills' && !WORKMAIN._refillsLoaded) loadWorkmainRefills().then(renderWorkmain);
   if (k === 'aftersales' && !WORKMAIN._asLoaded) loadWorkmainAftersales().then(renderWorkmain);
+  if (k === 'summary') {
+    const need = [];
+    if (!WORKMAIN._loaded) need.push(loadWorkmainRefunds());
+    if (!WORKMAIN._asLoaded) need.push(loadWorkmainAftersales());
+    if (!WORKMAIN._refillsLoaded) need.push(loadWorkmainRefills());
+    if (need.length) Promise.all(need).then(renderWorkmain);
+  }
 }
 
 // ---- 渲染:退款管理子标签 ----
@@ -885,6 +893,150 @@ async function workmainToggleAsReturn(id, handled) {
 
 function workmainSetAsStatus(v) { WORKMAIN._asStatus = v; WORKMAIN._page = 0; renderWorkmain(); }
 function workmainSetAsType(v) { WORKMAIN._asType = v; WORKMAIN._page = 0; renderWorkmain(); }
+
+// ============ 月度汇总(只读聚合 · 可导出)============
+// 退款按"退款类型+币种"汇总金额/笔数(只算 status in completed/approved);
+// 售后按供应商/问题类型计数;补件按进度计数。范围跟随顶部时间快筛。
+
+function _wmTimeLabel() {
+  const m = { '': '全部时间', today: '今天', yesterday: '昨天', week: '本周', month: '本月', quarter: '本季', year: '本年' };
+  return m[WORKMAIN._time] || '全部时间';
+}
+
+function _wmSummaryData() {
+  const inT = (d) => _wmInTime(d, WORKMAIN._time);
+  // 退款:只算 completed / approved
+  const refunds = WORKMAIN._refunds.filter(r => inT(r.created_at) && ['completed', 'approved'].includes(r.status));
+  const refundAgg = {};   // key: type||cur
+  refunds.forEach(r => {
+    const type = _wmTypeLabel(r);
+    const cur = r.currency || '—';
+    const k = type + '|||' + cur;
+    if (!refundAgg[k]) refundAgg[k] = { type, cur, count: 0, amount: 0 };
+    refundAgg[k].count++;
+    refundAgg[k].amount += Number(r.amount) || 0;
+  });
+  const curTotal = {};
+  Object.values(refundAgg).forEach(x => { curTotal[x.cur] = (curTotal[x.cur] || 0) + x.amount; });
+
+  // 售后:按供应商 / 问题类型计数
+  const as = WORKMAIN._aftersales.filter(r => inT(r.created_at));
+  const asBySupplier = {}, asByType = {};
+  as.forEach(r => {
+    const sup = r.supplier_name || r.supplier_names || '(未填供应商)';
+    asBySupplier[sup] = (asBySupplier[sup] || 0) + 1;
+    const ty = _wmIssueLabel(r);
+    asByType[ty] = (asByType[ty] || 0) + 1;
+  });
+
+  // 补件:按进度计数
+  const rf = WORKMAIN._refills.filter(r => inT(r.created_at));
+  const rfByStatus = {};
+  rf.forEach(r => {
+    const s = _WM_REFILL_STATUS[r.refill_status] || r.refill_status || '—';
+    rfByStatus[s] = (rfByStatus[s] || 0) + 1;
+  });
+
+  return {
+    refundRows: Object.values(refundAgg).sort((a, b) => b.amount - a.amount),
+    refundCurTotal: curTotal,
+    refundCount: refunds.length,
+    asBySupplier, asByType, asCount: as.length,
+    rfByStatus, rfCount: rf.length,
+  };
+}
+
+function _wmRenderSummary() {
+  if (!(WORKMAIN._loaded && WORKMAIN._asLoaded && WORKMAIN._refillsLoaded)) {
+    return `<div class="wm-placeholder">汇总加载中…(正在拉取退款 / 售后 / 补件三张表)</div>`;
+  }
+  const d = _wmSummaryData();
+  const timeChips = [['', '全部'], ['today', '今天'], ['yesterday', '昨天'], ['week', '本周'], ['month', '本月'], ['quarter', '本季'], ['year', '本年']]
+    .map(([k, l]) => `<button class="wm-chip ${WORKMAIN._time === k ? 'active' : ''}" onclick="workmainSetTime('${k}')">${l}</button>`).join('');
+
+  // 退款汇总表
+  const refundRows = d.refundRows.length
+    ? d.refundRows.map(x => `<tr><td>${_wmEsc(x.type)}</td><td>${_wmEsc(x.cur)}</td><td class="num">${x.count}</td><td class="num">${x.amount.toFixed(2)}</td></tr>`).join('')
+    : `<tr><td colspan="4" class="wm-sum-empty">无数据</td></tr>`;
+  const curTotalRows = Object.entries(d.refundCurTotal)
+    .map(([cur, amt]) => `<tr class="wm-sum-total"><td colspan="2">合计(${_wmEsc(cur)})</td><td class="num">—</td><td class="num">${amt.toFixed(2)}</td></tr>`).join('');
+
+  // 售后:供应商 / 问题类型
+  const supRows = Object.entries(d.asBySupplier).sort((a, b) => b[1] - a[1])
+    .map(([s, c]) => `<tr><td>${_wmEsc(s)}</td><td class="num">${c}</td></tr>`).join('') || `<tr><td colspan="2" class="wm-sum-empty">无数据</td></tr>`;
+  const typeRows = Object.entries(d.asByType).sort((a, b) => b[1] - a[1])
+    .map(([s, c]) => `<tr><td>${_wmEsc(s)}</td><td class="num">${c}</td></tr>`).join('') || `<tr><td colspan="2" class="wm-sum-empty">无数据</td></tr>`;
+
+  // 补件:进度
+  const rfRows = _WM_REFILL_STATUS_ORDER.map(k => _WM_REFILL_STATUS[k])
+    .concat(Object.keys(d.rfByStatus).filter(s => !Object.values(_WM_REFILL_STATUS).includes(s)))
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .map(label => `<tr><td>${_wmEsc(label)}</td><td class="num">${d.rfByStatus[label] || 0}</td></tr>`).join('');
+
+  return `
+    <div class="wm-filters"><div class="wm-chip-row" style="margin-top:0">${timeChips}
+      <span class="wm-sep"></span>
+      <button class="wm-btn-refresh" onclick="_wmSummaryExport()">⬇ 导出 CSV</button>
+    </div></div>
+    <div class="wm-sum-rangeline">汇总范围:<b>${_wmTimeLabel()}</b> · 退款 ${d.refundCount} 笔(仅已审核/已完成)· 售后 ${d.asCount} 单 · 补件 ${d.rfCount} 条</div>
+
+    <div class="wm-sum-block">
+      <div class="wm-sum-title">💸 退款汇总(退款类型 × 币种 · 仅 approved/completed)</div>
+      <table class="wm-sum-table">
+        <thead><tr><th>退款类型</th><th>币种</th><th class="num">笔数</th><th class="num">金额合计</th></tr></thead>
+        <tbody>${refundRows}${curTotalRows}</tbody>
+      </table>
+    </div>
+
+    <div class="wm-sum-2col">
+      <div class="wm-sum-block">
+        <div class="wm-sum-title">🔧 售后 · 按供应商</div>
+        <table class="wm-sum-table"><thead><tr><th>供应商</th><th class="num">单数</th></tr></thead><tbody>${supRows}</tbody></table>
+      </div>
+      <div class="wm-sum-block">
+        <div class="wm-sum-title">🔧 售后 · 按问题类型</div>
+        <table class="wm-sum-table"><thead><tr><th>问题类型</th><th class="num">单数</th></tr></thead><tbody>${typeRows}</tbody></table>
+      </div>
+    </div>
+
+    <div class="wm-sum-block" style="max-width:420px">
+      <div class="wm-sum-title">📦 补件 · 按进度</div>
+      <table class="wm-sum-table"><thead><tr><th>进度</th><th class="num">条数</th></tr></thead><tbody>${rfRows}</tbody></table>
+    </div>`;
+}
+
+function _wmSummaryExport() {
+  const d = _wmSummaryData();
+  const lines = [];
+  const esc = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const row = arr => lines.push(arr.map(esc).join(','));
+  row([`客服工作主线 月度汇总`, `范围:${_wmTimeLabel()}`, `导出:${new Date().toLocaleString()}`]);
+  row([]);
+  row(['【退款汇总(仅 approved/completed)】']);
+  row(['退款类型', '币种', '笔数', '金额合计']);
+  d.refundRows.forEach(x => row([x.type, x.cur, x.count, x.amount.toFixed(2)]));
+  Object.entries(d.refundCurTotal).forEach(([cur, amt]) => row([`合计(${cur})`, '', '', amt.toFixed(2)]));
+  row([]);
+  row(['【售后 · 按供应商】']); row(['供应商', '单数']);
+  Object.entries(d.asBySupplier).sort((a, b) => b[1] - a[1]).forEach(([s, c]) => row([s, c]));
+  row([]);
+  row(['【售后 · 按问题类型】']); row(['问题类型', '单数']);
+  Object.entries(d.asByType).sort((a, b) => b[1] - a[1]).forEach(([s, c]) => row([s, c]));
+  row([]);
+  row(['【补件 · 按进度】']); row(['进度', '条数']);
+  Object.entries(d.rfByStatus).forEach(([s, c]) => row([s, c]));
+
+  const csv = '\ufeff' + lines.join('\r\n');   // BOM 防 Excel 中文乱码
+  try {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `客服工作主线汇总_${_wmTimeLabel()}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
+    _wmToast('已导出 CSV', 'success');
+  } catch (e) { _wmToast('导出失败:' + (e.message || e), 'err'); }
+}
 
 // ---- 自动通知客服(复用 cross_dept_messages · 与转单工单同一套)----
 // 通知失败不影响主流程(已 catch),只是少一条提醒。
