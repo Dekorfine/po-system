@@ -25,6 +25,12 @@ const WORKMAIN = {
   _refillsLoading: false,
   _refillScope: '',         // ''=全部 parts whole_lamp
   _refillStatus: '',        // ''=全部 pending_order ordered ...
+  // 售后清单
+  _aftersales: [],
+  _asLoaded: false,
+  _asLoading: false,
+  _asStatus: '',
+  _asType: '',
   _page: 0,
   _pageSize: 20,
 };
@@ -58,6 +64,22 @@ const _WM_REFILL_STATUS = { pending_order: '待下单', ordered: '已下单', pr
 const _WM_REFILL_STATUS_ORDER = ['pending_order', 'ordered', 'producing', 'shipped', 'delivered'];
 const _WM_REFILL_STATUS_CLS = { pending_order: 'wm-st-pending', ordered: 'wm-st-approved', producing: 'wm-st-approved', shipped: 'wm-st-approved', delivered: 'wm-st-done' };
 const _WM_SCOPE = { parts: '小配件(客服下单)', whole_lamp: '整灯(跟单下单)' };
+
+// 售后枚举(已知给中文 · 未知人性化兜底 · 筛选项从真实数据取)
+const _WM_ISSUE = {
+  transport_damage: '运输破损', quality_issue: '质量问题', missing_parts: '缺件', wrong_item: '发错货',
+  defective: '功能瑕疵', not_as_described: '货不对板', wrong_spec: '规格不符', color_diff: '色差',
+  broken: '破损', missing_accessory: '缺配件', other: '其它',
+};
+const _WM_AS_STATUS = {
+  pending_remind: '待提醒', reminded: '已提醒', processing: '处理中', awaiting_supplier: '待供应商',
+  resolved: '已解决', closed: '已关闭', pending: '待处理',
+};
+const _WM_AS_STATUS_CLS = {
+  pending_remind: 'wm-st-pending', pending: 'wm-st-pending', reminded: 'wm-st-approved',
+  processing: 'wm-st-approved', awaiting_supplier: 'wm-st-approved', resolved: 'wm-st-done', closed: 'wm-st-done',
+};
+function _wmIssueLabel(r) { return r.issue_type_custom || _WM_ISSUE[r.issue_type] || _wmHumanize(r.issue_type) || '—'; }
 
 function _wmFmtTime(s) {
   if (!s) return '';
@@ -158,7 +180,8 @@ function renderWorkmain() {
   let body = '';
   if (WORKMAIN._sub === 'refunds') body = _wmRenderRefunds();
   else if (WORKMAIN._sub === 'refills') body = _wmRenderRefills();
-  else body = `<div class="wm-placeholder">🚧 「${subTabs.find(t => t.k === WORKMAIN._sub).label.replace(/^[^\s]+\s/, '')}」即将上线<br><span>第一期先跑通退款管理 + 补件追踪,跑稳后补这块。</span></div>`;
+  else if (WORKMAIN._sub === 'aftersales') body = _wmRenderAftersales();
+  else body = `<div class="wm-placeholder">🚧 「${subTabs.find(t => t.k === WORKMAIN._sub).label.replace(/^[^\s]+\s/, '')}」即将上线<br><span>售后/补件/退款已上线,月度汇总收尾中。</span></div>`;
 
   host.innerHTML = `<div class="wm-wrap">${subBar}${body}</div>`;
 }
@@ -169,6 +192,7 @@ function workmainSetSub(k) {
   renderWorkmain();
   if (k === 'refunds' && !WORKMAIN._loaded) loadWorkmainRefunds().then(renderWorkmain);
   if (k === 'refills' && !WORKMAIN._refillsLoaded) loadWorkmainRefills().then(renderWorkmain);
+  if (k === 'aftersales' && !WORKMAIN._asLoaded) loadWorkmainAftersales().then(renderWorkmain);
 }
 
 // ---- 渲染:退款管理子标签 ----
@@ -353,6 +377,7 @@ function workmainClearFilters() {
   WORKMAIN._search = ''; WORKMAIN._time = ''; WORKMAIN._supplier = '';
   WORKMAIN._status = ''; WORKMAIN._type = ''; WORKMAIN._operator = ''; WORKMAIN._return = '';
   WORKMAIN._refillScope = ''; WORKMAIN._refillStatus = '';
+  WORKMAIN._asStatus = ''; WORKMAIN._asType = '';
   WORKMAIN._page = 0; renderWorkmain();
 }
 // 搜索时只重渲列表区(不重建输入框,避免光标跳走)
@@ -658,6 +683,208 @@ async function workmainRefillMarkOrdered(src, id) {
 // ---- 补件筛选 setter ----
 function workmainSetRefillScope(k) { WORKMAIN._refillScope = k; WORKMAIN._page = 0; renderWorkmain(); }
 function workmainSetRefillStatus(k) { WORKMAIN._refillStatus = k; WORKMAIN._page = 0; renderWorkmain(); }
+
+// ============ 售后清单(aftersales · 查看 + 已处理退货)============
+// 注意:aftersales 无 archived 列,只按 deleted 过滤;客服 status/核心字段只读,跟单仅写 return_*。
+
+async function loadWorkmainAftersales(force) {
+  if (WORKMAIN._asLoading) return;
+  if (WORKMAIN._asLoaded && !force) return;
+  const cs = _wmCs();
+  if (!cs) { _wmToast('客服库未连接', 'err'); return; }
+  WORKMAIN._asLoading = true;
+  try {
+    const cols = 'id,record_id,order_ref,customer,country,product_name,sku,issue_type,issue_type_custom,issue_sub,' +
+      'damaged_part,issue_detail,supplier_name,supplier_names,status,improvement_suggestion,improvement_status,' +
+      'notes,attachments,communication_images,created_by,created_by_name,created_at,updated_at,closed_at,' +
+      'deleted,flagged,return_status,return_handled_at,return_handled_by';
+    const { data, error } = await cs.from('aftersales')
+      .select(cols).order('created_at', { ascending: false }).limit(1500);
+    if (error) throw error;
+    WORKMAIN._aftersales = (data || []).filter(r => !r.deleted);   // aftersales 无 archived
+    WORKMAIN._asLoaded = true;
+  } catch (e) {
+    const m = e.message || String(e);
+    if (/permission denied|row-level security|42501/i.test(m)) _wmToast('权限被拒:客服库需放行 anon 读 aftersales', 'err');
+    else _wmToast('加载售后失败:' + m, 'err');
+    console.warn('[工作主线] 加载 aftersales 失败', e);
+  } finally {
+    WORKMAIN._asLoading = false;
+  }
+}
+
+function _wmFilteredAftersales() {
+  const kw = (WORKMAIN._search || '').trim().toLowerCase();
+  return WORKMAIN._aftersales.filter(r => {
+    if (WORKMAIN._time && !_wmInTime(r.created_at, WORKMAIN._time)) return false;
+    if (WORKMAIN._supplier && (r.supplier_name || r.supplier_names || '') !== WORKMAIN._supplier) return false;
+    if (WORKMAIN._operator && (r.created_by_name || '') !== WORKMAIN._operator) return false;
+    if (WORKMAIN._asStatus && r.status !== WORKMAIN._asStatus) return false;
+    if (WORKMAIN._asType && r.issue_type !== WORKMAIN._asType) return false;
+    if (WORKMAIN._return === 'handled' && r.return_status !== 'handled') return false;
+    if (WORKMAIN._return === 'pending' && r.return_status === 'handled') return false;
+    if (kw) {
+      const hay = [r.order_ref, r.customer, r.product_name, r.issue_detail, r.damaged_part, r.created_by_name]
+        .map(x => String(x || '').toLowerCase()).join(' ');
+      if (!hay.includes(kw)) return false;
+    }
+    return true;
+  });
+}
+
+function _wmRenderAftersales() {
+  if (WORKMAIN._asLoading && !WORKMAIN._asLoaded) return `<div class="wm-placeholder">加载中…</div>`;
+
+  const all = WORKMAIN._aftersales;
+  const list = _wmFilteredAftersales();
+  const suppliers = [...new Set(all.map(r => r.supplier_name || r.supplier_names).filter(Boolean))].sort();
+  const operators = [...new Set(all.map(r => r.created_by_name).filter(Boolean))].sort();
+  const types = [...new Set(all.map(r => r.issue_type).filter(Boolean))].sort();
+  const statuses = [...new Set(all.map(r => r.status).filter(Boolean))].sort();
+  const opt = (v, label, cur) => `<option value="${_wmEsc(v)}" ${cur === v ? 'selected' : ''}>${_wmEsc(label)}</option>`;
+
+  const timeChips = [['', '全部'], ['today', '今天'], ['yesterday', '昨天'], ['week', '本周'], ['month', '本月'], ['quarter', '本季'], ['year', '本年']]
+    .map(([k, l]) => `<button class="wm-chip ${WORKMAIN._time === k ? 'active' : ''}" onclick="workmainSetTime('${k}')">${l}</button>`).join('');
+  const returnChips = [['', '全部退货'], ['pending', '🟠 待处理退货'], ['handled', '✅ 已处理退货']]
+    .map(([k, l]) => `<button class="wm-chip ${WORKMAIN._return === k ? 'active' : ''}" onclick="workmainSetReturn('${k}')">${l}</button>`).join('');
+
+  const filterBar = `
+    <div class="wm-filters">
+      <div class="wm-filter-row">
+        <input class="wm-search" type="text" placeholder="搜索 订单号 / 客户 / 产品 / 问题详情 / 损坏部件 / 录入人…"
+               value="${_wmEsc(WORKMAIN._search)}" oninput="workmainSetSearch(this.value)">
+        <select class="wm-sel" onchange="workmainSetAsStatus(this.value)">
+          <option value="">全部状态</option>${statuses.map(s => opt(s, _WM_AS_STATUS[s] || _wmHumanize(s), WORKMAIN._asStatus)).join('')}
+        </select>
+        <select class="wm-sel" onchange="workmainSetAsType(this.value)">
+          <option value="">全部问题类型</option>${types.map(t => opt(t, _WM_ISSUE[t] || _wmHumanize(t), WORKMAIN._asType)).join('')}
+        </select>
+        <select class="wm-sel" onchange="workmainSetSupplier(this.value)">
+          <option value="">全部供应商</option>${suppliers.map(s => opt(s, s, WORKMAIN._supplier)).join('')}
+        </select>
+        <select class="wm-sel" onchange="workmainSetOperator(this.value)">
+          <option value="">全部录入人</option>${operators.map(s => opt(s, s, WORKMAIN._operator)).join('')}
+        </select>
+        <button class="wm-btn-clear" onclick="workmainClearFilters()">✕ 清除</button>
+        <button class="wm-btn-refresh" onclick="loadWorkmainAftersales(true).then(renderWorkmain)">🔄 刷新</button>
+      </div>
+      <div class="wm-chip-row">${timeChips}<span class="wm-sep"></span>${returnChips}</div>
+    </div>`;
+
+  const total = list.length, pageSize = WORKMAIN._pageSize;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (WORKMAIN._page >= totalPages) WORKMAIN._page = 0;
+  const page = WORKMAIN._page;
+  const slice = list.slice(page * pageSize, page * pageSize + pageSize);
+  const pager = _wmPager(page, totalPages, total);
+
+  const handledCnt = list.filter(r => r.return_status === 'handled').length;
+  const stat = `<div class="wm-stat">共 <b>${total}</b> 单 · 已处理退货 <b>${handledCnt}</b> · 待处理退货 <b>${total - handledCnt}</b></div>`;
+
+  const rows = slice.length ? slice.map(_wmAftersaleCard).join('') : `<div class="wm-empty">没有符合条件的售后记录</div>`;
+  return `${filterBar}${stat}${pager}<div class="wm-list">${rows}</div>${total > pageSize ? pager : ''}`;
+}
+
+function _wmAftersaleCard(r) {
+  const st = _WM_AS_STATUS[r.status] || r.status || '—';
+  const stCls = _WM_AS_STATUS_CLS[r.status] || '';
+  const handled = r.return_status === 'handled';
+  const expanded = WORKMAIN._expanded === 'as:' + r.id;
+  const returnBadge = handled
+    ? `<span class="wm-rb wm-rb-done" title="处理人 ${_wmEsc(r.return_handled_by || '')} · ${_wmFmtTime(r.return_handled_at)}">✅ 已处理退货</span>`
+    : '';
+  const actionBtn = handled
+    ? `<button class="wm-act wm-act-undo" onclick="event.stopPropagation();workmainToggleAsReturn(${r.id}, false)">↩ 取消已处理</button>`
+    : `<button class="wm-act wm-act-done" onclick="event.stopPropagation();workmainToggleAsReturn(${r.id}, true)">✅ 标记已处理退货</button>`;
+  const imgCnt = (Array.isArray(r.attachments) ? r.attachments.length : 0) + (Array.isArray(r.communication_images) ? r.communication_images.length : 0);
+
+  return `
+  <div class="wm-card ${expanded ? 'expanded' : ''}">
+    <div class="wm-card-head" onclick="workmainToggleExpand('as:${r.id}')">
+      <div class="wm-card-main">
+        <span class="wm-order">${_wmEsc(r.order_ref || '无单号')}</span>
+        <span class="wm-cust">${_wmEsc(r.customer || '—')}</span>
+        <span class="wm-prod">${_wmEsc(r.product_name || '—')}</span>
+      </div>
+      <div class="wm-card-meta">
+        <span class="wm-type">${_wmEsc(_wmIssueLabel(r))}</span>
+        <span class="wm-status ${stCls}">${_wmEsc(st)}</span>
+        ${returnBadge}
+        <span class="wm-exp-arrow">${expanded ? '▲' : '▼'}</span>
+      </div>
+    </div>
+    <div class="wm-card-sub">
+      <span>录入 ${_wmEsc(r.created_by_name || '—')} · ${_wmFmtDate(r.created_at)}</span>
+      ${r.supplier_name || r.supplier_names ? `<span>供应商 ${_wmEsc(r.supplier_name || r.supplier_names)}</span>` : ''}
+      ${r.damaged_part ? `<span>损坏 ${_wmEsc(r.damaged_part)}</span>` : ''}
+      ${imgCnt ? `<span>📎 ${imgCnt} 图</span>` : ''}
+      <span class="wm-card-actions">${actionBtn}</span>
+    </div>
+    ${expanded ? _wmAftersaleDetail(r) : ''}
+  </div>`;
+}
+
+function _wmAftersaleDetail(r) {
+  const row = (k, v) => v ? `<div class="wm-d-row"><span class="wm-d-k">${k}</span><span class="wm-d-v">${_wmEsc(v)}</span></div>` : '';
+  const atts = []
+    .concat(Array.isArray(r.attachments) ? r.attachments : [])
+    .concat(Array.isArray(r.communication_images) ? r.communication_images : []);
+  let imgs = '';
+  if (atts.length) {
+    imgs = `<div class="wm-d-imgs">${atts.map(a => {
+      const url = (a && (a.url || a)) || '';
+      if (!url || /^data:/.test(String(url))) return '';
+      return `<a href="${_wmEsc(url)}" target="_blank" rel="noopener"><img loading="lazy" src="${_wmEsc(url)}" alt=""></a>`;
+    }).join('')}</div>`;
+  }
+  return `<div class="wm-detail">
+    ${row('问题类型', _wmIssueLabel(r))}
+    ${row('问题详情', r.issue_detail)}
+    ${row('损坏部件', r.damaged_part)}
+    ${row('SKU', r.sku)}
+    ${row('国家', r.country)}
+    ${row('客服状态', _WM_AS_STATUS[r.status] || r.status)}
+    ${row('改善建议', r.improvement_suggestion)}
+    ${row('备注', r.notes)}
+    ${r.return_status === 'handled' ? row('已处理退货', `${r.return_handled_by || ''} · ${_wmFmtTime(r.return_handled_at)}`) : ''}
+    ${imgs}
+    <div class="wm-d-note">客服处理流(状态/详情)只读;跟单可标记「已处理退货」。补件分类/下单请在「补件追踪」子标签操作。</div>
+  </div>`;
+}
+
+// 跟单动作:售后已处理退货
+async function workmainToggleAsReturn(id, handled) {
+  const cs = _wmCs();
+  if (!cs) { _wmToast('客服库未连接', 'err'); return; }
+  const r = WORKMAIN._aftersales.find(x => x.id === id);
+  if (!r) return;
+  const patch = handled
+    ? { return_status: 'handled', return_handled_at: new Date().toISOString(), return_handled_by: (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) || '' }
+    : { return_status: null, return_handled_at: null, return_handled_by: null };
+  try {
+    const { error } = await cs.from('aftersales').update(patch).eq('id', id);
+    if (error) throw error;
+    Object.assign(r, patch);
+    _wmToast(handled ? '已标记「已处理退货」' : '已取消退货标记', 'success');
+    if (handled) {
+      _wmNotifyCs(
+        r,
+        `跟单已处理退货 · ${r.order_ref || '无单号'}`,
+        `订单 ${r.order_ref || '—'} · ${r.customer || ''} · ${r.product_name || ''}\n问题:${_wmIssueLabel(r)}\n动作:已处理退货(售后)\n处理人:${patch.return_handled_by || ''}\n时间:${_wmFmtTime(patch.return_handled_at)}`,
+        'aftersale_return_handled'
+      );
+    }
+    renderWorkmain();
+  } catch (e) {
+    const m = e.message || String(e);
+    if (/permission denied|row-level security|42501/i.test(m)) _wmToast('权限被拒:客服库需放行 anon 更新 aftersales', 'err');
+    else _wmToast('操作失败:' + m, 'err');
+    console.warn('[工作主线] 售后退货标记失败', e);
+  }
+}
+
+function workmainSetAsStatus(v) { WORKMAIN._asStatus = v; WORKMAIN._page = 0; renderWorkmain(); }
+function workmainSetAsType(v) { WORKMAIN._asType = v; WORKMAIN._page = 0; renderWorkmain(); }
 
 // ---- 自动通知客服(复用 cross_dept_messages · 与转单工单同一套)----
 // 通知失败不影响主流程(已 catch),只是少一条提醒。

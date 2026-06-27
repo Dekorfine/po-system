@@ -10,6 +10,20 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-workmain-aftersales',
+    date: '2026-06-26',
+    type: 'feature',
+    title: '🧩 工作主线 第三期:售后清单(查看 + 已处理退货)',
+    notes: [
+      '售后清单(aftersales):列表(顶/底分页·单一滚动)、搜索、状态/问题类型/供应商/录入人/时间筛选、退货 chip',
+      '详情展开:问题类型/详情/损坏部件/SKU/改善建议/备注 + 图片(attachments + communication_images)懒加载',
+      '跟单动作「✅ 已处理退货 / 取消」→ 写 return_*(aftersales 列已建)+ 自动通知客服(related_type=aftersale_return_handled)',
+      '边界:客服 status / 核心字段只读不改;aftersales 无 archived 列,只按 deleted 过滤;补件分类/下单在「补件追踪」操作',
+      '问题类型/状态枚举内置常见词 + 人性化兜底,筛选项从真实数据取',
+    ],
+    files: ['workmain.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260626-workmain-refills',
     date: '2026-06-26',
     type: 'feature',
