@@ -306,6 +306,7 @@ function _wmRenderRefunds() {
     .map(([k, l]) => `<button class="wm-chip ${WORKMAIN._time === k ? 'active' : ''}" onclick="workmainSetTime('${k}')">${l}</button>`).join('');
   const returnChips = [['', '全部退货'], ['pending', '🟠 待处理退货'], ['handled', '✅ 已处理退货']]
     .map(([k, l]) => `<button class="wm-chip ${WORKMAIN._return === k ? 'active' : ''}" onclick="workmainSetReturn('${k}')">${l}</button>`).join('');
+  const flagChip = `<button class="wm-chip wm-chip-flag ${WORKMAIN._flagOnly ? 'active' : ''}" onclick="workmainToggleFlagOnly()">🚩 只看重点</button>`;
 
   const filterBar = `
     <div class="wm-filters">
@@ -560,6 +561,8 @@ function _wmNormRefill(row, src) {
     created_by_name: row.created_by_name || '',
     created_at: row.created_at,
     attachments: Array.isArray(row.attachments) ? row.attachments : [],
+    communication_images: Array.isArray(row.communication_images) ? row.communication_images : [],
+    flagged: !!row.flagged,
     _raw: row,
   };
 }
@@ -575,7 +578,7 @@ async function loadWorkmainRefills(force) {
     // 1) aftersales 中需要补件的行(refill_needed=true)· aftersales 无 archived 列,只按 deleted 过滤
     const asCols = 'id,record_id,order_ref,customer,product_name,sku,supplier_name,supplier_names,' +
       'refill_needed,refill_status,refill_qty,refill_note,refill_scope,refill_ordered_by,refill_ordered_at,' +
-      'created_by,created_by_name,created_at,attachments,deleted';
+      'created_by,created_by_name,created_at,attachments,communication_images,flagged,deleted';
     const { data: asRows, error: asErr } = await cs.from('aftersales')
       .select(asCols).eq('refill_needed', true).order('created_at', { ascending: false }).limit(1000);
     if (asErr) throw asErr;
@@ -605,6 +608,7 @@ async function loadWorkmainRefills(force) {
 function _wmFilteredRefills() {
   const kw = (WORKMAIN._search || '').trim().toLowerCase();
   return WORKMAIN._refills.filter(r => {
+    if (WORKMAIN._flagOnly && !r.flagged) return false;
     if (WORKMAIN._time && !_wmInTime(r.created_at, WORKMAIN._time)) return false;
     if (WORKMAIN._supplier && (r.supplier_name || '') !== WORKMAIN._supplier) return false;
     if (WORKMAIN._operator && (r.created_by_name || '') !== WORKMAIN._operator) return false;
@@ -623,7 +627,9 @@ function _wmRenderRefills() {
   if (WORKMAIN._refillsLoading && !WORKMAIN._refillsLoaded) return `<div class="wm-placeholder">加载中…</div>`;
 
   const all = WORKMAIN._refills;
-  const list = _wmFilteredRefills();
+  const list = _wmFilteredRefills().sort((a, b) =>
+    (b.flagged ? 1 : 0) - (a.flagged ? 1 : 0) || (new Date(b.created_at || 0) - new Date(a.created_at || 0))
+  );
   const suppliers = [...new Set(all.map(r => r.supplier_name).filter(Boolean))].sort();
   const operators = [...new Set(all.map(r => r.created_by_name).filter(Boolean))].sort();
   const opt = (v, label, cur) => `<option value="${_wmEsc(v)}" ${cur === v ? 'selected' : ''}>${_wmEsc(label)}</option>`;
@@ -649,7 +655,7 @@ function _wmRenderRefills() {
         <button class="wm-btn-clear" onclick="workmainClearFilters()">✕ 清除</button>
         <button class="wm-btn-refresh" onclick="loadWorkmainRefills(true).then(renderWorkmain)">🔄 刷新</button>
       </div>
-      <div class="wm-chip-row">${timeChips}<span class="wm-sep"></span>${scopeChips}<span class="wm-sep"></span>${statusChips}</div>
+      <div class="wm-chip-row">${timeChips}<span class="wm-sep"></span>${scopeChips}<span class="wm-sep"></span>${statusChips}<span class="wm-sep"></span><button class="wm-chip wm-chip-flag ${WORKMAIN._flagOnly ? 'active' : ''}" onclick="workmainToggleFlagOnly()">🚩 只看重点</button></div>
     </div>`;
 
   const total = list.length, pageSize = WORKMAIN._pageSize;
@@ -670,9 +676,13 @@ function _wmRefillCard(r) {
   const st = _WM_REFILL_STATUS[r.refill_status] || r.refill_status || '—';
   const stCls = _WM_REFILL_STATUS_CLS[r.refill_status] || '';
   const expanded = WORKMAIN._expanded === r._src + ':' + r.id;
-  const key = `'${r._src}',${r.id}`;
-  const isOrdered = r.refill_status && r.refill_status !== 'pending_order';
   const srcTag = r._src === 'aftersales' ? '<span class="wm-srctag">售后转入</span>' : '<span class="wm-srctag">补件单</span>';
+  const imgs = _wmCollectImgs(r);
+  const thumb = _wmThumb(imgs, 'rf:' + r._src + ':' + r.id);
+  const canFlag = (typeof IS_ADMIN === 'undefined') || IS_ADMIN;
+  const flagBtn = (r.flagged || canFlag)
+    ? `<button class="wm-flag ${r.flagged ? 'on' : ''}" title="${r.flagged ? '重点(点取消)' : '主管标记重点'}" ${canFlag ? '' : 'disabled'} onclick="event.stopPropagation();workmainRefillToggleFlag('${r._src}',${r.id})">🚩</button>`
+    : '';
 
   // 分类下拉(双方可改)
   const scopeSel = `<select class="wm-mini-sel" onclick="event.stopPropagation()" onchange="workmainRefillSetScope('${r._src}',${r.id},this.value)">
@@ -693,12 +703,14 @@ function _wmRefillCard(r) {
   <div class="wm-card ${expanded ? 'expanded' : ''}">
     <div class="wm-card-head" onclick="workmainToggleExpand('${r._src}:${r.id}')">
       <div class="wm-card-main">
+        ${flagBtn}
         <span class="wm-order">${_wmEsc(r.order_ref || '无单号')}</span>
         <span class="wm-cust">${_wmEsc(r.customer || '—')}</span>
         <span class="wm-prod">${_wmEsc(r.items_text || r.product_name || '—')}</span>
         ${srcTag}
       </div>
       <div class="wm-card-meta">
+        ${thumb}
         <span class="wm-status ${stCls}">${_wmEsc(st)}</span>
         <span class="wm-exp-arrow">${expanded ? '▲' : '▼'}</span>
       </div>
@@ -786,6 +798,15 @@ async function workmainRefillMarkOrdered(src, id) {
 function workmainSetRefillScope(k) { WORKMAIN._refillScope = k; WORKMAIN._page = 0; renderWorkmain(); }
 function workmainSetRefillStatus(k) { WORKMAIN._refillStatus = k; WORKMAIN._page = 0; renderWorkmain(); }
 
+// 补件 🚩 重要(写回对应来源表 aftersales/refills)
+async function workmainRefillToggleFlag(src, id) {
+  if (typeof IS_ADMIN !== 'undefined' && !IS_ADMIN) { _wmToast('仅主管可标记重点', 'err'); return; }
+  const r = WORKMAIN._refills.find(x => x._src === src && x.id === id); if (!r) return;
+  const nv = !r.flagged;
+  const ok = await _wmRefillUpdate(src, id, { flagged: nv });
+  if (ok) { _wmToast(nv ? '已标记重点' : '已取消重点', 'success'); renderWorkmain(); }
+}
+
 // ============ 售后清单(aftersales · 查看 + 已处理退货)============
 // 注意:aftersales 无 archived 列,只按 deleted 过滤;客服 status/核心字段只读,跟单仅写 return_*。
 
@@ -818,6 +839,7 @@ async function loadWorkmainAftersales(force) {
 function _wmFilteredAftersales() {
   const kw = (WORKMAIN._search || '').trim().toLowerCase();
   return WORKMAIN._aftersales.filter(r => {
+    if (WORKMAIN._flagOnly && !r.flagged) return false;
     if (WORKMAIN._time && !_wmInTime(r.created_at, WORKMAIN._time)) return false;
     if (WORKMAIN._supplier && (r.supplier_name || r.supplier_names || '') !== WORKMAIN._supplier) return false;
     if (WORKMAIN._operator && (r.created_by_name || '') !== WORKMAIN._operator) return false;
@@ -838,7 +860,9 @@ function _wmRenderAftersales() {
   if (WORKMAIN._asLoading && !WORKMAIN._asLoaded) return `<div class="wm-placeholder">加载中…</div>`;
 
   const all = WORKMAIN._aftersales;
-  const list = _wmFilteredAftersales();
+  const list = _wmFilteredAftersales().sort((a, b) =>
+    (b.flagged ? 1 : 0) - (a.flagged ? 1 : 0) || (new Date(b.created_at || 0) - new Date(a.created_at || 0))
+  );
   const suppliers = [...new Set(all.map(r => r.supplier_name || r.supplier_names).filter(Boolean))].sort();
   const operators = [...new Set(all.map(r => r.created_by_name).filter(Boolean))].sort();
   const types = [...new Set(all.map(r => r.issue_type).filter(Boolean))].sort();
@@ -870,7 +894,7 @@ function _wmRenderAftersales() {
         <button class="wm-btn-clear" onclick="workmainClearFilters()">✕ 清除</button>
         <button class="wm-btn-refresh" onclick="loadWorkmainAftersales(true).then(renderWorkmain)">🔄 刷新</button>
       </div>
-      <div class="wm-chip-row">${timeChips}<span class="wm-sep"></span>${returnChips}</div>
+      <div class="wm-chip-row">${timeChips}<span class="wm-sep"></span>${returnChips}<span class="wm-sep"></span><button class="wm-chip wm-chip-flag ${WORKMAIN._flagOnly ? 'active' : ''}" onclick="workmainToggleFlagOnly()">🚩 只看重点</button></div>
     </div>`;
 
   const total = list.length, pageSize = WORKMAIN._pageSize;
@@ -895,20 +919,27 @@ function _wmAftersaleCard(r) {
   const returnBadge = handled
     ? `<span class="wm-rb wm-rb-done" title="处理人 ${_wmEsc(r.return_handled_by || '')} · ${_wmFmtTime(r.return_handled_at)}">✅ 已处理退货</span>`
     : '';
+  const imgs = _wmCollectImgs(r);
+  const thumb = _wmThumb(imgs, 'as:' + r.id);
+  const canFlag = (typeof IS_ADMIN === 'undefined') || IS_ADMIN;
+  const flagBtn = (r.flagged || canFlag)
+    ? `<button class="wm-flag ${r.flagged ? 'on' : ''}" title="${r.flagged ? '重点(点取消)' : '主管标记重点'}" ${canFlag ? '' : 'disabled'} onclick="event.stopPropagation();workmainToggleFlag('aftersale',${r.id})">🚩</button>`
+    : '';
   const actionBtn = handled
     ? `<button class="wm-act wm-act-undo" onclick="event.stopPropagation();workmainToggleAsReturn(${r.id}, false)">↩ 取消已处理</button>`
     : `<button class="wm-act wm-act-done" onclick="event.stopPropagation();workmainToggleAsReturn(${r.id}, true)">✅ 标记已处理退货</button>`;
-  const imgCnt = (Array.isArray(r.attachments) ? r.attachments.length : 0) + (Array.isArray(r.communication_images) ? r.communication_images.length : 0);
 
   return `
-  <div class="wm-card ${expanded ? 'expanded' : ''}">
+  <div class="wm-card ${expanded ? 'expanded' : ''} ${r.flagged ? 'flagged' : ''}">
     <div class="wm-card-head" onclick="workmainToggleExpand('as:${r.id}')">
       <div class="wm-card-main">
+        ${flagBtn}
         <span class="wm-order">${_wmEsc(r.order_ref || '无单号')}</span>
         <span class="wm-cust">${_wmEsc(r.customer || '—')}</span>
         <span class="wm-prod">${_wmEsc(r.product_name || '—')}</span>
       </div>
       <div class="wm-card-meta">
+        ${thumb}
         <span class="wm-type">${_wmEsc(_wmIssueLabel(r))}</span>
         <span class="wm-status ${stCls}">${_wmEsc(st)}</span>
         ${returnBadge}
@@ -919,7 +950,7 @@ function _wmAftersaleCard(r) {
       <span>录入 ${_wmEsc(r.created_by_name || '—')} · ${_wmFmtDate(r.created_at)}</span>
       ${r.supplier_name || r.supplier_names ? `<span>供应商 ${_wmEsc(r.supplier_name || r.supplier_names)}</span>` : ''}
       ${r.damaged_part ? `<span>损坏 ${_wmEsc(r.damaged_part)}</span>` : ''}
-      ${imgCnt ? `<span>📎 ${imgCnt} 图</span>` : ''}
+      ${r.issue_detail ? `<span class="wm-reason">${_wmEsc(r.issue_detail)}</span>` : ''}
       <span class="wm-card-actions">${actionBtn}</span>
     </div>
     ${expanded ? _wmAftersaleDetail(r) : ''}

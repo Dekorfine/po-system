@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260626-workmain-flag-rollout',
+    date: '2026-06-26',
+    type: 'feature',
+    title: '🎨 售后/补件 同步对齐:🚩重要 + 缩略图 + 灯箱 + 重点置顶',
+    notes: [
+      '售后清单、补件追踪卡片加上列表缩略图(点开主窗口灯箱)+ 🚩重要(主管标记)+「只看重点」筛选 + 重点自动置顶,与退款一致',
+      '补件 🚩 写回对应来源表(售后转入→aftersales,补件单→refills);补件归一化携带 flagged/communication_images',
+      '修复:退款 flagChip 变量之前用了未定义(运行时 ReferenceError),已补定义',
+      '至此退款/售后/补件三个子标签视觉与"重要"机制完全统一',
+    ],
+    files: ['workmain.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260626-workmain-refund-ui',
     date: '2026-06-26',
     type: 'feature',
