@@ -10,6 +10,21 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260628-receipt-note-sync',
+    date: '2026-06-28',
+    type: 'fix',
+    title: '🎯 财务收货→Shopify备注:修静默跳过 + 财务确认即自动同步',
+    notes: [
+      '根因:完成入库写 Shopify 备注时,关联销售单不在内存缓存就静默跳过、但仍标已入库 → "显示已更新实际没写"',
+      '修复:销售单不在缓存即按 sales_order_id 从 shopify_orders 表即时拉再写,不再跳过;只有真写成功才盖 receipt_note_synced_at',
+      '备注格式按 Martin 拍板:每个产品一行「{供应商} {title_en} {M.D}已回」· M.D 取 receipt_confirmed_at 北京时间(无则今天)· 保留原客户备注',
+      '财务确认即同步:打开「财务收货」自动扫 receipt_confirmed_at 非空 + receipt_note_synced_at 空的 PO 补写,连英确认后跟单不用再点',
+      '防重复:新增 orders.receipt_note_synced_at 盖章列(需先 ALTER,已执行)',
+      '口径待财务AI确认一句:确认收货落在 receipt_confirmed_at(orders 表无 return_date 列)',
+    ],
+    files: ['po.js', 'index.html', 'help.js', 'ALTER: orders.receipt_note_synced_at'],
+  },
+  {
     v: '20260626-refill-status-column-fix',
     date: '2026-06-26',
     type: 'fix',

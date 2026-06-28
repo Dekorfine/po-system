@@ -4823,6 +4823,74 @@ async function poHandToFinance(poId) {
   }
 }
 
+// ── 北京时间 M.D(timestamptz/UTC → 北京 月.日)──
+function _poBeijingMD(iso) {
+  const d = iso ? new Date(iso) : new Date();
+  if (isNaN(d)) return '';
+  const b = new Date(d.getTime() + 8 * 3600 * 1000);  // 移到 UTC+8 后取 UTC 字段 = 北京
+  return `${b.getUTCMonth() + 1}.${b.getUTCDate()}`;
+}
+
+// ── 组装并写入「收货已回」备注到对应 Shopify/Woo 订单 ──
+// 格式:每个产品一行 `{供应商} {title_en} {M.D}已回`(M.D 取 receipt_confirmed_at 北京时间,无则今天)
+// 修静默跳过:销售单不在缓存就按 sales_order_id 从 shopify_orders 表即时拉
+// 防重复:写成功盖 orders.receipt_note_synced_at;已盖且非 force 则跳过
+// opts: { silent, extraNote, force }
+async function _poWriteReceiptNote(po, opts = {}) {
+  const { silent = false, extraNote = '', force = false } = opts;
+  if (!po) return { ok: false, reason: 'no_po' };
+  if (po.receipt_note_synced_at && !force) return { ok: true, skipped: 'already_synced' };
+  if (!po.sales_order_id) {
+    if (!silent) toast('ℹ 此 PO 无关联销售单(自定义 PO),跳过备注同步', 'warn', 4000);
+    return { ok: false, reason: 'no_sales_order' };
+  }
+  // 销售单:先内存缓存,没有就即时从 shopify_orders 表拉(不再静默跳过)
+  let so = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) ? SHOPIFY._orders.find(o => o.id === po.sales_order_id) : null;
+  if (!so) {
+    try {
+      const { data } = await sb.from('shopify_orders')
+        .select('id, shopify_order_id, shopify_order_number, shop_domain, platform, raw_payload, local_status')
+        .eq('id', po.sales_order_id).single();
+      so = data || null;
+    } catch (_) { so = null; }
+  }
+  if (!so || !so.shopify_order_id) {
+    if (!silent) toast('ℹ 该销售单非 Shopify/Woo 同步单,跳过备注同步', 'warn', 4000);
+    return { ok: false, reason: 'no_shopify_order' };
+  }
+
+  const md = _poBeijingMD(po.receipt_confirmed_at || new Date().toISOString());
+  const items = po.line_items || [];
+  let lines = items.map(li => {
+    const name = li.title_en || li.title_cn || li.sku || '产品';
+    return `${po.supplier || '供应商'} ${name} ${md}已回`;
+  });
+  if (!lines.length) lines = [`${po.supplier || '供应商'} ${md}已回`];
+  if (extraNote && extraNote.trim()) lines.push(`  备注:${extraNote.trim()}`);
+  const appendText = lines.join('\n');
+
+  try {
+    const isWoo = so.platform === 'woo' || (so.shop_domain && so.shop_domain.includes('mooielight'));
+    if (isWoo) {
+      const oldNote = (so.raw_payload && so.raw_payload.customer_note) || '';
+      const newNote = oldNote ? `${oldNote}\n${appendText}` : appendText;
+      const wooStoreId = (so.shop_domain || '').replace(/^https?:\/\//, '').replace(/\..*$/, '');
+      await SHOPIFY.callWoo('update_order', { id: so.shopify_order_id, data: { customer_note: newNote } }, wooStoreId);
+    } else {
+      await SHOPIFY.call('update_order_note', { order_id: so.shopify_order_id, shop: so.shop_domain, append_text: appendText }, so.shop_domain);
+    }
+    const nowIso = new Date().toISOString();
+    await sb.from('orders').update({ receipt_note_synced_at: nowIso }).eq('id', po.id);
+    po.receipt_note_synced_at = nowIso;  // 本地同步,防同次重复
+    if (!silent) toast(`✓ 已同步收货备注到 ${isWoo ? 'WooCommerce' : 'Shopify'}(${so.shopify_order_number || so.shopify_order_id})`, 'ok', 4000);
+    return { ok: true, appendText };
+  } catch (e) {
+    console.error('[收货备注同步] ✗ 失败', e);
+    if (!silent) toast('✗ 同步收货备注失败:' + (e.message || e), 'err', 6000);
+    return { ok: false, reason: 'write_failed', error: e };
+  }
+}
+
 async function poAdvance(poId, nextStatus, nextLabel) {
   const po = PO_LIST.find(x => x.id === poId);
   if (!po) return;
@@ -4831,86 +4899,24 @@ async function poAdvance(poId, nextStatus, nextLabel) {
   // 业务流程：producing → sent → confirmed → arrived → received（财务收货 = 此时触发同步）
   if (nextStatus === 'received') {
     const items = po.line_items || [];
-    const today = new Date().toISOString().slice(0, 10);
-    // 默认拼接：每行一个产品
-    const defaultLines = items.map(li => {
-      const name = li.title_cn || li.title_en || li.sku || '产品';
-      return `  • ${name} × ${li.qty}（${po.supplier || '供应商'}）已回`;
-    }).join('\n');
-    const defaultAppend = `[财务录入 ${today}] 采购单 ${po.po_number} 已完成入库：\n${defaultLines}`;
+    const md = _poBeijingMD(po.receipt_confirmed_at || new Date().toISOString());
+    const preview = items.map(li => {
+      const name = li.title_en || li.title_cn || li.sku || '产品';
+      return `  • ${po.supplier || '供应商'} ${name} ${md}已回`;
+    }).join('\n') || `  • ${po.supplier || '供应商'} ${md}已回`;
 
     const extraNote = await showPrompt({
       title: `✓ 确认 ${po.po_number} 财务收货完成？`,
-      message: `财务对账完成后，会自动追加以下内容到 Shopify 订单备注（保留原有客户备注）：\n${'─'.repeat(38)}\n${defaultAppend}\n${'─'.repeat(38)}`,
-      field: { label: '额外备注（可选）', value: '', type: 'textarea', rows: 3, placeholder: '如：完好，无破损 / 缺 1 个待补 / 包装稍有变形' },
+      message: `确认后会把以下内容追加到 Shopify 订单备注（保留原有客户备注）：\n${'─'.repeat(34)}\n${preview}\n${'─'.repeat(34)}`,
+      field: { label: '额外备注（可选）', value: '', type: 'textarea', rows: 3, placeholder: '如：完好，无破损 / 缺 1 个待补' },
     });
     if (extraNote === null) return;  // 取消
 
-    const appendText = extraNote.trim()
-      ? `${defaultAppend}\n  备注：${extraNote.trim()}`
-      : defaultAppend;
-
-    // 调 Edge Function 同步 Shopify（增强日志，方便排查同步失败原因）
-    console.log('%c[Shopify 同步] 开始', 'color:#2563eb;font-weight:bold', {
-      poNumber: po.po_number,
-      salesOrderId: po.sales_order_id,
-      appendText: appendText.slice(0, 200),
-    });
-    
-    try {
-      // 查找关联的销售单（在 SHOPIFY._orders 缓存里）
-      const so = SHOPIFY._orders ? SHOPIFY._orders.find(o => o.id === po.sales_order_id) : null;
-      
-      if (!po.sales_order_id) {
-        // PO 没关联销售单（自定义 PO）
-        console.warn('[Shopify 同步] 跳过：此 PO 无关联销售单（自定义 PO）');
-        toast(`ℹ 此 PO 是自定义采购单（无关联销售单），跳过 Shopify 备注同步`, 'warn', 5000);
-      } else if (!so) {
-        // 销售单不在内存缓存里（可能销售单 tab 没加载过，或销售单已删除）
-        console.warn('[Shopify 同步] 跳过：在 SHOPIFY._orders 缓存里找不到 sales_order_id =', po.sales_order_id);
-        console.warn('  → 请先切换到「销售单」tab 加载数据，再操作"财务收货"');
-        toast(`⚠ 销售单数据未加载，请先打开"销售单" tab 一次，再来收货同步`, 'warn', 6000);
-      } else if (!so.shopify_order_id) {
-        // 销售单是手动创建的（不来自 Shopify）
-        console.warn('[Shopify 同步] 跳过：该销售单是手动创建的，没有 Shopify 订单 ID');
-        toast(`ℹ 此销售单是手动创建（非 Shopify 同步），跳过备注同步`, 'warn', 5000);
-      } else {
-        // V28β:区分 Shopify 和 WooCommerce(mooielight 是 WC · 用 callWoo + 不同 action/字段)
-        const isWoo = so.platform === 'woo' || (so.shop_domain && so.shop_domain.includes('mooielight'));
-        console.log('[备注同步] 准备推送', {
-          platform: isWoo ? 'WooCommerce' : 'Shopify',
-          order_id: so.shopify_order_id,
-          shop: so.shop_domain,
-        });
-        if (isWoo) {
-          // WC 用 update_order action · customer_note 字段
-          // 注意:WC append_text 逻辑要前端拼好(WC API 是覆盖式 update)
-          const oldNote = (so.raw_payload && so.raw_payload.customer_note) || '';
-          const newNote = oldNote ? `${oldNote}\n${appendText}` : appendText;
-          const wooStoreId = (so.shop_domain || '').replace(/^https?:\/\//, '').replace(/\..*$/, ''); // mooielight.com → mooielight
-          const result = await SHOPIFY.callWoo('update_order', {
-            id: so.shopify_order_id,
-            data: { customer_note: newNote },
-          }, wooStoreId);
-          console.log('%c[WC 同步] ✓ 成功', 'color:#16a34a;font-weight:bold', result);
-          toast(`✓ 已同步到 WooCommerce 后台备注(订单 ${so.shopify_order_number || so.shopify_order_id})`, 'ok', 5000);
-        } else {
-          const result = await SHOPIFY.call('update_order_note', {
-            order_id: so.shopify_order_id,
-            shop: so.shop_domain,
-            append_text: appendText,
-          }, so.shop_domain);
-          console.log('%c[Shopify 同步] ✓ 成功', 'color:#16a34a;font-weight:bold', result);
-          toast(`✓ 已同步到 Shopify 后台备注(订单 ${so.shopify_order_number || so.shopify_order_id})`, 'ok', 5000);
-        }
-      }
-    } catch (e) {
-      // 同步失败但不阻塞推进 · V28β:用统一 UI · 不再原生 confirm
-      console.error('%c[Shopify 同步] ✗ 失败', 'color:#dc2626;font-weight:bold', e);
-      const errMsg = (e && (e.message || e.toString())) || '未知错误';
+    const res = await _poWriteReceiptNote(po, { extraNote });
+    if (!res.ok && res.reason === 'write_failed') {
       const ok = await window.confirmDialog({
         title: '⚠️ 同步到 Shopify 失败',
-        message: `错误信息:\n${errMsg}\n\n🔍 排查清单:\n1. Edge Function 是否已部署最新版?\n   supabase functions deploy shopify-api --project-ref pyfmuknvjqfwcqvbrsvw\n2. shopify_stores 表的 access_token 是否过期?\n3. F12 Console 看详细错误日志\n\n是否继续推进 PO 到「已完成入库」?`,
+        message: `错误信息:\n${(res.error && (res.error.message || res.error.toString())) || '未知错误'}\n\n🔍 排查:\n1. Edge Function 是否部署最新版?\n   supabase functions deploy shopify-api --project-ref pyfmuknvjqfwcqvbrsvw\n2. shopify_stores access_token 是否过期?\n3. F12 看详细日志\n\n是否仍推进 PO 到「已完成入库」?`,
         okText: '继续推进',
         cancelText: '取消 · 我先查',
         danger: true,
@@ -4971,6 +4977,8 @@ async function renderFinance() {
       await SHOPIFY.loadOrdersFromDB(false).catch(() => {});
     }
     renderFinanceList();
+    // V20260628:财务确认收货后自动补写 Shopify 备注(扫已确认但未同步备注的 PO)
+    _poAutoSyncReceiptNotes();
   } catch (e) {
     console.error('renderFinance 出错:', e);
     toast('加载财务数据失败：' + (e.message || e), 'err');
@@ -4988,8 +4996,31 @@ async function renderFinance() {
   }
 }
 
-// V20260526e: 财务日期筛选
-let _financeDatePreset = 'all';
+// V20260628:扫"财务已确认收货(receipt_confirmed_at)但还没写过 Shopify 备注(receipt_note_synced_at 空)"的 PO,自动补写
+// 这样连英在财务端确认收货后,跟单一打开「财务收货」就自动把"{供应商} {产品} {M.D}已回"写进 Shopify,不用再手工点
+async function _poAutoSyncReceiptNotes() {
+  try {
+    const pending = (PO_LIST || []).filter(p =>
+      p.receipt_confirmed_at && !p.receipt_note_synced_at && p.sales_order_id
+    ).slice(0, 50);  // 单次最多 50,避免一次性写太多
+    if (!pending.length) return;
+    console.log(`[收货备注] 自动补写 ${pending.length} 单…`);
+    let done = 0, failed = 0;
+    for (const po of pending) {
+      const res = await _poWriteReceiptNote(po, { silent: true });
+      if (res.ok && !res.skipped) done++;
+      else if (!res.ok && res.reason === 'write_failed') failed++;
+    }
+    if (done > 0) {
+      toast(`✓ 已自动同步 ${done} 单收货备注到 Shopify${failed ? ` · ${failed} 单失败` : ''}`, failed ? 'warn' : 'ok', 5000);
+      try { renderFinanceList(); } catch (_) { }
+    }
+  } catch (e) {
+    console.warn('[收货备注] 自动补写出错', e);
+  }
+}
+
+
 function financeOnDateChange(preset) {
   if (preset === 'custom_open') {
     if (typeof openCustomDateRange === 'function') {
