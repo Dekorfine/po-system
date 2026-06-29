@@ -36,7 +36,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260628receipt2"></script>
+<script defer src="js/help.js?v=20260629receiveflow"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -49,7 +49,7 @@
 <script defer src="js/missing.js?v=20260615ins"></script>
 <script defer src="js/orders.js?v=20260615sort"></script>
 <script defer src="js/shopify.js?v=20260626woostatus"></script>
-<script defer src="js/po.js?v=20260628receipt2"></script>
+<script defer src="js/po.js?v=20260629receiveflow"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
 <script defer src="js/inventory.js?v=20260624audit"></script>
 <script defer src="js/inspection.js?v=20260620po"></script>
@@ -5830,7 +5830,7 @@ if ('serviceWorker' in navigator) {
     <div class="tab-item" data-tab="purchases" onclick="switchTab('purchases')">🛒 线上采购 <span class="badge zero" id="badgePurchases">0</span><a href="?tab=purchases" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="aftersales" onclick="switchTab('aftersales')">🔧 售后 <span class="badge zero" id="badgeAftersales">0</span><a href="?tab=aftersales" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="issues" onclick="switchTab('issues')">⚠ 供应商问题 <span class="badge zero" id="badgeIssues">0</span><a href="?tab=issues" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
-    <div class="tab-item" data-tab="finance" onclick="switchTab('finance')">✓ 财务收货 <span class="badge zero" id="badgeFinance">0</span><a href="?tab=finance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
+    <div class="tab-item" data-tab="finance" onclick="switchTab('finance')">📦 跟单收货 <span class="badge zero" id="badgeFinance">0</span><a href="?tab=finance" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <div class="tab-item" data-tab="products" onclick="switchTab('products')">📚 产品 <span class="badge zero" id="badgeProducts">0</span><a href="?tab=products" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块">↗</a></div>
     <!-- V20260606:🧊 合箱 tab 已移除(跟单反馈看不懂/用不来)· 改用 🚚 运费精算 -->
     <div class="tab-item" data-tab="quotation" onclick="switchTab('quotation')">📄 报价单<a href="?tab=quotation" target="_blank" rel="noopener" class="tab-new-window-btn" onclick="event.stopPropagation();" title="在新浏览器标签打开此模块(独立工具 · 美工/客服共用同一数据)">↗</a></div>
@@ -6879,23 +6879,24 @@ if ('serviceWorker' in navigator) {
   <div class="section-block">
     <div class="fb-card" style="margin-top: 14px;">
       <div class="fb-head" style="cursor: default;">
-        <div class="fb-title">✓ 财务收货 · 入库对账</div>
+        <div class="fb-title">📦 跟单收货 · 网站备注同步</div>
         <div class="fb-tabs" style="cursor: default; gap: 8px;">
-          <span style="font-size: 11px; color: var(--text-tertiary);">财务对账完成后点"已收货" → 系统自动追加备注到 Shopify 订单</span>
+          <span style="font-size: 11px; color: var(--text-tertiary);">跟单输订单号收货 → 自动追加「已回」到网站订单备注 + 标记已收货供财务参考</span>
         </div>
       </div>
-      <div id="financeStatsContainer" style="margin-top: 12px;"></div>
-      <div style="margin-top: 14px; padding: 10px 14px; background: rgba(37,99,235,0.06); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 12px; line-height: 1.7;">
-        <b style="color: var(--accent);">📌 业务流程：</b>
-        跟单推进 PO 到 <code style="background:rgba(0,0,0,0.05);padding:1px 4px;border-radius:3px;">已到货</code> 状态后 → 进入本 tab → 财务核对产品和金额 → 点 <code style="background:rgba(0,0,0,0.05);padding:1px 4px;border-radius:3px;">✓ 完成入库</code> → 自动追加备注到 Shopify 订单后台（保留客户原备注）
-      </div>
-      <!-- V20260526e: 财务日期筛选 -->
-      <div style="margin-top: 12px; display:flex; gap:10px; align-items:center;">
-        <label style="font-size:12px; color:var(--text-secondary);">📅 按收货日期筛选:</label>
-        <select id="financeDateFilter" onchange="financeOnDateChange(this.value)" style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); min-width:180px;">
-        </select>
-      </div>
-      <div id="financeListBody" style="margin-top: 14px;"></div>
+      <!-- V20260629:跟单收货录入主入口 -->
+      <div id="receiptIntakeBox" style="margin-top: 12px;"></div>
+      <details style="margin-top:16px;">
+        <summary style="font-size:12.5px; color:var(--text-secondary); cursor:pointer; user-select:none;">📊 收货记录 / 财务对账视图(展开)</summary>
+        <div id="financeStatsContainer" style="margin-top: 12px;"></div>
+        <!-- V20260526e: 财务日期筛选 -->
+        <div style="margin-top: 12px; display:flex; gap:10px; align-items:center;">
+          <label style="font-size:12px; color:var(--text-secondary);">📅 按收货日期筛选:</label>
+          <select id="financeDateFilter" onchange="financeOnDateChange(this.value)" style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); min-width:180px;">
+          </select>
+        </div>
+        <div id="financeListBody" style="margin-top: 14px;"></div>
+      </details>
     </div>
   </div>
 </div>
