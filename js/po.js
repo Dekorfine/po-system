@@ -4832,11 +4832,14 @@ function _poBeijingMD(iso) {
 }
 
 // 生成该 PO 的「已回」备注行(写入与撤销删除共用,保证文本一致)
+// 格式:{供应商} {产品名} {M.D}已回 {录入人}
 function _poReceiptNoteLines(po) {
   const md = _poBeijingMD(po.receipt_confirmed_at || new Date().toISOString());
+  const who = (po && po.receipt_confirmed_by ? String(po.receipt_confirmed_by).replace(/^跟单·|^财务·/, '').trim() : '');
+  const tail = who ? ` ${who}` : '';
   const items = (po && po.line_items) || [];
-  let lines = items.map(li => `${po.supplier || '供应商'} ${li.title_en || li.title_cn || li.sku || '产品'} ${md}已回`);
-  if (!lines.length) lines = [`${po.supplier || '供应商'} ${md}已回`];
+  let lines = items.map(li => `${po.supplier || '供应商'} ${li.title_en || li.title_cn || li.sku || '产品'} ${md}已回${tail}`);
+  if (!lines.length) lines = [`${po.supplier || '供应商'} ${md}已回${tail}`];
   return lines;
 }
 

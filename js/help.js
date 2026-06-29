@@ -10,6 +10,17 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260629-receipt-note-operator',
+    date: '2026-06-29',
+    type: 'change',
+    title: '🖊 网站备注「已回」行加上录入人',
+    notes: [
+      '备注格式改为「{供应商} {产品名} {M.D}已回 {录入人}」,如「亿源 Pillar Alabaster Wall Sconce 6.29已回 Martin」',
+      '录入人取 receipt_confirmed_by 去掉 跟单·/财务· 前缀;写入与撤销删除共用一处,文本仍一致',
+    ],
+    files: ['po.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260629-manual-receive',
     date: '2026-06-29',
     type: 'feature',
