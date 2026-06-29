@@ -4964,7 +4964,7 @@ async function poRevert(poId, prevStatus, prevLabel) {
 //   → 勾选今天回厂的 → 自动写网站备注 {供应商} {产品名} {M.D}已回 + 标记已收货
 //   财务录日清单匹配订单时,读 receipt_confirmed_at/by 即知"已收货"(无需主动通知)
 // ============================================================
-const RECEIPT = { date: '', q: '', matches: [], selected: {}, searched: false };
+const RECEIPT = { date: '', q: '', matches: [], selected: {}, searched: false, manual: false };
 
 function _receiptToday() { const b = new Date(Date.now() + 8 * 3600 * 1000); return b.toISOString().slice(0, 10); }
 function _normOrderNo(s) { return String(s || '').replace(/^#/, '').trim().toUpperCase(); }
@@ -5237,6 +5237,74 @@ function renderReceiptRecords() {
     </div>`;
 }
 
+// ── 手动收货(订单不是跟单工作台下的 PO)──
+// 按客户单号匹配 shopify_orders 写备注 + 建 source='manual_receipt' 已收货行进记录
+async function _resolveShopifyByNo(orderNo) {
+  const norm = _normOrderNo(orderNo);
+  if (!norm) return null;
+  let so = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders)
+    ? SHOPIFY._orders.find(o => _normOrderNo(o.shopify_order_number) === norm || _normOrderNo(o.order_no) === norm || _normOrderNo(o.shopify_order_name) === norm)
+    : null;
+  if (so) return so;
+  try {
+    const { data } = await sb.from('shopify_orders')
+      .select('id,shopify_order_id,shopify_order_number,shop_domain,platform,customer_note,raw_payload')
+      .ilike('shopify_order_number', `%${norm}%`).limit(15);
+    so = (data || []).find(o => _normOrderNo(o.shopify_order_number) === norm) || null;
+    return so;
+  } catch (_) { return null; }
+}
+
+function receiptManualToggle() { RECEIPT.manual = !RECEIPT.manual; renderReceiptIntake(); }
+
+async function receiptManualSubmit() {
+  const orderNo = (document.getElementById('rmOrderNo') && document.getElementById('rmOrderNo').value || '').trim();
+  const supplier = (document.getElementById('rmSupplier') && document.getElementById('rmSupplier').value || '').trim();
+  const prodRaw = (document.getElementById('rmProducts') && document.getElementById('rmProducts').value || '').trim();
+  const date = (document.getElementById('rmDate') && document.getElementById('rmDate').value || '').trim() || _receiptToday();
+  if (!supplier) { toast('请填供应商', 'warn'); return; }
+  if (!prodRaw) { toast('请填产品名(一行一个)', 'warn'); return; }
+  const products = prodRaw.split('\n').map(s => s.trim()).filter(Boolean);
+  const who = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) || '';
+  const confirmIso = `${date}T12:00:00+08:00`;
+
+  let agentId = (typeof CURRENT_USER_ID !== 'undefined' && CURRENT_USER_ID) || null;
+  if (!agentId) { try { const { data: { user } } = await sb.auth.getUser(); agentId = user && user.id; } catch (_) { } }
+  if (!agentId) { toast('未登录,无法手动收货', 'err'); return; }
+
+  const so = orderNo ? await _resolveShopifyByNo(orderNo) : null;
+  const liData = products.map(name => ({ sku: '', title_cn: name, title_en: name, variant: '', qty: 1, price: 0, subtotal: 0, is_custom: true, line_note: '手动收货' }));
+  const poNum = 'MR-' + date.replace(/-/g, '') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+  const row = {
+    agent_id: agentId, po_number: poNum, source: 'manual_receipt',
+    supplier, product: products.join(' / '), status: 'received',
+    line_items: liData, order_no: orderNo || '', site: '',
+    sales_order_id: so ? so.id : null,
+    creator_name: who || '手动', followups: [],
+    receipt_confirmed_at: confirmIso, receipt_confirmed_by: '跟单·' + who,
+  };
+
+  let inserted;
+  try {
+    const { data, error } = await sb.from('orders').insert(row).select('*').single();
+    if (error) throw error;
+    inserted = data;
+  } catch (e) { toast('手动收货失败:' + (e.message || e), 'err', 6000); return; }
+
+  let noteMsg = '';
+  if (so) {
+    const res = await _poWriteReceiptNote(inserted, { silent: true });
+    noteMsg = res.ok ? ' · 已写网站备注' : ` · ⚠ 网站备注未写(${res.reason || ''})`;
+  } else {
+    noteMsg = orderNo ? ' · ⚠ 未匹配到 Shopify 订单,只留收货记录' : ' · (无订单号,只留收货记录)';
+  }
+  toast('✓ 手动收货成功' + noteMsg, so ? 'ok' : 'warn', 6000);
+
+  RECEIPT.manual = false; RECEIPT.q = ''; RECEIPT.matches = []; RECEIPT.searched = false;
+  const inp = document.getElementById('receiptQuery'); if (inp) inp.value = '';
+  loadReceiptRecords().then(renderReceiptIntake);
+}
+
 function renderReceiptIntake() {
   const box = document.getElementById('receiptIntakeBox');
   if (!box) return;
@@ -5248,7 +5316,8 @@ function renderReceiptIntake() {
   if (RECEIPT.searched) {
     if (!RECEIPT.matches.length) {
       resultHtml = `<div style="margin-top:12px; padding:14px; background:rgba(220,38,38,0.04); border:1px dashed #fca5a5; border-radius:8px; font-size:13px; color:#b91c1c;">
-        未找到订单 <b>${escapeHtml(RECEIPT.q)}</b> 对应的采购单。请确认单号是否正确(客户单号如 PL3741,或 PO 号 CG-…)。</div>`;
+        未找到订单 <b>${escapeHtml(RECEIPT.q)}</b> 对应的采购单(可能不是跟单工作台下的 PO)。
+        <button onclick="receiptManualToggle()" style="margin-left:10px; padding:5px 12px; font-size:12.5px; border:1px solid #f59e0b; border-radius:7px; cursor:pointer; background:#f59e0b; color:#fff; font-weight:600;">✋ 手动收货</button></div>`;
     } else {
       const rows = RECEIPT.matches.map(p => {
         const received = _poReceived(p);
@@ -5301,7 +5370,24 @@ function renderReceiptIntake() {
         <input id="receiptDate" type="date" value="${RECEIPT.date}" max="${today}" onchange="receiptSetDate(this.value)"
           style="padding:9px 10px; font-size:13px; border:1px solid var(--border); border-radius:8px; background:var(--bg-card); color:var(--text-primary);">
         <button class="btn primary" onclick="receiptLookup()" style="padding:10px 18px; font-size:14px; font-weight:600;">🔍 匹配</button>
+        <button onclick="receiptManualToggle()" title="订单不是跟单工作台下的 PO 时,手动收货" style="padding:10px 14px; font-size:13px; border:1px solid #f59e0b; border-radius:8px; cursor:pointer; background:${RECEIPT.manual ? '#f59e0b' : 'var(--bg-card)'}; color:${RECEIPT.manual ? '#fff' : '#b45309'}; font-weight:600;">✋ 手动收货</button>
       </div>
+      ${RECEIPT.manual ? `
+      <div style="margin-top:12px; padding:14px; border:1.5px solid #f59e0b; border-radius:10px; background:rgba(245,158,11,0.05);">
+        <div style="font-size:13px; font-weight:600; color:#b45309; margin-bottom:4px;">✋ 手动收货(订单不是跟单下的 PO)</div>
+        <div style="font-size:11.5px; color:var(--text-tertiary); margin-bottom:10px;">填供应商 + 产品 + 回货日,系统建一条收货记录;订单编号填客户单号(如 PL3741),能匹配到 Shopify 订单就自动写网站备注。</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <input id="rmOrderNo" placeholder="订单编号 PL3741(可空)" value="${escapeHtml(RECEIPT.q)}" style="padding:9px 12px; font-size:13px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card); color:var(--text-primary);">
+          <input id="rmSupplier" placeholder="供应商 *" style="padding:9px 12px; font-size:13px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card); color:var(--text-primary);">
+        </div>
+        <textarea id="rmProducts" rows="2" placeholder="产品名 *(一行一个,多个产品分多行)" style="width:100%; box-sizing:border-box; margin-top:8px; padding:9px 12px; font-size:13px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card); color:var(--text-primary); resize:vertical; font-family:inherit;"></textarea>
+        <div style="display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap;">
+          <label style="font-size:12px; color:var(--text-secondary);">回货日</label>
+          <input id="rmDate" type="date" value="${RECEIPT.date}" max="${today}" style="padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card); color:var(--text-primary);">
+          <button class="btn primary" onclick="receiptManualSubmit()" style="padding:9px 16px; font-size:13.5px; font-weight:600;">✓ 手动收货并写备注</button>
+          <button onclick="receiptManualToggle()" style="padding:9px 14px; font-size:13px; border:1px solid var(--border); border-radius:7px; cursor:pointer; background:var(--bg-card); color:var(--text-secondary);">取消</button>
+        </div>
+      </div>` : ''}
       ${resultHtml}
       ${recordsHtml}
     </div>`;
@@ -5311,6 +5397,8 @@ window.receiptConfirm = receiptConfirm;
 window.receiptToggleSel = receiptToggleSel;
 window.receiptSetDate = receiptSetDate;
 window.receiptUndo = receiptUndo;
+window.receiptManualToggle = receiptManualToggle;
+window.receiptManualSubmit = receiptManualSubmit;
 window.rrecSet = rrecSet;
 window.rrecToggleSort = rrecToggleSort;
 window.rrecGoPage = rrecGoPage;

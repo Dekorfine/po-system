@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260629-manual-receive',
+    date: '2026-06-29',
+    type: 'feature',
+    title: '✋ 手动收货(订单不是跟单工作台下的 PO)',
+    notes: [
+      '匹配不到 PO 时(订单非跟单下单)→「✋ 手动收货」:填供应商+产品(一行一个)+回货日',
+      '建 source=manual_receipt 的已收货行进收货记录;订单编号填客户单号(PL3741)能匹配 shopify_orders 就自动写网站备注「供应商 产品 M.D已回」',
+      '匹配不到 Shopify 订单时仍留收货记录(提示备注未写);输入框旁常驻「✋ 手动收货」按钮',
+    ],
+    files: ['po.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260629-receive-undo',
     date: '2026-06-29',
     type: 'feature',
