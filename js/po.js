@@ -4955,11 +4955,196 @@ async function poRevert(poId, prevStatus, prevLabel) {
 }
 
 // ============================================================
+// V20260629:跟单收货录入(新逻辑——跟单收货,不依赖财务,月清单也能收)
+//   输客户单号 PL3741(兼容 PO 号 CG-…)→ 匹配该单名下各供应商 PO
+//   → 勾选今天回厂的 → 自动写网站备注 {供应商} {产品名} {M.D}已回 + 标记已收货
+//   财务录日清单匹配订单时,读 receipt_confirmed_at/by 即知"已收货"(无需主动通知)
+// ============================================================
+const RECEIPT = { date: '', q: '', matches: [], selected: {}, searched: false };
+
+function _receiptToday() { const b = new Date(Date.now() + 8 * 3600 * 1000); return b.toISOString().slice(0, 10); }
+function _normOrderNo(s) { return String(s || '').replace(/^#/, '').trim().toUpperCase(); }
+function _poReceived(p) { return !!p && !!p.receipt_confirmed_at; }
+function _receiptProds(p) {
+  const items = (p && p.line_items) || [];
+  return items.map(li => li.title_en || li.title_cn || li.sku || '产品').join('、') || (p && p.product) || '—';
+}
+
+async function receiptLookup() {
+  const inp = document.getElementById('receiptQuery');
+  const q = (inp && inp.value || '').trim();
+  if (!q) { toast('请输入订单编号(如 PL3741 或 CG-…)', 'warn'); return; }
+  RECEIPT.q = q; RECEIPT.searched = true;
+  const norm = _normOrderNo(q);
+  const isPo = /^CG-/i.test(q);
+  let pos = Array.isArray(PO_LIST) ? PO_LIST : [];
+  let matched = isPo
+    ? pos.filter(p => (p.po_number || '').toUpperCase() === q.toUpperCase())
+    : pos.filter(p => _normOrderNo(p.order_no) === norm || _normOrderNo(p.box_note) === norm);
+
+  // 缓存没命中 → 查库(客户单号可能不在已加载的 500 条里)
+  if (!matched.length) {
+    try {
+      const orClause = isPo
+        ? `po_number.eq.${q}`
+        : `order_no.ilike.%${norm}%,box_note.ilike.%${norm}%`;
+      const { data } = await sb.from('orders').select('*').not('po_number', 'is', null).or(orClause).limit(30);
+      const hits = (data || []).filter(p => isPo
+        ? (p.po_number || '').toUpperCase() === q.toUpperCase()
+        : _normOrderNo(p.order_no) === norm || _normOrderNo(p.box_note) === norm);
+      // 并入 PO_LIST(去重)
+      hits.forEach(h => { if (!pos.find(x => x.id === h.id)) pos.push(h); });
+      matched = hits;
+    } catch (e) { console.warn('[收货] 查库失败', e); }
+  }
+  // 同一供应商可能拆多 PO,按 PO 号排序展示
+  matched.sort((a, b) => (a.po_number || '').localeCompare(b.po_number || ''));
+  RECEIPT.matches = matched;
+  RECEIPT.selected = {};
+  matched.forEach(p => { if (!_poReceived(p)) RECEIPT.selected[p.id] = true; });  // 默认勾选未收货的
+  renderReceiptIntake();
+}
+
+function receiptToggleSel(id) { RECEIPT.selected[id] = !RECEIPT.selected[id]; renderReceiptIntake(); }
+function receiptSetDate(v) { RECEIPT.date = v || _receiptToday(); }
+
+async function receiptConfirm() {
+  const sel = RECEIPT.matches.filter(p => RECEIPT.selected[p.id] && !_poReceived(p));
+  if (!sel.length) { toast('请勾选今天回厂的供应商(已收货的不会重复处理)', 'warn'); return; }
+  const date = RECEIPT.date || _receiptToday();
+  const who = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) || '';
+  const confirmIso = `${date}T12:00:00+08:00`;  // 该回货日北京中午,转 M.D 稳定
+  const nowIso = new Date().toISOString();
+  let done = 0, failed = 0, noteFail = 0;
+  for (const po of sel) {
+    try {
+      // 1) 标记已收货(跟单)——财务匹配订单时读这两列即知已收货
+      await sb.from('orders').update({
+        status: 'received',
+        receipt_confirmed_at: confirmIso,
+        receipt_confirmed_by: '跟单·' + who,
+        updated_at: nowIso,
+      }).eq('id', po.id);
+      po.status = 'received';
+      po.receipt_confirmed_at = confirmIso;
+      po.receipt_confirmed_by = '跟单·' + who;
+      po.receipt_note_synced_at = null;
+      done++;
+      // 2) 写网站备注 {供应商} {产品名} {M.D}已回(多次收货换行累加,去重)
+      const res = await _poWriteReceiptNote(po, { silent: true });
+      if (!res.ok && res.reason === 'write_failed') noteFail++;
+    } catch (e) {
+      console.error('[收货] 失败', po.po_number, e); failed++;
+    }
+  }
+  let msg = `✓ 已收货 ${done} 单`;
+  if (noteFail) msg += ` · ${noteFail} 单网站备注未写成功(看控制台)`;
+  if (failed) msg += ` · ${failed} 单异常`;
+  toast(msg, (noteFail || failed) ? 'warn' : 'ok', 5000);
+  // 清空输入,聚焦,接着录下一单
+  RECEIPT.matches = []; RECEIPT.selected = {}; RECEIPT.q = ''; RECEIPT.searched = false;
+  const inp = document.getElementById('receiptQuery');
+  if (inp) { inp.value = ''; inp.focus(); }
+  renderReceiptIntake();
+  try { renderFinanceList(); } catch (_) { }
+}
+
+function renderReceiptIntake() {
+  const box = document.getElementById('receiptIntakeBox');
+  if (!box) return;
+  if (!RECEIPT.date) RECEIPT.date = _receiptToday();
+  const today = _receiptToday();
+
+  // 匹配结果区
+  let resultHtml = '';
+  if (RECEIPT.searched) {
+    if (!RECEIPT.matches.length) {
+      resultHtml = `<div style="margin-top:12px; padding:14px; background:rgba(220,38,38,0.04); border:1px dashed #fca5a5; border-radius:8px; font-size:13px; color:#b91c1c;">
+        未找到订单 <b>${escapeHtml(RECEIPT.q)}</b> 对应的采购单。请确认单号是否正确(客户单号如 PL3741,或 PO 号 CG-…)。</div>`;
+    } else {
+      const rows = RECEIPT.matches.map(p => {
+        const received = _poReceived(p);
+        const md = received ? _poBeijingMD(p.receipt_confirmed_at) : '';
+        const checked = RECEIPT.selected[p.id] ? 'checked' : '';
+        return `<label style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border:1px solid ${received ? 'var(--border)' : 'rgba(37,99,235,0.25)'}; border-radius:8px; margin-bottom:8px; background:${received ? 'var(--bg-elevated)' : 'var(--bg-card)'}; cursor:${received ? 'default' : 'pointer'}; opacity:${received ? 0.7 : 1};">
+          <input type="checkbox" ${checked} ${received ? 'disabled' : ''} onchange="receiptToggleSel('${p.id}')" style="margin-top:3px; width:16px; height:16px; cursor:${received ? 'default' : 'pointer'};">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:13.5px; font-weight:600; color:var(--text-primary);">
+              ${escapeHtml(p.supplier || '未填供应商')}
+              <span style="font-weight:400; color:var(--text-secondary); margin-left:6px;">${escapeHtml(_receiptProds(p))}</span>
+            </div>
+            <div style="font-size:11.5px; color:var(--text-tertiary); margin-top:3px; font-family:var(--font-mono);">
+              ${escapeHtml(p.po_number || '')} · 客户单 ${escapeHtml(p.order_no || '—')}
+              ${received ? `<span style="color:#16a34a; font-weight:600; margin-left:8px;">✓ 已收货 ${md}（${escapeHtml(p.receipt_confirmed_by || '')}）</span>` : ''}
+            </div>
+          </div>
+        </label>`;
+      }).join('');
+      const selCnt = RECEIPT.matches.filter(p => RECEIPT.selected[p.id] && !_poReceived(p)).length;
+      resultHtml = `
+        <div style="margin-top:12px;">
+          <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">
+            订单 <b>${escapeHtml(RECEIPT.q)}</b> 名下 <b>${RECEIPT.matches.length}</b> 个供应商采购单,勾选<b>今天回厂</b>的:
+          </div>
+          ${rows}
+          <div style="display:flex; align-items:center; gap:12px; margin-top:10px;">
+            <button class="btn primary" ${selCnt ? '' : 'disabled'} onclick="receiptConfirm()"
+              style="padding:9px 18px; font-size:13.5px; font-weight:600; ${selCnt ? '' : 'opacity:0.5; cursor:not-allowed;'}">
+              ✓ 确认收货并同步网站备注${selCnt ? `(${selCnt})` : ''}
+            </button>
+            <span style="font-size:11.5px; color:var(--text-tertiary);">回货日按上方日期 · 备注格式「供应商 产品名 ${RECEIPT.date.slice(5).replace('-', '.')}已回」</span>
+          </div>
+        </div>`;
+    }
+  }
+
+  // 今日已收货(参考)
+  const allPo = Array.isArray(PO_LIST) ? PO_LIST : [];
+  const todayDone = allPo.filter(p => _poReceived(p) && _poBeijingMD(p.receipt_confirmed_at) === _poBeijingMD(`${today}T12:00:00+08:00`) && (p.receipt_confirmed_by || '').startsWith('跟单'))
+    .sort((a, b) => (b.receipt_confirmed_at || '').localeCompare(a.receipt_confirmed_at || ''));
+  const todayHtml = todayDone.length ? `
+    <div style="margin-top:18px;">
+      <div style="font-size:12.5px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">📋 今日已收货 ${todayDone.length} 单(跟单录入)</div>
+      ${todayDone.slice(0, 30).map(p => `
+        <div style="display:flex; align-items:center; gap:10px; padding:7px 12px; border-bottom:1px solid var(--border); font-size:12.5px;">
+          <span style="color:#16a34a;">✓</span>
+          <b style="color:var(--text-primary);">${escapeHtml(p.supplier || '—')}</b>
+          <span style="color:var(--text-secondary); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(_receiptProds(p))}</span>
+          <span style="font-family:var(--font-mono); color:var(--text-tertiary); font-size:11px;">${escapeHtml(p.order_no || p.po_number || '')}</span>
+          <span style="color:var(--text-tertiary); font-size:11px;">${_poBeijingMD(p.receipt_confirmed_at)}</span>
+        </div>`).join('')}
+    </div>` : '';
+
+  box.innerHTML = `
+    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px 18px;">
+      <div style="font-size:15px; font-weight:700; color:var(--text-primary); margin-bottom:4px;">📦 跟单收货录入</div>
+      <div style="font-size:12px; color:var(--text-tertiary); margin-bottom:14px;">司机回厂当天,输订单编号录收货 → 自动在网站后台订单备注追加「已回」+ 标记已收货(供财务对账参考)。月清单也能正常收。</div>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <input id="receiptQuery" type="text" placeholder="输入订单编号:PL3741(客户单)或 CG-…(PO号)" value="${escapeHtml(RECEIPT.q)}"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();receiptLookup();}"
+          style="flex:1; min-width:260px; padding:10px 14px; font-size:14px; border:1.5px solid var(--accent); border-radius:8px; background:var(--bg-elevated); color:var(--text-primary);">
+        <label style="font-size:12px; color:var(--text-secondary);">回货日</label>
+        <input id="receiptDate" type="date" value="${RECEIPT.date}" max="${today}" onchange="receiptSetDate(this.value)"
+          style="padding:9px 10px; font-size:13px; border:1px solid var(--border); border-radius:8px; background:var(--bg-card); color:var(--text-primary);">
+        <button class="btn primary" onclick="receiptLookup()" style="padding:10px 18px; font-size:14px; font-weight:600;">🔍 匹配</button>
+      </div>
+      ${resultHtml}
+      ${todayHtml}
+    </div>`;
+}
+window.receiptLookup = receiptLookup;
+window.receiptConfirm = receiptConfirm;
+window.receiptToggleSel = receiptToggleSel;
+window.receiptSetDate = receiptSetDate;
+
+// ============================================================
 // V4：财务收货模块（独立 tab）
 // 显示所有 status='arrived' 的 PO，财务对账后推进到 'received'
 // 推进时自动追加备注到 Shopify 订单后台（不覆盖客户原备注）
 // ============================================================
 async function renderFinance() {
+  // V20260629:跟单收货录入(新主入口)
+  try { renderReceiptIntake(); } catch (_) { }
   // V20260527f: 先渲染一次(用已有数据 · 即使空也展示统计 + 空状态)
   // 避免拉数据失败时 tab 完全空白
   try { renderFinanceList(); } catch (_) { /* 容器还没就绪 */ }
@@ -4977,6 +5162,7 @@ async function renderFinance() {
       await SHOPIFY.loadOrdersFromDB(false).catch(() => {});
     }
     renderFinanceList();
+    try { renderReceiptIntake(); } catch (_) { }
     // V20260628:财务确认收货后自动补写 Shopify 备注(扫已确认但未同步备注的 PO)
     _poAutoSyncReceiptNotes();
   } catch (e) {
