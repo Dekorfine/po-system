@@ -10,6 +10,17 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260628-finance-tab-hotfix',
+    date: '2026-06-28',
+    type: 'fix',
+    title: '🔧 修复财务收货 tab 加载失败(_financeDatePreset 未定义)',
+    notes: [
+      '上一版挂自动补写时误删了 let _financeDatePreset = "all" 声明,导致整个财务收货页 ReferenceError 加载失败',
+      '补回声明,tab 恢复正常',
+    ],
+    files: ['po.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260628-receipt-note-sync',
     date: '2026-06-28',
     type: 'fix',

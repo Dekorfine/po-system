@@ -5021,6 +5021,9 @@ async function _poAutoSyncReceiptNotes() {
 }
 
 
+// V20260526e: 财务日期筛选
+let _financeDatePreset = 'all';
+
 function financeOnDateChange(preset) {
   if (preset === 'custom_open') {
     if (typeof openCustomDateRange === 'function') {
