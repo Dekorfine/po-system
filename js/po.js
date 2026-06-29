@@ -5047,6 +5047,132 @@ async function receiptConfirm() {
   if (inp) { inp.value = ''; inp.focus(); }
   renderReceiptIntake();
   try { renderFinanceList(); } catch (_) { }
+  loadReceiptRecords().then(renderReceiptIntake);  // 刷新收货记录区
+}
+
+// ── 收货记录管理(全部已收货 · 时间/收货人/搜索/排序/分页)──
+let RECEIPT_RECORDS = [];
+const RREC = { time: 'week', by: '', q: '', sort: 'desc', page: 0, size: 20 };
+
+function _poBeijingDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso); if (isNaN(d)) return '';
+  return new Date(d.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+async function loadReceiptRecords() {
+  try {
+    const { data, error } = await sb.from('orders')
+      .select('id,po_number,order_no,supplier,line_items,product,receipt_confirmed_at,receipt_confirmed_by,total_amount')
+      .not('receipt_confirmed_at', 'is', null)
+      .order('receipt_confirmed_at', { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+    RECEIPT_RECORDS = data || [];
+  } catch (e) { console.warn('[收货记录] 加载失败', e); }
+}
+
+function _rrecFiltered() {
+  const todayStr = _receiptToday();
+  const d = new Date(Date.now() + 8 * 3600 * 1000);
+  const yest = new Date(d.getTime() - 86400000).toISOString().slice(0, 10);
+  const dow = (d.getUTCDay() + 6) % 7;  // 周一=0
+  const weekStart = new Date(d.getTime() - dow * 86400000).toISOString().slice(0, 10);
+  const monthStart = todayStr.slice(0, 7) + '-01';
+  const kw = (RREC.q || '').trim().toLowerCase();
+  let list = (RECEIPT_RECORDS || []).filter(p => {
+    const bd = _poBeijingDate(p.receipt_confirmed_at);
+    if (RREC.time === 'today' && bd !== todayStr) return false;
+    if (RREC.time === 'yesterday' && bd !== yest) return false;
+    if (RREC.time === 'week' && bd < weekStart) return false;
+    if (RREC.time === 'month' && bd < monthStart) return false;
+    if (RREC.by && (p.receipt_confirmed_by || '') !== RREC.by) return false;
+    if (kw) {
+      const hay = [p.order_no, p.po_number, p.supplier, _receiptProds(p), p.receipt_confirmed_by]
+        .map(x => String(x || '').toLowerCase()).join(' ');
+      if (!hay.includes(kw)) return false;
+    }
+    return true;
+  });
+  list.sort((a, b) => {
+    const x = a.receipt_confirmed_at || '', y = b.receipt_confirmed_at || '';
+    return RREC.sort === 'asc' ? x.localeCompare(y) : y.localeCompare(x);
+  });
+  return list;
+}
+
+function rrecSet(k, v) { RREC[k] = v; RREC.page = 0; renderReceiptIntake(); }
+function rrecToggleSort() { RREC.sort = RREC.sort === 'desc' ? 'asc' : 'desc'; renderReceiptIntake(); }
+function rrecGoPage(p) { RREC.page = p; renderReceiptIntake(); }
+
+function _rrecPager(total, pos) {
+  const pages = Math.max(1, Math.ceil(total / RREC.size));
+  if (pages <= 1) return '';
+  const cur = Math.min(RREC.page, pages - 1);
+  const btn = (label, p, dis, active) =>
+    `<button ${dis ? 'disabled' : ''} onclick="rrecGoPage(${p})" style="min-width:30px; padding:4px 8px; font-size:12px; border:1px solid var(--border); border-radius:6px; cursor:${dis ? 'default' : 'pointer'}; background:${active ? 'var(--accent)' : 'var(--bg-card)'}; color:${active ? '#fff' : 'var(--text-secondary)'}; ${dis ? 'opacity:0.4;' : ''}">${label}</button>`;
+  let nums = [];
+  const lo = Math.max(0, cur - 2), hi = Math.min(pages - 1, cur + 2);
+  for (let i = lo; i <= hi; i++) nums.push(btn(i + 1, i, false, i === cur));
+  return `<div style="display:flex; align-items:center; gap:4px; justify-content:center; flex-wrap:wrap; padding:8px 0;">
+    ${btn('«', 0, cur === 0)}${btn('‹', cur - 1, cur === 0)}
+    ${lo > 0 ? '<span style="color:var(--text-tertiary);">…</span>' : ''}
+    ${nums.join('')}
+    ${hi < pages - 1 ? '<span style="color:var(--text-tertiary);">…</span>' : ''}
+    ${btn('›', cur + 1, cur >= pages - 1)}${btn('»', pages - 1, cur >= pages - 1)}
+    <span style="font-size:11px; color:var(--text-tertiary); margin-left:6px;">第 ${cur + 1}/${pages} 页 · 共 ${total} 单</span>
+  </div>`;
+}
+
+function renderReceiptRecords() {
+  const list = _rrecFiltered();
+  const total = list.length;
+  const pages = Math.max(1, Math.ceil(total / RREC.size));
+  if (RREC.page >= pages) RREC.page = pages - 1;
+  const pageRows = list.slice(RREC.page * RREC.size, RREC.page * RREC.size + RREC.size);
+
+  // 收货人下拉(全部记录里去重)
+  const byOpts = [...new Set((RECEIPT_RECORDS || []).map(p => p.receipt_confirmed_by).filter(Boolean))].sort();
+  const timeChips = [['all', '全部'], ['today', '今天'], ['yesterday', '昨天'], ['week', '本周'], ['month', '本月']]
+    .map(([k, l]) => `<button onclick="rrecSet('time','${k}')" style="padding:5px 12px; font-size:12px; border:1px solid ${RREC.time === k ? 'var(--accent)' : 'var(--border)'}; border-radius:14px; cursor:pointer; background:${RREC.time === k ? 'var(--accent)' : 'var(--bg-card)'}; color:${RREC.time === k ? '#fff' : 'var(--text-secondary)'}; font-weight:${RREC.time === k ? 600 : 400};">${l}</button>`).join('');
+
+  const filterBar = `
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+      ${timeChips}
+      <span style="width:1px; height:18px; background:var(--border); margin:0 2px;"></span>
+      <select onchange="rrecSet('by',this.value)" style="padding:5px 8px; font-size:12px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card); color:var(--text-primary);">
+        <option value="">全部收货人</option>
+        ${byOpts.map(b => `<option value="${escapeHtml(b)}" ${RREC.by === b ? 'selected' : ''}>${escapeHtml(b)}</option>`).join('')}
+      </select>
+      <input type="text" placeholder="搜索 订单号/供应商/产品/收货人…" value="${escapeHtml(RREC.q)}"
+        oninput="RREC.q=this.value; RREC.page=0; clearTimeout(window.__rrecT); window.__rrecT=setTimeout(renderReceiptIntake,250);"
+        style="flex:1; min-width:200px; padding:6px 12px; font-size:12.5px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card); color:var(--text-primary);">
+      <button onclick="rrecToggleSort()" style="padding:5px 10px; font-size:12px; border:1px solid var(--border); border-radius:7px; cursor:pointer; background:var(--bg-card); color:var(--text-secondary);">收货时间 ${RREC.sort === 'desc' ? '↓' : '↑'}</button>
+    </div>`;
+
+  const rowsHtml = total === 0
+    ? `<div style="padding:30px; text-align:center; font-size:12.5px; color:var(--text-tertiary);">该筛选下暂无收货记录</div>`
+    : pageRows.map(p => `
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--border); font-size:12.5px;">
+          <span style="color:#16a34a;">✓</span>
+          <b style="color:var(--text-primary); min-width:64px;">${escapeHtml(p.supplier || '—')}</b>
+          <span style="color:var(--text-secondary); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(_receiptProds(p))}">${escapeHtml(_receiptProds(p))}</span>
+          <span style="font-family:var(--font-mono); color:var(--text-tertiary); font-size:11px; min-width:70px;">${escapeHtml(p.order_no || p.po_number || '')}</span>
+          <span style="color:var(--text-secondary); font-size:11px; min-width:54px;">${escapeHtml((p.receipt_confirmed_by || '').replace(/^跟单·|^财务·/, ''))}</span>
+          <span style="color:var(--text-tertiary); font-size:11px; min-width:64px; text-align:right;">${_poBeijingDate(p.receipt_confirmed_at).slice(5).replace('-', '/')} ${escapeHtml((p.receipt_confirmed_by || '').startsWith('财务') ? '· 财务' : '')}</span>
+        </div>`).join('');
+
+  return `
+    <div style="margin-top:18px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+        <div style="font-size:13px; font-weight:600; color:var(--text-secondary);">📋 收货记录</div>
+        <button class="btn small" onclick="loadReceiptRecords().then(renderReceiptIntake)" style="padding:4px 10px; font-size:11px;">🔄 刷新</button>
+      </div>
+      ${filterBar}
+      ${_rrecPager(total, 'top')}
+      <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">${rowsHtml}</div>
+      ${_rrecPager(total, 'bottom')}
+    </div>`;
 }
 
 function renderReceiptIntake() {
@@ -5098,22 +5224,8 @@ function renderReceiptIntake() {
     }
   }
 
-  // 今日已收货(参考)
-  const allPo = Array.isArray(PO_LIST) ? PO_LIST : [];
-  const todayDone = allPo.filter(p => _poReceived(p) && _poBeijingMD(p.receipt_confirmed_at) === _poBeijingMD(`${today}T12:00:00+08:00`) && (p.receipt_confirmed_by || '').startsWith('跟单'))
-    .sort((a, b) => (b.receipt_confirmed_at || '').localeCompare(a.receipt_confirmed_at || ''));
-  const todayHtml = todayDone.length ? `
-    <div style="margin-top:18px;">
-      <div style="font-size:12.5px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">📋 今日已收货 ${todayDone.length} 单(跟单录入)</div>
-      ${todayDone.slice(0, 30).map(p => `
-        <div style="display:flex; align-items:center; gap:10px; padding:7px 12px; border-bottom:1px solid var(--border); font-size:12.5px;">
-          <span style="color:#16a34a;">✓</span>
-          <b style="color:var(--text-primary);">${escapeHtml(p.supplier || '—')}</b>
-          <span style="color:var(--text-secondary); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(_receiptProds(p))}</span>
-          <span style="font-family:var(--font-mono); color:var(--text-tertiary); font-size:11px;">${escapeHtml(p.order_no || p.po_number || '')}</span>
-          <span style="color:var(--text-tertiary); font-size:11px;">${_poBeijingMD(p.receipt_confirmed_at)}</span>
-        </div>`).join('')}
-    </div>` : '';
+  // 收货记录管理区(时间/收货人/搜索/排序/分页)
+  const recordsHtml = renderReceiptRecords();
 
   box.innerHTML = `
     <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px 18px;">
@@ -5129,13 +5241,18 @@ function renderReceiptIntake() {
         <button class="btn primary" onclick="receiptLookup()" style="padding:10px 18px; font-size:14px; font-weight:600;">🔍 匹配</button>
       </div>
       ${resultHtml}
-      ${todayHtml}
+      ${recordsHtml}
     </div>`;
 }
 window.receiptLookup = receiptLookup;
 window.receiptConfirm = receiptConfirm;
 window.receiptToggleSel = receiptToggleSel;
 window.receiptSetDate = receiptSetDate;
+window.rrecSet = rrecSet;
+window.rrecToggleSort = rrecToggleSort;
+window.rrecGoPage = rrecGoPage;
+window.loadReceiptRecords = loadReceiptRecords;
+window.RREC = RREC;
 
 // ============================================================
 // V4：财务收货模块（独立 tab）
@@ -5162,6 +5279,7 @@ async function renderFinance() {
       await SHOPIFY.loadOrdersFromDB(false).catch(() => {});
     }
     renderFinanceList();
+    await loadReceiptRecords();
     try { renderReceiptIntake(); } catch (_) { }
     // V20260628:财务确认收货后自动补写 Shopify 备注(扫已确认但未同步备注的 PO)
     _poAutoSyncReceiptNotes();
