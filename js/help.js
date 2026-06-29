@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260629-receive-undo',
+    date: '2026-06-29',
+    type: 'feature',
+    title: '↩ 撤销收货(录错纠正)',
+    notes: [
+      '收货记录每行加「↩ 撤销」:确认弹层 → 状态退回「已到货」、清除收货标记、从记录移除',
+      '网站备注:Woo 单(mooielight)自动删除该「已回」行;Shopify 单给出该行提示手动删(append-only 限制)',
+      '写入与撤销共用 _poReceiptNoteLines,保证删除的文本与当初写入完全一致',
+    ],
+    files: ['po.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260629-receive-records-manager',
     date: '2026-06-29',
     type: 'feature',

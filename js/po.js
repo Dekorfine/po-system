@@ -4831,6 +4831,15 @@ function _poBeijingMD(iso) {
   return `${b.getUTCMonth() + 1}.${b.getUTCDate()}`;
 }
 
+// 生成该 PO 的「已回」备注行(写入与撤销删除共用,保证文本一致)
+function _poReceiptNoteLines(po) {
+  const md = _poBeijingMD(po.receipt_confirmed_at || new Date().toISOString());
+  const items = (po && po.line_items) || [];
+  let lines = items.map(li => `${po.supplier || '供应商'} ${li.title_en || li.title_cn || li.sku || '产品'} ${md}已回`);
+  if (!lines.length) lines = [`${po.supplier || '供应商'} ${md}已回`];
+  return lines;
+}
+
 // ── 组装并写入「收货已回」备注到对应 Shopify/Woo 订单 ──
 // 格式:每个产品一行 `{供应商} {title_en} {M.D}已回`(M.D 取 receipt_confirmed_at 北京时间,无则今天)
 // 修静默跳过:销售单不在缓存就按 sales_order_id 从 shopify_orders 表即时拉
@@ -4860,12 +4869,7 @@ async function _poWriteReceiptNote(po, opts = {}) {
   }
 
   const md = _poBeijingMD(po.receipt_confirmed_at || new Date().toISOString());
-  const items = po.line_items || [];
-  let lines = items.map(li => {
-    const name = li.title_en || li.title_cn || li.sku || '产品';
-    return `${po.supplier || '供应商'} ${name} ${md}已回`;
-  });
-  if (!lines.length) lines = [`${po.supplier || '供应商'} ${md}已回`];
+  let lines = _poReceiptNoteLines(po);
   if (extraNote && extraNote.trim()) lines.push(`  备注:${extraNote.trim()}`);
   const appendText = lines.join('\n');
 
@@ -5050,6 +5054,63 @@ async function receiptConfirm() {
   loadReceiptRecords().then(renderReceiptIntake);  // 刷新收货记录区
 }
 
+// ── 撤销收货(录错纠正)──
+// DB 退回(状态→arrived,清 receipt_confirmed_*/synced);网站备注:Woo 自动删行,Shopify 给出该行手动删
+async function receiptUndo(poId) {
+  let po = (RECEIPT_RECORDS || []).find(p => String(p.id) === String(poId))
+        || (Array.isArray(PO_LIST) ? PO_LIST.find(p => String(p.id) === String(poId)) : null);
+  if (!po) { toast('未找到该收货记录', 'err'); return; }
+  const lines = _poReceiptNoteLines(po);
+  const linesText = lines.join('\n');
+
+  // 解析销售单(判断 Woo/Shopify + 拿当前备注)
+  let so = (typeof SHOPIFY !== 'undefined' && SHOPIFY._orders) ? SHOPIFY._orders.find(o => o.id === po.sales_order_id) : null;
+  if (!so && po.sales_order_id) {
+    try { const { data } = await sb.from('shopify_orders').select('id,shopify_order_id,shopify_order_number,shop_domain,platform,customer_note,raw_payload').eq('id', po.sales_order_id).maybeSingle(); so = data || null; } catch (_) { }
+  }
+  const isWoo = so && (so.platform === 'woo' || (so.shop_domain && so.shop_domain.includes('mooielight')));
+
+  const ok = await window.confirmDialog({
+    title: `↩ 撤销收货:${po.supplier || ''} ${po.order_no || po.po_number || ''}`,
+    message: `将执行:\n• 状态退回「已到货」、清除收货标记\n• 该单从收货记录移除\n${isWoo ? '• 自动从网站备注删除以下行:' : '• ⚠ Shopify 备注无法自动删,请到后台手动删除以下行:'}\n${'─'.repeat(30)}\n${linesText}\n${'─'.repeat(30)}\n\n确认撤销?`,
+    okText: '确认撤销',
+    cancelText: '取消',
+    danger: true,
+  });
+  if (!ok) return;
+
+  // 1) DB 退回
+  try {
+    await sb.from('orders').update({
+      status: 'arrived',
+      receipt_confirmed_at: null,
+      receipt_confirmed_by: null,
+      receipt_note_synced_at: null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', po.id);
+    po.status = 'arrived'; po.receipt_confirmed_at = null; po.receipt_confirmed_by = null; po.receipt_note_synced_at = null;
+  } catch (e) { toast('撤销失败(状态退回出错):' + (e.message || e), 'err', 6000); return; }
+
+  // 2) 网站备注
+  if (isWoo && so && so.shopify_order_id) {
+    try {
+      const oldNote = (so.customer_note || (so.raw_payload && so.raw_payload.customer_note) || '');
+      const lineSet = new Set(lines);
+      const newNote = oldNote.split('\n').filter(l => !lineSet.has(l.trim())).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+      const wooStoreId = (so.shop_domain || '').replace(/^https?:\/\//, '').replace(/\..*$/, '');
+      await SHOPIFY.callWoo('update_order', { id: so.shopify_order_id, data: { customer_note: newNote } }, wooStoreId);
+      toast('✓ 已撤销收货,并从网站备注删除该行', 'ok', 5000);
+    } catch (e) {
+      toast('✓ 已退回状态,但网站备注删除失败,请手动删:' + linesText, 'warn', 8000);
+    }
+  } else {
+    // Shopify:只能手动删
+    toast(`✓ 已撤销收货(状态已退回)。请到 Shopify 后台手动删除备注行:${linesText}`, 'warn', 9000);
+  }
+
+  loadReceiptRecords().then(renderReceiptIntake);
+}
+
 // ── 收货记录管理(全部已收货 · 时间/收货人/搜索/排序/分页)──
 let RECEIPT_RECORDS = [];
 const RREC = { time: 'week', by: '', q: '', sort: 'desc', page: 0, size: 20 };
@@ -5160,6 +5221,7 @@ function renderReceiptRecords() {
           <span style="font-family:var(--font-mono); color:var(--text-tertiary); font-size:11px; min-width:70px;">${escapeHtml(p.order_no || p.po_number || '')}</span>
           <span style="color:var(--text-secondary); font-size:11px; min-width:54px;">${escapeHtml((p.receipt_confirmed_by || '').replace(/^跟单·|^财务·/, ''))}</span>
           <span style="color:var(--text-tertiary); font-size:11px; min-width:64px; text-align:right;">${_poBeijingDate(p.receipt_confirmed_at).slice(5).replace('-', '/')} ${escapeHtml((p.receipt_confirmed_by || '').startsWith('财务') ? '· 财务' : '')}</span>
+          <button onclick="receiptUndo('${p.id}')" title="撤销收货" style="padding:3px 8px; font-size:11px; border:1px solid var(--border); border-radius:6px; cursor:pointer; background:var(--bg-card); color:#dc2626;">↩ 撤销</button>
         </div>`).join('');
 
   return `
@@ -5248,6 +5310,7 @@ window.receiptLookup = receiptLookup;
 window.receiptConfirm = receiptConfirm;
 window.receiptToggleSel = receiptToggleSel;
 window.receiptSetDate = receiptSetDate;
+window.receiptUndo = receiptUndo;
 window.rrecSet = rrecSet;
 window.rrecToggleSort = rrecToggleSort;
 window.rrecGoPage = rrecGoPage;
