@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260630-催单-标记已到货',
+    date: '2026-06-30',
+    type: 'change',
+    title: '🚚 催单按钮:两段式发货/到货 → 一键「标记已到货」',
+    notes: [
+      '催单只关心「货到没到」,原来的 生产中→标记发货→已发货→确认到货 两段式语义不对',
+      'quickCompleteOrder 改为一键直接标 arrived(写 arrived_date),按钮文案统一「✓ 标记已到货」',
+      '到货后自动从催单列表移除(状态 arrived 不再进催单)',
+    ],
+    files: ['orders.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260630-qc-item-image',
     date: '2026-06-30',
     type: 'change',

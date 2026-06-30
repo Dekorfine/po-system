@@ -435,7 +435,7 @@ function _renderOrderCard(o, i) {
           ${o.site ? `<span class="site">🌐 ${escapeHtml(o.site)}</span>` : ''}
           ${o.nextFollow ? `<span class="date" style="color:#dc2626;">⏰ 下次 ${escapeHtml(o.nextFollow)}</span>` : ''}
         </div>
-        ${o.status !== 'arrived' ? `<button class="btn small" style="margin-top:8px;width:100%;font-size:12px;padding:5px;background:rgba(22,163,74,0.1);border-color:rgba(22,163,74,0.4);color:#16a34a;" title="${o.status === 'shipped' ? '已发货 → 已到货' : '标为已发货'}" onclick="event.stopPropagation(); quickCompleteOrder('${o._id}', '${escapeHtml(o._agent || '')}')">✓ ${o.status === 'shipped' ? '确认到货' : '标记发货'}</button>` : ''}
+        ${o.status !== 'arrived' ? `<button class="btn small" style="margin-top:8px;width:100%;font-size:12px;padding:5px;background:rgba(22,163,74,0.1);border-color:rgba(22,163,74,0.4);color:#16a34a;" title="标记为已到货(催单完成)" onclick="event.stopPropagation(); quickCompleteOrder('${o._id}', '${escapeHtml(o._agent || '')}')">✓ 标记已到货</button>` : ''}
       </div>
     </div>
   `;
@@ -1149,20 +1149,12 @@ async function quickCompleteOrder(id, agent) {
     return;
   }
 
-  let nextStatus, dateCol, dateField, nextLabel, msg;
-  if (o.status === 'shipped') {
-    nextStatus = 'arrived';
-    dateCol = 'arrived_date';
-    dateField = 'arrivedDate';
-    nextLabel = '已到货';
-    msg = `${noun} ${o.orderNo} 已经收到货？\n\n会标记为：✓ 已到货\n到货日期：${today}`;
-  } else {
-    nextStatus = 'shipped';
-    dateCol = 'shipped_date';
-    dateField = 'shippedDate';
-    nextLabel = '已发货';
-    msg = `${noun} ${o.orderNo} 已经发货？\n\n会标记为：✓ 已发货\n发货日期：${today}\n\n(发货后该单会自动从催单列表移除)`;
-  }
+  // V20260630:催单只关心「货到没到」— 一键直接标「已到货」(去掉中间"发货"那段)
+  const nextStatus = 'arrived';
+  const dateCol = 'arrived_date';
+  const dateField = 'arrivedDate';
+  const nextLabel = '已到货';
+  const msg = `${noun} ${o.orderNo} 已经收到货？\n\n会标记为：✓ 已到货\n到货日期：${today}\n\n(到货后该单会自动从催单列表移除)`;
 
   if (!confirm(msg)) return;
 
