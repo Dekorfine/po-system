@@ -25,18 +25,18 @@
 <link rel="preconnect" href="https://xyhbwqugbnowfjuhqhsj.supabase.co" crossorigin>
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <!-- 预加载首屏关键 JS(并行下载 · 浏览器优先级提高) -->
-<link rel="preload" href="js/core.js?v=20260626wm5" as="script">
+<link rel="preload" href="js/core.js?v=20260629modperms" as="script">
 <link rel="preload" href="js/utils.js?v=20260626edgelock" as="script">
 <link rel="preload" href="js/shopify.js?v=20260626woostatus" as="script">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="js/core.js?v=20260626wm5"></script>
+<script defer src="js/core.js?v=20260629modperms"></script>
 <script defer src="js/utils.js?v=20260626edgelock"></script>
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260629recvby"></script>
+<script defer src="js/help.js?v=20260629modperms"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -8530,6 +8530,15 @@ HOGO
           </div>
           <span style="color: var(--accent); font-size: 16px;">→</span>
         </button>
+      </div>
+      <!-- V20260629:员工模块权限编辑(主管自助) -->
+      <div style="margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);">
+        <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">🔐 员工模块权限</div>
+        <div style="font-size: 11.5px; color: var(--text-tertiary); margin-bottom: 12px; line-height: 1.6;">
+          勾选每个员工能看到的模块(如销售单、采购单等);取消勾选即隐藏该 tab。改动实时生效,员工无需重新登录。<br>
+          灰色勾选的是「始终可见」模块(线下单/跨部门/验厂/数量核实/客服工作主线),不可关闭。
+        </div>
+        <div id="settingsModulePerms"></div>
       </div>
       <div style="margin-top: 14px; padding: 12px 14px; background: rgba(245,158,11,0.06); border-left: 3px solid var(--warning); border-radius: 6px; font-size: 12px; color: var(--text-secondary);">
         ⚠ <b>新增跟单员/账号</b> 由系统管理员在 Supabase 后台维护,本系统不支持自助注册
