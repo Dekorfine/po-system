@@ -102,7 +102,7 @@ const SHOPIFY = {
   _orders: [],
   _autoSyncTimer: null,
   _initialized: false,
-  _currentFilter: 'pending',   // V20260608:删了"待办"聚合 · 默认"待审核"(店小秘式)
+  _currentFilter: 'allorders',   // V20260630:默认进来就是「全部订单」(不再默认待审核)
 
   async call(action, params = {}, shop = null, timeoutMs = 45000) {
     let { data: { session } } = await sb.auth.getSession();
@@ -1562,7 +1562,11 @@ function shopifyRefreshCounts() {
 }
 
 let SHOPIFY_PAGE = 1;
-const SHOPIFY_PAGE_SIZE = 50;
+// V20260630:每页数量可调(50/100/150/300/自定义)· 每个用户浏览器各自记忆
+let SHOPIFY_PAGE_SIZE = (() => {
+  const v = parseInt(localStorage.getItem('shopify_page_size'));
+  return (v && v >= 1 && v <= 1000) ? v : 50;
+})();
 
 // 销售单搜索/排序状态
 const SHOPIFY_SEARCH = {
@@ -2501,6 +2505,29 @@ function shopifyApplySorting(orders) {
   return sorted;
 }
 
+// V20260630:设置每页数量(50/100/150/300/自定义)· 记忆到 localStorage
+async function shopifySetPageSize(v) {
+  let n;
+  if (v === 'custom') {
+    const r = await showPrompt({ title: '自定义每页数量', field: { label: '每页显示多少条(1-1000)', value: String(SHOPIFY_PAGE_SIZE), type: 'number' } });
+    n = parseInt(r);
+    if (!n || n < 1) { renderShopifyOrders(); return; }  // 取消/非法 → 还原下拉
+    n = Math.min(1000, n);
+  } else { n = parseInt(v) || 50; }
+  SHOPIFY_PAGE_SIZE = n;
+  try { localStorage.setItem('shopify_page_size', String(n)); } catch (_) {}
+  SHOPIFY_PAGE = 1;
+  renderShopifyOrders();
+}
+// V20260630:一键回顶部
+function shopifyScrollTop() {
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (_) { window.scrollTo(0, 0); }
+  const anchor = document.getElementById('salesSubtabs') || document.querySelector('.sales-layout-wrap');
+  if (anchor && anchor.scrollIntoView) { try { anchor.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {} }
+}
+window.shopifySetPageSize = shopifySetPageSize;
+window.shopifyScrollTop = shopifyScrollTop;
+
 function shopifyGoPage(p) {
   SHOPIFY_PAGE = Math.max(1, p);
   renderShopifyOrders();
@@ -2983,29 +3010,36 @@ function renderShopifyOrders() {
       </div>`;
   }).join('');
 
-  // 分页 footer
-  let pagerHtml = '';
-  if (totalPages > 1) {
+  // 分页(顶+底)+ 每页数量选择 + 回顶 — V20260630
+  const sizeOpts = [50, 100, 150, 300];
+  const isCustomSize = !sizeOpts.includes(SHOPIFY_PAGE_SIZE);
+  const sizeSelect = `<select onchange="shopifySetPageSize(this.value)" title="每页显示数量" style="padding:4px 8px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); margin-left:8px;">
+        ${sizeOpts.map(n => `<option value="${n}" ${SHOPIFY_PAGE_SIZE === n ? 'selected' : ''}>${n}/页</option>`).join('')}
+        <option value="custom" ${isCustomSize ? 'selected' : ''}>${isCustomSize ? SHOPIFY_PAGE_SIZE + '/页(自定义)' : '自定义…'}</option>
+      </select>`;
+  const navBtns = () => {
+    if (totalPages <= 1) return '';
     const pageBtns = [];
     const maxBtns = 7;
     let s = Math.max(1, SHOPIFY_PAGE - 3);
     let e = Math.min(totalPages, s + maxBtns - 1);
     s = Math.max(1, e - maxBtns + 1);
-    for (let i = s; i <= e; i++) {
-      pageBtns.push(`<button class="btn small ${i === SHOPIFY_PAGE ? 'primary' : ''}" onclick="shopifyGoPage(${i})" style="min-width:32px;">${i}</button>`);
-    }
-    pagerHtml = `
-      <div style="display:flex; justify-content:center; align-items:center; gap:6px; padding:16px; flex-wrap:wrap;">
-        <button class="btn small" onclick="shopifyGoPage(1)" ${SHOPIFY_PAGE === 1 ? 'disabled' : ''}>« 首页</button>
+    for (let i = s; i <= e; i++) pageBtns.push(`<button class="btn small ${i === SHOPIFY_PAGE ? 'primary' : ''}" onclick="shopifyGoPage(${i})" style="min-width:32px;">${i}</button>`);
+    return `<button class="btn small" onclick="shopifyGoPage(1)" ${SHOPIFY_PAGE === 1 ? 'disabled' : ''}>« 首页</button>
         <button class="btn small" onclick="shopifyGoPage(${SHOPIFY_PAGE - 1})" ${SHOPIFY_PAGE === 1 ? 'disabled' : ''}>‹ 上一页</button>
         ${pageBtns.join('')}
         <button class="btn small" onclick="shopifyGoPage(${SHOPIFY_PAGE + 1})" ${SHOPIFY_PAGE === totalPages ? 'disabled' : ''}>下一页 ›</button>
-        <button class="btn small" onclick="shopifyGoPage(${totalPages})" ${SHOPIFY_PAGE === totalPages ? 'disabled' : ''}>末页 »</button>
-        <span style="margin-left:12px; font-size:12px; color:var(--text-tertiary);">共 <b>${orders.length}</b> 条 · 第 ${SHOPIFY_PAGE}/${totalPages} 页</span>
+        <button class="btn small" onclick="shopifyGoPage(${totalPages})" ${SHOPIFY_PAGE === totalPages ? 'disabled' : ''}>末页 »</button>`;
+  };
+  const pagerBar = (isTop) => `
+      <div style="display:flex; justify-content:center; align-items:center; gap:6px; padding:12px; flex-wrap:wrap; ${isTop ? 'border-bottom' : 'border-top'}:1px solid var(--border-subtle); margin:${isTop ? '0 0 10px' : '10px 0 0'};">
+        ${navBtns()}
+        <span style="margin-left:8px; font-size:12px; color:var(--text-tertiary);">共 <b>${orders.length}</b> 条 · 第 ${SHOPIFY_PAGE}/${totalPages} 页</span>
+        ${sizeSelect}
+        ${!isTop ? `<button class="btn small" onclick="shopifyScrollTop()" title="回到顶部" style="margin-left:8px;">⬆ 回顶部</button>` : ''}
       </div>`;
-  } else {
-    pagerHtml = `<div style="text-align:center; padding:10px; font-size:11px; color:var(--text-tertiary);">共 ${orders.length} 条</div>`;
-  }
+  const topPager = pagerBar(true);
+  const pagerHtml = pagerBar(false);
   // V20260620:全部订单视图 — 顶部加 120天内/历史 切换条
   let allOrdersBanner = '';
   if (filter === 'allorders') {
@@ -3018,7 +3052,7 @@ function renderShopifyOrders() {
         <span style="font-size:11px; color:var(--text-tertiary);">${scope==='history'?'显示全部历史':'仅显示近120天'} · 含已完成/已取消/已存档</span>
       </div>`;
   }
-  body.innerHTML = allOrdersBanner + cardsHtml + pagerHtml;
+  body.innerHTML = allOrdersBanner + topPager + cardsHtml + pagerHtml;
   // V20260526e: 填充日期筛选下拉
   if (typeof populateDateFilterSelect === 'function') {
     const dateEl = document.getElementById('shopifyDateFilter');

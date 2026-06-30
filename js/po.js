@@ -1091,8 +1091,10 @@ async function openPoForm(salesOrderId, selectedLineItemIds = null) {
     const isInSelection = selectedSet ? selectedSet.has(li.shopify_line_item_id) : true;
     // V20260617:保险/运费险行默认不勾选(采购不需要采保险 · 仍可见可手动勾)
     const isInsurance = (typeof _isInsuranceLineItem === 'function') && _isInsuranceLineItem(li);
+    // V20260630:默认不全选(多供应商需拆单) — 正常打开全部不勾,顶部可一键全选;拆单传入 selectedSet 时仍只勾指定行
+    const defChecked = selectedSet ? isInSelection : false;
     PO_FORM_STATE.lineItemSelections[li.shopify_line_item_id] = {
-      checked: remaining > 0 && isInSelection && !isInsurance,
+      checked: remaining > 0 && defChecked && !isInsurance,
       qty: remaining,
       price: eff.last_purchase_price || '',
       supplierName: eff.default_supplier || '',
@@ -1200,17 +1202,15 @@ function renderPoForm() {
             <a href="javascript:void(0)" onclick="poFormEditLine('${li.shopify_line_item_id}')" style="color:#7c3aed; text-decoration:none; font-weight:500;">🔧 修改 SKU / 图 / 名 (换货/差价)</a>
             ${wasEdited ? `<a href="javascript:void(0)" onclick="poFormResetLine('${li.shopify_line_item_id}')" style="color:var(--text-tertiary); text-decoration:none;">↺ 恢复默认</a>` : ''}
           </div>
-          <!-- V5-W3-2026-05-26: per-line 备注输入框(每行独立,跟单可编辑)-->
-          <div style="margin-top:6px; display:flex; gap:6px; align-items:center;">
-            <span style="font-size:11px; color:var(--text-secondary); font-weight:500; flex-shrink:0; min-width:60px;">📝 本行备注:</span>
-            <input type="text" id="poLineNote_${li.shopify_line_item_id}"
-              value="${escapeHtml(PO_FORM_STATE.lineNotes[li.shopify_line_item_id] || '')}"
+          <!-- V5-W3-2026-05-26: per-line 备注(每行独立,跟单可编辑)· V20260630:改多行 textarea 拉长 + 去翻译(中文人工备注无需翻译)-->
+          <div style="margin-top:6px;">
+            <span style="font-size:11px; color:var(--text-secondary); font-weight:500; display:block; margin-bottom:3px;">📝 本行备注:</span>
+            <textarea id="poLineNote_${li.shopify_line_item_id}"
               placeholder="自动填入 / 跟单可编辑(尺寸/色温/特殊要求/加急等)"
               oninput="poFormSetLineNote('${li.shopify_line_item_id}', this.value)"
               ${fullyAssigned ? 'disabled' : ''}
-              style="flex:1; padding:4px 8px; font-size:11.5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card); color:var(--text-primary); font-family:inherit;">
-            ${fullyAssigned ? '' : `<button onclick="poFormTranslateLine('${li.shopify_line_item_id}')" title="一键翻译:把残留英文规格翻成中文(AI)"
-              style="flex-shrink:0; padding:4px 9px; font-size:11px; border:1px solid #7c3aed; background:#7c3aed10; color:#7c3aed; border-radius:4px; cursor:pointer; white-space:nowrap;">🌐 翻译</button>`}
+              rows="2"
+              style="width:100%; box-sizing:border-box; padding:6px 9px; font-size:11.5px; line-height:1.5; border:1px solid var(--border); border-radius:5px; background:var(--bg-card); color:var(--text-primary); font-family:inherit; resize:vertical; min-height:46px;">${escapeHtml(PO_FORM_STATE.lineNotes[li.shopify_line_item_id] || '')}</textarea>
           </div>
           
           <!-- V20260617:去掉中文名/英文名 UI(底层数据仍保留)· 拆"产品尺寸 / 产品颜色"两排 · 尺寸英寸自动转cm · 颜色词典+AI翻译 -->
@@ -1368,7 +1368,26 @@ function renderPoForm() {
       </div>`;
     })()}
 
-    <h4 style="margin: 0 0 8px; font-size: 13px;">📦 选择产品（勾选要开采购单的）</h4>
+    <!-- V20260630:供应商挪到顶部 — 先选供应商,下方单价自动带出且不被遮挡 -->
+    <div style="background:rgba(37,99,235,0.04); border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+      <label style="display:block; font-size:12px; font-weight:600; margin-bottom:6px; color:var(--text-secondary);">🏭 供应商 <span style="color:var(--danger);">*</span> <span style="font-weight:400; color:var(--text-tertiary);">· 先选供应商,下方各产品单价自动带出历史价</span></label>
+      <div class="supplier-picker" style="display:flex; gap:6px;">
+        <div style="flex:1; position:relative;">
+          <input type="text" id="poFormSupplierInput" placeholder="🔍 输入供应商名搜索 / 直接添加…" style="width:100%;"
+            value="${escapeHtml(PO_FORM_STATE.selectedSupplierName)}"
+            oninput="poFormSupplierSearch(this.value)"
+            onfocus="poFormSupplierSearch(this.value)"
+            onblur="setTimeout(() => document.getElementById('poFormSupplierResults').classList.remove('show'), 200)">
+          <div class="picker-results" id="poFormSupplierResults"></div>
+        </div>
+        <button type="button" class="btn small" onclick="poFormAddSupplierFromInput()" style="white-space:nowrap;" title="把输入框里的名字添加为新供应商">+ 新增</button>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin:0 0 8px;">
+      <h4 style="margin:0; font-size:13px;">📦 选择产品（勾选要开采购单的 · 多供应商请分别勾选拆单）</h4>
+      <button type="button" class="btn small" onclick="poFormToggleAll()" style="font-size:11px; padding:3px 12px;">${(() => { const sels = Object.values(PO_FORM_STATE.lineItemSelections || {}); const allOn = sels.length > 0 && sels.every(s => s.checked); return allOn ? '取消全选' : '全选'; })()}</button>
+    </div>
     ${PO_FORM_STATE.splitMode ? `
       <div style="background: rgba(168, 85, 247, 0.1); border: 1px dashed rgba(168, 85, 247, 0.5); padding: 10px 12px; border-radius: 8px; margin-bottom: 10px; font-size: 12px;">
         <b style="color: #7c3aed;">✂ 拆单模式</b> · 系统已根据你在销售单上的勾选预选了产品。
@@ -1386,20 +1405,6 @@ function renderPoForm() {
     </div>
 
     <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-      <div>
-        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">供应商 *</label>
-        <div class="supplier-picker" style="display:flex; gap:6px;">
-          <div style="flex:1; position:relative;">
-            <input type="text" id="poFormSupplierInput" placeholder="🔍 输入供应商名搜索 / 直接添加…" style="width:100%;"
-              value="${escapeHtml(PO_FORM_STATE.selectedSupplierName)}"
-              oninput="poFormSupplierSearch(this.value)"
-              onfocus="poFormSupplierSearch(this.value)"
-              onblur="setTimeout(() => document.getElementById('poFormSupplierResults').classList.remove('show'), 200)">
-            <div class="picker-results" id="poFormSupplierResults"></div>
-          </div>
-          <button type="button" class="btn small" onclick="poFormAddSupplierFromInput()" style="white-space:nowrap;" title="把输入框里的名字添加为新供应商">+ 新增</button>
-        </div>
-      </div>
       <div>
         <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--text-secondary);">约交期 <span style="font-weight:400;color:var(--text-tertiary);">(可留空)</span></label>
         <input type="date" id="poFormPromisedDate" class="form-control" value="">
@@ -1497,6 +1502,20 @@ function poFormToggleItem(liid, checked) {
   PO_FORM_STATE.lineItemSelections[liid].checked = checked;
   renderPoForm();
 }
+// V20260630:一键全选/取消全选(只对还有剩余可开的行生效)
+function poFormToggleAll() {
+  const sels = PO_FORM_STATE.lineItemSelections || {};
+  const list = Object.values(sels);
+  const allOn = list.length > 0 && list.every(s => s.checked);
+  const next = !allOn;
+  Object.keys(sels).forEach(liid => {
+    const s = sels[liid];
+    // 取消全选:全部置 false;全选:只勾还有剩余的行(remaining>0)
+    s.checked = next ? ((s.remaining || 0) > 0) : false;
+  });
+  renderPoForm();
+}
+window.poFormToggleAll = poFormToggleAll;
 // V20260624:用库存发货(下采购单时智能用现货)
 function poFormToggleUseStock(liid, checked) {
   const sel = PO_FORM_STATE.lineItemSelections[liid];
@@ -5877,7 +5896,7 @@ async function poEditPrices(poId) {
   }
 
   try {
-    await sb.from('orders').update({
+    const { data: updatedRows, error: upErr } = await sb.from('orders').update({
       line_items: newLineItems,
       total_amount: newTotal,
       status: newStatus,
@@ -5886,7 +5905,17 @@ async function poEditPrices(poId) {
       supplier: newSupplier || po.supplier || null,
       default_supplier: newSupplier || po.default_supplier || null,
       updated_at: new Date().toISOString(),
-    }).eq('id', poId);
+    }).eq('id', poId).select('*');   // ★ 取回真正写入的行,校验是否生效
+
+    if (upErr) throw upErr;
+    // 0 行 = 没匹配到/被 RLS 挡住 → 真错,别假成功
+    if (!updatedRows || updatedRows.length === 0) {
+      toast('⚠ 保存未生效:数据库没有更新该采购单(可能权限/RLS 限制了 line_items 列,或该单已被删)。请截图反馈。', 'err', 8000);
+      return;
+    }
+    // 用返回的真实行刷新本地缓存(根治"显示恢复默认")
+    const _li = PO_LIST.findIndex(x => x.id === poId);
+    if (_li >= 0) PO_LIST[_li] = updatedRows[0];
 
     // V20260603 功能1:被改过描述的真实 SKU 行 → 回写 products(中文名/英文名→标准名 · 规格→spec_default)· 下次开单自动带出
     try {

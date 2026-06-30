@@ -252,7 +252,12 @@ window._qcResizeImg = _qcResizeImg;
 
 // 单个商品行(图 + SKU × 数量)· 供卡片渲染 + 图加载后原地更新复用
 function _qcItemRow(it, imgMap) {
-  const imgRaw = imgMap && imgMap[it.sku];
+  let imgRaw = imgMap && imgMap[it.sku];
+  // V20260630:订单行没带图 → 回退 products 产品表主图(覆盖 Woo/mooielight 及订单无图,尽量都显示)
+  if (!imgRaw && it.sku && typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) {
+    const eff = PRODUCTS_CACHE.effectiveBySku(it.sku);
+    if (eff && eff.image_url) imgRaw = eff.image_url;
+  }
   const imgThumb = imgRaw ? _qcResizeImg(imgRaw, '120x120') : '';   // 列表小缩略图(压缩·快)
   const imgBig = imgRaw ? _qcResizeImg(imgRaw, '800x800') : '';     // 灯箱中等图(压缩·不下原图)
   return `
