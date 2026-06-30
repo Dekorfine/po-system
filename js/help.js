@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260630-refill-scope-thumb',
+    date: '2026-06-30',
+    type: 'change',
+    title: '🏷 补件追踪:补配件/补新灯类型标签 + 单号前主图(点开看大图)',
+    notes: [
+      '「补件单」标签改为按 refill_scope 显示:parts→🔩补配件(蓝)/whole_lamp→💡补新灯(橙);未标注回退「补件单」',
+      '主图移到单号前:每条补件单号前显示首张实物图缩略图,点击看大图(复用 lightbox)',
+      '详情「来源」行改为「类型 · 来源」,展示补配件/补新灯 + 来源表',
+      '注:类型来自客服 refill_scope,若多数显示「补件单」说明客服建单时没标注 scope,需客服侧补上',
+    ],
+    files: ['workmain.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260629-sidebar-perm-consistency',
     date: '2026-06-29',
     type: 'fix',

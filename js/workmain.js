@@ -144,6 +144,14 @@ function _wmPayLabel(r) { return r.payment_method_custom || _WM_PAY[r.payment_me
 const _WM_REFILL_STATUS = { pending_order: '待下单', ordered: '已下单', labeled: '已下单', producing: '生产中', shipped: '已发货', delivered: '已送达' };
 // 跟单只关心二元:未下单(pending_order/空)vs 已下单(其余一切,稳健兼容 ordered/labeled/…)
 function _wmRefillDone(r) { return !!(r.refill_status && r.refill_status !== 'pending_order'); }
+
+// 补件类型:parts=补配件 / whole_lamp=补新灯(来自客服 refill_scope);未标注则回退「补件单」
+function _wmScopeLabel(r) {
+  const s = (r && r.refill_scope) || '';
+  if (s === 'parts') return { txt: '🔩 补配件', cls: 'wm-srctag-parts' };
+  if (s === 'whole_lamp') return { txt: '💡 补新灯', cls: 'wm-srctag-lamp' };
+  return { txt: r && r._src === 'aftersales' ? '售后转入' : '补件单', cls: '' };
+}
 const _WM_REFILL_STATUS_ORDER = ['pending_order', 'ordered', 'producing', 'shipped', 'delivered'];
 const _WM_REFILL_STATUS_CLS = { pending_order: 'wm-st-pending', ordered: 'wm-st-approved', producing: 'wm-st-approved', shipped: 'wm-st-approved', delivered: 'wm-st-done' };
 const _WM_SCOPE = { parts: '小配件(客服下单)', whole_lamp: '整灯(跟单下单)' };
@@ -690,9 +698,10 @@ function _wmRefillCard(r) {
   const stCls = done ? 'wm-st-done' : 'wm-st-pending';
   const stLabel = done ? '已下单' : '待下单';
   const expanded = WORKMAIN._expanded === r._src + ':' + r.id;
-  const srcTag = r._src === 'aftersales' ? '<span class="wm-srctag">售后转入</span>' : '<span class="wm-srctag">补件单</span>';
+  const scope = _wmScopeLabel(r);
+  const scopeTag = `<span class="wm-srctag ${scope.cls}">${scope.txt}</span>`;
   const imgs = _wmCollectImgs(r);
-  const thumb = _wmThumb(imgs, 'rf:' + r._src + ':' + r.id);
+  const mainThumb = _wmThumb(imgs, 'rf:' + r._src + ':' + r.id);  // 主图(点开看大图)
   const canFlag = (typeof IS_ADMIN === 'undefined') || IS_ADMIN;
   const flagBtn = (r.flagged || canFlag)
     ? `<button class="wm-flag ${r.flagged ? 'on' : ''}" title="${r.flagged ? '重点(点取消)' : '主管标记重点'}" ${canFlag ? '' : 'disabled'} onclick="event.stopPropagation();workmainRefillToggleFlag('${r._src}',${r.id})">🚩</button>`
@@ -707,14 +716,14 @@ function _wmRefillCard(r) {
   <div class="wm-card ${expanded ? 'expanded' : ''} ${r.flagged ? 'flagged' : ''}">
     <div class="wm-card-head" onclick="workmainToggleExpand('${r._src}:${r.id}')">
       <div class="wm-card-main">
+        ${mainThumb}
         ${flagBtn}
         <span class="wm-order">${_wmEsc(r.order_ref || '无单号')}</span>
         <span class="wm-cust">${_wmEsc(r.customer || '—')}</span>
         <span class="wm-prod">${_wmEsc(r.items_text || r.product_name || '—')}</span>
-        ${srcTag}
+        ${scopeTag}
       </div>
       <div class="wm-card-meta">
-        ${thumb}
         <span class="wm-status ${stCls}">${stLabel}</span>
         <span class="wm-exp-arrow">${expanded ? '▲' : '▼'}</span>
       </div>
@@ -743,7 +752,7 @@ function _wmRefillDetail(r) {
     ${row('下单状态', _wmRefillDone(r) ? '已下单' : '待下单')}
     ${r.refill_ordered_at ? row('下单记录', `${r.refill_ordered_by || ''} · ${_wmFmtTime(r.refill_ordered_at)}`) : ''}
     ${row('供应商', r.supplier_name)}
-    ${row('来源', r._src === 'aftersales' ? '售后转入补件(aftersales)' : '补件单(refills)')}
+    ${row('类型', _wmScopeLabel(r).txt + ' · 来源 ' + (r._src === 'aftersales' ? '售后(aftersales)' : '补件单(refills)'))}
     ${imgs}
     <div class="wm-d-note">客服会把配件下单并标注;跟单只需看「未下单/已下单」。未下单的可点「标记已下单」(可选,会自动通知客服)。</div>
   </div>`;
