@@ -3146,6 +3146,7 @@ function openSettings() {
   // 渲染网站列表 / 供应商列表
   renderSettingsSites();
   renderSettingsSuppliers();
+  if (typeof renderModulePerms === 'function') renderModulePerms();
 }
 
 function switchSettingsTab(tab) {
@@ -3158,7 +3159,91 @@ function switchSettingsTab(tab) {
   // 切到供应商 tab 时刷新列表
   if (tab === 'suppliers') renderSettingsSuppliers();
   if (tab === 'sites') renderSettingsSites();
+  if (tab === 'people' && typeof renderModulePerms === 'function') renderModulePerms();
 }
+
+// ── 员工模块权限编辑(主管自助管理 agents.modules)──
+let _modPermFilter = '';
+function _modPermSetFilter(v) { _modPermFilter = (v || '').trim().toLowerCase(); renderModulePerms(); }
+
+function renderModulePerms() {
+  const el = document.getElementById('settingsModulePerms');
+  if (!el) return;
+  if (typeof IS_ADMIN === 'undefined' || !IS_ADMIN) {
+    el.innerHTML = '<div style="padding:14px; text-align:center; color:var(--text-tertiary); font-size:12.5px;">只有主管可管理模块权限</div>';
+    return;
+  }
+  const agents = (CONFIG.agents || []).filter(a => !a.isAdmin && !a.isBoss)
+    .filter(a => !_modPermFilter || (a.name || '').toLowerCase().includes(_modPermFilter))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+  const filterBox = `<input type="text" placeholder="🔍 搜索员工姓名…" value="${escapeHtml(_modPermFilter)}"
+      oninput="_modPermSetFilter(this.value)"
+      style="width:100%; box-sizing:border-box; padding:8px 12px; font-size:13px; border:1px solid var(--border); border-radius:7px; background:var(--bg-card); color:var(--text-primary); margin-bottom:10px;">`;
+
+  if (!agents.length) { el.innerHTML = filterBox + '<div style="padding:14px; text-align:center; color:var(--text-tertiary); font-size:12.5px;">无匹配的普通员工</div>'; return; }
+
+  const cards = agents.map(a => {
+    const mods = Array.isArray(a.modules) ? a.modules : null;  // null = 全部
+    const allOn = mods === null;
+    const uid = a._userId || '';
+    const checks = ALL_MODULES.map(m => {
+      const always = ALWAYS_VISIBLE_MODULES.includes(m.key);
+      const on = allOn || always || mods.includes(m.key);
+      return `<label style="display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--text-secondary); padding:3px 6px; border-radius:5px; cursor:${always ? 'default' : 'pointer'}; ${on && !always ? 'background:rgba(37,99,235,0.07);' : ''}" title="${always ? '始终可见模块,不可关闭' : ''}">
+        <input type="checkbox" ${on ? 'checked' : ''} ${always ? 'disabled' : ''} onchange="toggleAgentModule('${uid}','${escapeHtml(a.name).replace(/'/g, "\\'")}','${m.key}')" style="width:14px; height:14px; cursor:${always ? 'default' : 'pointer'};">
+        ${escapeHtml(m.label)}</label>`;
+    }).join('');
+    return `<div style="border:1px solid var(--border); border-radius:9px; padding:11px 13px; margin-bottom:9px; background:var(--bg-card);">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <div style="font-weight:600; font-size:13px; color:var(--text-primary);">👤 ${escapeHtml(a.name)}
+          ${allOn ? '<span style="font-size:11px; color:#16a34a; font-weight:400; margin-left:6px;">· 全部模块(未限制)</span>' : `<span style="font-size:11px; color:var(--text-tertiary); font-weight:400; margin-left:6px;">· ${mods.length} 个模块</span>`}</div>
+        ${allOn ? '' : `<button onclick="resetAgentModules('${uid}','${escapeHtml(a.name).replace(/'/g, "\\'")}')" style="font-size:11px; padding:3px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg-elevated); color:var(--text-secondary); cursor:pointer;">重置为全部</button>`}
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:4px 8px;">${checks}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = filterBox + cards;
+}
+
+async function toggleAgentModule(userId, agentName, key) {
+  if (typeof IS_ADMIN === 'undefined' || !IS_ADMIN) { toast('只有主管能改权限', 'err'); return; }
+  if (ALWAYS_VISIBLE_MODULES.includes(key)) { toast('该模块始终可见,无需设置', 'notice', 2500); return; }
+  const agent = (CONFIG.agents || []).find(a => (userId && a._userId === userId) || a.name === agentName);
+  if (!agent) { toast('未找到该员工', 'err'); return; }
+  // null(全部)→ 先展开成全集再改,变成显式白名单
+  let mods = Array.isArray(agent.modules) ? [...agent.modules] : [...ALL_MODULE_KEYS];
+  if (mods.includes(key)) mods = mods.filter(m => m !== key);
+  else mods.push(key);
+  // 去重 + 只保留合法 key
+  mods = Array.from(new Set(mods)).filter(k => ALL_MODULE_KEYS.includes(k));
+  agent.modules = mods;
+  try {
+    const upd = sb.from('agents').update({ modules: mods });
+    if (agent._userId) await upd.eq('user_id', agent._userId); else await upd.eq('name', agent.name);
+    const lbl = (ALL_MODULES.find(m => m.key === key) || {}).label || key;
+    toast(`✓ ${agent.name}:${mods.includes(key) ? '已开通' : '已关闭'}「${lbl}」`, 'ok', 2500);
+  } catch (e) { toast('保存失败:' + (e.message || e), 'err', 5000); }
+  renderModulePerms();
+}
+
+async function resetAgentModules(userId, agentName) {
+  if (typeof IS_ADMIN === 'undefined' || !IS_ADMIN) { toast('只有主管能改权限', 'err'); return; }
+  const agent = (CONFIG.agents || []).find(a => (userId && a._userId === userId) || a.name === agentName);
+  if (!agent) return;
+  agent.modules = null;  // null = 全部可见
+  try {
+    const upd = sb.from('agents').update({ modules: null });
+    if (agent._userId) await upd.eq('user_id', agent._userId); else await upd.eq('name', agent.name);
+    toast(`✓ 已把 ${agent.name} 重置为全部模块可见`, 'ok', 3000);
+  } catch (e) { toast('保存失败:' + (e.message || e), 'err', 5000); }
+  renderModulePerms();
+}
+window.toggleAgentModule = toggleAgentModule;
+window.resetAgentModules = resetAgentModules;
+window._modPermSetFilter = _modPermSetFilter;
+window.renderModulePerms = renderModulePerms;
 
 function renderSettingsSites() {
   const el = document.getElementById('settingsSitesList');

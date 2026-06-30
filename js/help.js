@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260629-module-perms-ui',
+    date: '2026-06-29',
+    type: 'feature',
+    title: '🔐 员工模块权限管理界面(主管自助)',
+    notes: [
+      '此前根本没有模块权限的编辑界面(ALL_MODULES 从未渲染成可勾选),主管搜不到是正常的——本次补上',
+      '设置 → 👥 人员维护 → 🔐 员工模块权限:勾选每个员工可见的模块(销售单/采购单等),写回 agents.modules',
+      '实时生效(agents 表已有 Realtime 订阅,员工无需重新登录);始终可见模块灰色锁定不可关闭;支持搜索员工 + 重置为全部',
+      '配套:Tina(胡爱淳)缺销售模块,可用此界面勾上,或 SQL: update agents set modules=null where name ilike \'%胡爱淳%\'',
+    ],
+    files: ['core.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260629-receipt-note-operator',
     date: '2026-06-29',
     type: 'change',
