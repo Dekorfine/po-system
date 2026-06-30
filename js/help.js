@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260630-kill-serviceworker',
+    date: '2026-06-30',
+    type: 'fix',
+    title: '🚑 注销失效 ServiceWorker(修"卡在连接中/进不去")',
+    notes: [
+      'sw.js 线上 404(从未部署),原注册代码每次打开都失败刷错;更糟的是旧 SW 残留会拦请求、喂旧缓存 → 卡在连接中/进不去/停在旧版本',
+      '改为:不再注册 sw.js,改为主动注销所有已注册 SW + 清掉旧 SW 缓存',
+      '部署后受影响的人需 Ctrl+F5 硬刷新一次把旧 SW 踢掉;仍卡的可在 DevTools→Application→Service Workers 手动 Unregister / Clear storage',
+    ],
+    files: ['index.html', 'help.js'],
+  },
+  {
     v: '20260630-refill-desc-scope',
     date: '2026-06-30',
     type: 'fix',
