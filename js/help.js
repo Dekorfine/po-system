@@ -10,6 +10,17 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260630-qc-item-image',
+    date: '2026-06-30',
+    type: 'change',
+    title: '🖼 核实数量优先读 item 自带图(客服建单时存)',
+    notes: [
+      '取图优先级:① 客服写进 qty_confirmations.items[].image 的图 → ② shopify_orders.line_items 图 → ③ products 产品图 → 💡',
+      '已给客服 AI 提示词:建核实单时把订单行商品图存进 items[].image,跟单直接读、不依赖 join,覆盖最全',
+    ],
+    files: ['qty-confirm.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260630-qc-db-images',
     date: '2026-06-30',
     type: 'fix',

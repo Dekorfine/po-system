@@ -288,8 +288,8 @@ window._qcResizeImg = _qcResizeImg;
 
 // 单个商品行(图 + SKU × 数量)· 供卡片渲染 + 图加载后原地更新复用
 function _qcItemRow(it, imgMap) {
-  let imgRaw = imgMap && imgMap[it.sku];
-  // V20260630:订单行没带图 → 回退 products 产品表主图(覆盖 Woo/mooielight 及订单无图,尽量都显示)
+  // V20260630:取图优先级 — ① 客服建单时写进 item 的图(it.image/it.image_url)→ ② shopify_orders.line_items 图(imgMap)→ ③ products 产品图 → 💡
+  let imgRaw = it.image || it.image_url || (imgMap && imgMap[it.sku]);
   if (!imgRaw && it.sku && typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.effectiveBySku) {
     const eff = PRODUCTS_CACHE.effectiveBySku(it.sku);
     if (eff && eff.image_url) imgRaw = eff.image_url;
