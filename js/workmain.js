@@ -145,11 +145,11 @@ const _WM_REFILL_STATUS = { pending_order: '待下单', ordered: '已下单', la
 // 跟单只关心二元:未下单(pending_order/空)vs 已下单(其余一切,稳健兼容 ordered/labeled/…)
 function _wmRefillDone(r) { return !!(r.refill_status && r.refill_status !== 'pending_order'); }
 
-// 补件类型:parts=补配件 / whole_lamp=补新灯(来自客服 refill_scope);未标注则回退「补件单」
+// 补件类型(口径同客服):whole_lamp=整灯·补发新灯 / part(或 parts)=小配件·补发配件
 function _wmScopeLabel(r) {
-  const s = (r && r.refill_scope) || '';
-  if (s === 'parts') return { txt: '🔩 补配件', cls: 'wm-srctag-parts' };
-  if (s === 'whole_lamp') return { txt: '💡 补新灯', cls: 'wm-srctag-lamp' };
+  const s = ((r && r.refill_scope) || '').toLowerCase();
+  if (s === 'part' || s === 'parts') return { txt: '🔩 小配件·补发配件', cls: 'wm-srctag-parts' };
+  if (s === 'whole_lamp') return { txt: '💡 整灯·补发新灯', cls: 'wm-srctag-lamp' };
   return { txt: r && r._src === 'aftersales' ? '售后转入' : '补件单', cls: '' };
 }
 const _WM_REFILL_STATUS_ORDER = ['pending_order', 'ordered', 'producing', 'shipped', 'delivered'];
@@ -557,10 +557,14 @@ function _wmNormRefill(row, src) {
   if (src === 'refills') {
     const items = Array.isArray(row.items) ? row.items : [];
     itemsText = items.map(it => {
-      const p = it.product || it.item || '';
+      // 客服口径:{product} - {item}(补件描述) ×{qty}{unit} — 之前漏了 item 描述和 unit
+      const prod = (it.product || '').trim();
+      const desc = (it.item || '').trim();
+      const head = prod && desc ? `${prod} - ${desc}` : (prod || desc);
       const q = it.qty != null ? ` ×${it.qty}` : '';
-      return (p + q).trim();
-    }).filter(Boolean).join(' / ');
+      const u = (it.unit || '').trim();
+      return `${head}${q}${u}`.trim();
+    }).filter(Boolean).join('、');
     if (!itemsText) itemsText = row.product_name || '';
   } else { // aftersales
     const q = row.refill_qty != null ? ` ×${row.refill_qty}` : '';

@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260630-refill-desc-scope',
+    date: '2026-06-30',
+    type: 'fix',
+    title: '🩹 补件追踪:读全补件描述 + 修补配件徽章口径',
+    notes: [
+      '补件清单之前只读 items[].product+qty,漏了 items[].item(补发描述)和 unit → 改为「{product} - {item} ×{qty}{unit}」完整显示(同客服口径)',
+      'refill_scope 值口径修正:客服存的是 part(单数),之前只认 parts → 补配件徽章一直不显示;现兼容 part/parts,标签对齐客服「🔩小配件·补发配件 / 💡整灯·补发新灯」',
+      '补配件徽章颜色对齐客服侧(灰色)',
+    ],
+    files: ['workmain.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260630-batch-po-sales-fixes',
     date: '2026-06-30',
     type: 'fix',
