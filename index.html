@@ -36,7 +36,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260630refilldesc"></script>
+<script defer src="js/help.js?v=20260630killsw"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -5690,21 +5690,19 @@ body.hr-mode tr[data-role="hr"] {
 .cdm-watcher-x:hover { background: rgba(220,38,38,0.15); color: #dc2626; }
 
 </style>
-<!-- V28α:Service Worker 注册(第二次打开秒开 · 0 网络) -->
+<!-- V20260630:彻底注销 ServiceWorker · sw.js 已不存在(线上 404),旧 SW 会拦截请求/喂旧缓存导致"卡在连接中、进不去、停在旧版本"。这里不再注册,并主动注销旧 SW + 清缓存。 -->
 <script>
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').then(reg => {
-      console.log('%c[SW ⚡] 已注册 · 下次打开秒开', 'color:#10b981;font-weight:bold');
-      // 检查更新
-      reg.addEventListener('updatefound', () => {
-        const sw = reg.installing;
-        if (sw) sw.addEventListener('statechange', () => {
-          if (sw.state === 'activated') console.log('[SW] 新版本已激活');
-        });
-      });
-    }).catch(err => console.warn('[SW] 注册失败:', err));
-  });
+  // 注销所有已注册的 SW(根治旧 SW 拦截/喂旧缓存)
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    if (regs && regs.length) {
+      regs.forEach(reg => reg.unregister().then(ok => { if (ok) console.log('[SW] 已注销旧 ServiceWorker · 下次刷新即彻底干净'); }));
+    }
+  }).catch(() => {});
+  // 清掉旧 SW 建的缓存
+  if (window.caches && caches.keys) {
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
+  }
 }
 </script>
 </head>
