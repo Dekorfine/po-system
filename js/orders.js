@@ -486,7 +486,31 @@ async function chaseCleanBlankOrders() {
 }
 window.chaseCleanBlankOrders = chaseCleanBlankOrders;
 
+// V20260630:防抖外壳 — 进催单 tab 时 renderOrders 被预加载回调连环触发(初始+产品图+产品库+loadChaseOrders),
+// 每次整块重建 innerHTML 导致所有 <img> 销毁重建 → 闪烁。这里:首次立即渲染(首屏不延迟),
+// 200ms 内的连环调用合并成最后一次,消除闪烁。
+let _renderOrdersTimer = null;
+let _renderOrdersLastRun = 0;
+let _lastOrdersHtml = '';   // V20260630:上次渲染的 HTML,内容没变就不重建 DOM(防图片重载闪烁)
 function renderOrders() {
+  const now = Date.now();
+  if (now - _renderOrdersLastRun > 200) {
+    // 距上次渲染已超 200ms:立即渲染(首屏 / 用户操作即时响应)
+    _renderOrdersLastRun = now;
+    if (_renderOrdersTimer) { clearTimeout(_renderOrdersTimer); _renderOrdersTimer = null; }
+    _renderOrdersImpl();
+    return;
+  }
+  // 200ms 内的连环调用:合并,只在最后一次后渲染一次
+  if (_renderOrdersTimer) clearTimeout(_renderOrdersTimer);
+  _renderOrdersTimer = setTimeout(() => {
+    _renderOrdersTimer = null;
+    _renderOrdersLastRun = Date.now();
+    _renderOrdersImpl();
+  }, 200);
+}
+
+function _renderOrdersImpl() {
   const body = document.getElementById('ordersBody');
   const card = document.getElementById('ordersCard');
   if (!body) return;
@@ -606,12 +630,14 @@ function renderOrders() {
     document.getElementById('ordersGroupedContainer')?.remove();
     const isEmpty = CHASE_ORDERS.length === 0;
     body.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div class="text">${isEmpty ? '还没有催单（未发货的 PO 或手动催单都会在这里）' : '当前阈值或筛选下没有匹配的催单'}</div>${isEmpty ? '<button class="btn primary" onclick="addOrder()">+ 新增催单</button>' : ''}</div>`;
+    _lastOrdersHtml = '';   // 失效网格签名,切回网格时强制重渲
     return;
   }
   
   // 按供应商分组视图
   if (sortBy === 'supplier_grouped') {
     card.style.display = 'none';
+    _lastOrdersHtml = '';   // 分组视图走 groupedCt,失效网格签名,切回网格时强制重渲
     let groupedCt = document.getElementById('ordersGroupedContainer');
     if (!groupedCt) {
       groupedCt = document.createElement('div');
@@ -704,9 +730,14 @@ function renderOrders() {
     ? `<div class="as-grid">${itemsHtml}</div>`
     : itemsHtml;
   
-  body.innerHTML = (list.length > _ordersPage.size ? paginationHtml : '') + 
-                   wrappedHtml +
-                   (list.length > _ordersPage.size ? paginationHtml : '');
+  const _finalHtml = (list.length > _ordersPage.size ? paginationHtml : '') +
+                     wrappedHtml +
+                     (list.length > _ordersPage.size ? paginationHtml : '');
+  // V20260630:内容签名比对 — 渲染结果与上次完全一致就不重建 DOM,避免 <img> 销毁重载导致的"一闪一闪"
+  if (_finalHtml !== _lastOrdersHtml || !body.firstChild) {
+    body.innerHTML = _finalHtml;
+    _lastOrdersHtml = _finalHtml;
+  }
   // V20260526e: 填充日期筛选下拉
   if (typeof populateDateFilterSelect === 'function') {
     const dateEl = document.getElementById('oDateFilter');
