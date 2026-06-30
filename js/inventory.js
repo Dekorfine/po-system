@@ -1434,7 +1434,20 @@ window.invPickOrderLine = invPickOrderLine;
 async function invDelete() {
   const s = INV_EDIT;
   if (!s || s.isNew) return;
-  if (!confirm('确认删除这条库存?\n\n会移到「🗑 回收站」· 库存数量/平台绑定都保留 · 主管可随时恢复。')) return;
+  const nm = s.title || s.name_cn || s.name || s.sku || '该产品';
+  let ok;
+  if (typeof window.confirmDialog === 'function') {
+    ok = await window.confirmDialog({
+      title: '🗑 移到回收站?',
+      message: `确定把「${nm}」（SKU ${s.sku || '—'}）移到回收站？\n\n· 库存数量（国内/海外/在途）、平台绑定都会保留\n· 不是彻底删除，可在「🗑 回收站」随时恢复`,
+      okText: '移到回收站',
+      cancelText: '取消',
+      danger: true,
+    });
+  } else {
+    ok = confirm(`确认把「${nm}」移到回收站?\n\n库存/绑定都保留 · 可在回收站恢复。`);
+  }
+  if (!ok) return;
   try {
     const who = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) ? CURRENT_AGENT : '?';
     const { error } = await sb.from('products').update({
