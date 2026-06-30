@@ -297,11 +297,11 @@ function _qcItemRow(it, imgMap) {
   const imgThumb = imgRaw ? _qcResizeImg(imgRaw, '120x120') : '';   // 列表小缩略图(压缩·快)
   const imgBig = imgRaw ? _qcResizeImg(imgRaw, '800x800') : '';     // 灯箱中等图(压缩·不下原图)
   return `
-    <div style="display:flex; align-items:center; gap:8px; font-size:12px; padding:4px 0;">
-      ${imgThumb ? `<img src="${escapeHtml(imgThumb)}" loading="lazy" onclick="openImgLightbox && openImgLightbox('${escapeHtml(imgBig)}')" style="width:52px; height:52px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:zoom-in; flex-shrink:0;">` : `<span style="width:52px; height:52px; border-radius:6px; background:var(--bg-elevated); display:inline-flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">💡</span>`}
-      <span style="font-family:monospace; color:var(--accent);">${escapeHtml(it.sku || '')}</span>
-      <span style="color:var(--text-secondary); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(it.title || '')}</span>
-      <span style="font-weight:700; background:rgba(220,38,38,0.1); color:#b91c1c; padding:1px 9px; border-radius:6px;">× ${it.quantity}</span>
+    <div style="display:flex; align-items:center; gap:10px; font-size:13px; padding:5px 0; min-width:0;">
+      ${imgThumb ? `<img src="${escapeHtml(imgThumb)}" loading="lazy" onclick="openImgLightbox && openImgLightbox('${escapeHtml(imgBig)}')" style="width:48px; height:48px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:zoom-in; flex-shrink:0;">` : `<span style="width:48px; height:48px; border-radius:8px; background:var(--bg-elevated); display:inline-flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">💡</span>`}
+      ${it.sku ? `<span style="font-family:monospace; color:var(--accent); font-size:12px; flex-shrink:0;">${escapeHtml(it.sku)}</span>` : ''}
+      <span style="color:var(--text-primary); flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(it.title || '')}</span>
+      <span style="flex-shrink:0; margin-left:4px; font-weight:700; background:rgba(220,38,38,0.08); color:#b91c1c; padding:2px 10px; border-radius:6px; font-size:12px;">× ${it.quantity}</span>
     </div>`;
 }
 
