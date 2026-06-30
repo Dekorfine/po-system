@@ -1917,6 +1917,7 @@ function subscribeAgentsRealtime() {
         const newModules = JSON.stringify(me.modules || []);
         if (oldModules !== newModules) {
           applyModuleVisibility();
+          if (typeof applyTabLayout === 'function') applyTabLayout();  // 侧栏也按新权限重渲染
           if (!IS_ADMIN) toast('🔄 您的可见模块已被主管更新');
         }
 
@@ -3008,6 +3009,10 @@ function applyTabLayout() {
   const sideBar = document.getElementById('sideTabBar');
   if (!sideBar) return;
 
+  // V20260629:侧栏也按模块权限过滤(与顶部一致)——修"侧栏显示无权限模块"的逻辑 bug
+  const _me = (typeof CONFIG !== 'undefined' && CONFIG.agents) ? CONFIG.agents.find(a => a.name === CURRENT_AGENT) : null;
+  const _visible = (typeof getVisibleModules === 'function') ? getVisibleModules(_me) : null;
+
   // 读侧栏是否收起(localStorage)
   const isCollapsed = localStorage.getItem('side_tab_collapsed') === '1';
   sideBar.classList.toggle('collapsed', isCollapsed);
@@ -3033,6 +3038,8 @@ function applyTabLayout() {
     el.dataset.zone = zone;
 
     if (zone === 'side') {
+      // 无权限的模块不在侧栏渲染(与顶部 applyModuleVisibility 一致)
+      if (_visible && !_visible.includes(t)) return;
       hasSideTabs = true;
       const meta = TAB_META[t] || { icon: '◆', label: t, badgeId: null };
       // 不渲染明明 display:none 的(比如 tabAnalytics)

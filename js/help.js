@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260629-sidebar-perm-consistency',
+    date: '2026-06-29',
+    type: 'fix',
+    title: '🐛 修侧栏不校验模块权限的逻辑错误(顶部/侧栏一致)',
+    notes: [
+      '根因:applyTabLayout 渲染侧栏 tab 时没校验权限,而顶部走 applyModuleVisibility 校验 → 同一无权限模块"侧栏显示、顶部隐藏"',
+      '修复:侧栏渲染也按 getVisibleModules 过滤,无权限模块不在侧栏出现;权限实时变更时侧栏一并重渲染',
+      '配套:Tina 真实缺 sales 权限(之前 SQL 按 名字 没匹配上,应按 user_id),补 sales 后顶部/侧栏都正常显示销售单',
+    ],
+    files: ['core.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260629-module-perms-ui',
     date: '2026-06-29',
     type: 'feature',
