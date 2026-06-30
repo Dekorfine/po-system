@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260630-qc-db-images',
+    date: '2026-06-30',
+    type: 'fix',
+    title: '🖼 核实数量主图改从 shopify_orders.line_items 批量取(纯DB·覆盖全店铺)',
+    notes: [
+      '之前取图走 Shopify API(慢、Woo/mooielight 跳过、订单行无图就空),很多 SKU 显示 💡',
+      '改为批量从已同步的 shopify_orders.line_items[].image_url 直接读(纯 Supabase 读,数据已打通,覆盖所有店铺含 Woo)',
+      '取图链路:DB shopify_orders 图 → Shopify API 缓存(手动看图)→ products 产品图 → 💡;仍走 120x120 压缩缩略图',
+    ],
+    files: ['qty-confirm.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260630-tablayout-server',
     date: '2026-06-30',
     type: 'fix',

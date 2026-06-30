@@ -13,7 +13,7 @@ const QC_STATUS = {
   closed:    { label: '✓ 已完成', color: '#3b6d11', bg: 'rgba(99,153,34,0.08)' },
 };
 
-const QC = { _list: [], _filter: 'todo', _loadedAt: 0, _shop: '', _search: '', _page: 1, _pageSize: 50, _sort: 'updated_desc', _selected: new Set(), _imgCache: {} };
+const QC = { _list: [], _filter: 'todo', _loadedAt: 0, _shop: '', _search: '', _page: 1, _pageSize: 50, _sort: 'updated_desc', _selected: new Set(), _imgCache: {}, _dbImgMap: {} };
 window.QC = QC;
 
 // V20260620:店铺 handle → 品牌显示名(复用 SHOPIFY.STORES_META · 与销售单chip同一套)
@@ -43,9 +43,45 @@ async function loadQtyConfirm() {
     if (error) { if (!/qty_confirmations/.test(error.message || '')) throw error; QC._list = []; return; }
     QC._list = data || [];
     QC._loadedAt = Date.now();
+    await loadQcImagesFromDb();   // V20260630:从已同步的 shopify_orders.line_items 批量取图(纯 DB 读,覆盖所有店铺)
   } catch (e) { console.warn('[qty-confirm] 加载失败:', e.message); }
 }
 window.loadQtyConfirm = loadQtyConfirm;
+
+// V20260630:批量从 shopify_orders.line_items 抓 sku→image_url(数据已打通,纯 Supabase 读,不调 Shopify API)
+// 构建 QC._dbImgMap[shopify_order_id] = { [sku]: image_url }
+async function loadQcImagesFromDb() {
+  QC._dbImgMap = QC._dbImgMap || {};
+  try {
+    const ids = Array.from(new Set((QC._list || [])
+      .map(r => r.shopify_order_id).filter(Boolean).map(String)));
+    if (!ids.length) return;
+    // 只查还没建过图映射的订单
+    const need = ids.filter(id => !QC._dbImgMap[id]);
+    if (!need.length) return;
+    // 分批(in 列表别太长)
+    const CHUNK = 200;
+    for (let i = 0; i < need.length; i += CHUNK) {
+      const slice = need.slice(i, i + CHUNK);
+      const { data, error } = await sb.from('shopify_orders')
+        .select('shopify_order_id, line_items')
+        .in('shopify_order_id', slice);
+      if (error) { console.warn('[qty-confirm] 取图(DB)失败:', error.message); continue; }
+      (data || []).forEach(o => {
+        const m = {};
+        (Array.isArray(o.line_items) ? o.line_items : []).forEach(li => {
+          const sku = li.sku || (li.variant && li.variant.sku);
+          const img = li.image_url || (li.image && (li.image.src || li.image)) || (li.variant && li.variant.image && li.variant.image.src);
+          if (sku && img) m[sku] = img;
+        });
+        QC._dbImgMap[String(o.shopify_order_id)] = m;
+      });
+      // 查不到的也标记为空对象,避免反复查
+      slice.forEach(id => { if (!QC._dbImgMap[id]) QC._dbImgMap[id] = {}; });
+    }
+  } catch (e) { console.warn('[qty-confirm] loadQcImagesFromDb 异常:', e.message); }
+}
+window.loadQcImagesFromDb = loadQcImagesFromDb;
 
 // 仅按当前状态 tab 筛选(不含店铺/搜索)· 给店铺下拉算每店数量用
 function _qcStatusFilteredList() {
@@ -291,7 +327,8 @@ function _qcCard(r) {
   const isRevise = r.status === 'revise';
   const canClose = r.status === 'revise' || r.status === 'confirmed';
   const oid = String(r.shopify_order_id);
-  const imgMap = QC._imgCache[oid] || null;   // { sku: imgUrl }
+  // V20260630:优先用 DB(shopify_orders.line_items)的图,其次 Shopify API 缓存(手动看图),_qcItemRow 内再回退 products 图
+  const imgMap = (QC._dbImgMap && QC._dbImgMap[oid] && Object.keys(QC._dbImgMap[oid]).length ? QC._dbImgMap[oid] : null) || QC._imgCache[oid] || null;
 
   // 超量商品(图 + SKU × 下单数量)
   const itemsHtml = items.map(it => _qcItemRow(it, imgMap)).join('');
