@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260630-tablayout-server',
+    date: '2026-06-30',
+    type: 'fix',
+    title: '🧩 自定义布局存服务器(跟账号走)+ 修「有些账号设不了」',
+    notes: [
+      '#1 布局之前只存 localStorage → 换浏览器/设备就丢;改为存服务器 agents.tab_layout(跟账号走),本地仍做缓存兜底。需先跑 SQL 加列:alter table agents add column if not exists tab_layout jsonb;',
+      '#2 根因:「📐自定义布局」按钮原来只在 if(hasSideTabs) 内渲染 → 全顶部布局/侧栏被权限滤光的账号侧栏不显示 → 按钮消失 → 无法设置;改为永远显示(侧栏至少保留这个按钮)',
+      'getTabLayout 优先读服务器(CONFIG 内 me.tabLayout)回退本地;save/reset 同步写服务器(by user_id)+ 本地',
+    ],
+    files: ['core.js', 'index.html', 'help.js'],
+    sql: 'alter table public.agents add column if not exists tab_layout jsonb;',
+  },
+  {
     v: '20260630-fix-改单-default_supplier',
     date: '2026-06-30',
     type: 'fix',

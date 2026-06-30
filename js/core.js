@@ -82,6 +82,7 @@ const DATA = {
       isBoss: !!a.is_boss,
       sites: a.sites || [],
       modules: a.modules || [...ALL_MODULE_KEYS],
+      tabLayout: a.tab_layout || null,   // V20260630:工作台布局存服务器,跟账号走
     }));
 
     // Orders / Aftersales / Issues / Missing / Purchases 都按 agent 分组（RLS 自动过滤：跟单只能看自己，主管能看所有）
@@ -2998,6 +2999,13 @@ const TAB_META = {
 };
 
 function getTabLayout() {
+  // V20260630:优先服务器(跟账号走,换浏览器/设备不丢),回退本地缓存
+  try {
+    const me = (typeof CONFIG !== 'undefined' && CONFIG.agents) ? CONFIG.agents.find(a => a.name === CURRENT_AGENT) : null;
+    if (me && me.tabLayout && typeof me.tabLayout === 'object' && Object.keys(me.tabLayout).length) {
+      return { ...TAB_LAYOUT_DEFAULT, ...me.tabLayout };
+    }
+  } catch (_) {}
   try {
     const stored = JSON.parse(localStorage.getItem(TAB_LAYOUT_KEY) || '{}');
     return { ...TAB_LAYOUT_DEFAULT, ...stored };
@@ -3078,27 +3086,21 @@ function applyTabLayout() {
     }
   });
 
-  // 显示/隐藏 sidebar
-  if (hasSideTabs) {
-    // V5-W3-2026-05-26: 底部固定 📐 自定义布局按钮(永远显示,不依赖顶栏)
-    const bottom = document.createElement('div');
-    bottom.className = 'side-tab-bottom';
-    bottom.innerHTML = `
-      <div class="side-tab-customize" onclick="openTabLayoutModal()" title="自定义工作台布局">
-        <span class="side-tab-icon">📐</span>
-        <span class="side-tab-label">自定义布局</span>
-        <span class="side-tab-tooltip">📐 自定义布局</span>
-      </div>
-    `;
-    sideBar.appendChild(bottom);
-    sideBar.style.display = 'flex';
-    document.body.classList.add('has-side-tabs');
-    document.body.classList.toggle('side-collapsed', isCollapsed);
-  } else {
-    sideBar.style.display = 'none';
-    document.body.classList.remove('has-side-tabs');
-    document.body.classList.remove('side-collapsed');
-  }
+  // V20260630:自定义布局按钮「永远显示」— 不再依赖是否有侧栏 tab
+  // 根因:原来在 if(hasSideTabs) 内,全顶部布局/侧栏被权限滤光的账号 → 侧栏不渲染 → 按钮消失 → 无法打开布局设置
+  const bottom = document.createElement('div');
+  bottom.className = 'side-tab-bottom';
+  bottom.innerHTML = `
+    <div class="side-tab-customize" onclick="openTabLayoutModal()" title="自定义工作台布局">
+      <span class="side-tab-icon">📐</span>
+      <span class="side-tab-label">自定义布局</span>
+      <span class="side-tab-tooltip">📐 自定义布局</span>
+    </div>
+  `;
+  sideBar.appendChild(bottom);
+  sideBar.style.display = 'flex';
+  document.body.classList.add('has-side-tabs');
+  document.body.classList.toggle('side-collapsed', isCollapsed);
   
   // V20260526h: 应用完布局后强制同步 padding
   setTimeout(() => { if (typeof syncMainAppPadding === 'function') syncMainAppPadding(); }, 50);
@@ -3433,9 +3435,24 @@ function _tabLayoutSetZone(tab, zone, btnEl) {
   btnEl.classList.add('active');
 }
 
-function saveTabLayout() {
-  if (_tabLayoutDraft) {
-    localStorage.setItem(TAB_LAYOUT_KEY, JSON.stringify(_tabLayoutDraft));
+async function saveTabLayout() {
+  const draft = _tabLayoutDraft;
+  if (draft) {
+    localStorage.setItem(TAB_LAYOUT_KEY, JSON.stringify(draft));  // 本地缓存(立即生效/离线兜底)
+    // V20260630:存服务器(跟账号走,换浏览器/设备不丢)
+    try {
+      const me = (typeof CONFIG !== 'undefined' && CONFIG.agents) ? CONFIG.agents.find(a => a.name === CURRENT_AGENT) : null;
+      if (me && me._userId) {
+        const { error } = await sb.from('agents').update({ tab_layout: draft }).eq('user_id', me._userId);
+        if (error) {
+          if (/tab_layout|column|schema cache/i.test(error.message || '')) {
+            if (typeof toast === 'function') toast('⚠ 已存本地,但服务器缺 tab_layout 列(请跑 SQL 加列后才能跨设备同步)', 'warn', 6000);
+          } else if (typeof toast === 'function') toast('⚠ 已存本地,服务器保存失败:' + (error.message || ''), 'warn', 5000);
+        } else {
+          me.tabLayout = draft;  // 同步内存,getTabLayout 立即读到
+        }
+      }
+    } catch (e) { if (typeof toast === 'function') toast('⚠ 已存本地,服务器保存异常', 'warn', 4000); }
     _tabLayoutDraft = null;
   }
   closeTabLayoutModal();
@@ -3448,10 +3465,15 @@ function closeTabLayoutModal() {
   _tabLayoutDraft = null;
 }
 
-function resetTabLayout() {
+async function resetTabLayout() {
   if (!confirm('恢复默认布局?(销售/采购/催单/售后/产品 在顶部,其余在侧栏)')) return;
   localStorage.removeItem(TAB_LAYOUT_KEY);
   _tabLayoutDraft = null;
+  // V20260630:服务器端也清空
+  try {
+    const me = (typeof CONFIG !== 'undefined' && CONFIG.agents) ? CONFIG.agents.find(a => a.name === CURRENT_AGENT) : null;
+    if (me && me._userId) { await sb.from('agents').update({ tab_layout: null }).eq('user_id', me._userId); me.tabLayout = null; }
+  } catch (_) {}
   closeTabLayoutModal();
   applyTabLayout();
   if (typeof toast === 'function') toast('✓ 已恢复默认布局');
