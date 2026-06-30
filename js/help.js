@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260630-fix-改单-default_supplier',
+    date: '2026-06-30',
+    type: 'fix',
+    title: '🐛 改单保存真因:去掉 orders 不存在的 default_supplier 列',
+    notes: [
+      '根因(其实是"改单保存不生效"的真凶):改单 update 里写了 orders 表不存在的 default_supplier 列 → 数据库整条拒绝(Could not find the default_supplier column)',
+      '原代码 update 后没检查 error,失败被静默吞 → 一直"假成功、数据是旧的/恢复默认";上一版加的 .select() 校验正好把这个隐藏 bug 暴露出来',
+      '修复:update 只写存在的 supplier 列,去掉 default_supplier(default_supplier 是 products 表的列,orders 没有);开采购单 insert 经核对未踩同样坑',
+    ],
+    files: ['po.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260630-kill-serviceworker',
     date: '2026-06-30',
     type: 'fix',

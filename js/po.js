@@ -5903,7 +5903,6 @@ async function poEditPrices(poId) {
       approval_note: approvalNote,
       approved_by: approvedBy,
       supplier: newSupplier || po.supplier || null,
-      default_supplier: newSupplier || po.default_supplier || null,
       updated_at: new Date().toISOString(),
     }).eq('id', poId).select('*');   // ★ 取回真正写入的行,校验是否生效
 
