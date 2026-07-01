@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260701-woo-lineitem-idfix',
+    date: '2026-07-01',
+    type: 'fix',
+    title: '🐛 mooielight(Woo)开采购单保存不了 — 根因:line_item_id 类型不一致',
+    notes: [
+      '根因:selected 里的 liid 来自 Object.entries,恒为字符串;而 line_items 里 shopify_line_item_id 有的平台(Woo/mooielight)存的是数字类型,严格 === 匹配不到 → li 为 undefined → li.sku 抛 TypeError',
+      '致命的是:多供应商分组那段(_poFormSaveInner 里)在 poFormSave 的 try/catch 保护区之外 → 抛错后完全静默失败、无任何提示,只是按钮恢复 → 表现为"点了没反应"',
+      '修复:6 处 shopify_line_item_id 比较全部改为 String() 类型安全比较;poFormSave 补上外层 catch(以后任何未预期抛错都会弹 toast,不再静默);liData 核心构建处加空值保护 + 明确报错信息',
+    ],
+    files: ['po.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260701-finance-sso',
     date: '2026-07-01',
     type: 'feature',

@@ -1319,7 +1319,7 @@ function renderPoForm() {
   console.log('%c[PoForm] 准备生成 per-line 备注', 'color:#2563eb; font-weight:bold');
   selected.forEach(([liid]) => {
     if (PO_FORM_STATE.lineNotesManuallyEdited[liid]) return;  // 跟单改过的不动
-    const li = items.find(x => x.shopify_line_item_id === liid);
+    const li = items.find(x => String(x.shopify_line_item_id) === String(liid));
     if (!li) return;
     const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
     const userNotes = (eff.notes || '').trim();
@@ -1701,7 +1701,7 @@ function poFormSetPrice(liid, val) {
 // 修改销售单原始 line item 的 SKU / 中文名 / 图（用于换货 A→B 等场景）
 async function poFormEditLine(liid) {
   const sel = PO_FORM_STATE.lineItemSelections[liid];
-  const li = (PO_FORM_STATE.salesOrder.line_items || []).find(x => x.shopify_line_item_id === liid);
+  const li = (PO_FORM_STATE.salesOrder.line_items || []).find(x => String(x.shopify_line_item_id) === String(liid));
   if (!sel || !li) return;
   const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
   const result = await showPrompt({
@@ -1976,7 +1976,7 @@ async function _poApplyStockFulfillment(so, stockLines) {
   const items = so.line_items || [];
   try {
     for (const [liid, sel] of stockLines) {
-      const li = items.find(x => x.shopify_line_item_id === liid);
+      const li = items.find(x => String(x.shopify_line_item_id) === String(liid));
       if (!sel.stockProductId) { toast('某产品未关联库存,无法用库存', 'warn'); return false; }
       const qty = sel.useStockQty;
       const wh = sel.useStockWh;   // overseas / domestic
@@ -2036,6 +2036,10 @@ async function poFormSave() {
   if (_saveBtn) { _saveBtn.disabled = true; _saveBtn.textContent = '保存中…'; }
   try {
     return await _poFormSaveInner();
+  } catch (e) {
+    // V20260701:兜底 — 内部任何未预期抛错都要有提示,禁止"点了没反应"的静默失败
+    console.error('poFormSave 未捕获错误：', e);
+    toast('保存失败：' + (e.message || JSON.stringify(e) || '未知错误') + '(请截图反馈)', 'err', 6000);
   } finally {
     poFormSave._busy = false;
     if (_saveBtn) { _saveBtn.disabled = false; _saveBtn.textContent = '保存采购单'; }
@@ -2101,8 +2105,11 @@ async function _poFormSaveInner() {
   const items = so.line_items || [];
   const groups = {};  // supplierName => [liid...]
   selected.forEach(([liid, sel]) => {
-    const li = items.find(x => x.shopify_line_item_id === liid);
-    const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
+    // V20260701:类型安全比较 — liid 来自 Object.entries 恒为字符串,但 line_items 里的
+    // shopify_line_item_id 有的平台(如 mooielight/WooCommerce)存的是数字,严格 === 会匹配不到
+    // → li 变 undefined → li.sku 抛错(且此处在保存的 try/catch 保护区外)→ 静默"保存不了"
+    const li = items.find(x => String(x.shopify_line_item_id) === String(liid));
+    const eff = li ? (PRODUCTS_CACHE.effectiveBySku(li.sku) || {}) : {};
     const supName = eff.default_supplier || supplierName;
     if (!groups[supName]) groups[supName] = [];
     groups[supName].push(liid);
@@ -2199,8 +2206,9 @@ async function poFormDoSave(groups, common) {
       if (!poNum) throw new Error('生成采购单编号失败 (no data)');
 
       const liData = g.liids.map(liid => {
-        const li = items.find(x => x.shopify_line_item_id === liid);
+        const li = items.find(x => String(x.shopify_line_item_id) === String(liid));
         const sel = PO_FORM_STATE.lineItemSelections[liid];
+        if (!li) throw new Error('订单行数据未找到(liid=' + liid + '),可能是该行已被删除或平台ID格式异常,请刷新销售单重试');
         const eff = PRODUCTS_CACHE.effectiveBySku(li.sku) || {};
         // V20260601-desc:per-line 描述优先(用户在创建 PO 弹窗里直接改的)· 否则 fallback 旧逻辑
         const desc = (PO_FORM_STATE.lineDescriptions && PO_FORM_STATE.lineDescriptions[liid]) || {};
@@ -2288,7 +2296,7 @@ async function poFormDoSave(groups, common) {
 
       // 更新 line_items 的 po_assignments
       g.liids.forEach((liid, idx) => {
-        const target = allLineItemUpdates.find(x => x.shopify_line_item_id === liid);
+        const target = allLineItemUpdates.find(x => String(x.shopify_line_item_id) === String(liid));
         if (target) {
           target.po_assignments = target.po_assignments || [];
           target.po_assignments.push({
