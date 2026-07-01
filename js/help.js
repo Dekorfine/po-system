@@ -10,6 +10,18 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260701-finance-sso',
+    date: '2026-07-01',
+    type: 'feature',
+    title: '🔐 财务系统一键免登录跳转跟单(SSO)',
+    notes: [
+      'po-system bootstrap 先解析 URL hash 里的 access_token/refresh_token → setSession 免登录进入,成功后清掉地址栏 token',
+      '配套 finance-sso Edge Function(service-role 签发短期 token,x-sso-secret 鉴权):财务后端调用→拿 token→重定向 po-system/#access_token=...&refresh_token=...',
+      '连英等财务账号需已在 agents 表有行(finance/modules=null)才能进',
+    ],
+    files: ['core.js', 'index.html', 'help.js'],
+  },
+  {
     v: '20260630-qc-card-A',
     date: '2026-06-30',
     type: 'change',

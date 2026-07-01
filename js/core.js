@@ -1775,6 +1775,9 @@ let SCORE_RULES = DATA.getScoreRules();
 // ============================================================
 async function bootstrap() {
   try {
+    // V20260701:财务系统无感 SSO — URL hash 带 token 就先建立 session(免登录)
+    await _trySsoFromHash();
+
     // 1. 检查 session
     const { data: { session } } = await sb.auth.getSession();
     if (!session) {
@@ -1789,6 +1792,23 @@ async function bootstrap() {
     showLoginScreen();
     showLoginError('启动失败：' + (err.message || err));
   }
+}
+
+// V20260701:财务一键跳转跟单 — 解析 URL hash 里的 access_token/refresh_token,建立 session 后清掉地址栏
+async function _trySsoFromHash() {
+  try {
+    const h = window.location.hash || '';
+    if (!/access_token=/.test(h)) return;
+    const p = new URLSearchParams(h.replace(/^#/, ''));
+    const access_token = p.get('access_token');
+    const refresh_token = p.get('refresh_token');
+    if (!access_token || !refresh_token) return;
+    const { error } = await sb.auth.setSession({ access_token, refresh_token });
+    if (error) { console.warn('[SSO] setSession 失败:', error.message); return; }
+    // 清掉 URL 里的 token(别留在地址栏/浏览历史)
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    console.log('%c[SSO] 财务免登录 session 已建立', 'color:#10b981;font-weight:bold');
+  } catch (e) { console.warn('[SSO] 解析 token 失败:', e.message); }
 }
 
 async function onAuthSuccess(session) {
