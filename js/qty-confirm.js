@@ -344,8 +344,8 @@ function _qcCard(r) {
       <span style="margin-left:auto; font-size:11px; color:var(--text-tertiary);">${escapeHtml(r.customer_name || '')}${r.customer_email?` · ${escapeHtml(r.customer_email)}`:''}</span>
     </div>
 
-    <div style="background:var(--bg-elevated); border-radius:7px; padding:8px 10px; margin-bottom:8px;">
-      <div style="font-size:10.5px; color:var(--text-tertiary); margin-bottom:4px;">触发核实的商品(下单数量):</div>
+    <div style="margin-bottom:10px;">
+      <div style="font-size:10.5px; color:var(--text-tertiary); margin-bottom:2px;">核实商品(下单数量):</div>
       <div data-qc-imgs="${oid}">${itemsHtml || '<span style="font-size:12px; color:var(--text-tertiary);">无明细</span>'}</div>
     </div>
 
@@ -357,7 +357,7 @@ function _qcCard(r) {
 
     ${_qcRefImages(r)}
 
-    <div style="display:flex; align-items:center; gap:10px; font-size:10.5px; color:var(--text-tertiary); flex-wrap:wrap;">
+    <div style="display:flex; align-items:center; gap:10px; font-size:12px; color:var(--text-secondary); flex-wrap:wrap; border-top:0.5px solid var(--border); padding-top:10px; margin-top:2px;">
       ${r.email_sent_at ? `<span>发信 ${_qcDate(r.email_sent_at)}</span>` : ''}
       ${r.reply_deadline ? `<span>截止 ${_qcDate(r.reply_deadline)}</span>` : ''}
       ${r.handler ? `<span>跟进 ${escapeHtml(r.handler)}</span>` : ''}
