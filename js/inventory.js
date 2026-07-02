@@ -408,7 +408,8 @@ function _invCardHtml(p) {
           </div>
           <span style="font-size:13px; font-weight:700; color:${statusColor}; font-family:monospace;">${stock}</span>
           <span style="font-size:11px; color:var(--text-tertiary);">预警线 ${threshold}</span>
-          <span style="font-size:10.5px; color:var(--text-secondary); margin-left:6px; padding:1px 8px; background:var(--bg-elevated); border-radius:8px;">🏠 国内 <b>${Number(p.stock_qty_domestic||0)}</b> · ✈️ 海外 <b>${Number(p.stock_qty_overseas||0)}</b></span>
+          <span style="font-size:10.5px; color:var(--text-secondary); margin-left:6px; padding:1px 8px; background:var(--bg-elevated); border-radius:8px;">🏠 国内 <b>${Number(p.stock_qty_domestic||0)}</b> · ✈️ 海外 <b>${Number(p.stock_qty_overseas||0)}</b>${Number(p.stock_qty_in_transit||0) > 0 ? ` · 🚚 在途 <b style="color:#7c3aed;">${Number(p.stock_qty_in_transit||0)}</b>` : ''}</span>
+          ${Number(p.stock_qty_in_transit||0) > 0 ? `<button class="btn small" style="padding:2px 10px; font-size:10.5px; background:rgba(124,58,237,0.1); border-color:#7c3aed; color:#7c3aed;" title="在途货物已到海外仓?一键把在途数量转入海外仓库存" onclick="event.stopPropagation(); invArriveTransit('${p.sku}')">✅ 到货入海外仓</button>` : ''}
         </div>
         
         <!-- 绑定的平台 SKU -->
@@ -858,7 +859,8 @@ function _invGridCardHtml(p) {
       ${p.spec ? `<div style="font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(p.spec)}">📐 ${escapeHtml(p.spec)}</div>` : ''}
       ${_invIsStale(p) ? `<div style="font-size:10.5px; color:#dc2626; font-weight:700;">🐢 压货 ${_invAgeDays(p)}天</div>` : (_invAgeDays(p) != null ? `<div style="font-size:10.5px; color:var(--text-tertiary);">库龄 ${_invAgeDays(p)}天</div>` : '')}
       <div style="height:6px; background:var(--bg-elevated); border-radius:3px; overflow:hidden;"><div style="width:${barPct}%; height:100%; background:${statusColor};"></div></div>
-      <div style="font-size:10px; color:var(--text-secondary); text-align:center; padding:1px 0;">🏠 国内 <b>${Number(p.stock_qty_domestic||0)}</b> · ✈️ 海外 <b>${Number(p.stock_qty_overseas||0)}</b></div>
+      <div style="font-size:10px; color:var(--text-secondary); text-align:center; padding:1px 0;">🏠 国内 <b>${Number(p.stock_qty_domestic||0)}</b> · ✈️ 海外 <b>${Number(p.stock_qty_overseas||0)}</b>${Number(p.stock_qty_in_transit||0) > 0 ? ` · 🚚 <b style="color:#7c3aed;">${Number(p.stock_qty_in_transit||0)}</b>` : ''}</div>
+      ${Number(p.stock_qty_in_transit||0) > 0 ? `<button class="btn small" style="width:100%; font-size:10.5px; padding:4px; background:rgba(124,58,237,0.1); border-color:#7c3aed; color:#7c3aed;" title="在途货物已到海外仓?一键把在途数量转入海外仓库存" onclick="event.stopPropagation(); invArriveTransit('${p.sku}')">✅ 到货入海外仓</button>` : ''}
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:10.5px; color:var(--text-secondary);">
         <span title="供应商">${p.default_supplier ? '🏭 ' + escapeHtml(p.default_supplier) : '<span style=\'color:var(--text-tertiary)\'>无供应商</span>'}</span>
         <span style="color:var(--text-tertiary);">预警 ${threshold}</span>
@@ -1020,6 +1022,15 @@ function _invRenderEdit() {
             <div id="invTotalStock" style="padding:9px 6px; font-size:17px; font-weight:700; text-align:center; color:#2563eb; background:#f1f5f9; border-radius:6px;">${(s.stock_qty_domestic||0)+(s.stock_qty_overseas||0)}</div>
           </div>
         </div>
+        <!-- V20260702:在途库存(国内发海外仓约1个月在途期)· 独立填写,不计入上方合计,到货后用列表页"到货入海外仓"按钮一键转入 -->
+        <div style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+          <div style="flex:0 0 90px;">
+            <div style="font-size:10px; color:#7c3aed; margin-bottom:2px;">🚚 在途(海运约1个月)</div>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" value="${s.stock_qty_in_transit||0}" oninput="this.value=this.value.replace(/[^0-9]/g,''); INV_EDIT.stock_qty_in_transit=parseInt(this.value)||0;"
+                   style="width:100%; padding:7px 8px; font-size:15px; border:1px solid #ddd6fe; border-radius:6px; text-align:center; font-weight:700; color:#7c3aed; background:#faf5ff;">
+          </div>
+          <div style="font-size:10.5px; color:var(--text-tertiary); flex:1;">发货去海外仓、还在路上的数量。不计入上方"合计"可用库存;到货后在库存列表页点「✅到货入海外仓」一键转入海外仓库存。</div>
+        </div>
       </div>
     </div>
     
@@ -1113,12 +1124,6 @@ function _invRenderEdit() {
         <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">低库存预警线</label>
         <input type="text" inputmode="numeric" pattern="[0-9]*" value="${s.stock_alert_threshold}" oninput="this.value=this.value.replace(/[^0-9]/g,''); INV_EDIT.stock_alert_threshold=parseInt(this.value)||0"
                placeholder="低于此值告警"
-               style="width:120px; padding:9px 8px; font-size:15px; border:1px solid #cbd5e1; border-radius:6px; text-align:center; font-weight:700; color:#111827; background:#ffffff;">
-      </div>
-      <div>
-        <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:4px;">🚚 在途数量</label>
-        <input type="text" inputmode="numeric" pattern="[0-9]*" value="${s.stock_qty_in_transit||0}" oninput="this.value=this.value.replace(/[^0-9]/g,''); INV_EDIT.stock_qty_in_transit=parseInt(this.value)||0"
-               placeholder="已下单未到仓"
                style="width:120px; padding:9px 8px; font-size:15px; border:1px solid #cbd5e1; border-radius:6px; text-align:center; font-weight:700; color:#111827; background:#ffffff;">
       </div>
       <div>
@@ -1583,6 +1588,56 @@ function _invRenderAdjust() {
     </div>
   `;
 }
+
+// V20260702:在途货物到货 — 一键把在途数量转入海外仓库存(国内发海外仓约1个月在途期)
+async function invArriveTransit(sku) {
+  const p = (typeof PRODUCTS_CACHE !== 'undefined' && PRODUCTS_CACHE.list) ? PRODUCTS_CACHE.list.find(x => x.sku === sku) : null;
+  if (!p) { toast('找不到该产品', 'err'); return; }
+  const transitQty = Number(p.stock_qty_in_transit || 0);
+  if (transitQty <= 0) { toast('该产品没有在途库存', 'warn'); return; }
+
+  const ok = await window.confirmDialog({
+    title: '✅ 确认到货入海外仓',
+    message: `${p.name_cn || p.sku}\n在途 ${transitQty} 件已到达海外仓?\n\n将会:海外仓库存 +${transitQty},在途清零。`,
+    okText: '确认到货',
+    cancelText: '取消',
+  });
+  if (!ok) return;
+
+  try {
+    const newOverseas = Number(p.stock_qty_overseas || 0) + transitQty;
+    const newDomestic = Number(p.stock_qty_domestic || 0);
+    const _invUpd = {
+      stock_qty_overseas: newOverseas,
+      stock_qty_in_transit: 0,
+      stock_qty: newDomestic + newOverseas,   // 合计 = 国内 + 海外(在途不计入合计,到货后并入海外才计入)
+      stock_in_at: new Date().toISOString(),   // 新到货重置库龄起算
+    };
+    const { error } = await sb.from('products').update(_invUpd).eq('id', p.id);
+    if (error) throw error;
+
+    const myName = (typeof CURRENT_AGENT !== 'undefined' && CURRENT_AGENT) ? CURRENT_AGENT : '?';
+    await sb.from('inventory_movements').insert({
+      product_id: p.id,
+      internal_sku: p.sku,
+      movement_type: 'inbound',
+      qty_change: transitQty,
+      qty_after: newDomestic + newOverseas,
+      ref_type: 'transit_arrival',
+      ref_id: null,
+      operator: myName,
+      note: `在途到货入海外仓 · 在途${transitQty}件转入海外仓`,
+    });
+
+    if (typeof PRODUCTS_CACHE !== 'undefined') PRODUCTS_CACHE.invalidate();
+    toast(`✅ 已到货:海外仓 +${transitQty}`, 'success');
+    setTimeout(() => renderInventory(), 150);
+  } catch (err) {
+    console.error('到货入库失败:', err);
+    toast('操作失败:' + (err.message || err), 'err');
+  }
+}
+window.invArriveTransit = invArriveTransit;
 
 async function invSaveAdjust() {
   const s = INV_ADJUST;
