@@ -10,6 +10,17 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260702-return-modal-overlay-fix',
+    date: '2026-07-02',
+    type: 'fix',
+    title: '↩ 退货单弹层根治"顶到页面最上面"— CSS白名单漏了2个ID',
+    notes: [
+      '根因:系统的悬浮弹层(position:fixed+居中+遮罩)不是靠 .modal 这个class本身,而是靠一个按ID列举的白名单选择器(#customPoModal等十几个),returnOrderModal/returnOrderDetailModal建的时候完全照抄了customPoModal的HTML结构,但没被加进这个CSS白名单,于是只套用了裸的.modal样式(无position:fixed)→ 表现为在页面顶部撑开、推挤内容,不是真正的悬浮层',
+      '修复:把 #returnOrderModal / #returnOrderDetailModal 加进4处白名单选择器(悬浮定位/显示触发/关闭按钮样式/关闭按钮hover),和其余十几个弹层同一套正确定位',
+    ],
+    files: ['index.html', 'help.js'],
+  },
+  {
     v: '20260702-return-orders-confirm',
     date: '2026-07-02',
     type: 'fix',
