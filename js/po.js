@@ -4085,10 +4085,20 @@ function poShowFilter(f) {
 }
 
 // V20260620:全部订单 120天/历史 切换
-function poAllScope(scope) {
+async function poAllScope(scope) {
   if (scope === 'history' && !confirm('历史全部采购单可能很多,渲染较慢。确定查看?')) return;
   PO_ALL_SCOPE = scope;
   PO_PAGE = 1;
+  // V20260702:根治"历史全部看不到老单子"—之前只是在已加载的最近500条里重新过滤,
+  // 老单子如果不在这500条里就永远看不到。切到"历史全部"时真正重新查库,不设日期上限。
+  if (scope === 'history' && !PO_LIST._historyLoaded) {
+    try {
+      toast('正在加载历史采购单…', 'info', 1500);
+      const { data } = await sb.from('orders').select('*').not('po_number', 'is', null).order('created_at', { ascending: false }).limit(3000);
+      (data || []).forEach(h => { if (!PO_LIST.find(x => x.id === h.id)) PO_LIST.push(h); });
+      PO_LIST._historyLoaded = true;
+    } catch (e) { console.warn('[po] 加载历史采购单失败:', e.message); toast('历史数据加载失败:' + e.message, 'err'); }
+  }
   renderPoList();
 }
 window.poAllScope = poAllScope;
@@ -4183,22 +4193,32 @@ function poClearAllFilters() {
 let _poSearchTimer = null;
 function poSetSearch(val) {
   if (_poSearchTimer) clearTimeout(_poSearchTimer);
-  _poSearchTimer = setTimeout(() => {
+  _poSearchTimer = setTimeout(async () => {
     PO_SEARCH = (val || '').trim();
     PO_PAGE = 1;
-    renderPoList();
-    // 保持搜索框焦点（重渲染后输入框是新元素，要重新聚焦 + 光标移到末尾）
-    const inp = document.getElementById('poSearchInput');
-    if (inp) {
-      inp.focus();
-      inp.setSelectionRange(inp.value.length, inp.value.length);
+    // V20260702:根治"搜不到历史单据"— PO_LIST 只加载最近500条,老单子可能压根没加载到内存里。
+    // 本地(500条缓存)没命中时,直接查库补(同 RECEIPT 搜索用的"缓存未命中→查库合并"模式),再渲染。
+    if (PO_SEARCH) {
+      const qLower = PO_SEARCH.toLowerCase();
+      const localHit = PO_LIST.some(p => [p.po_number, p.supplier, p.order_no, p.box_note, p.note].join(' ').toLowerCase().includes(qLower));
+      if (!localHit) {
+        try {
+          const orClause = `po_number.ilike.%${PO_SEARCH}%,supplier.ilike.%${PO_SEARCH}%,order_no.ilike.%${PO_SEARCH}%,box_note.ilike.%${PO_SEARCH}%,note.ilike.%${PO_SEARCH}%`;
+          const { data } = await sb.from('orders').select('*').not('po_number', 'is', null).or(orClause).limit(100);
+          (data || []).forEach(h => { if (!PO_LIST.find(x => x.id === h.id)) PO_LIST.push(h); });
+        } catch (e) { console.warn('[po] 搜索查库失败:', e.message); }
+      }
     }
+    renderPoList();
   }, 200);
 }
 
 function poClearSearch() {
   PO_SEARCH = '';
   PO_PAGE = 1;
+  // V20260702:显式清空输入框值 + 失焦,确保走完整重建路径(不然✕图标/下拉选中态可能残留)
+  const inp = document.getElementById('poSearchInput');
+  if (inp) { inp.value = ''; inp.blur(); }
   renderPoList();
 }
 
@@ -4299,12 +4319,12 @@ function renderPoList() {
   const supplierFilterHtml = `
     <div style="display:flex; gap:10px; align-items:center; padding:10px 0; flex-wrap:wrap;">
       <!-- V4:多维搜索框 -->
-      <div style="position:relative; flex:1; min-width:240px; max-width:380px;">
+      <div style="position:relative; flex:1; min-width:320px; max-width:520px;">
         <input type="text" id="poSearchInput" placeholder="🔍 PO 编号 / 供应商 / SKU / 产品名 / 备注..." 
                value="${escapeHtml(PO_SEARCH)}" 
                oninput="poSetSearch(this.value)"
-               style="width:100%; padding:7px 32px 7px 12px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary);">
-        ${PO_SEARCH ? `<span onclick="poClearSearch()" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); cursor:pointer; color:var(--text-tertiary); font-size:14px; padding:2px 6px;" title="清除搜索">✕</span>` : ''}
+               style="width:100%; padding:11px 36px 11px 14px; font-size:14px; border:1.5px solid var(--accent); border-radius:8px; background:var(--bg-card); color:var(--text-primary); box-shadow:0 1px 3px rgba(37,99,235,0.08);">
+        ${PO_SEARCH ? `<span title="清除搜索" onclick="poClearSearch()" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); cursor:pointer; color:var(--text-tertiary); font-size:15px; padding:2px 6px;">✕</span>` : ''}
       </div>
       <select onchange="poChangeSupplierFilter(this.value)" style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary); min-width:200px;">
         <option value="">— 全部供应商 (${allSuppliers.length}) —</option>
@@ -4482,7 +4502,30 @@ function renderPoList() {
         <span style="font-size:11px; color:var(--text-tertiary);">${sc==='history'?'显示全部历史':'仅近120天'}</span>
       </div>`;
   }
-  body.innerHTML = allBanner + supplierFilterHtml + cardsHtml + pagerHtml;
+  // V20260702:根治"打字丢字符"—原来每次搜索都把过滤区(含搜索框)和几百张卡片一起用 innerHTML 整体重建,
+  // 输入框本身被销毁重建,快速打字时按键会丢在半空。现在：搜索框正在输入时,只替换结果区,不碰过滤区 DOM。
+  const searchHasFocus = document.activeElement && document.activeElement.id === 'poSearchInput';
+  const existingResultsWrap = document.getElementById('poResultsWrap');
+  if (searchHasFocus && existingResultsWrap) {
+    existingResultsWrap.innerHTML = cardsHtml + pagerHtml;
+    // 便宜地同步清除按钮(✕)显隐,不用整块重建过滤区
+    const inp = document.getElementById('poSearchInput');
+    if (inp && inp.parentElement) {
+      let clearBtn = inp.parentElement.querySelector('span[title="清除搜索"]');
+      if (PO_SEARCH && !clearBtn) {
+        clearBtn = document.createElement('span');
+        clearBtn.title = '清除搜索';
+        clearBtn.textContent = '✕';
+        clearBtn.onclick = poClearSearch;
+        clearBtn.style.cssText = 'position:absolute; right:8px; top:50%; transform:translateY(-50%); cursor:pointer; color:var(--text-tertiary); font-size:14px; padding:2px 6px;';
+        inp.parentElement.appendChild(clearBtn);
+      } else if (!PO_SEARCH && clearBtn) {
+        clearBtn.remove();
+      }
+    }
+  } else {
+    body.innerHTML = `<div id="poFilterBarWrap">${allBanner}${supplierFilterHtml}</div><div id="poResultsWrap">${cardsHtml}${pagerHtml}</div>`;
+  }
   if (typeof poInitLayout === 'function') poInitLayout();   // V20260620:应用记住的布局
   
   // V20260526a: 填充通用日期筛选下拉
