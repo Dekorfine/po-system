@@ -36,7 +36,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260702confirm"></script>
+<script defer src="js/help.js?v=20260702modalfix"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -4696,7 +4696,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 /* ============ 批次 4 新增弹窗 overlay（修复位置 bug） ============ */
 /* 6 个新弹窗的 .modal 不能用原系统的卡片样式，要 reset 成全屏遮罩 */
 #poFormModal, #suppliersModal, #supplierEditModal,
-#masterBindModal, #multiSupplierConfirm, #poPrintModal, #internalNoteModal, #genericPromptModal, #customOrderModal, #customPoModal, #shopifyAddStoreModal, #productEditModal, #photoReqNewModal, #photoReqConfigModal, #supplierStatementModal, #photoReqEditModal, #photoReqBatchModal, #inventoryEditModal, #inventoryAdjustModal {
+#masterBindModal, #multiSupplierConfirm, #poPrintModal, #internalNoteModal, #genericPromptModal, #customOrderModal, #customPoModal, #returnOrderModal, #returnOrderDetailModal, #shopifyAddStoreModal, #productEditModal, #photoReqNewModal, #photoReqConfigModal, #supplierStatementModal, #photoReqEditModal, #photoReqBatchModal, #inventoryEditModal, #inventoryAdjustModal {
   position: fixed !important; inset: 0 !important;
   background: rgba(28,25,23,0.5) !important;
   /* backdrop-filter removed for performance */
@@ -4710,7 +4710,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 #genericPromptModal { z-index: 9500 !important; }  /* 在其他 modal 之上 */
 #poFormModal[style*="flex"], #suppliersModal[style*="flex"], #supplierEditModal[style*="flex"],
-#masterBindModal[style*="flex"], #multiSupplierConfirm[style*="flex"], #poPrintModal[style*="flex"], #internalNoteModal[style*="flex"], #genericPromptModal[style*="flex"], #customOrderModal[style*="flex"], #customPoModal[style*="flex"], #shopifyAddStoreModal[style*="flex"], #productEditModal[style*="flex"], #photoReqNewModal[style*="flex"], #photoReqConfigModal[style*="flex"], #supplierStatementModal[style*="flex"], #photoReqEditModal[style*="flex"], #photoReqBatchModal[style*="flex"], #inventoryEditModal[style*="flex"], #inventoryAdjustModal[style*="flex"] {
+#masterBindModal[style*="flex"], #multiSupplierConfirm[style*="flex"], #poPrintModal[style*="flex"], #internalNoteModal[style*="flex"], #genericPromptModal[style*="flex"], #customOrderModal[style*="flex"], #customPoModal[style*="flex"], #returnOrderModal[style*="flex"], #returnOrderDetailModal[style*="flex"], #shopifyAddStoreModal[style*="flex"], #productEditModal[style*="flex"], #photoReqNewModal[style*="flex"], #photoReqConfigModal[style*="flex"], #supplierStatementModal[style*="flex"], #photoReqEditModal[style*="flex"], #photoReqBatchModal[style*="flex"], #inventoryEditModal[style*="flex"], #inventoryAdjustModal[style*="flex"] {
   display: flex !important;
 }
 .modal-content {
@@ -4732,7 +4732,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
 }
 .modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
 #poFormModal .modal-close, #suppliersModal .modal-close, #supplierEditModal .modal-close,
-#masterBindModal .modal-close, #multiSupplierConfirm .modal-close, #poPrintModal .modal-close, #internalNoteModal .modal-close, #genericPromptModal .modal-close, #customOrderModal .modal-close, #customPoModal .modal-close, #shopifyAddStoreModal .modal-close, #productEditModal .modal-close, #photoReqNewModal .modal-close, #photoReqConfigModal .modal-close, #supplierStatementModal .modal-close, #photoReqEditModal .modal-close, #photoReqBatchModal .modal-close, #inventoryEditModal .modal-close, #inventoryAdjustModal .modal-close {
+#masterBindModal .modal-close, #multiSupplierConfirm .modal-close, #poPrintModal .modal-close, #internalNoteModal .modal-close, #genericPromptModal .modal-close, #customOrderModal .modal-close, #customPoModal .modal-close, #returnOrderModal .modal-close, #returnOrderDetailModal .modal-close, #shopifyAddStoreModal .modal-close, #productEditModal .modal-close, #photoReqNewModal .modal-close, #photoReqConfigModal .modal-close, #supplierStatementModal .modal-close, #photoReqEditModal .modal-close, #photoReqBatchModal .modal-close, #inventoryEditModal .modal-close, #inventoryAdjustModal .modal-close {
   position: static !important; top: auto !important; right: auto !important;
   width: 30px; height: 30px;
   background: transparent; border: none; cursor: pointer;
@@ -4740,7 +4740,7 @@ textarea.form-control { resize: vertical; min-height: 70px; }
   border-radius: 6px;
 }
 #poFormModal .modal-close:hover, #suppliersModal .modal-close:hover, #supplierEditModal .modal-close:hover,
-#masterBindModal .modal-close:hover, #multiSupplierConfirm .modal-close:hover, #poPrintModal .modal-close:hover, #internalNoteModal .modal-close:hover, #genericPromptModal .modal-close:hover, #customOrderModal .modal-close:hover, #customPoModal .modal-close:hover, #shopifyAddStoreModal .modal-close:hover, #productEditModal .modal-close:hover, #photoReqNewModal .modal-close:hover, #photoReqConfigModal .modal-close:hover, #supplierStatementModal .modal-close:hover, #photoReqEditModal .modal-close:hover, #photoReqBatchModal .modal-close:hover, #inventoryEditModal .modal-close:hover, #inventoryAdjustModal .modal-close:hover {
+#masterBindModal .modal-close:hover, #multiSupplierConfirm .modal-close:hover, #poPrintModal .modal-close:hover, #internalNoteModal .modal-close:hover, #genericPromptModal .modal-close:hover, #customOrderModal .modal-close:hover, #customPoModal .modal-close:hover, #returnOrderModal .modal-close:hover, #returnOrderDetailModal .modal-close:hover, #shopifyAddStoreModal .modal-close:hover, #productEditModal .modal-close:hover, #photoReqNewModal .modal-close:hover, #photoReqConfigModal .modal-close:hover, #supplierStatementModal .modal-close:hover, #photoReqEditModal .modal-close:hover, #photoReqBatchModal .modal-close:hover, #inventoryEditModal .modal-close:hover, #inventoryAdjustModal .modal-close:hover {
   background: var(--bg-elevated); color: var(--text-primary);
 }
 .modal-body {
