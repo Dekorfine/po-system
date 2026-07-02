@@ -36,7 +36,7 @@
 <script defer src="js/reset-system.js"></script>
 <script defer src="js/settings.js?v=20260605urgent"></script>
 <script defer src="js/issues.js?v=20260602issfetch4"></script>
-<script defer src="js/help.js?v=20260702searchfix"></script>
+<script defer src="js/help.js?v=20260702ropo"></script>
 <script defer src="js/dateFilter.js?v=20260526p"></script>
 <script defer src="js/feedback.js?v=20260525z"></script>
 <script defer src="js/performance.js"></script>
@@ -49,8 +49,8 @@
 <script defer src="js/missing.js?v=20260615ins"></script>
 <script defer src="js/orders.js?v=20260630noflicker"></script>
 <script defer src="js/shopify.js?v=20260630batchfix"></script>
-<script defer src="js/po.js?v=20260702searchfix"></script>
-<script defer src="js/return-orders.js?v=20260702new"></script>
+<script defer src="js/po.js?v=20260702ropo"></script>
+<script defer src="js/return-orders.js?v=20260702upgrade"></script>
 <script defer src="js/po-wizard.js?v=20260531wiz"></script>
 <script defer src="js/inventory.js?v=20260702transit"></script>
 <script defer src="js/inspection.js?v=20260620po"></script>
@@ -6912,15 +6912,25 @@ if ('serviceWorker' in navigator) {
         </div>
       </div>
       <div id="roStatsContainer" style="margin-top: 12px;"></div>
+      <!-- 快筛日期 chips · 跟采购单同款 -->
+      <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; align-items:center;">
+        <span style="font-size:12px; color:var(--text-secondary); font-weight:600;">🚀 快筛:</span>
+        <button class="btn small" onclick="roQuickRange('today')" title="今天发起的退货单">📅 今天</button>
+        <button class="btn small" onclick="roQuickRange('yesterday')" title="昨天发起的退货单">📅 昨天</button>
+        <button class="btn small" onclick="roQuickRange('week')" title="本周(周一开始)">📅 本周</button>
+        <button class="btn small" onclick="roQuickRange('month')" title="本月">📅 本月</button>
+        <span style="border-left:1px solid var(--border-subtle); height:18px; margin:0 4px;"></span>
+        <button class="btn small" onclick="roQuickRange('yesterday_pending')" style="background:#fef3c7; color:#92400e; border-color:#fbbf24;" title="昨天的退货单 + 还没处理完的">⏰ 昨天没下完</button>
+        <button class="btn small" onclick="roQuickRange('today_pending')" style="background:#fef3c7; color:#92400e; border-color:#fbbf24;" title="今天的退货单 + 还没处理完的">⏰ 今天没下完</button>
+        <button class="btn small" onclick="roQuickRangeClear()" style="color:#6b7280;" title="清掉日期筛选 · 看全部">✕ 清除</button>
+        <span id="roQuickRangeHint" style="margin-left:8px; font-size:11.5px; color:var(--text-tertiary);"></span>
+      </div>
       <div class="po-subtabs sales-subtabs" style="margin-top: 12px;">
         <button class="sub-tab-btn active" data-rofilter="active" onclick="roShowFilter('active')" title="待处理+沟通中+退货中(进行中的退货)">🔄 进行中 <span class="cnt" id="roCntActive">0</span></button>
         <button class="sub-tab-btn" data-rofilter="pending" onclick="roShowFilter('pending')">🕓 待处理 <span class="cnt" id="roCntPending">0</span></button>
         <button class="sub-tab-btn" data-rofilter="completed" onclick="roShowFilter('completed')">✅ 已完成 <span class="cnt" id="roCntCompleted">0</span></button>
         <button class="sub-tab-btn" data-rofilter="cancelled" onclick="roShowFilter('cancelled')">⊘ 已取消 <span class="cnt" id="roCntCancelled">0</span></button>
         <button class="sub-tab-btn sub-tab-allorders" data-rofilter="all" onclick="roShowFilter('all')">📂 全部 <span class="cnt" id="roCntAll">0</span></button>
-      </div>
-      <div style="margin-top:10px;">
-        <input type="text" id="roSearch" placeholder="🔍 搜退货单号/关联单号/供应商/产品…" oninput="renderReturnOrders()" style="width:100%; max-width:360px; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card);">
       </div>
       <div id="roListBody" style="margin-top: 12px;"></div>
     </div>
