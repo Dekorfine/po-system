@@ -170,6 +170,7 @@ const DATA = {
       products: r.products || [],            // V20260602:关联产品(多选)
       reason: r.reason || '', reasonDetail: r.reason_detail || '',
       status: r.status || 'pending',
+      isUrgent: !!r.is_urgent,                // V20260702:修复 — 配合 _toDbAfter 对称读回加急标记
       createdDate: r.created_date || '', nextFollow: r.next_follow || '', resolvedDate: r.resolved_date || '',
       screenshots: r.screenshots || [], followups: r.followups || [],
       createdAt: r.created_at,
@@ -266,6 +267,7 @@ const DATA = {
       products: a.products || [],            // V20260602:关联产品(多选)[{spec,qty,image_url,sku}]
       reason: a.reason || '', reason_detail: a.reasonDetail || '',
       status: a.status || 'pending',
+      is_urgent: !!a.isUrgent,                // V20260702:修复 — 加急单开关此前从未写入数据库(半成品bug)
       created_date: a.createdDate || null, next_follow: a.nextFollow || null, resolved_date: a.resolvedDate || null,
       screenshots: a.screenshots || [], followups: a.followups || [],
       deleted_at: a.deletedAt || null, deleted_by: a.deletedBy || null,

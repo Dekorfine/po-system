@@ -10,6 +10,19 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260702-aftersales-urgent-fix',
+    date: '2026-07-02',
+    type: 'fix',
+    title: '🐛 售后「加急单」开关从未真正存库(半成品bug)— 已根治',
+    notes: [
+      '根因(客服对接排查发现):_toDbAfter/_fromDbAfter 读写映射函数里从头到尾就没有 isUrgent/is_urgent 这个字段 — 点开关时前端弹"已标记加急"、当次会话也显示红色徽章,但从未真正写入 aftersales 表,刷新或换人打开就丢失',
+      '修复:aftersales 表加 is_urgent 列(boolean default false);_toDbAfter 写入 is_urgent:!!a.isUrgent;_fromDbAfter 读回 isUrgent:!!r.is_urgent,两侧对称',
+      '⚠ 需要跑 SQL:alter table aftersales add column if not exists is_urgent boolean default false;',
+    ],
+    files: ['core.js', 'index.html', 'help.js'],
+    sql: 'alter table public.aftersales add column if not exists is_urgent boolean default false;',
+  },
+  {
     v: '20260701-woo-lineitem-idfix',
     date: '2026-07-01',
     type: 'fix',
