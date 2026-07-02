@@ -1065,6 +1065,7 @@ const ORDER_NO_FORMAT = {
 const ALL_MODULES = [
   { key: 'sales', label: '📥 销售单' },
   { key: 'po', label: '📦 采购单' },
+  { key: 'return_order', label: '↩ 退货单' },
   { key: 'orders', label: '📋 催单' },
   { key: 'offline', label: '🧾 线下单' },
   { key: 'missing', label: '🔍 找灯' },
@@ -2586,6 +2587,10 @@ function renderActiveTab() {
       setTimeout(() => poRenderShops(), 80);
     }
   }
+  else if (CURRENT_TAB === 'return_order') {
+    if (typeof loadReturnOrders === 'function') loadReturnOrders().then(() => { if (typeof renderReturnOrders === 'function') renderReturnOrders(); });
+    else if (typeof renderReturnOrders === 'function') renderReturnOrders();
+  }
   else if (CURRENT_TAB === 'finance') { if (typeof renderFinance === 'function') renderFinance(); }
   else if (CURRENT_TAB === 'products') { if (typeof renderProducts === 'function') renderProducts(); }
   else if (CURRENT_TAB === 'inventory') { if (typeof renderInventory === 'function') renderInventory(); }
@@ -2974,6 +2979,7 @@ const TAB_LAYOUT_DEFAULT = {
   // 业务流程主线
   sales:         'top',
   po:            'top',
+  return_order:  'top',     // V20260702:退货单(挂在采购单旁边)
   orders:        'top',
   offline:       'top',     // V20260620:线下单(补进布局自定义)
   aftersales:    'top',
@@ -2996,6 +3002,7 @@ const TAB_LAYOUT_DEFAULT = {
 const TAB_META = {
   sales:         { icon: '📥', label: '销售单',     badgeId: 'badgeSales' },
   po:            { icon: '📦', label: '采购单',     badgeId: 'badgePo' },
+  return_order:  { icon: '↩', label: '退货单',     badgeId: 'badgeReturnOrder' },
   orders:        { icon: '📋', label: '催单',       badgeId: 'badgeOrders' },
   offline:       { icon: '🧾', label: '线下单',     badgeId: 'badgeOffline' },
   factory:       { icon: '🏭', label: '验厂',       badgeId: 'badgeFactory' },

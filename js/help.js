@@ -10,6 +10,21 @@
 // ==========================================================
 const VERSION_LOG = [
   {
+    v: '20260702-return-orders',
+    date: '2026-07-02',
+    type: 'feature',
+    title: '↩ 新增「退货单」模块(挂在采购单旁边)',
+    notes: [
+      '新顶部 tab「↩退货单」,紧挨采购单;新建时输入订单号或PO编号,自动带出供应商+原采购单商品明细(仿自定义采购单壳子,只改header,明细不用从头录)',
+      '勾选要退的商品、调整数量(不超原数量)、选退货原因(产品瑕疵/给错货物/功能故障/客户取消/协商换货/其他)→ 自动算退款金额 → 生成',
+      '状态流转:待处理→沟通中→退货中→已完成,任意阶段可标记已取消;列表卡片可一键推进下一状态',
+      '新建 DB 表 return_orders(字段形状照抄orders表)+ generate_return_number() 编号生成函数 + RLS(本人+admin可见,同aftersales模式)',
+      '⚠ 需要先跑 SQL:新建退货单表.sql',
+    ],
+    files: ['return-orders.js', 'index.html', 'core.js', 'help.js'],
+    sql: '新建退货单表.sql',
+  },
+  {
     v: '20260702-inventory-transit',
     date: '2026-07-02',
     type: 'feature',
