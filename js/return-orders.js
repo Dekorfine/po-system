@@ -319,7 +319,7 @@ function _renderReturnOrderCard(r) {
         ${firstImg ? `<img src="${escapeHtml(_poResizeImg(firstImg, '120x120'))}" style="width:44px; height:44px; object-fit:cover; border-radius:8px; border:1px solid var(--border); flex-shrink:0;" loading="lazy">` : `<div style="width:44px; height:44px; border-radius:8px; background:var(--bg-elevated); display:flex; align-items:center; justify-content:center; flex-shrink:0; color:var(--text-tertiary);">📦</div>`}
         <div style="min-width:0; flex:1;">
           <div style="font-size:13.5px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(itemsText || r.product || '(无明细)')}</div>
-          <div style="font-size:11.5px; color:var(--text-tertiary); margin-top:2px;">供应商 ${escapeHtml(r.supplier || '')}${r.return_reason ? ' · 退货原因 ' + escapeHtml(r.return_reason) : ''}</div>
+          <div style="font-size:11.5px; color:var(--text-tertiary); margin-top:2px;">供应商 ${escapeHtml(r.supplier || '')}${r.return_reason ? ' · 退货原因 ' + escapeHtml(r.return_reason) + (r.return_reason === '其他' && r.return_reason_detail ? `(${escapeHtml(r.return_reason_detail)})` : '') : ''}</div>
         </div>
         <div style="text-align:right; flex-shrink:0;">
           <div style="font-size:10.5px; color:var(--text-tertiary);">退款金额</div>
@@ -364,6 +364,9 @@ async function openReturnOrderModal(prefillNo) {
     relatedPoNumber: '', relatedOrderNo: '', relatedPoId: null,
     lineItems: [],   // [{sku,title_cn,variant,image_url,original_qty,qty,price,checked}]
     returnReason: '',
+    returnReasonOther: '',        // V20260702:退货原因选"其他"时的手填内容
+    finalAmount: null,            // V20260702:手动改过的退款金额(null=跟着商品小计自动算)
+    amountManuallyEdited: false,
     logisticsNo: '', logisticsCompany: '',
     note: '',
     _state: 'empty',  // empty | ok | nomatch
@@ -410,6 +413,7 @@ function roFetchSource() {
       price: Number(li.price || 0), checked: false,
     }));
     RO_STATE._state = RO_STATE.lineItems.length ? 'ok' : 'nomatch';
+    RO_STATE.finalAmount = null; RO_STATE.amountManuallyEdited = false;   // V20260702:换了单据,退款金额跟着新商品重新自动算
     renderReturnOrderForm();
     return;
   }
@@ -430,6 +434,7 @@ function roFetchSource() {
       price: 0, checked: false,
     }));
     RO_STATE._state = RO_STATE.lineItems.length ? 'ok' : 'nomatch';
+    RO_STATE.finalAmount = null; RO_STATE.amountManuallyEdited = false;   // V20260702:换了单据,退款金额跟着新商品重新自动算
     renderReturnOrderForm();
     return;
   }
@@ -514,11 +519,29 @@ function renderReturnOrderForm() {
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         ${RETURN_REASONS.map(r => `<span onclick="roSetReason('${r}')" style="cursor:pointer; font-size:12px; padding:5px 12px; border-radius:8px; ${s.returnReason === r ? 'background:rgba(220,38,38,0.1); border:1px solid #dc2626; color:#dc2626; font-weight:600;' : 'border:1px solid var(--border); color:var(--text-secondary);'}">${escapeHtml(r)}</span>`).join('')}
       </div>
+      ${s.returnReason === '其他' ? `
+      <input type="text" value="${escapeHtml(s.returnReasonOther || '')}" placeholder="请填写具体原因…" oninput="RO_STATE.returnReasonOther=this.value"
+             style="width:100%; margin-top:8px; padding:8px 10px; font-size:13px; border:1px solid #dc2626; border-radius:6px; background:var(--bg-card);">
+      ` : ''}
     </div>
 
-    <div style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-elevated); border-radius:8px; padding:12px 14px;">
-      <span style="font-size:13px; color:var(--text-secondary);">预计退款金额</span>
-      <span style="font-size:18px; font-weight:700; color:var(--text-primary);">¥${total.toFixed(2)}</span>
+    <div style="margin-bottom:14px;">
+      <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">备注 <span style="font-weight:400; color:var(--text-tertiary);">(选填,记录额外信息)</span></label>
+      <textarea rows="2" placeholder="例:供应商要求先寄样品图确认 / 联系人电话XXX 等" oninput="RO_STATE.note=this.value"
+                style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); resize:vertical; font-family:inherit;">${escapeHtml(s.note || '')}</textarea>
+    </div>
+
+    <div style="background:var(--bg-elevated); border-radius:8px; padding:12px 14px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; font-size:11.5px; color:var(--text-tertiary); margin-bottom:8px;">
+        <span>商品金额小计(按原单价 × 退货数量)</span>
+        <span>¥${total.toFixed(2)}</span>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <span style="font-size:13px; color:var(--text-secondary); flex-shrink:0;">预计退款金额 <span style="font-weight:400; color:var(--text-tertiary); font-size:11px;">(可手动改,如供应商扣包装费)</span></span>
+        <input type="text" inputmode="decimal" value="${(s.finalAmount != null ? s.finalAmount : total).toFixed(2)}"
+               oninput="this.value=this.value.replace(/[^0-9.]/g,''); RO_STATE.finalAmount=parseFloat(this.value)||0; RO_STATE.amountManuallyEdited=true;"
+               style="width:120px; text-align:right; padding:6px 10px; font-size:16px; font-weight:700; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text-primary);">
+      </div>
     </div>
     ` : ''}
   `;
@@ -531,13 +554,20 @@ async function saveReturnOrder() {
   const selected = (s.lineItems || []).filter(li => li.checked && li.qty > 0);
   if (selected.length === 0) { toast('请至少勾选一个要退货的商品', 'warn'); return; }
   if (!s.returnReason) { toast('请选择退货原因', 'warn'); return; }
+  if (s.returnReason === '其他' && !(s.returnReasonOther || '').trim()) { toast('选了"其他"原因,请填写具体是什么原因', 'warn'); return; }
+
+  const subtotal = roCalcTotal();
+  const finalTotal = (s.finalAmount != null && s.amountManuallyEdited) ? s.finalAmount : subtotal;
 
   // V20260702:防呆 — 提交前二次确认(这一步会真正写入数据库,不能手滑)
-  const totalPreview = roCalcTotal();
   const itemsPreview = selected.map(li => `${li.title_cn || li.sku} × ${li.qty}`).join('、');
+  const reasonPreview = s.returnReason === '其他' ? `其他(${s.returnReasonOther})` : s.returnReason;
+  const amountLine = s.amountManuallyEdited && finalTotal !== subtotal
+    ? `预计退款:¥${finalTotal.toFixed(2)}(商品小计¥${subtotal.toFixed(2)},已手动调整)`
+    : `预计退款:¥${finalTotal.toFixed(2)}`;
   const confirmOk = await window.confirmDialog({
     title: '💾 确认生成退货单',
-    message: `关联单号:${s.inputNo}\n供应商:${s.supplierName || '(未知)'}\n退货商品:${itemsPreview}\n退货原因:${s.returnReason}\n预计退款:¥${totalPreview.toFixed(2)}\n\n确认无误后生成,生成后仍可在详情里调整状态。`,
+    message: `关联单号:${s.inputNo}\n供应商:${s.supplierName || '(未知)'}\n退货商品:${itemsPreview}\n退货原因:${reasonPreview}\n${amountLine}${s.note ? '\n备注:' + s.note : ''}\n\n确认无误后生成,生成后仍可在详情里调整状态。`,
     okText: '确认生成',
     cancelText: '再检查一下',
   });
@@ -558,7 +588,6 @@ async function saveReturnOrder() {
     sku: li.sku, title_cn: li.title_cn, variant: li.variant, image_url: li.image_url,
     original_qty: li.original_qty, qty: li.qty, price: li.price, subtotal: li.qty * li.price,
   }));
-  const totalAmount = liData.reduce((s2, x) => s2 + x.subtotal, 0);
 
   const row = {
     agent_id: agentId,
@@ -569,8 +598,9 @@ async function saveReturnOrder() {
     supplier: s.supplierName || '',
     product: liData.map(x => x.title_cn).join(' / '),
     line_items: liData,
-    total_amount: totalAmount,
+    total_amount: finalTotal,
     return_reason: s.returnReason,
+    return_reason_detail: s.returnReason === '其他' ? (s.returnReasonOther || '').trim() : null,
     status: 'pending',
     logistics_no: s.logisticsNo || null,
     logistics_company: s.logisticsCompany || null,
@@ -633,7 +663,8 @@ function openReturnOrderDetail(id) {
       ${r.related_po_number ? `<span style="font-size:12px; color:var(--text-secondary);">关联采购单 ${escapeHtml(r.related_po_number)}</span>` : ''}
       ${(!r.related_po_number && r.related_order_no) ? `<span style="font-size:12px; color:var(--text-secondary);">关联订单 ${escapeHtml(r.related_order_no)}</span>` : ''}
     </div>
-    <div style="font-size:13px; color:var(--text-secondary); margin-bottom:10px;">🏭 供应商 ${escapeHtml(r.supplier || '')} · ⚠ 退货原因 ${escapeHtml(r.return_reason || '')}</div>
+    <div style="font-size:13px; color:var(--text-secondary); margin-bottom:4px;">🏭 供应商 ${escapeHtml(r.supplier || '')} · ⚠ 退货原因 ${escapeHtml(r.return_reason || '')}${r.return_reason === '其他' && r.return_reason_detail ? `(${escapeHtml(r.return_reason_detail)})` : ''}</div>
+    ${r.note ? `<div style="font-size:12.5px; color:var(--text-tertiary); background:var(--bg-elevated); border-radius:6px; padding:8px 10px; margin-bottom:10px;">📝 备注:${escapeHtml(r.note)}</div>` : ''}
     <div style="border:1px solid var(--border-subtle); border-radius:8px; padding:4px 12px; margin-bottom:14px;">
       ${items.map(it => `
         <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border-subtle);">
