@@ -4459,6 +4459,7 @@ function renderPoList() {
             ${p.to_finance ? `<span class="so-action-btn" style="background:rgba(99,153,34,0.12); color:#3b6d11; cursor:default;" title="已交财务核对${p.receipt_confirmed_at ? ' · 财务已确认收货' : ''}">${p.receipt_confirmed_at ? '✅ 财务已确认' : '📑 已交财务'}</span>` : ''}
             <!-- V20260601-desc:移除 [📝 改描述] 按钮 · 改描述已搬到创建 PO 弹窗内每行 · 创建时直接编辑 -->
             <button class="so-action-btn" onclick="poOpenPrint('${p.id}')" title="预览 + 打印 PO(纸质单据 / 也是预览效果最准的方式)">🖨 打印</button>
+            ${!isCancelled ? `<button class="so-action-btn" onclick="event.stopPropagation(); openReturnOrderModal('${escapeHtml(p.po_number || '')}')" title="从这张采购单快捷生成退货单" style="color:#b45309; border-color:rgba(180,83,9,0.3);">↩ 退货</button>` : ''}
             ${!isCancelled ? `<button class="so-action-btn danger" onclick="poCancel('${p.id}')">⊘ 取消</button>` : ''}
           </div>
         </div>
