@@ -340,7 +340,24 @@ function _renderReturnOrderCard(r) {
 let RO_STATE = null;
 let _roFetchTimer = null;
 
-function openReturnOrderModal(prefillNo) {
+async function openReturnOrderModal(prefillNo) {
+  const modalEl = document.getElementById('returnOrderModal');
+  if (!modalEl) {
+    // V20260702:防"点击没反应"—元素都找不到,大概率是浏览器还没拉到最新版本(缓存/部署滞后),
+    // 给个明确提示而不是静默失败,方便一眼分辨"是没部署好"还是"真的有bug"
+    alert('⚠ 退货单弹层加载失败(找不到 returnOrderModal 元素)\n\n大概率是浏览器缓存了旧版本页面。\n请按 Ctrl+Shift+R 硬刷新后重试。');
+    return;
+  }
+  // V20260702:防呆确认 —避免误点(尤其从PO卡片快捷点击,防止手滑对着还没出问题的正常单开退货)
+  if (prefillNo) {
+    const ok = await window.confirmDialog({
+      title: '↩ 生成退货单',
+      message: `确定要对采购单 ${prefillNo} 发起退货吗?\n\n会打开退货单表单,自动带出该单的供应商和商品,\n实际提交前你还可以调整/取消。`,
+      okText: '继续',
+      cancelText: '取消',
+    });
+    if (!ok) return;
+  }
   RO_STATE = {
     inputNo: prefillNo || '',
     supplierName: '', supplierId: null,
@@ -351,7 +368,7 @@ function openReturnOrderModal(prefillNo) {
     note: '',
     _state: 'empty',  // empty | ok | nomatch
   };
-  document.getElementById('returnOrderModal').style.display = 'flex';
+  modalEl.style.display = 'flex';
   renderReturnOrderForm();
   // V20260702:从 PO 卡片快捷进入时,带着单号直接查一次(不用再手动输入)
   if (prefillNo) roFetchSource();
@@ -514,6 +531,17 @@ async function saveReturnOrder() {
   const selected = (s.lineItems || []).filter(li => li.checked && li.qty > 0);
   if (selected.length === 0) { toast('请至少勾选一个要退货的商品', 'warn'); return; }
   if (!s.returnReason) { toast('请选择退货原因', 'warn'); return; }
+
+  // V20260702:防呆 — 提交前二次确认(这一步会真正写入数据库,不能手滑)
+  const totalPreview = roCalcTotal();
+  const itemsPreview = selected.map(li => `${li.title_cn || li.sku} × ${li.qty}`).join('、');
+  const confirmOk = await window.confirmDialog({
+    title: '💾 确认生成退货单',
+    message: `关联单号:${s.inputNo}\n供应商:${s.supplierName || '(未知)'}\n退货商品:${itemsPreview}\n退货原因:${s.returnReason}\n预计退款:¥${totalPreview.toFixed(2)}\n\n确认无误后生成,生成后仍可在详情里调整状态。`,
+    okText: '确认生成',
+    cancelText: '再检查一下',
+  });
+  if (!confirmOk) return;
 
   let agentId = CURRENT_USER_ID;
   if (!agentId) { try { const { data: { user } } = await sb.auth.getUser(); agentId = user?.id; } catch (_) {} }
